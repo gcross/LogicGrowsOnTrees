@@ -73,12 +73,12 @@ instance MonadPlus m ⇒ MonadPlus (VisitorT v m) where
 -- @-node:gcross.20101114125204.1268:Instances
 -- @+node:gcross.20101114125204.1273:Functions
 -- @+node:gcross.20101114125204.1274:label
-label :: VisitorT Branch m a → m (Branch,a)
+label :: VisitorT Branch m α → m (Branch,α)
 label v = runVisitorT v (\v b → Just (v |> b)) Seq.empty
 -- @nonl
 -- @-node:gcross.20101114125204.1274:label
 -- @+node:gcross.20101114125204.1276:visit
-visit :: Monad m ⇒ m a → VisitorT v m a
+visit :: Monad m ⇒ m α → VisitorT v m α
 visit mx = VisitorT $ \_ v → mx >>= return . ((,) v)
 -- @nonl
 -- @-node:gcross.20101114125204.1276:visit
