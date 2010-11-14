@@ -1,0 +1,22 @@
+-- @+leo-ver=4-thin
+-- @+node:gcross.20101114125204.1254:@thin VisitorT.cabal
+-- @@language Haskell
+Name:                VisitorT
+Version:             1.0
+License:             BSD3
+License-file:        LICENSE
+Author:              Gregory Crosswhite
+Maintainer:          Gregory Crosswhite <gcross@phys.washington.edu>
+Stability:           Provisional
+Synopsis:            
+Description:         
+Cabal-version:       >=1.2.3
+Build-type:          Simple
+Category:	     
+
+Library
+    Build-depends:   base > 4 && < 5
+    Exposed-modules: 
+    Extensions:	     
+-- @-node:gcross.20101114125204.1254:@thin VisitorT.cabal
+-- @-leo
