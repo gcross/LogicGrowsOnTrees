@@ -41,8 +41,8 @@ main = defaultMain
             [testCase "Nothing" $ Nothing @=? label (visit (Nothing :: Maybe Int))
             -- @nonl
             -- @-node:gcross.20101114125204.1278:Nothing
-            -- @+node:gcross.20101114125204.1280:Single branch
-            ,testGroup "Single branch"
+            -- @+node:gcross.20101114125204.1280:Single choice
+            ,testGroup "Single choice"
                 [testCase (show a ++ " `mplus` " ++ show b) $
                     c @=? label (visit a `mplus` visit b)
                 | (a,b,c) ←
@@ -52,7 +52,7 @@ main = defaultMain
                     ]
                 ]
             -- @nonl
-            -- @-node:gcross.20101114125204.1280:Single branch
+            -- @-node:gcross.20101114125204.1280:Single choice
             -- @-others
             ]
         -- @nonl
@@ -64,8 +64,8 @@ main = defaultMain
             [testCase "[]" $ [] @=? label (visit ([] :: [Int]))
             -- @nonl
             -- @-node:gcross.20101114125204.1286:Nothing
-            -- @+node:gcross.20101114125204.1287:Single branch
-            ,testGroup "Single branch"
+            -- @+node:gcross.20101114125204.1287:Single choice
+            ,testGroup "Single choice"
                 [testCase (show a ++ " `mplus` " ++ show b) $
                     c @=? label (visit a `mplus` visit b)
                 | (a,b,c) ←
@@ -74,9 +74,9 @@ main = defaultMain
                     ]
                 ]
             -- @nonl
-            -- @-node:gcross.20101114125204.1287:Single branch
-            -- @+node:gcross.20101114125204.1288:Two branches
-            ,testGroup "Two branches"
+            -- @-node:gcross.20101114125204.1287:Single choice
+            -- @+node:gcross.20101114125204.1288:Two choices
+            ,testGroup "Two choices"
                 -- @    @+others
                 -- @+node:gcross.20101114125204.1289:#1
                 [testCase "#1" $
@@ -95,7 +95,8 @@ main = defaultMain
                 -- @-node:gcross.20101114125204.1289:#1
                 -- @-others
                 ]
-            -- @-node:gcross.20101114125204.1288:Two branches
+            -- @nonl
+            -- @-node:gcross.20101114125204.1288:Two choices
             -- @-others
             ]
         -- @nonl

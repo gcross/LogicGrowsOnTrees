@@ -24,12 +24,16 @@ import Data.Sequence (Seq,(|>))
 
 -- @+others
 -- @+node:gcross.20101114125204.1257:Types
--- @+node:gcross.20101114125204.1265:Branch
-data Branch = L | R deriving (Eq,Ord,Enum,Read,Show)
+-- @+node:gcross.20101114125204.1293:Branch
+type Branch = Seq Choice
 -- @nonl
--- @-node:gcross.20101114125204.1265:Branch
+-- @-node:gcross.20101114125204.1293:Branch
+-- @+node:gcross.20101114125204.1265:Choice
+data Choice = L | R deriving (Eq,Ord,Enum,Read,Show)
+-- @nonl
+-- @-node:gcross.20101114125204.1265:Choice
 -- @+node:gcross.20101114125204.1258:VisitorT
-newtype VisitorT v m α = VisitorT { runVisitorT :: (v → Branch → Maybe v) → v → m (v,α) }
+newtype VisitorT v m α = VisitorT { runVisitorT :: (v → Choice → Maybe v) → v → m (v,α) }
 -- @nonl
 -- @-node:gcross.20101114125204.1258:VisitorT
 -- @-node:gcross.20101114125204.1257:Types
@@ -69,7 +73,7 @@ instance MonadPlus m ⇒ MonadPlus (VisitorT v m) where
 -- @-node:gcross.20101114125204.1268:Instances
 -- @+node:gcross.20101114125204.1273:Functions
 -- @+node:gcross.20101114125204.1274:label
-label :: VisitorT (Seq Branch) m a → m (Seq Branch,a)
+label :: VisitorT Branch m a → m (Branch,a)
 label v = runVisitorT v (\v b → Just (v |> b)) Seq.empty
 -- @nonl
 -- @-node:gcross.20101114125204.1274:label
