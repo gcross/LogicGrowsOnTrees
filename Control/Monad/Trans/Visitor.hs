@@ -17,7 +17,7 @@ import Control.Arrow (second)
 import Control.Monad (MonadPlus(..))
 
 import qualified Data.Sequence as Seq
-import Data.Sequence (Seq,(|>))
+import Data.Sequence (Seq,ViewL(EmptyL,(:<)),(|>),viewl)
 -- @nonl
 -- @-node:gcross.20101114125204.1256:<< Import needed modules >>
 -- @nl
@@ -82,6 +82,17 @@ visit :: Monad m ⇒ m α → VisitorT v m α
 visit mx = VisitorT $ \_ v → mx >>= return . ((,) v)
 -- @nonl
 -- @-node:gcross.20101114125204.1276:visit
+-- @+node:gcross.20101114125204.1295:walkDownBranch
+walkDownBranch :: Functor m ⇒ Branch → VisitorT Branch m α → m α
+walkDownBranch branch v = fmap snd (runVisitorT v descend branch)
+  where
+    descend branch choice =
+        case viewl branch of
+            EmptyL → Just branch
+            head :< tail | choice == head → Just tail
+            _ → Nothing
+-- @nonl
+-- @-node:gcross.20101114125204.1295:walkDownBranch
 -- @-node:gcross.20101114125204.1273:Functions
 -- @-others
 -- @nonl
