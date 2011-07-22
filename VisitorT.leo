@@ -7,9 +7,9 @@
 <find_panel_settings/>
 <vnodes>
 <v t="gcross.20101114125120.1249"><vh>@chapters</vh></v>
-<v t="gcross.20101114125204.1254"><vh>@thin VisitorT.cabal</vh></v>
-<v t="gcross.20101114125204.1255"><vh>@thin Control/Monad/Trans/Visitor.hs</vh></v>
-<v t="gcross.20101114125204.1259"><vh>@thin tests.hs</vh></v>
+<v t="gcross.20101114125204.1254"><vh>@file VisitorT.cabal</vh></v>
+<v t="gcross.20101114125204.1255"><vh>@file Control/Monad/Trans/Visitor.hs</vh></v>
+<v t="gcross.20101114125204.1259"><vh>@file tests.hs</vh></v>
 </vnodes>
 <tnodes>
 <t tx="gcross.20101114125120.1249"></t>

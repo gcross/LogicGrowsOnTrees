@@ -1,16 +1,14 @@
--- @+leo-ver=4-thin
--- @+node:gcross.20101114125204.1259:@thin tests.hs
+-- @+leo-ver=5-thin
+-- @+node:gcross.20101114125204.1259: * @file tests.hs
 -- @@language Haskell
 
--- @<< Language extensions >>
--- @+node:gcross.20101114125204.1281:<< Language extensions >>
+-- @+<< Language extensions >>
+-- @+node:gcross.20101114125204.1281: ** << Language extensions >>
 {-# LANGUAGE UnicodeSyntax #-}
--- @nonl
--- @-node:gcross.20101114125204.1281:<< Language extensions >>
--- @nl
+-- @-<< Language extensions >>
 
--- @<< Import needed modules >>
--- @+node:gcross.20101114125204.1260:<< Import needed modules >>
+-- @+<< Import needed modules >>
+-- @+node:gcross.20101114125204.1260: ** << Import needed modules >>
 import Control.Arrow
 import Control.Monad
 
@@ -21,28 +19,24 @@ import Test.Framework.Providers.HUnit
 import Test.HUnit
 
 import Control.Monad.Trans.Visitor
--- @nonl
--- @-node:gcross.20101114125204.1260:<< Import needed modules >>
--- @nl
+-- @-<< Import needed modules >>
 
 -- @+others
 -- @-others
 
 main = defaultMain
-    -- @    << Tests >>
-    -- @+node:gcross.20101114125204.1267:<< Tests >>
+    -- @+<< Tests >>
+    -- @+node:gcross.20101114125204.1267: ** << Tests >>
     -- @+others
-    -- @+node:gcross.20101114125204.1275:label
+    -- @+node:gcross.20101114125204.1275: *3* label
     [testGroup "label"
-        -- @    @+others
-        -- @+node:gcross.20101114125204.1277:Maybe
+        -- @+others
+        -- @+node:gcross.20101114125204.1277: *4* Maybe
         [testGroup "Maybe"
-            -- @    @+others
-            -- @+node:gcross.20101114125204.1278:Nothing
+            -- @+others
+            -- @+node:gcross.20101114125204.1278: *5* Nothing
             [testCase "Nothing" $ Nothing @=? label (visit (Nothing :: Maybe Int))
-            -- @nonl
-            -- @-node:gcross.20101114125204.1278:Nothing
-            -- @+node:gcross.20101114125204.1280:Single choice
+            -- @+node:gcross.20101114125204.1280: *5* Single choice
             ,testGroup "Single choice"
                 [testCase (show a ++ " `mplus` " ++ show b) $
                     c @=? label (visit a `mplus` visit b)
@@ -52,20 +46,14 @@ main = defaultMain
                     ,(Nothing,Just 2,Just (Seq.singleton R,2))
                     ]
                 ]
-            -- @nonl
-            -- @-node:gcross.20101114125204.1280:Single choice
             -- @-others
             ]
-        -- @nonl
-        -- @-node:gcross.20101114125204.1277:Maybe
-        -- @+node:gcross.20101114125204.1285:List
+        -- @+node:gcross.20101114125204.1285: *4* List
         ,testGroup "List"
-            -- @    @+others
-            -- @+node:gcross.20101114125204.1286:Nothing
+            -- @+others
+            -- @+node:gcross.20101114125204.1286: *5* Nothing
             [testCase "[]" $ [] @=? label (visit ([] :: [Int]))
-            -- @nonl
-            -- @-node:gcross.20101114125204.1286:Nothing
-            -- @+node:gcross.20101114125204.1287:Single choice
+            -- @+node:gcross.20101114125204.1287: *5* Single choice
             ,testGroup "Single choice"
                 [testCase (show a ++ " `mplus` " ++ show b) $
                     c @=? label (visit a `mplus` visit b)
@@ -74,12 +62,10 @@ main = defaultMain
                     ,([1,2],[3,4],[(Seq.singleton L,1),(Seq.singleton L,2),(Seq.singleton R,3),(Seq.singleton R,4)])
                     ]
                 ]
-            -- @nonl
-            -- @-node:gcross.20101114125204.1287:Single choice
-            -- @+node:gcross.20101114125204.1288:Two choices
+            -- @+node:gcross.20101114125204.1288: *5* Two choices
             ,testGroup "Two choices"
-                -- @    @+others
-                -- @+node:gcross.20101114125204.1289:#1
+                -- @+others
+                -- @+node:gcross.20101114125204.1289: *6* #1
                 [testCase "#1" $
                     [(Seq.fromList [L,L],(0,0))
                     ,(Seq.fromList [L,R],(0,1))
@@ -92,31 +78,21 @@ main = defaultMain
                         y ← (return 0) `mplus` (return 1)
                         return (x,y)
                     )
-                -- @nonl
-                -- @-node:gcross.20101114125204.1289:#1
                 -- @-others
                 ]
-            -- @nonl
-            -- @-node:gcross.20101114125204.1288:Two choices
             -- @-others
             ]
-        -- @nonl
-        -- @-node:gcross.20101114125204.1285:List
         -- @-others
         ]
-    -- @nonl
-    -- @-node:gcross.20101114125204.1275:label
-    -- @+node:gcross.20101114125204.3782:walkDownBranch
+    -- @+node:gcross.20101114125204.3782: *3* walkDownBranch
     ,testGroup "walkDownBranch"
-        -- @    @+others
-        -- @+node:gcross.20101114125204.3783:Maybe
+        -- @+others
+        -- @+node:gcross.20101114125204.3783: *4* Maybe
         [testGroup "Maybe"
-            -- @    @+others
-            -- @+node:gcross.20101114125204.3784:Nothing
+            -- @+others
+            -- @+node:gcross.20101114125204.3784: *5* Nothing
             [testCase "Nothing" $ Nothing @=? walkDownBranch Seq.empty (visit (Nothing :: Maybe Int))
-            -- @nonl
-            -- @-node:gcross.20101114125204.3784:Nothing
-            -- @+node:gcross.20101114125204.3785:Single choice
+            -- @+node:gcross.20101114125204.3785: *5* Single choice
             ,testGroup "Single choice"
                 [testCase (show a ++ " `mplus` " ++ show b) $
                     d @=? walkDownBranch c (visit a `mplus` visit b)
@@ -129,20 +105,14 @@ main = defaultMain
                     ,(Nothing,Just 2,Seq.singleton R,Just 2)
                     ]
                 ]
-            -- @nonl
-            -- @-node:gcross.20101114125204.3785:Single choice
             -- @-others
             ]
-        -- @nonl
-        -- @-node:gcross.20101114125204.3783:Maybe
-        -- @+node:gcross.20101114125204.3786:List
+        -- @+node:gcross.20101114125204.3786: *4* List
         ,testGroup "List"
-            -- @    @+others
-            -- @+node:gcross.20101114125204.3787:Nothing
+            -- @+others
+            -- @+node:gcross.20101114125204.3787: *5* Nothing
             [testCase "[]" $ [] @=? walkDownBranch Seq.empty (visit ([] :: [Int]))
-            -- @nonl
-            -- @-node:gcross.20101114125204.3787:Nothing
-            -- @+node:gcross.20101114125204.3788:Single choice
+            -- @+node:gcross.20101114125204.3788: *5* Single choice
             ,testGroup "Single choice"
                 [testCase (show a ++ " `mplus` " ++ show b) $
                     d @=? walkDownBranch c (visit a `mplus` visit b)
@@ -155,9 +125,7 @@ main = defaultMain
                     ,([1,2],[3,4],Seq.fromList [R,R,R],[3,4])
                     ]
                 ]
-            -- @nonl
-            -- @-node:gcross.20101114125204.3788:Single choice
-            -- @+node:gcross.20101114125204.3789:Two choices
+            -- @+node:gcross.20101114125204.3789: *5* Two choices
             ,testGroup "Two choices" $
                 let m = do  x ← (return 0) `mplus` (return 1)
                             y ← (return 0) `mplus` (return 1)
@@ -173,20 +141,11 @@ main = defaultMain
                     ,([R,R],[(1,1)])
                     ]
                 ]
-            -- @nonl
-            -- @-node:gcross.20101114125204.3789:Two choices
             -- @-others
             ]
-        -- @nonl
-        -- @-node:gcross.20101114125204.3786:List
         -- @-others
         ]
-    -- @nonl
-    -- @-node:gcross.20101114125204.3782:walkDownBranch
     -- @-others
-    -- @nonl
-    -- @-node:gcross.20101114125204.1267:<< Tests >>
-    -- @nl
+    -- @-<< Tests >>
     ]
--- @-node:gcross.20101114125204.1259:@thin tests.hs
 -- @-leo
