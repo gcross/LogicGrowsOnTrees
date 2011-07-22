@@ -45,25 +45,25 @@ instance Monad m ⇒ MonadPlus (VisitorT m) where
 cache :: (Monad m, Serialize x) ⇒ x → VisitorT m x
 cache = singleton . Cache . return
 -- @+node:gcross.20110722110408.1170: *3* gatherResults
-gatherResults :: Visitor α → [α]
-gatherResults = runIdentity . runAndGatherResults
+gatherVisitorResults :: Visitor α → [α]
+gatherVisitorResults = runIdentity . runVisitorAndGatherResults
 -- @+node:gcross.20110722110408.1172: *3* isFirstVisit
 isFirstVisit :: VisitorT m Bool
 isFirstVisit = singleton IsFirstVisit
 -- @+node:gcross.20110722110408.1171: *3* runAndCache
 runAndCache :: Serialize x ⇒ m x → VisitorT m x
 runAndCache = singleton . Cache
--- @+node:gcross.20110722110408.1167: *3* runAndGatherResults
-runAndGatherResults :: Monad m ⇒ VisitorT m α → m [α]
-runAndGatherResults = viewT >=> \view →
+-- @+node:gcross.20110722110408.1167: *3* runVisitorAndGatherResults
+runVisitorAndGatherResults :: Monad m ⇒ VisitorT m α → m [α]
+runVisitorAndGatherResults = viewT >=> \view →
     case view of
         Return x → return [x]
-        (Cache mx :>>= k) → mx >>= runAndGatherResults . k
+        (Cache mx :>>= k) → mx >>= runVisitorAndGatherResults . k
         (Choice left right :>>= k) →
             liftM2 (++)
-                (runAndGatherResults $ left >>= k)
-                (runAndGatherResults $ right >>= k)
-        (IsFirstVisit :>>= k) → runAndGatherResults $ k True
+                (runVisitorAndGatherResults $ left >>= k)
+                (runVisitorAndGatherResults $ right >>= k)
+        (IsFirstVisit :>>= k) → runVisitorAndGatherResults $ k True
         (Null :>>= _) → return []
 -- @-others
 -- @-leo
