@@ -15,7 +15,12 @@ Build-type:          Simple
 Category:	     
 
 Library
-    Build-depends:   base > 4 && < 5
-    Exposed-modules: 
-    Extensions:	     
+    Build-depends:
+        base > 4 && < 5,
+        cereal == 0.3.*,
+        operational == 0.2.*,
+        transformers == 0.2.*
+    Exposed-modules:
+        Control.Monad.Trans.Visitor
+    Extensions:
 -- @-leo
