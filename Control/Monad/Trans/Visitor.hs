@@ -65,5 +65,16 @@ runVisitorAndGatherResults = viewT >=> \view →
                 (runVisitorAndGatherResults $ right >>= k)
         (IsFirstVisit :>>= k) → runVisitorAndGatherResults $ k True
         (Null :>>= _) → return []
+-- @+node:gcross.20110722110408.1182: *3* runVisitor
+runVisitor :: Monad m ⇒ VisitorT m α → m ()
+runVisitor = viewT >=> \view →
+    case view of
+        Return x → return ()
+        (Cache mx :>>= k) → mx >>= runVisitor . k
+        (Choice left right :>>= k) → do
+            runVisitor $ left >>= k
+            runVisitor $ right >>= k
+        (IsFirstVisit :>>= k) → runVisitor $ k True
+        (Null :>>= _) → return ()
 -- @-others
 -- @-leo
