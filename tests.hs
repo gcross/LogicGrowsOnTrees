@@ -131,6 +131,28 @@ main = defaultMain
                 ]
             -- @-others
             ]
+        -- @+node:gcross.20110923164140.1220: *4* walkVisitorT
+        ,testGroup "walkVisitorT"
+            -- @+others
+            -- @+node:gcross.20110923164140.1223: *5* cache step
+            [testCase "cache step" $ do
+                let (transformed_visitor,log) =
+                        runWriter . walkVisitorT (Seq.singleton (CacheStep . encode $ (24 :: Int))) $ do
+                            runAndCache (tell [1] >> return (42 :: Int) :: Writer [Int] Int)
+                log @?= []
+                (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([24],[])
+            -- @+node:gcross.20110923164140.1221: *5* choice step
+            ,testCase "choice step" $ do
+                let (transformed_visitor,log) =
+                        runWriter . walkVisitorT (Seq.singleton (ChoiceStep True)) $ do
+                            lift (tell [1])
+                            (lift (tell [2]) `mplus` lift (tell [3]))
+                            lift (tell [4])
+                            return 42
+                log @?= [1]
+                (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([42],[3,4])
+            -- @-others
+            ]
         -- @-others
         ]
     -- @-others
