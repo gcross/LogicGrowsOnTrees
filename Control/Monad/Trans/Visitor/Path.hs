@@ -51,13 +51,13 @@ walkVisitor path = runIdentity . walkVisitorT path
 walkVisitorT :: Monad m ⇒ VisitorPath → VisitorT m α → m (VisitorT m α)
 walkVisitorT (viewl → EmptyL) = return
 walkVisitorT path@(viewl → step :< tail) =
-    viewT >=> \view → case (view,step) of
+    viewT . unwrapVisitorT >=> \view → case (view,step) of
         (Return x,_) → throw DeadEnd
         (Null :>>= _,_) → throw DeadEnd
-        (Cache _ :>>= k,CacheStep cache) → walkVisitorT tail $ either error k (decode cache)
+        (Cache _ :>>= k,CacheStep cache) → walkVisitorT tail $ either error (VisitorT . k) (decode cache)
         (Cache _ :>>= _,ChoiceStep _) → throw ChoiceStepAtCachePoint
-        (Choice left _ :>>= k,ChoiceStep False) → walkVisitorT tail (left >>= k)
-        (Choice _ right :>>= k,ChoiceStep True) → walkVisitorT tail (right >>= k)
+        (Choice left _ :>>= k,ChoiceStep False) → walkVisitorT tail (left >>= VisitorT . k)
+        (Choice _ right :>>= k,ChoiceStep True) → walkVisitorT tail (right >>= VisitorT . k)
         (Choice _ _ :>>= _,CacheStep _) → throw CacheStepAtChoicePoint
 -- @-others
 -- @-leo

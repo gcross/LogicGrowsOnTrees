@@ -11,6 +11,8 @@
 -- @+node:gcross.20101114125204.1260: ** << Import needed modules >>
 import Control.Exception
 import Control.Monad
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Writer
 
 import qualified Data.Sequence as Seq
 import Data.Serialize
@@ -44,6 +46,18 @@ main = defaultMain
             ,testCase "mplus" $ gatherVisitorResults (return 1 `mplus` return 2) @?= [1,2]
             -- @+node:gcross.20110722110408.1179: *5* cache
             ,testCase "cache" $ gatherVisitorResults (cache 42) @?= [42::Int]
+            -- @-others
+            ]
+        -- @+node:gcross.20110923164140.1202: *4* runVisitorT
+        ,testGroup "runVisitorT"
+            -- @+others
+            -- @+node:gcross.20110923164140.1203: *5* Writer
+            [testCase "Writer" $
+                (runWriter . runVisitorT $ do
+                    cache [1 :: Int] >>= lift . tell
+                    (lift (tell [2]) `mplus` lift (tell [3]))
+                    return 42
+                ) @?= ((),[1,2,3])
             -- @-others
             ]
         -- @-others

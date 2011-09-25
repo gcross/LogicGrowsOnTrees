@@ -63,25 +63,25 @@ runVisitorWithCheckpoint ::
     VisitorCheckpoint →
     VisitorT m α →
     m ()
-runVisitorWithCheckpoint updateCheckpointContext acceptSolution checkpoint = viewT >=> \view → case view of
+runVisitorWithCheckpoint updateCheckpointContext acceptSolution checkpoint = viewT . unwrapVisitorT >=> \view → case view of
     Return x → acceptSolution x >> goUpward
     Null :>>= _ → goUpward
     Cache mx :>>= k →
         case checkpoint of
             CacheCheckpoint cache rest_checkpoint →
-                goDownward (CacheCheckpointD cache) rest_checkpoint $ either error k (decode cache)
+                goDownward (CacheCheckpointD cache) rest_checkpoint $ either error (VisitorT . k) (decode cache)
             Unexplored → do
                 x ← mx
-                goDownward (CacheCheckpointD (encode x)) Unexplored (k x)
+                goDownward (CacheCheckpointD (encode x)) Unexplored ((VisitorT . k) x)
             _ → throw ChoiceStepAtCachePoint
     Choice left right :>>= k →
         case checkpoint of
             BranchCheckpoint False right_checkpoint →
-                goDownward (BranchCheckpointD False) right_checkpoint (right >>= k)
+                goDownward (BranchCheckpointD False) right_checkpoint (right >>= VisitorT . k)
             BranchCheckpoint True left_checkpoint →
-                goDownward (BranchCheckpointD True) left_checkpoint (left >>= k)
+                goDownward (BranchCheckpointD True) left_checkpoint (left >>= VisitorT . k)
             ChoiceCheckpoint left_checkpoint right_checkpoint →
-                goDownward (ChoiceCheckpointD False right_checkpoint (right >>= k)) left_checkpoint (left >>= k)
+                goDownward (ChoiceCheckpointD False right_checkpoint (right >>= VisitorT . k)) left_checkpoint (left >>= VisitorT . k)
             _ → throw CacheStepAtChoicePoint
   where
     recurse = runVisitorWithCheckpoint updateCheckpointContext acceptSolution
