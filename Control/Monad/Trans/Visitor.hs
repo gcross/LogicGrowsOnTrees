@@ -44,7 +44,7 @@ instance Monad m ⇒ MonadPlus (VisitorT m) where
 -- @+node:gcross.20110722110408.1180: *3* cache
 cache :: (Monad m, Serialize x) ⇒ x → VisitorT m x
 cache = singleton . Cache . return
--- @+node:gcross.20110722110408.1170: *3* gatherResults
+-- @+node:gcross.20110722110408.1170: *3* gatherVisitorResults
 gatherVisitorResults :: Visitor α → [α]
 gatherVisitorResults = runIdentity . runVisitorAndGatherResults
 -- @+node:gcross.20110722110408.1172: *3* isFirstVisit
