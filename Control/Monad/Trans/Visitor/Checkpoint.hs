@@ -37,6 +37,7 @@ data VisitorCheckpoint =
   | CacheCheckpoint ByteString VisitorCheckpoint
   | ChoiceCheckpoint VisitorCheckpoint VisitorCheckpoint
   | Unexplored
+  deriving (Eq,Read,Show)
 -- @+node:gcross.20110923120247.1196: *3* VisitorCheckpointDifferential
 data VisitorCheckpointDifferential m α =
     BranchCheckpointD Bool

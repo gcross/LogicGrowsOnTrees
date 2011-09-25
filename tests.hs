@@ -4,6 +4,7 @@
 
 -- @+<< Language extensions >>
 -- @+node:gcross.20101114125204.1281: ** << Language extensions >>
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-<< Language extensions >>
 
@@ -14,14 +15,21 @@ import Control.Monad
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Writer
 
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as ByteString
+import Data.Functor.Identity
+import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Serialize
 
 import Test.Framework
 import Test.Framework.Providers.HUnit
+import Test.Framework.Providers.QuickCheck2
 import Test.HUnit
+import Test.QuickCheck
 
 import Control.Monad.Trans.Visitor
+import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Path
 -- @-<< Import needed modules >>
 
@@ -70,6 +78,39 @@ main = defaultMain
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return 42
                 ) @?= ([42,42],[1,2,3])
+            -- @-others
+            ]
+        -- @-others
+        ]
+    -- @+node:gcross.20110923164140.1224: *3* Control.Monad.Trans.Visitor.Checkpoint
+    ,testGroup "Control.Monad.Trans.Visitor.Checkpoint"
+        -- @+others
+        -- @+node:gcross.20110923164140.1225: *4* checkpointFromContext
+        [testGroup "checkpointFromContext"
+            -- @+others
+            -- @+node:gcross.20110923164140.1226: *5* null
+            [testCase "null" $ checkpointFromContext (Seq.empty :: Seq (VisitorCheckpointDifferential Identity ())) @?= Unexplored
+            -- @+node:gcross.20110923164140.1227: *5* branch
+            ,testCase "branch" $
+                forM_ [True,False] $ \which_explored →
+                    checkpointFromContext (Seq.singleton (BranchCheckpointD which_explored :: VisitorCheckpointDifferential Identity ()))
+                    @?= BranchCheckpoint which_explored Unexplored
+            -- @+node:gcross.20110923164140.1229: *5* cache
+            ,testProperty "cache" $ (\(cache :: ByteString) →
+                checkpointFromContext (Seq.singleton (CacheCheckpointD cache :: VisitorCheckpointDifferential Identity ()))
+                == CacheCheckpoint cache Unexplored
+             ) . ByteString.pack
+            -- @+node:gcross.20110923164140.1233: *5* choice
+            ,testCase "choice" $ do
+                let checkpoint1 = BranchCheckpoint False Unexplored
+                    checkpoint2 = CacheCheckpoint ByteString.empty Unexplored
+                    testWith which_explored =
+                        checkpointFromContext . Seq.fromList $
+                            [ChoiceCheckpointD which_explored checkpoint1 undefined :: VisitorCheckpointDifferential Identity ()
+                            ,CacheCheckpointD ByteString.empty
+                            ]
+                testWith False @?= ChoiceCheckpoint checkpoint2 checkpoint1
+                testWith True @?= ChoiceCheckpoint checkpoint1 checkpoint2
             -- @-others
             ]
         -- @-others
