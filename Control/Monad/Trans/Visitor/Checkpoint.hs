@@ -59,7 +59,7 @@ checkpointFromContext (viewl → differential :< rest) =
 -- @+node:gcross.20110923164140.1186: *3* runCheckpointContext
 runVisitorWithCheckpoint ::
     Monad m ⇒
-    (forall β. (VisitorCheckpointContext m α → (VisitorCheckpointContext m α,β)) → m β) →
+    (∀ β. (VisitorCheckpointContext m α → (VisitorCheckpointContext m α,β)) → m β) →
     (α → m ()) →
     VisitorCheckpoint →
     VisitorT m α →
