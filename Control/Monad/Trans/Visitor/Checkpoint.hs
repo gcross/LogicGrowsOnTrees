@@ -66,7 +66,6 @@ runVisitorWithCheckpoint ::
 runVisitorWithCheckpoint updateCheckpointContext acceptSolution checkpoint = viewT >=> \view → case view of
     Return x → acceptSolution x >> goUpward
     Null :>>= _ → goUpward
-    IsFirstVisit :>>= k → recurse checkpoint $ k False
     Cache mx :>>= k →
         case checkpoint of
             CacheCheckpoint cache rest_checkpoint →

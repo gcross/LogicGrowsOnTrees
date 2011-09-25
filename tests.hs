@@ -36,8 +36,6 @@ main = defaultMain
         ,testCase "mplus" $ gatherVisitorResults (return 1 `mplus` return 2) @?= [1,2]
         -- @+node:gcross.20110722110408.1179: *4* cache
         ,testCase "cache" $ gatherVisitorResults (cache 42) @?= [42::Int]
-        -- @+node:gcross.20110722110408.1181: *4* isFirstVisit
-        ,testCase "isFirstVisit" $ gatherVisitorResults isFirstVisit @?= [True]
         -- @-others
         ]
     -- @-others

@@ -54,7 +54,6 @@ walkVisitorT path@(viewl → step :< tail) =
     viewT >=> \view → case (view,step) of
         (Return x,_) → throw DeadEnd
         (Null :>>= _,_) → throw DeadEnd
-        (IsFirstVisit :>>= k,_) → walkVisitorT path $ k False
         (Cache _ :>>= k,CacheStep cache) → walkVisitorT tail $ either error k (decode cache)
         (Cache _ :>>= _,ChoiceStep _) → throw ChoiceStepAtCachePoint
         (Choice left _ :>>= k,ChoiceStep False) → walkVisitorT tail (left >>= k)

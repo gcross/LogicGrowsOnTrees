@@ -29,7 +29,6 @@ import Data.Serialize (Serialize())
 data VisitorInstruction m α where
     Cache :: Serialize α ⇒ m α → VisitorInstruction m α
     Choice :: VisitorT m α → VisitorT m α → VisitorInstruction m α
-    IsFirstVisit :: VisitorInstruction m Bool
     Null :: VisitorInstruction m α
 -- @+node:gcross.20110722110408.1165: *3* VisitorT
 type VisitorT m = ProgramT (VisitorInstruction m) m
@@ -47,9 +46,6 @@ cache = singleton . Cache . return
 -- @+node:gcross.20110722110408.1170: *3* gatherVisitorResults
 gatherVisitorResults :: Visitor α → [α]
 gatherVisitorResults = runIdentity . runVisitorAndGatherResults
--- @+node:gcross.20110722110408.1172: *3* isFirstVisit
-isFirstVisit :: VisitorT m Bool
-isFirstVisit = singleton IsFirstVisit
 -- @+node:gcross.20110722110408.1171: *3* runAndCache
 runAndCache :: Serialize x ⇒ m x → VisitorT m x
 runAndCache = singleton . Cache
@@ -63,7 +59,6 @@ runVisitorAndGatherResults = viewT >=> \view →
             liftM2 (++)
                 (runVisitorAndGatherResults $ left >>= k)
                 (runVisitorAndGatherResults $ right >>= k)
-        (IsFirstVisit :>>= k) → runVisitorAndGatherResults $ k True
         (Null :>>= _) → return []
 -- @+node:gcross.20110722110408.1182: *3* runVisitor
 runVisitor :: Monad m ⇒ VisitorT m α → m ()
@@ -74,7 +69,6 @@ runVisitor = viewT >=> \view →
         (Choice left right :>>= k) → do
             runVisitor $ left >>= k
             runVisitor $ right >>= k
-        (IsFirstVisit :>>= k) → runVisitor $ k True
         (Null :>>= _) → return ()
 -- @-others
 -- @-leo
