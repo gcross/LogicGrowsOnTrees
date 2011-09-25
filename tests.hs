@@ -60,6 +60,18 @@ main = defaultMain
                 ) @?= ((),[1,2,3])
             -- @-others
             ]
+        -- @+node:gcross.20110923164140.1211: *4* runVisitorTAndGatherResults
+        ,testGroup "runVisitorTAndGatherResults"
+            -- @+others
+            -- @+node:gcross.20110923164140.1212: *5* Writer
+            [testCase "Writer" $
+                (runWriter . runVisitorTAndGatherResults $ do
+                    cache [1 :: Int] >>= lift . tell
+                    (lift (tell [2]) `mplus` lift (tell [3]))
+                    return 42
+                ) @?= ([42,42],[1,2,3])
+            -- @-others
+            ]
         -- @-others
         ]
     -- @+node:gcross.20110923164140.1188: *3* Control.Monad.Trans.Visitor.Path
