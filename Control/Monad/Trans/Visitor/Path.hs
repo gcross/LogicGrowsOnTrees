@@ -40,7 +40,7 @@ data WalkError =
     DeadEnd
   | ChoiceStepAtCachePoint
   | CacheStepAtChoicePoint
-  deriving (Show,Typeable)
+  deriving (Eq,Show,Typeable)
 
 instance Exception WalkError
 -- @+node:gcross.20110923120247.1208: ** Functions
