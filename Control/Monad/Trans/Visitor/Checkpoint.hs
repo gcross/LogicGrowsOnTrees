@@ -119,6 +119,22 @@ runVisitorTThroughCheckpoint acceptSolution updateCheckpointContext checkpoint v
     updateCheckpointContext move
     >>=
     maybe (return ()) (uncurry $ runVisitorTThroughCheckpoint acceptSolution updateCheckpointContext)
+-- @+node:gcross.20110923164140.1248: *3* runVisitorTThroughCheckpointUsingOwnMonad
+runVisitorTThroughCheckpointUsingOwnMonad ::
+    Monad m ⇒
+    (α → m β) →
+    (VisitorTCheckpointContextMove m α → m (Maybe (VisitorCheckpoint, VisitorT m α))) →
+    VisitorCheckpoint →
+    VisitorT m α →
+    m ()
+runVisitorTThroughCheckpointUsingOwnMonad acceptSolution updateCheckpointContext checkpoint v =
+    stepVisitorTThroughCheckpoint checkpoint v
+    >>= \(maybe_solution, move) →
+    maybe (return undefined) acceptSolution maybe_solution
+    >>
+    updateCheckpointContext move
+    >>=
+    maybe (return ()) (uncurry $ runVisitorTThroughCheckpointUsingOwnMonad acceptSolution updateCheckpointContext)
 -- @+node:gcross.20110923164140.1242: *3* stepVisitorThroughCheckpoint
 stepVisitorThroughCheckpoint ::
     VisitorCheckpoint →
