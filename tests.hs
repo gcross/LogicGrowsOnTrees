@@ -89,15 +89,15 @@ main = defaultMain
         [testGroup "checkpointFromContext"
             -- @+others
             -- @+node:gcross.20110923164140.1226: *5* null
-            [testCase "null" $ checkpointFromContext (Seq.empty :: Seq (VisitorCheckpointDifferential Identity ())) @?= Unexplored
+            [testCase "null" $ checkpointFromContext (Seq.empty :: Seq (VisitorCheckpointDifferential ())) @?= Unexplored
             -- @+node:gcross.20110923164140.1227: *5* branch
             ,testCase "branch" $
                 forM_ [True,False] $ \which_explored →
-                    checkpointFromContext (Seq.singleton (BranchCheckpointD which_explored :: VisitorCheckpointDifferential Identity ()))
+                    checkpointFromContext (Seq.singleton (BranchCheckpointD which_explored :: VisitorCheckpointDifferential ()))
                     @?= BranchCheckpoint which_explored Unexplored
             -- @+node:gcross.20110923164140.1229: *5* cache
             ,testProperty "cache" $ (\(cache :: ByteString) →
-                checkpointFromContext (Seq.singleton (CacheCheckpointD cache :: VisitorCheckpointDifferential Identity ()))
+                checkpointFromContext (Seq.singleton (CacheCheckpointD cache :: VisitorCheckpointDifferential ()))
                 == CacheCheckpoint cache Unexplored
              ) . ByteString.pack
             -- @+node:gcross.20110923164140.1233: *5* choice
@@ -106,7 +106,7 @@ main = defaultMain
                     checkpoint2 = CacheCheckpoint ByteString.empty Unexplored
                     testWith which_explored =
                         checkpointFromContext . Seq.fromList $
-                            [ChoiceCheckpointD which_explored checkpoint1 undefined :: VisitorCheckpointDifferential Identity ()
+                            [ChoiceCheckpointD which_explored checkpoint1 undefined :: VisitorCheckpointDifferential ()
                             ,CacheCheckpointD ByteString.empty
                             ]
                 testWith False @?= ChoiceCheckpoint checkpoint2 checkpoint1

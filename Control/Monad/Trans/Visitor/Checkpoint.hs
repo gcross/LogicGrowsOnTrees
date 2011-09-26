@@ -18,8 +18,10 @@ module Control.Monad.Trans.Visitor.Checkpoint where
 import Control.Exception (Exception(),throw)
 import Control.Monad ((>=>),join)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
+import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
+import Data.Functor.Identity (Identity,runIdentity)
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize(),decode,encode)
@@ -38,16 +40,36 @@ data VisitorCheckpoint =
   | ChoiceCheckpoint VisitorCheckpoint VisitorCheckpoint
   | Unexplored
   deriving (Eq,Read,Show)
--- @+node:gcross.20110923120247.1196: *3* VisitorCheckpointDifferential
-data VisitorCheckpointDifferential m α =
+-- @+node:gcross.20110923120247.1196: *3* VisitorTCheckpointDifferential
+data VisitorTCheckpointDifferential m α =
     BranchCheckpointD Bool
   | CacheCheckpointD ByteString
   | ChoiceCheckpointD Bool VisitorCheckpoint (VisitorT m α)
--- @+node:gcross.20110923164140.1178: *3* VisitorCheckpointContext
-type VisitorCheckpointContext m α = Seq (VisitorCheckpointDifferential m α)
+
+type VisitorCheckpointDifferential = VisitorTCheckpointDifferential Identity
+-- @+node:gcross.20110923164140.1178: *3* VisitorTCheckpointContext
+type VisitorTCheckpointContext m α = Seq (VisitorTCheckpointDifferential m α)
+type VisitorCheckpointContext α = VisitorTCheckpointContext Identity α
+-- @+node:gcross.20110923164140.1238: *3* VisitorTCheckpointContextMove
+data VisitorTCheckpointContextMove m α =
+    MoveUpContext
+  | MoveDownContext (VisitorTCheckpointDifferential m α) VisitorCheckpoint (VisitorT m α)
+
+type VisitorCheckpointContextMove = VisitorTCheckpointContextMove Identity
 -- @+node:gcross.20110923164140.1179: ** Functions
+-- @+node:gcross.20110923164140.1240: *3* applyContextMove
+applyContextMove ::
+    VisitorTCheckpointContext m α →
+    VisitorTCheckpointContextMove m α →
+    Maybe (VisitorTCheckpointContext m α, VisitorCheckpoint, VisitorT m α)
+applyContextMove context MoveUpContext = moveUpContext context
+applyContextMove context (MoveDownContext differential checkpoint v) =
+    Just (context |> differential
+         ,checkpoint
+         ,v
+         )
 -- @+node:gcross.20110923164140.1182: *3* checkpointFromContext
-checkpointFromContext :: VisitorCheckpointContext m α → VisitorCheckpoint
+checkpointFromContext :: VisitorTCheckpointContext m α → VisitorCheckpoint
 checkpointFromContext (viewl → EmptyL) = Unexplored
 checkpointFromContext (viewl → differential :< rest) =
     let rest_checkpoint = checkpointFromContext rest
@@ -56,52 +78,85 @@ checkpointFromContext (viewl → differential :< rest) =
         CacheCheckpointD cache → CacheCheckpoint cache rest_checkpoint
         ChoiceCheckpointD False right_checkpoint _ → ChoiceCheckpoint rest_checkpoint right_checkpoint
         ChoiceCheckpointD True left_checkpoint _ → ChoiceCheckpoint left_checkpoint rest_checkpoint
--- @+node:gcross.20110923164140.1186: *3* runCheckpointContext
-runVisitorWithCheckpoint ::
+-- @+node:gcross.20110923164140.1239: *3* moveUpContext
+moveUpContext :: VisitorTCheckpointContext m α → Maybe (VisitorTCheckpointContext m α, VisitorCheckpoint, VisitorT m α)
+moveUpContext (viewr → EmptyR) = Nothing
+moveUpContext (viewr → rest_context :> BranchCheckpointD _) = moveUpContext rest_context
+moveUpContext (viewr → rest_context :> CacheCheckpointD _) = moveUpContext rest_context
+moveUpContext (viewr → rest_context :> ChoiceCheckpointD which_explored other_checkpoint other) =
+    Just (rest_context |> BranchCheckpointD which_explored
+         ,other_checkpoint
+         ,other
+         )
+-- @+node:gcross.20110923164140.1246: *3* runVisitorThroughCheckpoint
+runVisitorThroughCheckpoint ::
     Monad m ⇒
-    (∀ β. (VisitorCheckpointContext m α → (VisitorCheckpointContext m α,β)) → m β) →
-    (α → m ()) →
+    (α → m β) →
+    (VisitorCheckpointContextMove α → m (Maybe (VisitorCheckpoint, Visitor α))) →
+    VisitorCheckpoint →
+    Visitor α →
+    m ()
+runVisitorThroughCheckpoint acceptSolution updateCheckpointContext checkpoint v =
+    let (maybe_solution, move) = stepVisitorThroughCheckpoint checkpoint v
+    in  maybe (return undefined) acceptSolution maybe_solution
+        >>
+        updateCheckpointContext move
+        >>=
+        maybe (return ()) (uncurry $ runVisitorThroughCheckpoint acceptSolution updateCheckpointContext)
+-- @+node:gcross.20110923164140.1244: *3* runVisitorTThroughCheckpoint
+runVisitorTThroughCheckpoint ::
+    (Monad m, Monad (t m), MonadTrans t) ⇒
+    (α → t m β) →
+    (VisitorTCheckpointContextMove m α → t m (Maybe (VisitorCheckpoint, VisitorT m α))) →
     VisitorCheckpoint →
     VisitorT m α →
-    m ()
-runVisitorWithCheckpoint updateCheckpointContext acceptSolution checkpoint = viewT . unwrapVisitorT >=> \view → case view of
-    Return x → acceptSolution x >> goUpward
-    Null :>>= _ → goUpward
+    t m ()
+runVisitorTThroughCheckpoint acceptSolution updateCheckpointContext checkpoint v =
+    (lift $ stepVisitorTThroughCheckpoint checkpoint v)
+    >>= \(maybe_solution, move) →
+    maybe (return undefined) acceptSolution maybe_solution
+    >>
+    updateCheckpointContext move
+    >>=
+    maybe (return ()) (uncurry $ runVisitorTThroughCheckpoint acceptSolution updateCheckpointContext)
+-- @+node:gcross.20110923164140.1242: *3* stepVisitorThroughCheckpoint
+stepVisitorThroughCheckpoint ::
+    VisitorCheckpoint →
+    Visitor α →
+    (Maybe α, VisitorCheckpointContextMove α)
+stepVisitorThroughCheckpoint checkpoint = runIdentity . stepVisitorTThroughCheckpoint checkpoint
+-- @+node:gcross.20110923164140.1186: *3* stepVisitorTThroughCheckpoint
+stepVisitorTThroughCheckpoint ::
+    Monad m ⇒
+    VisitorCheckpoint →
+    VisitorT m α →
+    m (Maybe α, VisitorTCheckpointContextMove m α)
+stepVisitorTThroughCheckpoint checkpoint = viewT . unwrapVisitorT >=> \view →  case view of
+    Return x → return (Just x, MoveUpContext)
+    Null :>>= _ → return (Nothing, MoveUpContext)
     Cache mx :>>= k →
         case checkpoint of
-            CacheCheckpoint cache rest_checkpoint →
-                goDownward (CacheCheckpointD cache) rest_checkpoint $ either error (VisitorT . k) (decode cache)
+            CacheCheckpoint cache rest_checkpoint → return
+                (Nothing
+                ,MoveDownContext (CacheCheckpointD cache) rest_checkpoint $ either error (VisitorT . k) (decode cache)
+                )
             Unexplored → do
                 x ← mx
-                goDownward (CacheCheckpointD (encode x)) Unexplored ((VisitorT . k) x)
+                return
+                    (Nothing
+                    ,MoveDownContext (CacheCheckpointD (encode x)) Unexplored ((VisitorT . k) x)
+                    )
             _ → throw ChoiceStepAtCachePoint
-    Choice left right :>>= k →
-        case checkpoint of
+    Choice left right :>>= k → return 
+        (Nothing
+        ,case checkpoint of
             BranchCheckpoint False right_checkpoint →
-                goDownward (BranchCheckpointD False) right_checkpoint (right >>= VisitorT . k)
+                MoveDownContext (BranchCheckpointD False) right_checkpoint (right >>= VisitorT . k)
             BranchCheckpoint True left_checkpoint →
-                goDownward (BranchCheckpointD True) left_checkpoint (left >>= VisitorT . k)
+                MoveDownContext (BranchCheckpointD True) left_checkpoint (left >>= VisitorT . k)
             ChoiceCheckpoint left_checkpoint right_checkpoint →
-                goDownward (ChoiceCheckpointD False right_checkpoint (right >>= VisitorT . k)) left_checkpoint (left >>= VisitorT . k)
+                MoveDownContext (ChoiceCheckpointD False right_checkpoint (right >>= VisitorT . k)) left_checkpoint (left >>= VisitorT . k)
             _ → throw CacheStepAtChoicePoint
-  where
-    recurse = runVisitorWithCheckpoint updateCheckpointContext acceptSolution
-
-    goUpward = join . updateCheckpointContext $ computeNewContext
-      where
-        computeNewContext (viewr → EmptyR) = (Seq.empty,return ())
-        computeNewContext (viewr → rest_context :> differential) = case differential of
-            BranchCheckpointD _ →
-                computeNewContext rest_context
-            CacheCheckpointD _ →
-                computeNewContext rest_context
-            ChoiceCheckpointD which_explored other_checkpoint other →
-                (rest_context |> BranchCheckpointD which_explored
-                ,recurse other_checkpoint other
-                )
-
-    goDownward differential checkpoint v = do
-        updateCheckpointContext $ (\context → (context |> differential,()))
-        recurse checkpoint v
+        )
 -- @-others
 -- @-leo
