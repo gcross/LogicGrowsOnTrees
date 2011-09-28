@@ -20,12 +20,12 @@ import qualified Data.ByteString as ByteString
 import Data.Functor.Identity
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
-import Data.Serialize
+import Data.Serialize (decode,encode)
 
 import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
-import Test.HUnit
+import Test.HUnit ((@?=),assertBool)
 import Test.QuickCheck
 
 import Control.Monad.Trans.Visitor
