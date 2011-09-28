@@ -7,6 +7,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- @-<< Language extensions >>
@@ -59,15 +60,16 @@ type VisitorCheckpointContextMove = VisitorTCheckpointContextMove Identity
 -- @+node:gcross.20110923164140.1179: ** Functions
 -- @+node:gcross.20110923164140.1240: *3* applyContextMove
 applyContextMove ::
-    VisitorTCheckpointContext m α →
     VisitorTCheckpointContextMove m α →
+    VisitorTCheckpointContext m α →
     Maybe (VisitorTCheckpointContext m α, VisitorCheckpoint, VisitorT m α)
-applyContextMove context MoveUpContext = moveUpContext context
-applyContextMove context (MoveDownContext differential checkpoint v) =
-    Just (context |> differential
-         ,checkpoint
-         ,v
-         )
+applyContextMove MoveUpContext = moveUpContext
+applyContextMove (MoveDownContext differential checkpoint v) =
+    Just
+    .
+    (,checkpoint,v)
+    .
+    (|> differential)
 -- @+node:gcross.20110923164140.1182: *3* checkpointFromContext
 checkpointFromContext :: VisitorTCheckpointContext m α → VisitorCheckpoint
 checkpointFromContext (viewl → EmptyL) = Unexplored
@@ -88,6 +90,14 @@ moveUpContext (viewr → rest_context :> ChoiceCheckpointD which_explored other_
          ,other_checkpoint
          ,other
          )
+-- @+node:gcross.20110923164140.1265: *3* pathFromContext
+pathFromContext :: VisitorTCheckpointContext m α → VisitorPath
+pathFromContext = fmap pathStepFromDifferential
+-- @+node:gcross.20110923164140.1266: *3* pathStepFromDifferential
+pathStepFromDifferential :: VisitorTCheckpointDifferential m α → VisitorStep
+pathStepFromDifferential (BranchCheckpointD which_explored) = ChoiceStep (not which_explored)
+pathStepFromDifferential (CacheCheckpointD cache) = CacheStep cache
+pathStepFromDifferential (ChoiceCheckpointD which_explored _ _) = ChoiceStep (not which_explored)
 -- @+node:gcross.20110923164140.1246: *3* runVisitorThroughCheckpoint
 runVisitorThroughCheckpoint ::
     Monad m ⇒

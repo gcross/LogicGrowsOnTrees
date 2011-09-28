@@ -11,6 +11,7 @@
 <v t="gcross.20101114125204.1255"><vh>@file Control/Monad/Trans/Visitor.hs</vh></v>
 <v t="gcross.20110923120247.1191"><vh>@file Control/Monad/Trans/Visitor/Checkpoint.hs</vh></v>
 <v t="gcross.20110923120247.1201"><vh>@file Control/Monad/Trans/Visitor/Path.hs</vh></v>
+<v t="gcross.20110923164140.1252"><vh>@file Control/Monad/Trans/Visitor/Worker.hs</vh></v>
 <v t="gcross.20101114125204.1259"><vh>@file tests.hs</vh></v>
 <v t="gcross.20110923120247.1172"><vh>file template.hs</vh>
 <v t="gcross.20110923120247.1173"><vh>&lt;&lt; Language extensions &gt;&gt;</vh></v>

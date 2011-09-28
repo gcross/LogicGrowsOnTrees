@@ -20,11 +20,15 @@ Library
         bytestring == 0.9.*,
         cereal == 0.3.*,
         containers == 0.4.*,
+        forkable-monad == 0.1.*,
+        monad-loops == 0.3.*,
+        MonadCatchIO-transformers == 0.2.*,
         operational == 0.2.*,
         transformers == 0.2.*
     Exposed-modules:
         Control.Monad.Trans.Visitor
         Control.Monad.Trans.Visitor.Checkpoint
         Control.Monad.Trans.Visitor.Path
+        Control.Monad.Trans.Visitor.Worker
     Extensions:
 -- @-leo
