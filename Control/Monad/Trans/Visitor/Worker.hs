@@ -4,7 +4,9 @@
 
 -- @+<< Language extensions >>
 -- @+node:gcross.20110923164140.1253: ** << Language extensions >>
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- @-<< Language extensions >>
@@ -15,10 +17,12 @@ module Control.Monad.Trans.Visitor.Worker where
 -- @+node:gcross.20110923164140.1254: ** << Import needed modules >>
 import Prelude hiding (catch)
 
+import Control.Applicative (liftA2,liftA3)
 import Control.Concurrent (killThread,threadDelay,ThreadId,yield)
 import Control.Concurrent.Forkable (ForkableMonad(..))
 import Control.Concurrent.MVar (MVar,newMVar,putMVar,takeMVar)
 import Control.Exception (AsyncException(ThreadKilled),SomeException)
+import Control.Monad (liftM3,liftM4)
 import Control.Monad.CatchIO (finally,MonadCatchIO(catch),throw)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Loops
@@ -38,125 +42,99 @@ import Control.Monad.Trans.Visitor.Path
 -- @+node:gcross.20110923164140.1262: *3* VisitorPartialCheckpoint
 type VisitorPartialCheckpoint = VisitorCheckpoint → VisitorCheckpoint
 -- @+node:gcross.20110923164140.1261: *3* VisitorWorkload
-data VisitorWorkload = VisitorWorkload VisitorPath VisitorCheckpoint
--- @+node:gcross.20110923164140.1256: *3* VisitorWorkerRequest
-data VisitorWorkerRequest m =
-    CheckpointRequested (VisitorWorkload → m ())
-  | WorkloadStealRequested (VisitorWorkload → m ()) (m ())
-  | AbortRequested
--- @+node:gcross.20110923164140.1257: *3* VisitorTWorkerContext
-data VisitorTWorkerContext m α = VisitorWorkerContext
-    {   workerInitialPath :: VisitorPath
-    ,   workerStealPrefixPath :: VisitorPath
-    ,   workerPartialCheckpoint :: VisitorPartialCheckpoint
-    ,   workerCurrentCheckpointContext :: VisitorTCheckpointContext m α
+data VisitorWorkload = VisitorWorkload
+    {   visitorWorkloadPath :: VisitorPath
+    ,   visitorWorkloadCheckpoint :: VisitorCheckpoint
     }
-type VisitorWorkerContext α = VisitorTWorkerContext Identity α
+-- @+node:gcross.20110923164140.1257: *3* VisitorTWorkerEnvironment
+data VisitorTWorkerEnvironment m α = VisitorTWorkerEnvironment
+    {   workerInitialPath :: VisitorPath
+    ,   workerCurrentPathVar :: MVar VisitorPath
+    ,   workerCurrentPartialCheckpointRef :: IORef VisitorPartialCheckpoint
+    ,   workerCurrentCheckpointContextRef :: IORef (VisitorTCheckpointContext m α)
+    ,   workerFinishedRef :: IORef (Maybe (Maybe SomeException))
+    }
+type VisitorWorkerEnvironment α = VisitorTWorkerEnvironment Identity α
 -- @+node:gcross.20110923164140.1264: *3* VisitorSolution
 data VisitorSolution α = VisitorSolution VisitorPath α
 -- @+node:gcross.20110923164140.1259: ** Functions
--- @+node:gcross.20110923164140.1263: *3* doWorkload
-doWorkload ::
-    (ForkableMonad m, MonadCatchIO m) ⇒
-    Maybe Int →
-    (VisitorSolution α → m ()) →
-    m (Maybe (VisitorWorkerRequest m)) →
-    VisitorWorkload →
+-- @+node:gcross.20110923164140.1287: *3* computeRemainingWorkload(UsingEnvironment)
+computeRemainingWorkload ::
+    VisitorPath →
+    VisitorPartialCheckpoint →
+    VisitorTCheckpointContext m α →
+    VisitorWorkload
+computeRemainingWorkload initial_path partial_checkpoint =
+    VisitorWorkload initial_path
+    .
+    partial_checkpoint
+    .
+    checkpointFromContext
+
+computeRemainingWorkloadUsingEnvironment ::
+    VisitorTWorkerEnvironment m α →
+    IO VisitorWorkload
+computeRemainingWorkloadUsingEnvironment =
+    (liftA3 . liftM3 $ computeRemainingWorkload)
+        (return . workerInitialPath)
+        (readIORef . workerCurrentPartialCheckpointRef)
+        (readIORef . workerCurrentCheckpointContextRef)
+-- @+node:gcross.20110923164140.1286: *3* forkWorkerThread(UsingEnvironment)
+forkWorkerThread ::
+    (α → IO β) →
     Visitor α →
-    m ()
-doWorkload
-    maybe_delay
-    acceptSolution
-    getNextRequest
-    (VisitorWorkload initial_path checkpoint)
-    visitor
-    = do
-    path_var :: MVar VisitorPath ← liftIO $ newMVar initial_path
-    context_ref :: IORef (VisitorCheckpointContext α) ← liftIO $ newIORef Seq.empty
-    finished_ref :: IORef (Maybe (Maybe SomeException)) ← liftIO $ newIORef Nothing
-    worker_thread_id :: ThreadId ← forkIO $
+    VisitorWorkload →
+    IORef (VisitorCheckpointContext α) →
+    IORef (Maybe (Maybe SomeException)) →
+    IO ThreadId
+forkWorkerThread acceptSolution visitor VisitorWorkload{..} context_ref finished_ref = forkIO $
+    (
         (
-            (
-                runVisitorThroughCheckpoint
-                    (\result → 
-                        (liftIO $ do
-                            path ← takeMVar path_var
-                            context ← readIORef context_ref
-                            let result_path = path >< pathFromContext context
-                            putMVar path_var path
-                            return result_path
-                        ) >>= acceptSolution . flip VisitorSolution result
-                    )
-                    (\move →
-                        liftIO $
-                        atomicModifyIORef context_ref $ \context →
-                        case applyContextMove move context of
-                            Nothing → (context,Nothing)
-                            Just (new_context,checkpoint,visitor) → (new_context,Just (checkpoint,visitor))
-                    )
-                    checkpoint
-                .
-                walkVisitor initial_path
-                $
-                visitor
-            )
-            >>
-            (liftIO $ writeIORef finished_ref (Just Nothing))
-        ) `catch` (
-            \(e :: AsyncException) →
-                case e of
-                    ThreadKilled → return ()
-                    _ → throw e
-        ) `catch` (
-            liftIO . writeIORef finished_ref . Just . Just
+            runVisitorThroughCheckpoint
+                acceptSolution
+                (\move →
+                    atomicModifyIORef context_ref $ \context →
+                    case applyContextMove move context of
+                        Nothing → (context,Nothing)
+                        Just (new_context,checkpoint,visitor) → (new_context,Just (checkpoint,visitor))
+                )
+                visitorWorkloadCheckpoint
+            .
+            walkVisitor visitorWorkloadPath
+            $
+            visitor
         )
-    let wait = liftIO $ maybe yield threadDelay maybe_delay
-        loop partial_checkpoint = do
-            finished ← liftIO $ readIORef finished_ref
-            case finished of
-                Just maybe_exception → return maybe_exception
-                Nothing → do
-                    request ← getNextRequest
-                    case request of
-                        Nothing → wait >> loop partial_checkpoint
-                        Just (CheckpointRequested submitCheckpoint) →
-                            liftIO (readIORef context_ref)
-                            >>=
-                            (
-                                submitCheckpoint
-                                .
-                                VisitorWorkload initial_path
-                                .
-                                partial_checkpoint
-                                .
-                                checkpointFromContext
-                            )
-                            >>
-                            loop partial_checkpoint
-                        Just (WorkloadStealRequested submitWorkload notifyWorkloadNotStealableNow) → do
-                            (maybe_workload_checkpoint,workload_path,new_partial_checkpoint) ← liftIO $ do
-                                path ← takeMVar path_var
-                                (maybe_workload_checkpoint,path_suffix,partial_checkpoint_suffix) ←
-                                    atomicModifyIORef context_ref stealWorkloadIfPossible
-                                let new_path = path >< path_suffix
-                                putMVar path_var new_path
-                                let new_partial_checkpoint = partial_checkpoint . partial_checkpoint_suffix
-                                return (maybe_workload_checkpoint,new_path,new_partial_checkpoint)
-                            case maybe_workload_checkpoint of
-                                Nothing →
-                                    notifyWorkloadNotStealableNow >> wait
-                                Just workload_checkpoint →
-                                    submitWorkload (VisitorWorkload workload_path workload_checkpoint)
-                            loop new_partial_checkpoint
-                        Just AbortRequested → liftIO $ do
-                            killThread worker_thread_id
-                            return Nothing
-    (loop id >>= maybe (return ()) throw) `finally` (liftIO $ killThread worker_thread_id)
--- @+node:gcross.20110923164140.1260: *3* stealWorkloadIfPossible
-stealWorkloadIfPossible ::
+        >>
+        writeIORef finished_ref (Just Nothing)
+    ) `catch` (
+        writeIORef finished_ref . Just . Just
+    )
+
+forkWorkerThreadUsingEnvironment ::
+    (α → IO β) →
+    Visitor α →
+    VisitorWorkload →
+    VisitorWorkerEnvironment α →
+    IO ThreadId
+forkWorkerThreadUsingEnvironment acceptSolution visitor workload =
+    liftA2 (forkWorkerThread acceptSolution visitor workload)
+        workerCurrentCheckpointContextRef
+        workerFinishedRef
+-- @+node:gcross.20110923164140.1291: *3* initializeVisitorWorkerEnvironment
+initializeVisitorTWorkerEnvironment ::
+    VisitorPath →
+    IO (VisitorTWorkerEnvironment m α)
+initializeVisitorTWorkerEnvironment initial_path =
+    liftM4 (VisitorTWorkerEnvironment initial_path)
+        (newMVar initial_path)
+        (newIORef id)
+        (newIORef Seq.empty)
+        (newIORef Nothing)
+-- @+node:gcross.20110923164140.1260: *3* stealWorkload(AndUpdateEnvironment)
+stealWorkload ::
     VisitorTCheckpointContext m α →
     (VisitorTCheckpointContext m α,(Maybe VisitorCheckpoint,VisitorPath,VisitorCheckpoint → VisitorCheckpoint))
-stealWorkloadIfPossible = go Seq.empty id
+stealWorkload = go Seq.empty id
   where
     go steal_prefix_path partial_checkpoint context = case viewl context of
         EmptyL →
@@ -181,5 +159,17 @@ stealWorkloadIfPossible = go Seq.empty id
              ,partial_checkpoint . BranchCheckpoint (not which_explored)
              )
             )
+
+stealWorkloadAndUpdateEnvironment ::
+    VisitorTWorkerEnvironment m α →
+    IO (Maybe VisitorWorkload)
+stealWorkloadAndUpdateEnvironment VisitorTWorkerEnvironment{..} = do
+    path ← takeMVar workerCurrentPathVar
+    (maybe_workload_checkpoint,path_suffix,partial_checkpoint_suffix) ←
+        atomicModifyIORef workerCurrentCheckpointContextRef stealWorkload
+    let new_path = path >< path_suffix
+    putMVar workerCurrentPathVar new_path
+    atomicModifyIORef workerCurrentPartialCheckpointRef ((,()) . (. partial_checkpoint_suffix))
+    return . fmap (VisitorWorkload new_path) $ maybe_workload_checkpoint
 -- @-others
 -- @-leo
