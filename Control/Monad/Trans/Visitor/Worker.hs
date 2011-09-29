@@ -19,7 +19,7 @@ import Control.Concurrent (killThread,threadDelay,ThreadId,yield)
 import Control.Concurrent.Forkable (ForkableMonad(..))
 import Control.Concurrent.MVar (MVar,newMVar,putMVar,takeMVar)
 import Control.Exception (AsyncException(ThreadKilled),SomeException)
-import Control.Monad.CatchIO (MonadCatchIO(catch),throw)
+import Control.Monad.CatchIO (finally,MonadCatchIO(catch),throw)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Loops
 
@@ -61,7 +61,6 @@ doWorkload ::
     Maybe Int →
     (VisitorSolution α → m ()) →
     m (Maybe (VisitorWorkerRequest m)) →
-    (Maybe SomeException → m ()) →
     VisitorWorkload →
     Visitor α →
     m ()
@@ -69,7 +68,6 @@ doWorkload
     maybe_delay
     acceptSolution
     getNextRequest
-    notifyFinished
     (VisitorWorkload initial_path checkpoint)
     visitor
     = do
@@ -153,7 +151,7 @@ doWorkload
                         Just AbortRequested → liftIO $ do
                             killThread worker_thread_id
                             return Nothing
-    loop id >>= notifyFinished
+    (loop id >>= maybe (return ()) throw) `finally` (liftIO $ killThread worker_thread_id)
 -- @+node:gcross.20110923164140.1260: *3* stealWorkloadIfPossible
 stealWorkloadIfPossible ::
     VisitorTCheckpointContext m α →
