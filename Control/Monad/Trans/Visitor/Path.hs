@@ -29,12 +29,12 @@ import Control.Monad.Trans.Visitor
 
 -- @+others
 -- @+node:gcross.20110923120247.1204: ** Types
+-- @+node:gcross.20110923120247.1205: *3* VisitorPath
+type VisitorPath = Seq VisitorStep
 -- @+node:gcross.20110923120247.1206: *3* VisitorStep
 data VisitorStep =
     CacheStep ByteString
  |  ChoiceStep Bool
--- @+node:gcross.20110923120247.1205: *3* VisitorPath
-type VisitorPath = Seq VisitorStep
 -- @+node:gcross.20110923120247.1209: *3* WalkError
 data WalkError =
     DeadEnd
