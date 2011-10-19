@@ -20,7 +20,10 @@ import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
 import Data.Functor.Identity (runIdentity)
+import Data.Maybe (fromJust)
 import Data.Sequence (Seq,viewl,ViewL(..))
+import qualified Data.SequentialIndex as SequentialIndex
+import Data.SequentialIndex (SequentialIndex)
 import Data.Serialize (Serialize(),decode)
 import Data.Typeable (Typeable)
 
@@ -29,35 +32,92 @@ import Control.Monad.Trans.Visitor
 
 -- @+others
 -- @+node:gcross.20110923120247.1204: ** Types
+-- @+node:gcross.20111019113757.1409: *3* VisitorLabel
+newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq,Ord)
 -- @+node:gcross.20110923120247.1205: *3* VisitorPath
 type VisitorPath = Seq VisitorStep
+-- @+node:gcross.20111019113757.1250: *3* VisitorSolution
+data VisitorSolution α = VisitorSolution VisitorLabel α
 -- @+node:gcross.20110923120247.1206: *3* VisitorStep
 data VisitorStep =
     CacheStep ByteString
- |  ChoiceStep Bool
--- @+node:gcross.20110923120247.1209: *3* WalkError
-data WalkError =
-    DeadEnd
+ |  ChoiceStep WhichBranchActive
+-- @+node:gcross.20110923120247.1209: *3* VisitorWalkError
+data VisitorWalkError =
+    VisitorTerminatedBeforeEndOfWalk
   | ChoiceStepAtCachePoint
   | CacheStepAtChoicePoint
   deriving (Eq,Show,Typeable)
 
-instance Exception WalkError
+instance Exception VisitorWalkError
+-- @+node:gcross.20111019113757.1405: *3* WhichBranchActive
+data WhichBranchActive =
+    LeftBranchActive
+  | RightBranchActive
+  deriving (Eq,Read,Show)
 -- @+node:gcross.20110923120247.1208: ** Functions
--- @+node:gcross.20110923164140.1190: *3* walkVisitor
-walkVisitor :: VisitorPath → Visitor α → Visitor α
-walkVisitor path = runIdentity . walkVisitorT path
--- @+node:gcross.20110923120247.1207: *3* walkVisitorT
-walkVisitorT :: Monad m ⇒ VisitorPath → VisitorT m α → m (VisitorT m α)
-walkVisitorT (viewl → EmptyL) = return
-walkVisitorT path@(viewl → step :< tail) =
+-- @+node:gcross.20111019113757.1407: *3* labelTransformerFrom
+labelTransformerFrom :: WhichBranchActive → (VisitorLabel → VisitorLabel)
+labelTransformerFrom LeftBranchActive = leftChildLabel
+labelTransformerFrom RightBranchActive = rightChildLabel
+-- @+node:gcross.20111019113757.1414: *3* leftChildLabel
+leftChildLabel :: VisitorLabel → VisitorLabel
+leftChildLabel = VisitorLabel . fromJust . SequentialIndex.leftChild . unwrapVisitorLabel
+-- @+node:gcross.20111019113757.1403: *3* oppositeBranchOf
+oppositeBranchOf :: WhichBranchActive → WhichBranchActive
+oppositeBranchOf LeftBranchActive = RightBranchActive
+oppositeBranchOf RightBranchActive = LeftBranchActive
+-- @+node:gcross.20111019113757.1416: *3* rightChildLabel
+rightChildLabel :: VisitorLabel → VisitorLabel
+rightChildLabel = VisitorLabel . fromJust . SequentialIndex.rightChild . unwrapVisitorLabel
+-- @+node:gcross.20111019113757.1413: *3* rootLabel
+rootLabel :: VisitorLabel
+rootLabel = VisitorLabel SequentialIndex.root
+-- @+node:gcross.20111019113757.1399: *3* walkVisitorDownLabel
+walkVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α
+walkVisitorDownLabel label = runIdentity . walkVisitorTDownLabel label
+-- @+node:gcross.20110923164140.1190: *3* walkVisitorDownPath
+walkVisitorDownPath :: VisitorPath → Visitor α → Visitor α
+walkVisitorDownPath path = runIdentity . walkVisitorTDownPath path
+-- @+node:gcross.20111019113757.1395: *3* walkVisitorTDownLabel
+walkVisitorTDownLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (VisitorT m α)
+walkVisitorTDownLabel label = go rootLabel
+  where
+    go parent visitor
+      | parent == label = return visitor
+      | otherwise =
+          (viewT . unwrapVisitorT) visitor >>= \view → case view of
+            Return x → throw VisitorTerminatedBeforeEndOfWalk
+            Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
+            Cache mx :>>= k → mx >>= walkVisitorTDownLabel parent . VisitorT . k
+            Choice left right :>>= k →
+                if label < parent
+                then
+                    walkVisitorTDownLabel
+                        (leftChildLabel parent)
+                        (left >>= VisitorT . k)
+                else
+                    walkVisitorTDownLabel
+                        (rightChildLabel parent)
+                        (right >>= VisitorT . k)
+-- @+node:gcross.20110923120247.1207: *3* walkVisitorTDownPath
+walkVisitorTDownPath :: Monad m ⇒ VisitorPath → VisitorT m α → m (VisitorT m α)
+walkVisitorTDownPath (viewl → EmptyL) = return
+walkVisitorTDownPath path@(viewl → step :< tail) =
     viewT . unwrapVisitorT >=> \view → case (view,step) of
-        (Return x,_) → throw DeadEnd
-        (Null :>>= _,_) → throw DeadEnd
-        (Cache _ :>>= k,CacheStep cache) → walkVisitorT tail $ either error (VisitorT . k) (decode cache)
-        (Cache _ :>>= _,ChoiceStep _) → throw ChoiceStepAtCachePoint
-        (Choice left _ :>>= k,ChoiceStep False) → walkVisitorT tail (left >>= VisitorT . k)
-        (Choice _ right :>>= k,ChoiceStep True) → walkVisitorT tail (right >>= VisitorT . k)
-        (Choice _ _ :>>= _,CacheStep _) → throw CacheStepAtChoicePoint
+        (Return x,_) →
+            throw VisitorTerminatedBeforeEndOfWalk
+        (Null :>>= _,_) →
+            throw VisitorTerminatedBeforeEndOfWalk
+        (Cache _ :>>= k,CacheStep cache) →
+            walkVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
+        (Cache _ :>>= _,ChoiceStep _) →
+            throw ChoiceStepAtCachePoint
+        (Choice left _ :>>= k,ChoiceStep LeftBranchActive) →
+            walkVisitorTDownPath tail (left >>= VisitorT . k)
+        (Choice _ right :>>= k,ChoiceStep RightBranchActive) →
+            walkVisitorTDownPath tail (right >>= VisitorT . k)
+        (Choice _ _ :>>= _,CacheStep _) →
+            throw CacheStepAtChoicePoint
 -- @-others
 -- @-leo

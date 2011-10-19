@@ -19,19 +19,21 @@ Library
         base > 4 && < 5,
         bytestring == 0.9.*,
         cereal == 0.3.*,
+        composition == 0.2.*,
         containers == 0.4.*,
         forkable-monad == 0.1.*,
         monad-loops == 0.3.*,
         MonadCatchIO-transformers == 0.2.*,
         operational == 0.2.*,
         PSQueue == 1.1.*,
+        sequential-index == 0.2.*,
         stm == 2.2.*,
         transformers == 0.2.*
     Exposed-modules:
         Control.Monad.Trans.Visitor
         Control.Monad.Trans.Visitor.Checkpoint
         Control.Monad.Trans.Visitor.Path
-        Control.Monad.Trans.Visitor.Worker
+        -- Control.Monad.Trans.Visitor.Worker
         Control.Monad.Trans.Visitor.WorkerQueue
     Extensions:
 -- @-leo
