@@ -42,80 +42,99 @@ data VisitorCheckpoint =
   | ChoiceCheckpoint VisitorCheckpoint VisitorCheckpoint
   | Unexplored
   deriving (Eq,Read,Show)
--- @+node:gcross.20110923120247.1196: *3* VisitorTCheckpointDifferential
-data VisitorTCheckpointDifferential m α =
+-- @+node:gcross.20111020151748.1287: *3* VisitorCheckpointCursor
+type VisitorCheckpointCursor = Seq VisitorCheckpointDifferential
+-- @+node:gcross.20111020151748.1286: *3* VisitorCheckpointDifferential
+data VisitorCheckpointDifferential =
     BranchCheckpointD WhichBranchActive
   | CacheCheckpointD ByteString
-  | ChoiceCheckpointD WhichBranchActive VisitorCheckpoint (VisitorT m α)
+  | ChoiceCheckpointD WhichBranchActive VisitorCheckpoint
+  deriving (Eq,Read,Show)
+-- @+node:gcross.20110923164140.1178: *3* VisitorTContext
+type VisitorTContext m α = Seq (VisitorTContextStep m α)
+type VisitorContext α = VisitorTContext Identity α
+-- @+node:gcross.20110923120247.1196: *3* VisitorTContextStep
+data VisitorTContextStep m α =
+    BranchContextStep WhichBranchActive
+  | CacheContextStep ByteString
+  | LeftChoiceContextStep VisitorCheckpoint (VisitorT m α)
 
-type VisitorCheckpointDifferential = VisitorTCheckpointDifferential Identity
--- @+node:gcross.20110923164140.1178: *3* VisitorTCheckpointContext
-type VisitorTCheckpointContext m α = Seq (VisitorTCheckpointDifferential m α)
-type VisitorCheckpointContext α = VisitorTCheckpointContext Identity α
--- @+node:gcross.20110923164140.1238: *3* VisitorTCheckpointContextMove
-data VisitorTCheckpointContextMove m α =
+type VisitorContextStep = VisitorTContextStep Identity
+-- @+node:gcross.20110923164140.1238: *3* VisitorTContextUpdate
+data VisitorTContextUpdate m α =
     MoveUpContext
-  | MoveDownContext (VisitorTCheckpointDifferential m α) VisitorCheckpoint (VisitorT m α)
+  | MoveDownContext (VisitorTContextStep m α) VisitorCheckpoint (VisitorT m α)
 
-type VisitorCheckpointContextMove = VisitorTCheckpointContextMove Identity
+type VisitorContextUpdate = VisitorTContextUpdate Identity
 -- @+node:gcross.20111019113757.1408: *3* VisitorTResultFetcher
 newtype VisitorTResultFetcher m α = VisitorTResultFetcher
     {   fetchVisitorTResult :: m (Maybe (Maybe (VisitorSolution α), VisitorCheckpoint, VisitorTResultFetcher m α))
     }
+
+type VisitorResultFetcher = VisitorTResultFetcher Identity
 -- @+node:gcross.20110923164140.1179: ** Functions
+-- @+node:gcross.20111020151748.1288: *3* applyCheckpointCursorToLabel
+applyCheckpointCursorToLabel :: VisitorCheckpointCursor → VisitorLabel → VisitorLabel
+applyCheckpointCursorToLabel (viewl → EmptyL) = id
+applyCheckpointCursorToLabel (viewl → step :< rest) =
+    applyCheckpointCursorToLabel rest
+    .
+    case step of
+        BranchCheckpointD active_branch → labelTransformerForBranch active_branch
+        CacheCheckpointD _ → id
+        ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
 -- @+node:gcross.20110923164140.1240: *3* applyContextMove
-applyContextMove ::
-    VisitorTCheckpointContextMove m α →
-    VisitorTCheckpointContext m α →
-    Maybe (VisitorTCheckpointContext m α, VisitorCheckpoint, VisitorT m α)
-applyContextMove MoveUpContext = moveUpContext
-applyContextMove (MoveDownContext differential checkpoint v) =
+applyContextUpdate ::
+    VisitorTContextUpdate m α →
+    VisitorTContext m α →
+    Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α)
+applyContextUpdate MoveUpContext = moveUpContext
+applyContextUpdate (MoveDownContext step checkpoint v) =
     Just
     .
     (,checkpoint,v)
     .
-    (|> differential)
+    (|> step)
 -- @+node:gcross.20111019113757.1400: *3* applyContextToLabel
-applyContextToLabel :: VisitorTCheckpointContext m α → VisitorLabel → VisitorLabel
+applyContextToLabel :: VisitorTContext m α → VisitorLabel → VisitorLabel
 applyContextToLabel (viewl → EmptyL) = id
-applyContextToLabel (viewl → differential :< rest) =
+applyContextToLabel (viewl → step :< rest) =
     applyContextToLabel rest
     .
-    case differential of
-        CacheCheckpointD _ → id
-        BranchCheckpointD active_branch → labelTransformerFrom active_branch
-        ChoiceCheckpointD active_branch _ _ → labelTransformerFrom active_branch
--- @+node:gcross.20111019113757.1412: *3* labelFromContext
-labelFromContext :: VisitorTCheckpointContext m α → VisitorLabel
-labelFromContext = flip applyContextToLabel rootLabel
+    case step of
+        BranchContextStep branch_active → labelTransformerForBranch branch_active
+        CacheContextStep _ → id
+        LeftChoiceContextStep _ _ → leftChildLabel
 -- @+node:gcross.20110923164140.1182: *3* checkpointFromContext
-checkpointFromContext :: VisitorCheckpoint → VisitorTCheckpointContext m α → VisitorCheckpoint
+checkpointFromContext :: VisitorCheckpoint → VisitorTContext m α → VisitorCheckpoint
 checkpointFromContext unexplored_checkpoint (viewl → EmptyL) = unexplored_checkpoint
 checkpointFromContext unexplored_checkpoint (viewl → differential :< rest) =
     let rest_checkpoint = checkpointFromContext unexplored_checkpoint rest
     in case differential of
-        BranchCheckpointD active_branch → BranchCheckpoint active_branch rest_checkpoint
-        CacheCheckpointD cache → CacheCheckpoint cache rest_checkpoint
-        ChoiceCheckpointD LeftBranchActive right_checkpoint _ → ChoiceCheckpoint rest_checkpoint right_checkpoint
-        ChoiceCheckpointD RightBranchActive left_checkpoint _ → ChoiceCheckpoint left_checkpoint rest_checkpoint
+        BranchContextStep active_branch → BranchCheckpoint active_branch rest_checkpoint
+        CacheContextStep cache → CacheCheckpoint cache rest_checkpoint
+        LeftChoiceContextStep right_checkpoint _ → ChoiceCheckpoint rest_checkpoint right_checkpoint
+-- @+node:gcross.20111019113757.1412: *3* labelFromContext
+labelFromContext :: VisitorTContext m α → VisitorLabel
+labelFromContext = flip applyContextToLabel rootLabel
 -- @+node:gcross.20110923164140.1239: *3* moveUpContext
-moveUpContext :: VisitorTCheckpointContext m α → Maybe (VisitorTCheckpointContext m α, VisitorCheckpoint, VisitorT m α)
+moveUpContext :: VisitorTContext m α → Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α)
 moveUpContext (viewr → EmptyR) = Nothing
-moveUpContext (viewr → rest_context :> BranchCheckpointD _) = moveUpContext rest_context
-moveUpContext (viewr → rest_context :> CacheCheckpointD _) = moveUpContext rest_context
-moveUpContext (viewr → rest_context :> ChoiceCheckpointD branch_explored other_checkpoint other) =
-    Just (rest_context |> BranchCheckpointD (oppositeBranchOf branch_explored)
-         ,other_checkpoint
-         ,other
+moveUpContext (viewr → rest_context :> BranchContextStep _) = moveUpContext rest_context
+moveUpContext (viewr → rest_context :> CacheContextStep _) = moveUpContext rest_context
+moveUpContext (viewr → rest_context :> LeftChoiceContextStep right_checkpoint right_visitor) =
+    Just (rest_context |> BranchContextStep RightBranchActive
+         ,right_checkpoint
+         ,right_visitor
          )
 -- @+node:gcross.20110923164140.1265: *3* pathFromContext
-pathFromContext :: VisitorTCheckpointContext m α → VisitorPath
-pathFromContext = fmap pathStepFromDifferential
--- @+node:gcross.20110923164140.1266: *3* pathStepFromDifferential
-pathStepFromDifferential :: VisitorTCheckpointDifferential m α → VisitorStep
-pathStepFromDifferential (BranchCheckpointD active_branch) = ChoiceStep active_branch
-pathStepFromDifferential (CacheCheckpointD cache) = CacheStep cache
-pathStepFromDifferential (ChoiceCheckpointD active_branch _ _) = ChoiceStep active_branch
+pathFromContext :: VisitorTContext m α → VisitorPath
+pathFromContext = fmap pathStepFromContextStep
+-- @+node:gcross.20110923164140.1266: *3* pathStepFromContextStep
+pathStepFromContextStep :: VisitorTContextStep m α → VisitorStep
+pathStepFromContextStep (BranchContextStep active_branch) = ChoiceStep active_branch
+pathStepFromContextStep (CacheContextStep cache) = CacheStep cache
+pathStepFromContextStep (LeftChoiceContextStep _ _) = ChoiceStep LeftBranchActive
 -- @+node:gcross.20110923164140.1246: *3* runVisitorThroughCheckpoint
 runVisitorThroughCheckpoint ::
     VisitorCheckpoint →
@@ -139,8 +158,8 @@ runVisitorTThroughCheckpoint = go Seq.empty
     go context =
         (VisitorTResultFetcher
          .
-         fmap (\(maybe_solution, move) →
-            case applyContextMove move context of
+         fmap (\(maybe_solution, update) →
+            case applyContextUpdate update context of
                 Nothing → Nothing
                 Just (new_context, new_unexplored_checkpoint, new_visitor) → Just
                     (fmap (
@@ -162,14 +181,14 @@ runVisitorTThroughCheckpoint = go Seq.empty
 stepVisitorThroughCheckpoint ::
     VisitorCheckpoint →
     Visitor α →
-    (Maybe α, VisitorCheckpointContextMove α)
+    (Maybe α, VisitorContextUpdate α)
 stepVisitorThroughCheckpoint checkpoint = runIdentity . stepVisitorTThroughCheckpoint checkpoint
 -- @+node:gcross.20110923164140.1186: *3* stepVisitorTThroughCheckpoint
 stepVisitorTThroughCheckpoint ::
     Monad m ⇒
     VisitorCheckpoint →
     VisitorT m α →
-    m (Maybe α, VisitorTCheckpointContextMove m α)
+    m (Maybe α, VisitorTContextUpdate m α)
 stepVisitorTThroughCheckpoint checkpoint = viewT . unwrapVisitorT >=> \view →  case view of
     Return x → return (Just x, MoveUpContext)
     Null :>>= _ → return (Nothing, MoveUpContext)
@@ -177,26 +196,26 @@ stepVisitorTThroughCheckpoint checkpoint = viewT . unwrapVisitorT >=> \view → 
         case checkpoint of
             CacheCheckpoint cache rest_checkpoint → return
                 (Nothing
-                ,MoveDownContext (CacheCheckpointD cache) rest_checkpoint $ either error (VisitorT . k) (decode cache)
+                ,MoveDownContext (CacheContextStep cache) rest_checkpoint $ either error (VisitorT . k) (decode cache)
                 )
             Unexplored → do
                 x ← mx
                 return
                     (Nothing
-                    ,MoveDownContext (CacheCheckpointD (encode x)) Unexplored ((VisitorT . k) x)
+                    ,MoveDownContext (CacheContextStep (encode x)) Unexplored ((VisitorT . k) x)
                     )
             _ → throw ChoiceStepAtCachePoint
     Choice left right :>>= k → return 
         (Nothing
         ,case checkpoint of
             BranchCheckpoint LeftBranchActive left_checkpoint →
-                MoveDownContext (BranchCheckpointD LeftBranchActive) left_checkpoint (left >>= VisitorT . k)
+                MoveDownContext (BranchContextStep LeftBranchActive) left_checkpoint (left >>= VisitorT . k)
             BranchCheckpoint RightBranchActive right_checkpoint →
-                MoveDownContext (BranchCheckpointD RightBranchActive) right_checkpoint (right >>= VisitorT . k)
+                MoveDownContext (BranchContextStep RightBranchActive) right_checkpoint (right >>= VisitorT . k)
             ChoiceCheckpoint left_checkpoint right_checkpoint →
-                MoveDownContext (ChoiceCheckpointD LeftBranchActive right_checkpoint (right >>= VisitorT . k)) left_checkpoint (left >>= VisitorT . k)
+                MoveDownContext (LeftChoiceContextStep right_checkpoint (right >>= VisitorT . k)) left_checkpoint (left >>= VisitorT . k)
             Unexplored →
-                MoveDownContext (ChoiceCheckpointD LeftBranchActive Unexplored (right >>= VisitorT . k)) Unexplored (left >>= VisitorT . k)
+                MoveDownContext (LeftChoiceContextStep Unexplored (right >>= VisitorT . k)) Unexplored (left >>= VisitorT . k)
             _ → throw CacheStepAtChoicePoint
         )
 -- @-others

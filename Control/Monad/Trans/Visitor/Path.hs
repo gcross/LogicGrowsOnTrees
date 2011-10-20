@@ -56,10 +56,22 @@ data WhichBranchActive =
   | RightBranchActive
   deriving (Eq,Read,Show)
 -- @+node:gcross.20110923120247.1208: ** Functions
--- @+node:gcross.20111019113757.1407: *3* labelTransformerFrom
-labelTransformerFrom :: WhichBranchActive → (VisitorLabel → VisitorLabel)
-labelTransformerFrom LeftBranchActive = leftChildLabel
-labelTransformerFrom RightBranchActive = rightChildLabel
+-- @+node:gcross.20111020151748.1291: *3* applyPathToLabel
+applyPathToLabel :: VisitorPath → VisitorLabel → VisitorLabel
+applyPathToLabel (viewl → EmptyL) = id
+applyPathToLabel (viewl → step :< rest) =
+    applyPathToLabel rest
+    .
+    case step of
+        ChoiceStep active_branch → labelTransformerForBranch active_branch
+        CacheStep _ → id
+-- @+node:gcross.20111020151748.1292: *3* labelFromPath
+labelFromPath :: VisitorPath → VisitorLabel
+labelFromPath = flip applyPathToLabel rootLabel
+-- @+node:gcross.20111019113757.1407: *3* labelTransformerForBranch
+labelTransformerForBranch :: WhichBranchActive → (VisitorLabel → VisitorLabel)
+labelTransformerForBranch LeftBranchActive = leftChildLabel
+labelTransformerForBranch RightBranchActive = rightChildLabel
 -- @+node:gcross.20111019113757.1414: *3* leftChildLabel
 leftChildLabel :: VisitorLabel → VisitorLabel
 leftChildLabel = VisitorLabel . fromJust . SequentialIndex.leftChild . unwrapVisitorLabel
