@@ -83,7 +83,7 @@ applyCheckpointCursorToLabel (viewl → step :< rest) =
         BranchCheckpointD active_branch → labelTransformerForBranch active_branch
         CacheCheckpointD _ → id
         ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
--- @+node:gcross.20110923164140.1240: *3* applyContextMove
+-- @+node:gcross.20110923164140.1240: *3* applyContextUpdate
 applyContextUpdate ::
     VisitorTContextUpdate m α →
     VisitorTContext m α →
