@@ -106,14 +106,26 @@ applyContextToLabel (viewl → step :< rest) =
         CacheContextStep _ → id
         LeftChoiceContextStep _ _ → leftChildLabel
 -- @+node:gcross.20110923164140.1182: *3* checkpointFromContext
-checkpointFromContext :: VisitorCheckpoint → VisitorTContext m α → VisitorCheckpoint
-checkpointFromContext unexplored_checkpoint (viewl → EmptyL) = unexplored_checkpoint
-checkpointFromContext unexplored_checkpoint (viewl → differential :< rest) =
-    let rest_checkpoint = checkpointFromContext unexplored_checkpoint rest
-    in case differential of
-        BranchContextStep active_branch → BranchCheckpoint active_branch rest_checkpoint
-        CacheContextStep cache → CacheCheckpoint cache rest_checkpoint
-        LeftChoiceContextStep right_checkpoint _ → ChoiceCheckpoint rest_checkpoint right_checkpoint
+checkpointFromContext :: VisitorTContext m α → VisitorCheckpoint → VisitorCheckpoint
+checkpointFromContext (viewl → EmptyL) = id
+checkpointFromContext (viewl → differential :< rest) =
+    case differential of
+        BranchContextStep active_branch → BranchCheckpoint active_branch
+        CacheContextStep cache → CacheCheckpoint cache
+        LeftChoiceContextStep right_checkpoint _ → flip ChoiceCheckpoint right_checkpoint
+    .
+    checkpointFromContext rest
+-- @+node:gcross.20111020182554.1265: *3* checkpointFromCursor
+checkpointFromCursor :: VisitorCheckpointCursor → VisitorCheckpoint → VisitorCheckpoint
+checkpointFromCursor (viewl → EmptyL) = id
+checkpointFromCursor (viewl → step :< rest) =
+    case step of
+        BranchCheckpointD active_branch → BranchCheckpoint active_branch
+        CacheCheckpointD cache → CacheCheckpoint cache
+        ChoiceCheckpointD LeftBranchActive right_checkpoint → flip ChoiceCheckpoint right_checkpoint
+        ChoiceCheckpointD RightBranchActive left_checkpoint → ChoiceCheckpoint left_checkpoint
+    .
+    checkpointFromCursor rest
 -- @+node:gcross.20111019113757.1412: *3* labelFromContext
 labelFromContext :: VisitorTContext m α → VisitorLabel
 labelFromContext = flip applyContextToLabel rootLabel
@@ -169,7 +181,7 @@ runVisitorTThroughCheckpoint = go Seq.empty
                         $
                         context
                      ) maybe_solution
-                    ,checkpointFromContext new_unexplored_checkpoint new_context
+                    ,checkpointFromContext new_context new_unexplored_checkpoint
                     ,go new_context new_unexplored_checkpoint new_visitor
                     )
          )
