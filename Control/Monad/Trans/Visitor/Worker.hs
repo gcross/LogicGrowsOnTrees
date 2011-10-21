@@ -199,15 +199,74 @@ forkWorkerThread visitor VisitorWorkload{..} = do
             thread_id
             progress_ref
             termination_status_ivar
--- @+node:gcross.20111004110500.1247: *3* runVisitorTWorkerRequestProcessor
-runVisitorTWorkerRequestProcessor ::
+-- @+node:gcross.20111020182554.1277: *3* forkWorkerThreadAndRunRequestProcessor
+forkWorkerThreadAndRunRequestProcessor ::
+    MonadCatchIO m ⇒
+    Maybe Int →
+    m () →
+    m (Maybe (VisitorWorkerRequest m α)) →
+    VisitorWorkload →
+    Visitor α →
+    m VisitorWorkerTerminationReason
+forkWorkerThreadAndRunRequestProcessor
+    maybe_delay_between_polls
+    notifyNewSolutions
+    getNextRequest
+    workload
+    visitor
+    =
+    liftIO (
+        forkWorkerThread
+            visitor
+            workload
+    )
+    >>=
+    runWorkerRequestProcessor
+        maybe_delay_between_polls
+        notifyNewSolutions
+        getNextRequest
+-- @+node:gcross.20111020182554.1278: *3* runWorkerNode
+runWorkerNode ::
+    MonadCatchIO m ⇒
+    Maybe Int →
+    m (Either VisitorWorkerTerminationReason (m (), m (Maybe (VisitorWorkerRequest m α)), VisitorWorkload)) →
+    Visitor α →
+    m VisitorWorkerTerminationReason
+runWorkerNode
+    maybe_delay_between_polls
+    getNextWorkload
+    visitor
+    =
+    getNextWorkload
+    >>=
+    either
+        return
+        (\(notifyNewSolutions,getNextRequest,workload) → do
+            forkWorkerThreadAndRunRequestProcessor
+                maybe_delay_between_polls
+                notifyNewSolutions
+                getNextRequest
+                workload
+                visitor
+            >>=
+            \termination_reason →
+                case termination_reason of
+                    VisitorWorkerFinished → 
+                        runWorkerNode
+                            maybe_delay_between_polls
+                            getNextWorkload
+                            visitor
+                    _ → return termination_reason
+        )
+-- @+node:gcross.20111004110500.1247: *3* runWorkerRequestProcessor
+runWorkerRequestProcessor ::
     MonadCatchIO m ⇒
     Maybe Int →
     m () →
     m (Maybe (VisitorWorkerRequest m α)) →
     VisitorTWorkerEnvironment n α →
     m VisitorWorkerTerminationReason
-runVisitorTWorkerRequestProcessor
+runWorkerRequestProcessor
     maybe_delay_between_polls
     notifyNewSolutions
     getNextRequest
