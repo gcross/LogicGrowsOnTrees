@@ -21,6 +21,8 @@ Library
         cereal == 0.3.*,
         composition == 0.2.*,
         containers == 0.4.*,
+        data-ivar == 0.30.*,
+        higherorder == 0.0.*,
         monad-loops == 0.3.*,
         MonadCatchIO-transformers == 0.2.*,
         operational == 0.2.*,
@@ -32,7 +34,7 @@ Library
         Control.Monad.Trans.Visitor
         Control.Monad.Trans.Visitor.Checkpoint
         Control.Monad.Trans.Visitor.Path
-        -- Control.Monad.Trans.Visitor.Worker
+        Control.Monad.Trans.Visitor.Worker
         Control.Monad.Trans.Visitor.WorkerQueue
     Extensions:
 -- @-leo

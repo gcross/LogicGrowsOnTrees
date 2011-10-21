@@ -153,11 +153,18 @@ moveUpContext (viewr → rest_context :> LeftChoiceContextStep right_checkpoint 
 -- @+node:gcross.20110923164140.1265: *3* pathFromContext
 pathFromContext :: VisitorTContext m α → VisitorPath
 pathFromContext = fmap pathStepFromContextStep
+-- @+node:gcross.20111020182554.1273: *3* pathFromCursor
+pathFromCursor :: VisitorCheckpointCursor → VisitorPath
+pathFromCursor = fmap pathStepFromCursorDifferential
 -- @+node:gcross.20110923164140.1266: *3* pathStepFromContextStep
 pathStepFromContextStep :: VisitorTContextStep m α → VisitorStep
 pathStepFromContextStep (BranchContextStep active_branch) = ChoiceStep active_branch
 pathStepFromContextStep (CacheContextStep cache) = CacheStep cache
 pathStepFromContextStep (LeftChoiceContextStep _ _) = ChoiceStep LeftBranchActive
+-- @+node:gcross.20111020182554.1271: *3* pathStepFromCursorDifferential
+pathStepFromCursorDifferential :: VisitorCheckpointDifferential → VisitorStep
+pathStepFromCursorDifferential (CacheCheckpointD cache) = CacheStep cache
+pathStepFromCursorDifferential (ChoiceCheckpointD active_branch _) = ChoiceStep active_branch
 -- @+node:gcross.20110923164140.1246: *3* runVisitorThroughCheckpoint
 runVisitorThroughCheckpoint ::
     VisitorCheckpoint →
