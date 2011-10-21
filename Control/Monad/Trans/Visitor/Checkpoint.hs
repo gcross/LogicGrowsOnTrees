@@ -37,17 +37,16 @@ import Control.Monad.Trans.Visitor.Path
 -- @+node:gcross.20110923120247.1194: ** Types
 -- @+node:gcross.20110923120247.1195: *3* VisitorCheckpoint
 data VisitorCheckpoint =
-    BranchCheckpoint WhichBranchActive VisitorCheckpoint
-  | CacheCheckpoint ByteString VisitorCheckpoint
+    CacheCheckpoint ByteString VisitorCheckpoint
   | ChoiceCheckpoint VisitorCheckpoint VisitorCheckpoint
+  | Explored
   | Unexplored
   deriving (Eq,Read,Show)
 -- @+node:gcross.20111020151748.1287: *3* VisitorCheckpointCursor
 type VisitorCheckpointCursor = Seq VisitorCheckpointDifferential
 -- @+node:gcross.20111020151748.1286: *3* VisitorCheckpointDifferential
 data VisitorCheckpointDifferential =
-    BranchCheckpointD WhichBranchActive
-  | CacheCheckpointD ByteString
+    CacheCheckpointD ByteString
   | ChoiceCheckpointD WhichBranchActive VisitorCheckpoint
   deriving (Eq,Read,Show)
 -- @+node:gcross.20110923164140.1178: *3* VisitorTContext
@@ -80,9 +79,18 @@ applyCheckpointCursorToLabel (viewl → step :< rest) =
     applyCheckpointCursorToLabel rest
     .
     case step of
-        BranchCheckpointD active_branch → labelTransformerForBranch active_branch
         CacheCheckpointD _ → id
         ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
+-- @+node:gcross.20111019113757.1400: *3* applyContextToLabel
+applyContextToLabel :: VisitorTContext m α → VisitorLabel → VisitorLabel
+applyContextToLabel (viewl → EmptyL) = id
+applyContextToLabel (viewl → step :< rest) =
+    applyContextToLabel rest
+    .
+    case step of
+        BranchContextStep branch_active → labelTransformerForBranch branch_active
+        CacheContextStep _ → id
+        LeftChoiceContextStep _ _ → leftChildLabel
 -- @+node:gcross.20110923164140.1240: *3* applyContextUpdate
 applyContextUpdate ::
     VisitorTContextUpdate m α →
@@ -95,40 +103,43 @@ applyContextUpdate (MoveDownContext step checkpoint v) =
     (,checkpoint,v)
     .
     (|> step)
--- @+node:gcross.20111019113757.1400: *3* applyContextToLabel
-applyContextToLabel :: VisitorTContext m α → VisitorLabel → VisitorLabel
-applyContextToLabel (viewl → EmptyL) = id
-applyContextToLabel (viewl → step :< rest) =
-    applyContextToLabel rest
-    .
-    case step of
-        BranchContextStep branch_active → labelTransformerForBranch branch_active
-        CacheContextStep _ → id
-        LeftChoiceContextStep _ _ → leftChildLabel
 -- @+node:gcross.20110923164140.1182: *3* checkpointFromContext
 checkpointFromContext :: VisitorTContext m α → VisitorCheckpoint → VisitorCheckpoint
-checkpointFromContext (viewl → EmptyL) = id
-checkpointFromContext (viewl → differential :< rest) =
-    case differential of
-        BranchContextStep active_branch → BranchCheckpoint active_branch
+checkpointFromContext = checkpointFromSequence $
+    \step → case step of
+        BranchContextStep LeftBranchActive → flip ChoiceCheckpoint Explored
+        BranchContextStep RightBranchActive → ChoiceCheckpoint Explored
         CacheContextStep cache → CacheCheckpoint cache
         LeftChoiceContextStep right_checkpoint _ → flip ChoiceCheckpoint right_checkpoint
-    .
-    checkpointFromContext rest
 -- @+node:gcross.20111020182554.1265: *3* checkpointFromCursor
 checkpointFromCursor :: VisitorCheckpointCursor → VisitorCheckpoint → VisitorCheckpoint
-checkpointFromCursor (viewl → EmptyL) = id
-checkpointFromCursor (viewl → step :< rest) =
-    case step of
-        BranchCheckpointD active_branch → BranchCheckpoint active_branch
+checkpointFromCursor = checkpointFromSequence $
+    \step → case step of
         CacheCheckpointD cache → CacheCheckpoint cache
         ChoiceCheckpointD LeftBranchActive right_checkpoint → flip ChoiceCheckpoint right_checkpoint
         ChoiceCheckpointD RightBranchActive left_checkpoint → ChoiceCheckpoint left_checkpoint
+-- @+node:gcross.20111020182554.1267: *3* checkpointFromSequence
+checkpointFromSequence ::
+    (α → (VisitorCheckpoint → VisitorCheckpoint)) →
+    Seq α →
+    VisitorCheckpoint →
+    VisitorCheckpoint
+checkpointFromSequence processStep (viewr → EmptyR) = id
+checkpointFromSequence processStep (viewr → rest :> step) =
+    checkpointFromSequence processStep rest
     .
-    checkpointFromCursor rest
+    mergeCheckpointRoot
+    .
+    processStep step
 -- @+node:gcross.20111019113757.1412: *3* labelFromContext
 labelFromContext :: VisitorTContext m α → VisitorLabel
 labelFromContext = flip applyContextToLabel rootLabel
+-- @+node:gcross.20111020182554.1266: *3* mergeCheckpointRoot
+mergeCheckpointRoot :: VisitorCheckpoint → VisitorCheckpoint
+mergeCheckpointRoot (ChoiceCheckpoint Unexplored Unexplored) = Unexplored
+mergeCheckpointRoot (ChoiceCheckpoint Explored Explored) = Explored
+mergeCheckpointRoot (CacheCheckpoint _ Explored) = Explored
+mergeCheckpointRoot checkpoint = checkpoint
 -- @+node:gcross.20110923164140.1239: *3* moveUpContext
 moveUpContext :: VisitorTContext m α → Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α)
 moveUpContext (viewr → EmptyR) = Nothing
@@ -216,19 +227,17 @@ stepVisitorTThroughCheckpoint checkpoint = viewT . unwrapVisitorT >=> \view → 
                     (Nothing
                     ,MoveDownContext (CacheContextStep (encode x)) Unexplored ((VisitorT . k) x)
                     )
-            _ → throw ChoiceStepAtCachePoint
+            Explored → return (Nothing, MoveUpContext)
+            ChoiceCheckpoint _ _ → throw ChoiceStepAtCachePoint
     Choice left right :>>= k → return 
         (Nothing
         ,case checkpoint of
-            BranchCheckpoint LeftBranchActive left_checkpoint →
-                MoveDownContext (BranchContextStep LeftBranchActive) left_checkpoint (left >>= VisitorT . k)
-            BranchCheckpoint RightBranchActive right_checkpoint →
-                MoveDownContext (BranchContextStep RightBranchActive) right_checkpoint (right >>= VisitorT . k)
             ChoiceCheckpoint left_checkpoint right_checkpoint →
                 MoveDownContext (LeftChoiceContextStep right_checkpoint (right >>= VisitorT . k)) left_checkpoint (left >>= VisitorT . k)
             Unexplored →
                 MoveDownContext (LeftChoiceContextStep Unexplored (right >>= VisitorT . k)) Unexplored (left >>= VisitorT . k)
-            _ → throw CacheStepAtChoicePoint
+            Explored → MoveUpContext
+            CacheCheckpoint _ _ → throw CacheStepAtChoicePoint
         )
 -- @-others
 -- @-leo
