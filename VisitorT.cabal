@@ -21,7 +21,6 @@ Library
         cereal == 0.3.*,
         composition == 0.2.*,
         containers == 0.4.*,
-        forkable-monad == 0.1.*,
         monad-loops == 0.3.*,
         MonadCatchIO-transformers == 0.2.*,
         operational == 0.2.*,
