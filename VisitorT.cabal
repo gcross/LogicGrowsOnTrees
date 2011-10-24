@@ -22,6 +22,7 @@ Library
         composition == 0.2.*,
         containers == 0.4.*,
         data-ivar == 0.30.*,
+        dlist == 0.5.*,
         higherorder == 0.0.*,
         monad-loops == 0.3.*,
         MonadCatchIO-transformers == 0.2.*,
