@@ -148,10 +148,10 @@ forkWorkerThread visitor VisitorWorkload{..} = do
     termination_status_ivar ← IVar.new
     let initial_label = labelFromPath visitorWorkloadPath
         loop checkpoint visitor =
-            (let (maybe_solution,context_update) = stepVisitorThroughCheckpoint checkpoint visitor
+            (let (maybe_solution,updateContext) = stepVisitorThroughCheckpoint checkpoint visitor
              in atomicModifyIORef progress_ref $ \(old_progress@VisitorTWorkerProgress{..}) →
                     let (new_context,new_checkpoint,maybe_next_loop) =
-                            case applyContextUpdate context_update workerContext of
+                            case updateContext workerContext of
                                 Nothing →
                                     (Seq.empty,Explored,Nothing)
                                 Just (new_context,new_checkpoint,new_visitor) →
