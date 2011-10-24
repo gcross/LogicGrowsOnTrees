@@ -144,7 +144,7 @@ forkWorkerThread visitor (VisitorWorkload initial_path initial_checkpoint) = do
             ) ?? (
                 -- @+<< Step visitor >>
                 -- @+node:gcross.20111020182554.1283: *4* << Step visitor >>
-                let (maybe_solution,updateContext) = stepVisitorThroughCheckpoint checkpoint visitor
+                let (maybe_solution,maybe_next) = stepVisitorThroughCheckpoint context checkpoint visitor
                     new_solutions =
                         case maybe_solution of
                             Nothing → new_solutions
@@ -158,7 +158,7 @@ forkWorkerThread visitor (VisitorWorkload initial_path initial_checkpoint) = do
                                         initial_label
                                     )
                                     solution
-                in case updateContext context of
+                in case maybe_next of
                     Nothing → do
                         IVar.write termination_status_ivar (VisitorWorkerFinished (DList.toList new_solutions))
                     Just (new_context,new_checkpoint,new_visitor) →

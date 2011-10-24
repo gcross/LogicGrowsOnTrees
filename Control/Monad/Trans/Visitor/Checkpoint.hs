@@ -188,63 +188,77 @@ runVisitorTThroughCheckpoint = go Seq.empty
     go context =
         (VisitorTResultFetcher
          .
-         fmap (\(maybe_solution, updateContext) →
-            case updateContext context of
-                Nothing → Nothing
-                Just (new_context, new_unexplored_checkpoint, new_visitor) → Just
-                    (fmap (
-                        VisitorSolution
-                        .
-                        labelFromContext
-                        $
-                        context
-                     ) maybe_solution
-                    ,checkpointFromContext new_context new_unexplored_checkpoint
-                    ,go new_context new_unexplored_checkpoint new_visitor
-                    )
+         fmap (\x → case x of
+            (Nothing,Nothing) → Nothing
+            (Just solution,Nothing) → Just
+                (Just (labelSolution solution)
+                ,Explored
+                ,VisitorTResultFetcher (return Nothing)
+                )
+            (maybe_solution,Just (new_context, new_unexplored_checkpoint, new_visitor)) → Just
+                (fmap labelSolution maybe_solution
+                ,checkpointFromContext new_context new_unexplored_checkpoint
+                ,go new_context new_unexplored_checkpoint new_visitor
+                )
          )
-
         )
         .*
-        stepVisitorTThroughCheckpoint
+        stepVisitorTThroughCheckpoint context
+      where
+        labelSolution = VisitorSolution (labelFromContext context)
 -- @+node:gcross.20110923164140.1242: *3* stepVisitorThroughCheckpoint
 stepVisitorThroughCheckpoint ::
+    VisitorContext α →
     VisitorCheckpoint →
     Visitor α →
-    (Maybe α, VisitorContextUpdate α)
-stepVisitorThroughCheckpoint checkpoint = runIdentity . stepVisitorTThroughCheckpoint checkpoint
+    (Maybe α,Maybe (VisitorContext α, VisitorCheckpoint, Visitor α))
+stepVisitorThroughCheckpoint context checkpoint = runIdentity . stepVisitorTThroughCheckpoint context checkpoint
 -- @+node:gcross.20110923164140.1186: *3* stepVisitorTThroughCheckpoint
 stepVisitorTThroughCheckpoint ::
-    Monad m ⇒
+    (Functor m, Monad m) ⇒
+    VisitorTContext m α →
     VisitorCheckpoint →
     VisitorT m α →
-    m (Maybe α, VisitorTContextUpdate m α)
-stepVisitorTThroughCheckpoint checkpoint = viewT . unwrapVisitorT >=> \view →  case view of
-    Return x → return (Just x, moveUpContext)
-    Null :>>= _ → return (Nothing, moveUpContext)
-    Cache mx :>>= k →
+    m (Maybe α,Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α))
+stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \view → case view of
+    Return x → return (Just x, moveUpMyContext)
+    Null :>>= _ → return (Nothing, moveUpMyContext)
+    Cache mx :>>= k → fmap (Nothing,) $
         case checkpoint of
-            CacheCheckpoint cache rest_checkpoint → return
-                (Nothing
-                ,moveDownContext (CacheContextStep cache) rest_checkpoint $ either error (VisitorT . k) (decode cache)
-                )
-            Unexplored → do
-                x ← mx
+            CacheCheckpoint cache rest_checkpoint →
                 return
-                    (Nothing
-                    ,moveDownContext (CacheContextStep (encode x)) Unexplored ((VisitorT . k) x)
-                    )
-            Explored → return (Nothing, moveUpContext)
-            ChoiceCheckpoint _ _ → throw ChoiceStepAtCachePoint
-    Choice left right :>>= k → return 
-        (Nothing
-        ,case checkpoint of
-            ChoiceCheckpoint left_checkpoint right_checkpoint →
-                moveDownContext (LeftChoiceContextStep right_checkpoint (right >>= VisitorT . k)) left_checkpoint (left >>= VisitorT . k)
+                .
+                moveDownMyContext (CacheContextStep cache) rest_checkpoint
+                .
+                either error (VisitorT . k)
+                .
+                decode
+                $
+                cache
             Unexplored →
-                moveDownContext (LeftChoiceContextStep Unexplored (right >>= VisitorT . k)) Unexplored (left >>= VisitorT . k)
-            Explored → moveUpContext
+                mx >>= \x → return $
+                moveDownMyContext
+                    (CacheContextStep (encode x))
+                    Unexplored
+                    (VisitorT . k $ x)
+            Explored → return moveUpMyContext
+            ChoiceCheckpoint _ _ → throw ChoiceStepAtCachePoint
+    Choice left right :>>= k → return . (Nothing,) $
+        case checkpoint of
+            ChoiceCheckpoint left_checkpoint right_checkpoint →
+                moveDownMyContext
+                    (LeftChoiceContextStep right_checkpoint (right >>= VisitorT . k))
+                    left_checkpoint
+                    (left >>= VisitorT . k)
+            Unexplored →
+                moveDownMyContext
+                    (LeftChoiceContextStep Unexplored (right >>= VisitorT . k))
+                    Unexplored
+                    (left >>= VisitorT . k)
+            Explored → moveUpMyContext
             CacheCheckpoint _ _ → throw CacheStepAtChoicePoint
-        )
+  where
+    moveUpMyContext = moveUpContext context
+    moveDownMyContext step checkpoint visitor = moveDownContext step checkpoint visitor context
 -- @-others
 -- @-leo
