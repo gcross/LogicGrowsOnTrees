@@ -46,13 +46,15 @@ import Control.Monad.Trans.Visitor.Path
 data VisitorTWorkerEnvironment m α = VisitorTWorkerEnvironment
     {   workerInitialPath :: VisitorPath
     ,   workerThreadId :: ThreadId
-    ,   workerPendingRequests :: IORef (Maybe (Seq (VisitorWorkerRequest α)))
+    ,   workerPendingRequests :: IORef (VisitorWorkerRequestQueue α)
     }
 type VisitorWorkerEnvironment α = VisitorTWorkerEnvironment Identity α
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
 data VisitorWorkerRequest α =
-    StatusUpdateRequested (VisitorWorkerStatusUpdate α → IO ())
+    StatusUpdateRequested (VisitorWorkerStatusUpdate α → IO ()) (IO ())
   | WorkloadStealRequested (VisitorWorkload → IO ()) (IO ())
+-- @+node:gcross.20111026172030.1278: *3* VisitorWorkerRequestQueue
+type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
 -- @+node:gcross.20111020182554.1275: *3* VisitorWorkerStatusUpdate
 data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate
     {   visitorWorkerNewSolutions :: [VisitorSolution α]
@@ -140,7 +142,7 @@ forkWorkerThread
                                             solutions
                                             checkpoint
                                             visitor
-                                    Just (StatusUpdateRequested submitStatusUpdate) → do
+                                    Just (StatusUpdateRequested submitStatusUpdate _) → do
                                         submitStatusUpdate $
                                             VisitorWorkerStatusUpdate
                                                 (DList.toList solutions)
@@ -194,14 +196,16 @@ forkWorkerThread
             )
             `catch`
             (return . VisitorWorkerFailed)
-        readIORef pending_requests_ref
-            >>=
-            maybe
-                (return ())
-                (Fold.mapM_ $ \request → case request of
-                    StatusUpdateRequested submitStatusUpdate → return ()
-                    WorkloadStealRequested _ notifyFailure  → notifyFailure
-                )
+        case termination_reason of
+            VisitorWorkerFinished _ →
+                atomicModifyIORef pending_requests_ref (Nothing,)
+                >>=
+                maybe
+                    (return ())
+                    (Fold.mapM_ $ \request → case request of
+                        StatusUpdateRequested _ notifyNoStatusUpdateAvailable → notifyNoStatusUpdateAvailable
+                        WorkloadStealRequested _ notifyFailure → notifyFailure
+                    )
         finishedCallback termination_reason
     return $
         VisitorTWorkerEnvironment
