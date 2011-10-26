@@ -26,6 +26,7 @@ import Control.Exception (SomeException,catch)
 import Data.Bool.Higher ((??))
 import Data.DList (DList)
 import qualified Data.DList as DList
+import qualified Data.Foldable as Fold
 import Data.Functor.Identity (Identity)
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef,writeIORef)
 import qualified Data.IVar as IVar
@@ -45,14 +46,12 @@ import Control.Monad.Trans.Visitor.Path
 data VisitorTWorkerEnvironment m α = VisitorTWorkerEnvironment
     {   workerInitialPath :: VisitorPath
     ,   workerThreadId :: ThreadId
-    ,   workerPendingRequest :: IORef (Maybe (VisitorWorkerRequest α))
-    ,   workerTerminationStatus :: IVar (VisitorWorkerTerminationReason α)
+    ,   workerPendingRequests :: IORef (Maybe (Seq (VisitorWorkerRequest α)))
     }
 type VisitorWorkerEnvironment α = VisitorTWorkerEnvironment Identity α
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
 data VisitorWorkerRequest α =
-    AbortWorker
-  | StatusUpdateRequested (VisitorWorkerStatusUpdate α → IO ())
+    StatusUpdateRequested (VisitorWorkerStatusUpdate α → IO ())
   | WorkloadStealRequested (VisitorWorkload → IO ()) (IO ())
 -- @+node:gcross.20111020182554.1275: *3* VisitorWorkerStatusUpdate
 data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate
@@ -72,12 +71,16 @@ data VisitorWorkload = VisitorWorkload
 -- @+node:gcross.20110923164140.1259: ** Functions
 -- @+node:gcross.20110923164140.1286: *3* forkWorkerThread
 forkWorkerThread ::
+    (VisitorWorkerTerminationReason α → IO ()) →
     Visitor α →
     VisitorWorkload →
     IO (VisitorWorkerEnvironment α)
-forkWorkerThread visitor (VisitorWorkload initial_path initial_checkpoint) = do
-    pending_request_ref ← newIORef $ Nothing
-    termination_status_ivar ← IVar.new
+forkWorkerThread
+    finishedCallback
+    visitor
+    (VisitorWorkload initial_path initial_checkpoint)
+  = do
+    pending_requests_ref ← newIORef $ (Just Seq.empty)
     let initial_label = labelFromPath initial_path
         loop
             cursor
@@ -85,110 +88,126 @@ forkWorkerThread visitor (VisitorWorkload initial_path initial_checkpoint) = do
             solutions
             checkpoint
             visitor
-          = fmap isJust (readIORef pending_request_ref) >>=
-            (
-                -- @+<< Process request >>
-                -- @+node:gcross.20111020182554.1282: *4* << Process request >>
-                atomicModifyIORef pending_request_ref (Nothing,)
-                >>=
-                \request → case request of
-                    Nothing → do
-                        yield
-                        loop
-                            cursor
-                            context
-                            solutions
-                            checkpoint
-                            visitor
-                    Just AbortWorker → IVar.write termination_status_ivar VisitorWorkerAborted
-                    Just (StatusUpdateRequested submitStatusUpdate) → do
-                        submitStatusUpdate $
-                            VisitorWorkerStatusUpdate
-                                (DList.toList solutions)
-                                (VisitorWorkload initial_path
-                                 .
-                                 checkpointFromCursor cursor
-                                 .
-                                 checkpointFromContext context
-                                 $
-                                 checkpoint
+          = readIORef pending_requests_ref >>= \pending_requests →
+                case pending_requests of
+                    Nothing → return VisitorWorkerAborted
+                    Just requests →
+                        case viewl requests of
+                            EmptyL →
+                                -- @+<< Step visitor >>
+                                -- @+node:gcross.20111020182554.1283: *4* << Step visitor >>
+                                let (maybe_solution,maybe_next) = stepVisitorThroughCheckpoint context checkpoint visitor
+                                    new_solutions =
+                                        case maybe_solution of
+                                            Nothing → new_solutions
+                                            Just solution → new_solutions `DList.snoc`
+                                                VisitorSolution
+                                                    (
+                                                        applyContextToLabel context
+                                                        .
+                                                        applyCheckpointCursorToLabel cursor
+                                                        $
+                                                        initial_label
+                                                    )
+                                                    solution
+                                in case maybe_next of
+                                    Nothing → do
+                                        return (VisitorWorkerFinished (DList.toList new_solutions))
+                                    Just (new_context,new_checkpoint,new_visitor) →
+                                        loop
+                                            cursor
+                                            new_context
+                                            new_solutions
+                                            new_checkpoint
+                                            new_visitor
+                                -- @-<< Step visitor >>
+                            _ →
+                                -- @+<< Respond to request >>
+                                -- @+node:gcross.20111020182554.1282: *4* << Respond to request >>
+                                atomicModifyIORef pending_requests_ref (
+                                    \maybe_requests → case fmap viewl maybe_requests of
+                                        Nothing → (Nothing,Nothing)
+                                        Just EmptyL → (Just Seq.empty,Nothing)
+                                        Just (request :< rest_requests) → (Just rest_requests,Nothing)
                                 )
-                        yield
-                        loop
-                            cursor
-                            context
-                            DList.empty
-                            checkpoint
-                            visitor
-                    Just (WorkloadStealRequested submitWorkload notifyFailure) →
-                        case tryStealWorkload initial_path context of
-                            Nothing → do
-                                notifyFailure
-                                yield
-                                loop
-                                    cursor
-                                    context
-                                    solutions
-                                    checkpoint
-                                    visitor
-                            Just (append_to_cursor,new_context,workload) → do
-                                submitWorkload workload
-                                yield
-                                loop
-                                    (cursor >< append_to_cursor)
-                                    new_context
-                                    solutions
-                                    checkpoint
-                                    visitor
-                -- @-<< Process request >>
-            ) ?? (
-                -- @+<< Step visitor >>
-                -- @+node:gcross.20111020182554.1283: *4* << Step visitor >>
-                let (maybe_solution,maybe_next) = stepVisitorThroughCheckpoint context checkpoint visitor
-                    new_solutions =
-                        case maybe_solution of
-                            Nothing → new_solutions
-                            Just solution → new_solutions `DList.snoc`
-                                VisitorSolution
-                                    (
-                                        applyContextToLabel context
-                                        .
-                                        applyCheckpointCursorToLabel cursor
-                                        $
-                                        initial_label
-                                    )
-                                    solution
-                in case maybe_next of
-                    Nothing → do
-                        IVar.write termination_status_ivar (VisitorWorkerFinished (DList.toList new_solutions))
-                    Just (new_context,new_checkpoint,new_visitor) →
-                        loop
-                            cursor
-                            new_context
-                            new_solutions
-                            new_checkpoint
-                            new_visitor
-                -- @-<< Step visitor >>
+                                >>=
+                                \request → case request of
+                                    Nothing → do
+                                        yield
+                                        loop
+                                            cursor
+                                            context
+                                            solutions
+                                            checkpoint
+                                            visitor
+                                    Just (StatusUpdateRequested submitStatusUpdate) → do
+                                        submitStatusUpdate $
+                                            VisitorWorkerStatusUpdate
+                                                (DList.toList solutions)
+                                                (VisitorWorkload initial_path
+                                                 .
+                                                 checkpointFromCursor cursor
+                                                 .
+                                                 checkpointFromContext context
+                                                 $
+                                                 checkpoint
+                                                )
+                                        yield
+                                        loop
+                                            cursor
+                                            context
+                                            DList.empty
+                                            checkpoint
+                                            visitor
+                                    Just (WorkloadStealRequested submitWorkload notifyFailure) →
+                                        case tryStealWorkload initial_path context of
+                                            Nothing → do
+                                                notifyFailure
+                                                yield
+                                                loop
+                                                    cursor
+                                                    context
+                                                    solutions
+                                                    checkpoint
+                                                    visitor
+                                            Just (append_to_cursor,new_context,workload) → do
+                                                submitWorkload workload
+                                                yield
+                                                loop
+                                                    (cursor >< append_to_cursor)
+                                                    new_context
+                                                    solutions
+                                                    checkpoint
+                                                    visitor
+                                -- @-<< Respond to request >>
+    thread_id ← forkIO $ do
+        termination_reason ←
+            (loop
+                Seq.empty
+                Seq.empty
+                DList.empty
+                initial_checkpoint
+             .
+             walkVisitorDownPath initial_path
+             $
+             visitor
             )
-    thread_id ← forkIO $
-        (loop
-            Seq.empty
-            Seq.empty
-            DList.empty
-            initial_checkpoint
-         .
-         walkVisitorDownPath initial_path
-         $
-         visitor
-        )
-        `catch`
-        (IVar.write termination_status_ivar . VisitorWorkerFailed)
+            `catch`
+            (return . VisitorWorkerFailed)
+        readIORef pending_requests_ref
+            >>=
+            maybe
+                (return ())
+                (Fold.mapM_ $ \request → case request of
+                    StatusUpdateRequested submitStatusUpdate → return ()
+                    WorkloadStealRequested _ notifyFailure  → notifyFailure
+                )
+        finishedCallback termination_reason
     return $
         VisitorTWorkerEnvironment
             initial_path
             thread_id
-            pending_request_ref
-            termination_status_ivar
+            pending_requests_ref
 -- @+node:gcross.20110923164140.1260: *3* tryStealWorkload
 tryStealWorkload ::
     VisitorPath →
