@@ -51,8 +51,8 @@ data VisitorTWorkerEnvironment m α = VisitorTWorkerEnvironment
 type VisitorWorkerEnvironment α = VisitorTWorkerEnvironment Identity α
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
 data VisitorWorkerRequest α =
-    StatusUpdateRequested (VisitorWorkerStatusUpdate α → IO ()) (IO ())
-  | WorkloadStealRequested (VisitorWorkload → IO ()) (IO ())
+    StatusUpdateRequested (Maybe (VisitorWorkerStatusUpdate α) → IO ())
+  | WorkloadStealRequested (Maybe VisitorWorkload → IO ())
 -- @+node:gcross.20111026172030.1278: *3* VisitorWorkerRequestQueue
 type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
 -- @+node:gcross.20111020182554.1275: *3* VisitorWorkerStatusUpdate
@@ -142,8 +142,8 @@ forkWorkerThread
                                             solutions
                                             checkpoint
                                             visitor
-                                    Just (StatusUpdateRequested submitStatusUpdate _) → do
-                                        submitStatusUpdate $
+                                    Just (StatusUpdateRequested submitMaybeStatusUpdate) → do
+                                        submitMaybeStatusUpdate . Just $
                                             VisitorWorkerStatusUpdate
                                                 (DList.toList solutions)
                                                 (VisitorWorkload initial_path
@@ -161,10 +161,10 @@ forkWorkerThread
                                             DList.empty
                                             checkpoint
                                             visitor
-                                    Just (WorkloadStealRequested submitWorkload notifyFailure) →
+                                    Just (WorkloadStealRequested submitMaybeWorkload) →
                                         case tryStealWorkload initial_path context of
                                             Nothing → do
-                                                notifyFailure
+                                                submitMaybeWorkload Nothing
                                                 yield
                                                 loop
                                                     cursor
@@ -173,7 +173,7 @@ forkWorkerThread
                                                     checkpoint
                                                     visitor
                                             Just (append_to_cursor,new_context,workload) → do
-                                                submitWorkload workload
+                                                submitMaybeWorkload (Just workload)
                                                 yield
                                                 loop
                                                     (cursor >< append_to_cursor)
@@ -203,8 +203,8 @@ forkWorkerThread
                 maybe
                     (return ())
                     (Fold.mapM_ $ \request → case request of
-                        StatusUpdateRequested _ notifyNoStatusUpdateAvailable → notifyNoStatusUpdateAvailable
-                        WorkloadStealRequested _ notifyFailure → notifyFailure
+                        StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
+                        WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
                     )
         finishedCallback termination_reason
     return $
