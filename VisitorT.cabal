@@ -23,11 +23,13 @@ Library
         containers == 0.4.*,
         data-ivar == 0.30.*,
         dlist == 0.5.*,
+        either-unwrap == 1.1.*,
         higherorder == 0.0.*,
         monad-loops == 0.3.*,
         MonadCatchIO-transformers == 0.2.*,
         operational == 0.2.*,
         PSQueue == 1.1.*,
+        reactive-banana >= 0.4.3 && < 0.5,
         sequential-index == 0.2.*,
         stm == 2.2.*,
         transformers == 0.2.*
@@ -36,6 +38,7 @@ Library
         Control.Monad.Trans.Visitor.Checkpoint
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Worker
+        Control.Monad.Trans.Visitor.Worker.Reactive
         Control.Monad.Trans.Visitor.WorkerQueue
     Extensions:
 -- @-leo
