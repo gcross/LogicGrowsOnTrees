@@ -67,8 +67,7 @@ data VisitorStep =
 -- @+node:gcross.20110923120247.1209: *3* VisitorWalkError
 data VisitorWalkError =
     VisitorTerminatedBeforeEndOfWalk
-  | ChoiceStepAtCachePoint
-  | CacheStepAtChoicePoint
+  | PastVisitorIsInconsistentWithPresentVisitor
   deriving (Eq,Show,Typeable)
 
 instance Exception VisitorWalkError
@@ -143,13 +142,10 @@ walkVisitorTDownPath path@(viewl → step :< tail) =
             throw VisitorTerminatedBeforeEndOfWalk
         (Cache _ :>>= k,CacheStep cache) →
             walkVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
-        (Cache _ :>>= _,ChoiceStep _) →
-            throw ChoiceStepAtCachePoint
         (Choice left _ :>>= k,ChoiceStep LeftBranch) →
             walkVisitorTDownPath tail (left >>= VisitorT . k)
         (Choice _ right :>>= k,ChoiceStep RightBranch) →
             walkVisitorTDownPath tail (right >>= VisitorT . k)
-        (Choice _ _ :>>= _,CacheStep _) →
-            throw CacheStepAtChoicePoint
+        _ → throw PastVisitorIsInconsistentWithPresentVisitor
 -- @-others
 -- @-leo

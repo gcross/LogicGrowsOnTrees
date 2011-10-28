@@ -19,8 +19,9 @@ import Control.Monad.Trans.Writer
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.Functor.Identity
+import Data.List (mapAccumL)
 import Data.Maybe (mapMaybe)
-import Data.Sequence (Seq)
+import Data.Sequence (Seq,(|>),(><))
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize,decode,encode)
 
@@ -30,7 +31,8 @@ import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
 import Test.HUnit ((@?=),assertBool)
-import Test.QuickCheck
+import Test.QuickCheck.Arbitrary hiding ((><))
+import Test.QuickCheck.Gen
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
@@ -46,12 +48,16 @@ instance (Serialize α, Arbitrary α) ⇒ Arbitrary (Visitor α) where
     arbitrary = sized arb
       where
         arb :: Int → Gen (Visitor α)
-        arb 0 = oneof [null,result,cached]
+        arb 0 = frequency
+                    [(2,result)
+                    ,(1,null)
+                    ,(1,cached)
+                    ]
         arb n = frequency
-                    [(1,bindToArbitrary n null)
-                    ,(1,bindToArbitrary n result)
+                    [(2,bindToArbitrary n result)
+                    ,(1,bindToArbitrary n null)
                     ,(1,bindToArbitrary n cached)
-                    -- ,(2,liftM2 ChoiceCheckpoint (arb (n `div` 2)) (arb (n `div` 2)))
+                    ,(2,liftM2 mplus (arb (n `div` 2)) (arb (n `div` 2)))
                     ]
         null, result, cached :: Gen (Visitor α)
         null = return mzero
@@ -164,8 +170,20 @@ main = defaultMain
         -- @+node:gcross.20111028153100.1286: *4* runVisitorWithCheckpointing
         ,testGroup "runVisitorWithCheckpointing"
             -- @+others
+            -- @+node:gcross.20111028181213.1308: *5* checkpoints accurately capture remaining search space
+            [testProperty "checkpoints accurately capture remaining search space" $ \(v :: Visitor Int) →
+                let (final_results,results_using_progressive_checkpoints) =
+                        mapAccumL
+                            (\solutions_so_far (maybe_new_solution,checkpoint) →
+                                let new_solutions :: Seq (VisitorSolution Int)
+                                    new_solutions = maybe solutions_so_far (solutions_so_far |>) maybe_new_solution
+                                in (new_solutions,new_solutions >< Seq.fromList (mapMaybe fst (runVisitorThroughCheckpoint checkpoint v)))
+                            )
+                            Seq.empty
+                            (runVisitorWithCheckpointing v)
+                in all (== final_results) results_using_progressive_checkpoints
             -- @+node:gcross.20111028170027.1315: *5* example instances
-            [testGroup "example instances"
+            ,testGroup "example instances"
                 -- @+others
                 -- @+node:gcross.20111028153100.1291: *6* mplus
                 [testGroup "mplus"
@@ -226,42 +244,52 @@ main = defaultMain
             -- @+node:gcross.20110923164140.1192: *5* errors
             ,testGroup "errors"
                 -- @+others
-                -- @+node:gcross.20110923164140.1198: *6* CacheStepAtChoicePoint
-                [testCase "CacheStepAtChoicePoint" $
-                    try (
-                        evaluate
-                        .
-                        runVisitor
-                        $
-                        walkVisitorDownPath (Seq.singleton (CacheStep undefined :: VisitorStep)) (undefined `mplus` undefined :: Visitor Int)
-                    ) >>= (@?= Left CacheStepAtChoicePoint)
-                -- @+node:gcross.20110923164140.1196: *6* ChoiceStepAtCachePoint
-                ,testCase "ChoiceStepAtCachePoint" $
-                    try (
-                        evaluate
-                        .
-                        runVisitor
-                        $
-                        walkVisitorDownPath (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor Int)
-                    ) >>= (@?= Left ChoiceStepAtCachePoint)
-                -- @+node:gcross.20110923164140.1195: *6* VisitorTerminatedBeforeEndOfWalk (mzero)
-                ,testCase "DeadEnd (mzero)" $
-                    try (
-                        evaluate
-                        .
-                        runVisitor
-                        $
-                        walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (mzero :: Visitor Int)
-                    ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
-                -- @+node:gcross.20110923164140.1193: *6* VisitorTerminatedBeforeEndOfWalk (return)
-                ,testCase "DeadEnd (return)" $
-                    try (
-                        evaluate
-                        .
-                        runVisitor
-                        $
-                        walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (return (undefined :: Int))
-                    ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
+                -- @+node:gcross.20111028181213.1310: *6* PastVisitorIsInconsistentWithPresentVisitor
+                [testGroup "PastVisitorIsInconsistentWithPresentVisitor"
+                    -- @+others
+                    -- @+node:gcross.20110923164140.1198: *7* cache step with choice
+                    [testCase "cache step with choice" $
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            walkVisitorDownPath (Seq.singleton (CacheStep undefined :: VisitorStep)) (undefined `mplus` undefined :: Visitor Int)
+                        ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
+                    -- @+node:gcross.20110923164140.1196: *7* choice step with cache
+                    ,testCase "choice step with cache" $
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            walkVisitorDownPath (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor Int)
+                        ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
+                    -- @-others
+                    ]
+                -- @+node:gcross.20111028181213.1311: *6* VisitorTerminatedBeforeEndOfWalk
+                ,testGroup "VisitorTerminatedBeforeEndOfWalk"
+                    -- @+others
+                    -- @+node:gcross.20110923164140.1195: *7* mzero
+                    [testCase "mzero" $
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (mzero :: Visitor Int)
+                        ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
+                    -- @+node:gcross.20110923164140.1193: *7* return
+                    ,testCase "return" $
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (return (undefined :: Int))
+                        ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
+                    -- @-others
+                    ]
                 -- @-others
                 ]
             -- @-others

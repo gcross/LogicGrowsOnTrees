@@ -231,43 +231,43 @@ stepVisitorTThroughCheckpoint ::
     VisitorCheckpoint →
     VisitorT m α →
     m (Maybe α,Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α))
-stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \view → case view of
-    Return x → return (Just x, moveUpMyContext)
-    Null :>>= _ → return (Nothing, moveUpMyContext)
-    Cache mx :>>= k → fmap (Nothing,) $
-        case checkpoint of
-            CacheCheckpoint cache rest_checkpoint →
-                return
-                .
-                moveDownMyContext (CacheContextStep cache) rest_checkpoint
-                .
-                either error (VisitorT . k)
-                .
-                decode
-                $
-                cache
-            Unexplored →
-                mx >>= \x → return $
-                moveDownMyContext
-                    (CacheContextStep (encode x))
-                    Unexplored
-                    (VisitorT . k $ x)
-            Explored → return moveUpMyContext
-            ChoiceCheckpoint _ _ → throw ChoiceStepAtCachePoint
-    Choice left right :>>= k → return . (Nothing,) $
-        case checkpoint of
-            ChoiceCheckpoint left_checkpoint right_checkpoint →
-                moveDownMyContext
-                    (LeftChoiceContextStep right_checkpoint (right >>= VisitorT . k))
-                    left_checkpoint
-                    (left >>= VisitorT . k)
-            Unexplored →
-                moveDownMyContext
-                    (LeftChoiceContextStep Unexplored (right >>= VisitorT . k))
-                    Unexplored
-                    (left >>= VisitorT . k)
-            Explored → moveUpMyContext
-            CacheCheckpoint _ _ → throw CacheStepAtChoicePoint
+stepVisitorTThroughCheckpoint context Explored = const $ return (Nothing,moveUpContext context)
+stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \view → case (view,checkpoint) of
+    (Return x,Unexplored) → return (Just x, moveUpMyContext)
+    (Null :>>= _,Unexplored) → return (Nothing, moveUpMyContext)
+    (Cache mx :>>= k,CacheCheckpoint cache rest_checkpoint) →
+        return
+        .
+        (Nothing,)
+        .
+        moveDownMyContext (CacheContextStep cache) rest_checkpoint
+        .
+        either error (VisitorT . k)
+        .
+        decode
+        $
+        cache
+    (Cache mx :>>= k,Unexplored) →
+        mx >>= \x → return . (Nothing,) $
+        moveDownMyContext
+            (CacheContextStep (encode x))
+            Unexplored
+            (VisitorT . k $ x)
+    (Choice left right :>>= k, ChoiceCheckpoint left_checkpoint right_checkpoint) → return
+        (Nothing
+        ,moveDownMyContext
+            (LeftChoiceContextStep right_checkpoint (right >>= VisitorT . k))
+            left_checkpoint
+            (left >>= VisitorT . k)
+        )
+    (Choice left right :>>= k,Unexplored) → return
+        (Nothing
+        ,moveDownMyContext
+            (LeftChoiceContextStep Unexplored (right >>= VisitorT . k))
+            Unexplored
+            (left >>= VisitorT . k)
+        )
+    _ → throw PastVisitorIsInconsistentWithPresentVisitor
   where
     moveUpMyContext = moveUpContext context
     moveDownMyContext step checkpoint visitor = moveDownContext step checkpoint visitor context
