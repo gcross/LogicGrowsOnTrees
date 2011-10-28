@@ -47,14 +47,14 @@ type VisitorCheckpointCursor = Seq VisitorCheckpointDifferential
 -- @+node:gcross.20111020151748.1286: *3* VisitorCheckpointDifferential
 data VisitorCheckpointDifferential =
     CacheCheckpointD ByteString
-  | ChoiceCheckpointD WhichBranchActive VisitorCheckpoint
+  | ChoiceCheckpointD Branch VisitorCheckpoint
   deriving (Eq,Read,Show)
 -- @+node:gcross.20110923164140.1178: *3* VisitorTContext
 type VisitorTContext m α = Seq (VisitorTContextStep m α)
 type VisitorContext α = VisitorTContext Identity α
 -- @+node:gcross.20110923120247.1196: *3* VisitorTContextStep
 data VisitorTContextStep m α =
-    BranchContextStep WhichBranchActive
+    BranchContextStep Branch
   | CacheContextStep ByteString
   | LeftChoiceContextStep VisitorCheckpoint (VisitorT m α)
 
@@ -95,8 +95,8 @@ applyContextToLabel (viewl → step :< rest) =
 checkpointFromContext :: VisitorTContext m α → VisitorCheckpoint → VisitorCheckpoint
 checkpointFromContext = checkpointFromSequence $
     \step → case step of
-        BranchContextStep LeftBranchActive → flip ChoiceCheckpoint Explored
-        BranchContextStep RightBranchActive → ChoiceCheckpoint Explored
+        BranchContextStep LeftBranch → flip ChoiceCheckpoint Explored
+        BranchContextStep RightBranch → ChoiceCheckpoint Explored
         CacheContextStep cache → CacheCheckpoint cache
         LeftChoiceContextStep right_checkpoint _ → flip ChoiceCheckpoint right_checkpoint
 -- @+node:gcross.20111020182554.1265: *3* checkpointFromCursor
@@ -104,8 +104,8 @@ checkpointFromCursor :: VisitorCheckpointCursor → VisitorCheckpoint → Visito
 checkpointFromCursor = checkpointFromSequence $
     \step → case step of
         CacheCheckpointD cache → CacheCheckpoint cache
-        ChoiceCheckpointD LeftBranchActive right_checkpoint → flip ChoiceCheckpoint right_checkpoint
-        ChoiceCheckpointD RightBranchActive left_checkpoint → ChoiceCheckpoint left_checkpoint
+        ChoiceCheckpointD LeftBranch right_checkpoint → flip ChoiceCheckpoint right_checkpoint
+        ChoiceCheckpointD RightBranch left_checkpoint → ChoiceCheckpoint left_checkpoint
 -- @+node:gcross.20111020182554.1267: *3* checkpointFromSequence
 checkpointFromSequence ::
     (α → (VisitorCheckpoint → VisitorCheckpoint)) →
@@ -146,7 +146,7 @@ moveUpContext (viewr → EmptyR) = Nothing
 moveUpContext (viewr → rest_context :> BranchContextStep _) = moveUpContext rest_context
 moveUpContext (viewr → rest_context :> CacheContextStep _) = moveUpContext rest_context
 moveUpContext (viewr → rest_context :> LeftChoiceContextStep right_checkpoint right_visitor) =
-    Just (rest_context |> BranchContextStep RightBranchActive
+    Just (rest_context |> BranchContextStep RightBranch
          ,right_checkpoint
          ,right_visitor
          )
@@ -160,7 +160,7 @@ pathFromCursor = fmap pathStepFromCursorDifferential
 pathStepFromContextStep :: VisitorTContextStep m α → VisitorStep
 pathStepFromContextStep (BranchContextStep active_branch) = ChoiceStep active_branch
 pathStepFromContextStep (CacheContextStep cache) = CacheStep cache
-pathStepFromContextStep (LeftChoiceContextStep _ _) = ChoiceStep LeftBranchActive
+pathStepFromContextStep (LeftChoiceContextStep _ _) = ChoiceStep LeftBranch
 -- @+node:gcross.20111020182554.1271: *3* pathStepFromCursorDifferential
 pathStepFromCursorDifferential :: VisitorCheckpointDifferential → VisitorStep
 pathStepFromCursorDifferential (CacheCheckpointD cache) = CacheStep cache

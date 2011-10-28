@@ -41,7 +41,7 @@ data VisitorSolution α = VisitorSolution VisitorLabel α
 -- @+node:gcross.20110923120247.1206: *3* VisitorStep
 data VisitorStep =
     CacheStep ByteString
- |  ChoiceStep WhichBranchActive
+ |  ChoiceStep Branch
 -- @+node:gcross.20110923120247.1209: *3* VisitorWalkError
 data VisitorWalkError =
     VisitorTerminatedBeforeEndOfWalk
@@ -50,10 +50,10 @@ data VisitorWalkError =
   deriving (Eq,Show,Typeable)
 
 instance Exception VisitorWalkError
--- @+node:gcross.20111019113757.1405: *3* WhichBranchActive
-data WhichBranchActive =
-    LeftBranchActive
-  | RightBranchActive
+-- @+node:gcross.20111019113757.1405: *3* Branch
+data Branch =
+    LeftBranch
+  | RightBranch
   deriving (Eq,Read,Show)
 -- @+node:gcross.20110923120247.1208: ** Functions
 -- @+node:gcross.20111020151748.1291: *3* applyPathToLabel
@@ -69,16 +69,16 @@ applyPathToLabel (viewl → step :< rest) =
 labelFromPath :: VisitorPath → VisitorLabel
 labelFromPath = flip applyPathToLabel rootLabel
 -- @+node:gcross.20111019113757.1407: *3* labelTransformerForBranch
-labelTransformerForBranch :: WhichBranchActive → (VisitorLabel → VisitorLabel)
-labelTransformerForBranch LeftBranchActive = leftChildLabel
-labelTransformerForBranch RightBranchActive = rightChildLabel
+labelTransformerForBranch :: Branch → (VisitorLabel → VisitorLabel)
+labelTransformerForBranch LeftBranch = leftChildLabel
+labelTransformerForBranch RightBranch = rightChildLabel
 -- @+node:gcross.20111019113757.1414: *3* leftChildLabel
 leftChildLabel :: VisitorLabel → VisitorLabel
 leftChildLabel = VisitorLabel . fromJust . SequentialIndex.leftChild . unwrapVisitorLabel
 -- @+node:gcross.20111019113757.1403: *3* oppositeBranchOf
-oppositeBranchOf :: WhichBranchActive → WhichBranchActive
-oppositeBranchOf LeftBranchActive = RightBranchActive
-oppositeBranchOf RightBranchActive = LeftBranchActive
+oppositeBranchOf :: Branch → Branch
+oppositeBranchOf LeftBranch = RightBranch
+oppositeBranchOf RightBranch = LeftBranch
 -- @+node:gcross.20111019113757.1416: *3* rightChildLabel
 rightChildLabel :: VisitorLabel → VisitorLabel
 rightChildLabel = VisitorLabel . fromJust . SequentialIndex.rightChild . unwrapVisitorLabel
@@ -125,9 +125,9 @@ walkVisitorTDownPath path@(viewl → step :< tail) =
             walkVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
         (Cache _ :>>= _,ChoiceStep _) →
             throw ChoiceStepAtCachePoint
-        (Choice left _ :>>= k,ChoiceStep LeftBranchActive) →
+        (Choice left _ :>>= k,ChoiceStep LeftBranch) →
             walkVisitorTDownPath tail (left >>= VisitorT . k)
-        (Choice _ right :>>= k,ChoiceStep RightBranchActive) →
+        (Choice _ right :>>= k,ChoiceStep RightBranch) →
             walkVisitorTDownPath tail (right >>= VisitorT . k)
         (Choice _ _ :>>= _,CacheStep _) →
             throw CacheStepAtChoicePoint

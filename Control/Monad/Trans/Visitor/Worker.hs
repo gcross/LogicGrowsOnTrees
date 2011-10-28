@@ -266,7 +266,7 @@ tryStealWorkload initial_path = go Seq.empty
         CacheContextStep cache →
             go (cursor |> CacheCheckpointD cache) rest_context
         LeftChoiceContextStep other_checkpoint _ →
-            let new_cursor = (cursor |> ChoiceCheckpointD RightBranchActive other_checkpoint)
+            let new_cursor = (cursor |> ChoiceCheckpointD RightBranch other_checkpoint)
             in Just
                 (new_cursor
                 ,rest_context

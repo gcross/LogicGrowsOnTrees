@@ -94,8 +94,8 @@ main = defaultMain
             ,testCase "cache" $ do (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (CacheStep (encode (42 :: Int))))) (cache (undefined :: Int)) @?= [42]
             -- @+node:gcross.20110923164140.1199: *5* choice
             ,testCase "choice" $ do
-                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep LeftBranchActive))) (return 42 `mplus` undefined) @?= [42]
-                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep RightBranchActive))) (undefined `mplus` return 42) @?= [42]
+                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return 42 `mplus` undefined) @?= [42]
+                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return 42) @?= [42]
             -- @+node:gcross.20110923164140.1192: *5* errors
             ,testGroup "errors"
                 -- @+others
@@ -152,7 +152,7 @@ main = defaultMain
             -- @+node:gcross.20110923164140.1221: *5* choice step
             ,testCase "choice step" $ do
                 let (transformed_visitor,log) =
-                        runWriter . walkVisitorTDownPath (Seq.singleton (ChoiceStep RightBranchActive)) $ do
+                        runWriter . walkVisitorTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
                             lift (tell [1])
                             (lift (tell [2]) `mplus` lift (tell [3]))
                             lift (tell [4])
