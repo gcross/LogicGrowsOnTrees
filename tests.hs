@@ -5,6 +5,7 @@
 -- @+<< Language extensions >>
 -- @+node:gcross.20101114125204.1281: ** << Language extensions >>
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-<< Language extensions >>
 
@@ -20,7 +21,9 @@ import qualified Data.ByteString as ByteString
 import Data.Functor.Identity
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
-import Data.Serialize (decode,encode)
+import Data.Serialize (Serialize,decode,encode)
+
+import Debug.Trace (trace)
 
 import Test.Framework
 import Test.Framework.Providers.HUnit
@@ -34,6 +37,46 @@ import Control.Monad.Trans.Visitor.Path
 -- @-<< Import needed modules >>
 
 -- @+others
+-- @+node:gcross.20111028153100.1302: ** Arbitrary
+-- @+node:gcross.20111028170027.1297: *3* Branch
+instance Arbitrary Branch where arbitrary = elements [LeftBranch,RightBranch]
+-- @+node:gcross.20111028170027.1307: *3* Visitor
+instance (Serialize α, Arbitrary α) ⇒ Arbitrary (Visitor α) where
+    arbitrary = sized arb
+      where
+        arb :: Int → Gen (Visitor α)
+        arb 0 = oneof [null,result,cached]
+        arb n = frequency
+                    [(1,bindToArbitrary n null)
+                    ,(1,bindToArbitrary n result)
+                    ,(1,bindToArbitrary n cached)
+                    -- ,(2,liftM2 ChoiceCheckpoint (arb (n `div` 2)) (arb (n `div` 2)))
+                    ]
+        null, result, cached :: Gen (Visitor α)
+        null = return mzero
+        result = fmap return arbitrary
+        cached = fmap cache arbitrary
+
+        bindToArbitrary :: Int → Gen (Visitor α) → Gen (Visitor α)
+        bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
+-- @+node:gcross.20111028153100.1303: *3* VisitorCheckpoint
+instance Arbitrary VisitorCheckpoint where
+    arbitrary = sized arb
+      where
+        arb 0 = elements [Explored,Unexplored]
+        arb n = frequency
+                    [(1,return Explored)
+                    ,(1,return Unexplored)
+                    ,(1,liftM2 CacheCheckpoint (fmap encode (arbitrary :: Gen Int)) (arb (n-1)))
+                    ,(2,liftM2 ChoiceCheckpoint (arb (n `div` 2)) (arb (n `div` 2)))
+                    ]
+-- @+node:gcross.20111028170027.1298: ** Functions
+-- @+node:gcross.20111028170027.1299: *3* echo
+echo :: Show α ⇒ α → α
+echo x = trace (show x) x
+-- @+node:gcross.20111028170027.1301: *3* echoWithLabel
+echoWithLabel :: Show α ⇒ String → α → α
+echoWithLabel label x = trace (label ++ " " ++ show x) x
 -- @-others
 
 main = defaultMain
@@ -78,6 +121,74 @@ main = defaultMain
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return 42
                 ) @?= ([42,42],[1,2,3])
+            -- @-others
+            ]
+        -- @-others
+        ]
+    -- @+node:gcross.20111028153100.1285: *3* Control.Monad.Trans.Checkpoint
+    ,testGroup "Control.Monad.Trans.Checkpoint"
+        -- @+others
+        -- @+node:gcross.20111028153100.1300: *4* contextFromCheckpoint
+        [testGroup "contextFromCheckpoint"
+            -- @+others
+            -- @+node:gcross.20111028170027.1296: *5* branch
+            [testProperty "branch" $ \(checkpoint :: VisitorCheckpoint) (active_branch :: Branch) →
+                checkpointFromContext (Seq.singleton (BranchContextStep active_branch)) checkpoint
+                ==
+                (mergeCheckpointRoot $ case active_branch of
+                    LeftBranch → ChoiceCheckpoint checkpoint Explored
+                    RightBranch → ChoiceCheckpoint Explored checkpoint)
+            -- @+node:gcross.20111028170027.1303: *5* cache
+            ,testProperty "cache" $ \(checkpoint :: VisitorCheckpoint) (i :: Int) →
+                checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
+                ==
+                (mergeCheckpointRoot $ CacheCheckpoint (encode i) checkpoint)
+            -- @+node:gcross.20111028170027.1305: *5* choice
+            ,testProperty "choice" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor Int) (other_checkpoint :: VisitorCheckpoint) →
+                (checkpointFromContext (Seq.singleton (LeftChoiceContextStep other_checkpoint other_visitor)) inner_checkpoint)
+                ==
+                (mergeCheckpointRoot $ ChoiceCheckpoint inner_checkpoint other_checkpoint)
+            -- @+node:gcross.20111028170027.1295: *5* empty
+            ,testProperty "empty" $ \(checkpoint :: VisitorCheckpoint) →
+                checkpointFromContext Seq.empty checkpoint == checkpoint
+            -- @-others
+            ]
+        -- @+node:gcross.20111028153100.1286: *4* runVisitorWithCheckpointing
+        ,testGroup "runVisitorWithCheckpointing"
+            -- @+others
+            -- @+node:gcross.20111028153100.1291: *5* mplus
+            [testGroup "mplus"
+                -- @+others
+                -- @+node:gcross.20111028153100.1293: *6* mzero + mzero
+                [testCase "mzero + mzero" $
+                    runVisitorWithCheckpointing (mzero `mplus` mzero :: Visitor Int)
+                    @?=
+                    [(Nothing,Unexplored)
+                    ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                    ]
+                -- @+node:gcross.20111028153100.1297: *6* mzero + return
+                ,testCase "mzero + return" $
+                    runVisitorWithCheckpointing (mzero `mplus` return 1 :: Visitor Int)
+                    @?=
+                    [(Nothing,Unexplored)
+                    ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                    ,(Just (VisitorSolution (labelFromBranching [RightBranch]) 1),Explored)
+                    ]
+                -- @+node:gcross.20111028153100.1298: *6* return + mzero
+                -- @+at
+                --  ,testCase "return + mzero" $
+                --      runVisitorWithCheckpointing (return 1 `mplus` mzero :: Visitor Int)
+                --      @?=
+                --      [(Nothing,Unexplored)
+                --      ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                --      ,(Just (VisitorSolution (labelFromBranching [LeftBranch]) 1),Explored)
+                --      ]
+                -- @-others
+                ]
+            -- @+node:gcross.20111028153100.1287: *5* mzero
+            ,testCase "mzero" $ runVisitorWithCheckpointing (mzero :: Visitor Int) @?= []
+            -- @+node:gcross.20111028153100.1289: *5* return
+            ,testCase "return" $ runVisitorWithCheckpointing (return 0 :: Visitor Int) @?= [(Just (VisitorSolution rootLabel 0),Explored)]
             -- @-others
             ]
         -- @-others
