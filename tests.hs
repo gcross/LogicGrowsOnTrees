@@ -49,15 +49,16 @@ instance (Serialize α, Arbitrary α) ⇒ Arbitrary (Visitor α) where
       where
         arb :: Int → Gen (Visitor α)
         arb 0 = frequency
-                    [(2,result)
+                    [(3,result)
                     ,(1,null)
-                    ,(1,cached)
+                    ,(2,cached)
                     ]
         arb n = frequency
-                    [(2,bindToArbitrary n result)
+                    [(3,result)
+                    ,(2,bindToArbitrary n result)
                     ,(1,bindToArbitrary n null)
-                    ,(1,bindToArbitrary n cached)
-                    ,(2,liftM2 mplus (arb (n `div` 2)) (arb (n `div` 2)))
+                    ,(2,bindToArbitrary n cached)
+                    ,(4,liftM2 mplus (arb (n `div` 2)) (arb (n `div` 2)))
                     ]
         null, result, cached :: Gen (Visitor α)
         null = return mzero
