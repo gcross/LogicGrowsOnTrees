@@ -74,12 +74,12 @@ instance Show α ⇒ Show (Visitor α) where
 -- @+node:gcross.20110722110408.1180: *3* cache
 cache :: (Monad m, Serialize x) ⇒ x → VisitorT m x
 cache = VisitorT . singleton . Cache . return
--- @+node:gcross.20110722110408.1170: *3* gatherVisitorResults
-gatherVisitorResults :: Visitor α → [α]
-gatherVisitorResults = runIdentity . runVisitorTAndGatherResults
 -- @+node:gcross.20110722110408.1171: *3* runAndCache
 runAndCache :: Serialize x ⇒ m x → VisitorT m x
 runAndCache = VisitorT . singleton . Cache
+-- @+node:gcross.20110722110408.1170: *3* runVisitor
+runVisitor :: Visitor α → [α]
+runVisitor = runIdentity . runVisitorTAndGatherResults
 -- @+node:gcross.20110722110408.1182: *3* runVisitorT
 runVisitorT :: Monad m ⇒ VisitorT m α → m ()
 runVisitorT = viewT . unwrapVisitorT >=> \view →

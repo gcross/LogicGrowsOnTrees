@@ -86,17 +86,17 @@ main = defaultMain
     -- @+node:gcross.20110923164140.1187: *3* Control.Monad.Trans.Visitor
     [testGroup "Control.Monad.Trans.Visitor"
         -- @+others
-        -- @+node:gcross.20110722110408.1173: *4* gatherVisitorResults
-        [testGroup "gatherVisitorResults"
+        -- @+node:gcross.20110722110408.1173: *4* runVisitor
+        ,testGroup "runVisitor"
             -- @+others
             -- @+node:gcross.20110722110408.1177: *5* return
-            [testCase "return" $ gatherVisitorResults (return ()) @?= [()]
+            [testCase "return" $ runVisitor (return ()) @?= [()]
             -- @+node:gcross.20110722110408.1174: *5* mzero
-            ,testCase "mzero" $ gatherVisitorResults (mzero :: Visitor ()) @?= []
+            ,testCase "mzero" $ runVisitor (mzero :: Visitor ()) @?= []
             -- @+node:gcross.20110722110408.1178: *5* mplus
-            ,testCase "mplus" $ gatherVisitorResults (return 1 `mplus` return 2) @?= [1,2]
+            ,testCase "mplus" $ runVisitor (return 1 `mplus` return 2) @?= [1,2]
             -- @+node:gcross.20110722110408.1179: *5* cache
-            ,testCase "cache" $ gatherVisitorResults (cache 42) @?= [42::Int]
+            ,testCase "cache" $ runVisitor (cache 42) @?= [42::Int]
             -- @-others
             ]
         -- @+node:gcross.20110923164140.1202: *4* runVisitorT
@@ -200,13 +200,13 @@ main = defaultMain
         [testGroup "walkVisitor"
             -- @+others
             -- @+node:gcross.20110923164140.1191: *5* null path
-            [testCase "null path" $ (gatherVisitorResults . walkVisitorDownPath Seq.empty) (return 42) @?= [42]
+            [testCase "null path" $ (runVisitor . walkVisitorDownPath Seq.empty) (return 42) @?= [42]
             -- @+node:gcross.20110923164140.1200: *5* cache
-            ,testCase "cache" $ do (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (CacheStep (encode (42 :: Int))))) (cache (undefined :: Int)) @?= [42]
+            ,testCase "cache" $ do (runVisitor . walkVisitorDownPath (Seq.singleton (CacheStep (encode (42 :: Int))))) (cache (undefined :: Int)) @?= [42]
             -- @+node:gcross.20110923164140.1199: *5* choice
             ,testCase "choice" $ do
-                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return 42 `mplus` undefined) @?= [42]
-                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return 42) @?= [42]
+                (runVisitor . walkVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return 42 `mplus` undefined) @?= [42]
+                (runVisitor . walkVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return 42) @?= [42]
             -- @+node:gcross.20110923164140.1192: *5* errors
             ,testGroup "errors"
                 -- @+others
@@ -215,7 +215,7 @@ main = defaultMain
                     try (
                         evaluate
                         .
-                        gatherVisitorResults
+                        runVisitor
                         $
                         walkVisitorDownPath (Seq.singleton (CacheStep undefined :: VisitorStep)) (undefined `mplus` undefined :: Visitor Int)
                     ) >>= (@?= Left CacheStepAtChoicePoint)
@@ -224,7 +224,7 @@ main = defaultMain
                     try (
                         evaluate
                         .
-                        gatherVisitorResults
+                        runVisitor
                         $
                         walkVisitorDownPath (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor Int)
                     ) >>= (@?= Left ChoiceStepAtCachePoint)
@@ -233,7 +233,7 @@ main = defaultMain
                     try (
                         evaluate
                         .
-                        gatherVisitorResults
+                        runVisitor
                         $
                         walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (mzero :: Visitor Int)
                     ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
@@ -242,7 +242,7 @@ main = defaultMain
                     try (
                         evaluate
                         .
-                        gatherVisitorResults
+                        runVisitor
                         $
                         walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (return (undefined :: Int))
                     ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
