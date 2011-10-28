@@ -19,6 +19,8 @@ import Control.Monad ((>=>))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
+import Data.Foldable as Fold
+import Data.Foldable (Foldable)
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (fromJust)
 import Data.Sequence (Seq,viewl,ViewL(..))
@@ -31,13 +33,30 @@ import Control.Monad.Trans.Visitor
 -- @-<< Import needed modules >>
 
 -- @+others
+-- @+node:gcross.20111028153100.1295: ** Instances
+-- @+node:gcross.20111028153100.1296: *3* Show VisitorLabel
+instance Show VisitorLabel where
+    show = go rootLabel
+      where
+        go current_label original_label
+          | current_label == original_label = []
+        -- Note:  the following is counter-intuitive, but it makes sense if you think of it as
+        --        being where you need to go to get to the original label instead of where you
+        --        currently are with respect to the original label
+          | current_label > original_label = 'L':go (leftChildLabel current_label) original_label
+          | current_label < original_label = 'R':go (rightChildLabel current_label) original_label
 -- @+node:gcross.20110923120247.1204: ** Types
+-- @+node:gcross.20111019113757.1405: *3* Branch
+data Branch =
+    LeftBranch
+  | RightBranch
+  deriving (Eq,Read,Show)
 -- @+node:gcross.20111019113757.1409: *3* VisitorLabel
 newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq,Ord)
 -- @+node:gcross.20110923120247.1205: *3* VisitorPath
 type VisitorPath = Seq VisitorStep
 -- @+node:gcross.20111019113757.1250: *3* VisitorSolution
-data VisitorSolution α = VisitorSolution VisitorLabel α
+data VisitorSolution α = VisitorSolution VisitorLabel α deriving (Eq,Ord,Show)
 -- @+node:gcross.20110923120247.1206: *3* VisitorStep
 data VisitorStep =
     CacheStep ByteString
@@ -50,11 +69,6 @@ data VisitorWalkError =
   deriving (Eq,Show,Typeable)
 
 instance Exception VisitorWalkError
--- @+node:gcross.20111019113757.1405: *3* Branch
-data Branch =
-    LeftBranch
-  | RightBranch
-  deriving (Eq,Read,Show)
 -- @+node:gcross.20110923120247.1208: ** Functions
 -- @+node:gcross.20111020151748.1291: *3* applyPathToLabel
 applyPathToLabel :: VisitorPath → VisitorLabel → VisitorLabel
@@ -65,6 +79,9 @@ applyPathToLabel (viewl → step :< rest) =
     case step of
         ChoiceStep active_branch → labelTransformerForBranch active_branch
         CacheStep _ → id
+-- @+node:gcross.20111028153100.1294: *3* labelFromBranching
+labelFromBranching :: Foldable t ⇒ t Branch → VisitorLabel
+labelFromBranching = Fold.foldl' (flip labelTransformerForBranch) rootLabel
 -- @+node:gcross.20111020151748.1292: *3* labelFromPath
 labelFromPath :: VisitorPath → VisitorLabel
 labelFromPath = flip applyPathToLabel rootLabel
