@@ -6,6 +6,7 @@
 -- @+node:gcross.20111026172030.1275: ** << Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -19,6 +20,7 @@ import Control.Arrow ((&&&),second)
 import Control.Exception (Exception(..),SomeException)
 import Control.Concurrent (killThread)
 import Control.Monad ((>=>),unless)
+import Control.Monad.IO.Class
 
 import Data.Either.Unwrap (fromLeft,fromRight,isLeft,isRight)
 import Data.IORef (IORef,atomicModifyIORef)
@@ -50,14 +52,23 @@ newHandler = do
     (event_handler,callback) ← liftIO newAddHandler
     event ← fromAddHandler event_handler
     return (event,callback)
--- @+node:gcross.20111026172030.1277: *3* createWorkerReactiveNetwork
-createWorkerReactiveNetwork ::
+-- @+node:gcross.20111026213013.1279: *3* filterJust
+filterJust :: Event (Maybe a) → Event a
+filterJust = fmap fromJust . filterE isJust
+-- @+node:gcross.20111026172030.1277: *3* genericCreateVisitorTWorkerReactiveNetwork
+genericCreateVisitorTWorkerReactiveNetwork ::
+    (
+        (VisitorWorkerTerminationReason α → IO ()) →
+        VisitorT m α →
+        VisitorWorkload →
+        IO (VisitorWorkerEnvironment α)
+    ) →
     Event () →
     Event id →
     Event () →
     Event id →
     Event (Maybe VisitorWorkload) →
-    Visitor α →
+    VisitorT m α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
         ,Event (id,Maybe VisitorWorkload)
@@ -66,7 +77,8 @@ createWorkerReactiveNetwork ::
         ,Event SomeException
         )
 
-createWorkerReactiveNetwork
+genericCreateVisitorTWorkerReactiveNetwork
+    fork
     request_status_update_event
     request_workload_steal_event
     shutdown_event
@@ -163,7 +175,7 @@ createWorkerReactiveNetwork
                 [update_maybe_status_event_
                 ,(fmap (const Nothing) update_request_rejected_event)
                 ,fmap
-                    (\(Just (VisitorTWorkerEnvironment{workerInitialPath})) solutions →
+                    (\(Just (VisitorWorkerEnvironment{workerInitialPath})) solutions →
                         Just $
                         VisitorWorkerStatusUpdate
                             solutions
@@ -208,7 +220,7 @@ createWorkerReactiveNetwork
     reactimate
         .
         fmap (
-            forkWorkerThread workerTerminated visitor
+            fork workerTerminated visitor
             >=>
             newWorkerEnvironment
         )
@@ -232,9 +244,44 @@ createWorkerReactiveNetwork
         ,send_steal_workload_event
         ,failure_event
         )
--- @+node:gcross.20111026213013.1279: *3* filterJust
-filterJust :: Event (Maybe a) → Event a
-filterJust = fmap fromJust . filterE isJust
+-- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerNetwork
+createVisitorTWorkerReactiveNetwork ::
+    (Functor m, MonadIO m) ⇒
+    (∀ β. m β → IO β) →
+    Event () →
+    Event id →
+    Event () →
+    Event id →
+    Event (Maybe VisitorWorkload) →
+    VisitorT m α →
+    NetworkDescription
+        (Event (Maybe (VisitorWorkerStatusUpdate α))
+        ,Event (id,Maybe VisitorWorkload)
+        ,Event ()
+        ,Event id
+        ,Event SomeException
+        )
+createVisitorTWorkerReactiveNetwork run =
+    genericCreateVisitorTWorkerReactiveNetwork
+        (forkVisitorTWorkerThread run)
+-- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
+createVisitorWorkerReactiveNetwork ::
+    Event () →
+    Event id →
+    Event () →
+    Event id →
+    Event (Maybe VisitorWorkload) →
+    Visitor α →
+    NetworkDescription
+        (Event (Maybe (VisitorWorkerStatusUpdate α))
+        ,Event (id,Maybe VisitorWorkload)
+        ,Event ()
+        ,Event id
+        ,Event SomeException
+        )
+createVisitorWorkerReactiveNetwork =
+    genericCreateVisitorTWorkerReactiveNetwork
+        forkVisitorWorkerThread
 -- @+node:gcross.20111026213013.1282: *3* switch
 switch :: Event (Either a b) → (Event a,Event b)
 switch = (fmap fromLeft . filterE isLeft) &&& (fmap fromRight . filterE isRight)
