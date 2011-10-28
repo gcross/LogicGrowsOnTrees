@@ -82,39 +82,6 @@ main = defaultMain
             ]
         -- @-others
         ]
-    -- @+node:gcross.20110923164140.1224: *3* Control.Monad.Trans.Visitor.Checkpoint
-    ,testGroup "Control.Monad.Trans.Visitor.Checkpoint"
-        -- @+others
-        -- @+node:gcross.20110923164140.1225: *4* checkpointFromContext
-        [testGroup "checkpointFromContext"
-            -- @+others
-            -- @+node:gcross.20110923164140.1226: *5* null
-            [testCase "null" $ checkpointFromContext (Seq.empty :: Seq (VisitorCheckpointDifferential ())) @?= Unexplored
-            -- @+node:gcross.20110923164140.1227: *5* branch
-            ,testCase "branch" $
-                forM_ [True,False] $ \which_explored →
-                    checkpointFromContext (Seq.singleton (BranchCheckpointD which_explored :: VisitorCheckpointDifferential ()))
-                    @?= BranchCheckpoint which_explored Unexplored
-            -- @+node:gcross.20110923164140.1229: *5* cache
-            ,testProperty "cache" $ (\(cache :: ByteString) →
-                checkpointFromContext (Seq.singleton (CacheCheckpointD cache :: VisitorCheckpointDifferential ()))
-                == CacheCheckpoint cache Unexplored
-             ) . ByteString.pack
-            -- @+node:gcross.20110923164140.1233: *5* choice
-            ,testCase "choice" $ do
-                let checkpoint1 = BranchCheckpoint False Unexplored
-                    checkpoint2 = CacheCheckpoint ByteString.empty Unexplored
-                    testWith which_explored =
-                        checkpointFromContext . Seq.fromList $
-                            [ChoiceCheckpointD which_explored checkpoint1 undefined :: VisitorCheckpointDifferential ()
-                            ,CacheCheckpointD ByteString.empty
-                            ]
-                testWith False @?= ChoiceCheckpoint checkpoint2 checkpoint1
-                testWith True @?= ChoiceCheckpoint checkpoint1 checkpoint2
-            -- @-others
-            ]
-        -- @-others
-        ]
     -- @+node:gcross.20110923164140.1188: *3* Control.Monad.Trans.Visitor.Path
     ,testGroup "Control.Monad.Trans.Visitor.Path"
         -- @+others
@@ -122,34 +89,25 @@ main = defaultMain
         [testGroup "walkVisitor"
             -- @+others
             -- @+node:gcross.20110923164140.1191: *5* null path
-            [testCase "null path" $ (gatherVisitorResults . walkVisitor Seq.empty) (return 42) @?= [42]
+            [testCase "null path" $ (gatherVisitorResults . walkVisitorDownPath Seq.empty) (return 42) @?= [42]
             -- @+node:gcross.20110923164140.1200: *5* cache
-            ,testCase "cache" $ do (gatherVisitorResults . walkVisitor (Seq.singleton (CacheStep (encode (42 :: Int))))) (cache (undefined :: Int)) @?= [42]
+            ,testCase "cache" $ do (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (CacheStep (encode (42 :: Int))))) (cache (undefined :: Int)) @?= [42]
             -- @+node:gcross.20110923164140.1199: *5* choice
             ,testCase "choice" $ do
-                (gatherVisitorResults . walkVisitor (Seq.singleton (ChoiceStep False))) (return 42 `mplus` undefined) @?= [42]
-                (gatherVisitorResults . walkVisitor (Seq.singleton (ChoiceStep True))) (undefined `mplus` return 42) @?= [42]
+                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep LeftBranchActive))) (return 42 `mplus` undefined) @?= [42]
+                (gatherVisitorResults . walkVisitorDownPath (Seq.singleton (ChoiceStep RightBranchActive))) (undefined `mplus` return 42) @?= [42]
             -- @+node:gcross.20110923164140.1192: *5* errors
             ,testGroup "errors"
                 -- @+others
-                -- @+node:gcross.20110923164140.1193: *6* DeadEnd (return)
-                [testCase "DeadEnd (return)" $
+                -- @+node:gcross.20110923164140.1198: *6* CacheStepAtChoicePoint
+                [testCase "CacheStepAtChoicePoint" $
                     try (
                         evaluate
                         .
                         gatherVisitorResults
                         $
-                        walkVisitor (Seq.singleton (undefined :: VisitorStep)) (return (undefined :: Int))
-                    ) >>= (@?= Left DeadEnd)
-                -- @+node:gcross.20110923164140.1195: *6* DeadEnd (mzero)
-                ,testCase "DeadEnd (mzero)" $
-                    try (
-                        evaluate
-                        .
-                        gatherVisitorResults
-                        $
-                        walkVisitor (Seq.singleton (undefined :: VisitorStep)) (mzero :: Visitor Int)
-                    ) >>= (@?= Left DeadEnd)
+                        walkVisitorDownPath (Seq.singleton (CacheStep undefined :: VisitorStep)) (undefined `mplus` undefined :: Visitor Int)
+                    ) >>= (@?= Left CacheStepAtChoicePoint)
                 -- @+node:gcross.20110923164140.1196: *6* ChoiceStepAtCachePoint
                 ,testCase "ChoiceStepAtCachePoint" $
                     try (
@@ -157,17 +115,26 @@ main = defaultMain
                         .
                         gatherVisitorResults
                         $
-                        walkVisitor (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor Int)
+                        walkVisitorDownPath (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor Int)
                     ) >>= (@?= Left ChoiceStepAtCachePoint)
-                -- @+node:gcross.20110923164140.1198: *6* CacheStepAtChoicePoint
-                ,testCase "CacheStepAtChoicePoint" $
+                -- @+node:gcross.20110923164140.1195: *6* VisitorTerminatedBeforeEndOfWalk (mzero)
+                ,testCase "DeadEnd (mzero)" $
                     try (
                         evaluate
                         .
                         gatherVisitorResults
                         $
-                        walkVisitor (Seq.singleton (CacheStep undefined :: VisitorStep)) (undefined `mplus` undefined :: Visitor Int)
-                    ) >>= (@?= Left CacheStepAtChoicePoint)
+                        walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (mzero :: Visitor Int)
+                    ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
+                -- @+node:gcross.20110923164140.1193: *6* VisitorTerminatedBeforeEndOfWalk (return)
+                ,testCase "DeadEnd (return)" $
+                    try (
+                        evaluate
+                        .
+                        gatherVisitorResults
+                        $
+                        walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (return (undefined :: Int))
+                    ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
                 -- @-others
                 ]
             -- @-others
@@ -178,14 +145,14 @@ main = defaultMain
             -- @+node:gcross.20110923164140.1223: *5* cache step
             [testCase "cache step" $ do
                 let (transformed_visitor,log) =
-                        runWriter . walkVisitorT (Seq.singleton (CacheStep . encode $ (24 :: Int))) $ do
+                        runWriter . walkVisitorTDownPath (Seq.singleton (CacheStep . encode $ (24 :: Int))) $ do
                             runAndCache (tell [1] >> return (42 :: Int) :: Writer [Int] Int)
                 log @?= []
                 (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([24],[])
             -- @+node:gcross.20110923164140.1221: *5* choice step
             ,testCase "choice step" $ do
                 let (transformed_visitor,log) =
-                        runWriter . walkVisitorT (Seq.singleton (ChoiceStep True)) $ do
+                        runWriter . walkVisitorTDownPath (Seq.singleton (ChoiceStep RightBranchActive)) $ do
                             lift (tell [1])
                             (lift (tell [2]) `mplus` lift (tell [3]))
                             lift (tell [4])
