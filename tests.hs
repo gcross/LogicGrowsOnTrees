@@ -19,6 +19,7 @@ import Control.Monad.Trans.Writer
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.Functor.Identity
+import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize,decode,encode)
@@ -163,39 +164,47 @@ main = defaultMain
         -- @+node:gcross.20111028153100.1286: *4* runVisitorWithCheckpointing
         ,testGroup "runVisitorWithCheckpointing"
             -- @+others
-            -- @+node:gcross.20111028153100.1291: *5* mplus
-            [testGroup "mplus"
+            -- @+node:gcross.20111028170027.1315: *5* example instances
+            [testGroup "example instances"
                 -- @+others
-                -- @+node:gcross.20111028153100.1293: *6* mzero + mzero
-                [testCase "mzero + mzero" $
-                    runVisitorWithCheckpointing (mzero `mplus` mzero :: Visitor Int)
-                    @?=
-                    [(Nothing,Unexplored)
-                    ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                -- @+node:gcross.20111028153100.1291: *6* mplus
+                [testGroup "mplus"
+                    -- @+others
+                    -- @+node:gcross.20111028153100.1293: *7* mzero + mzero
+                    [testCase "mzero + mzero" $
+                        runVisitorWithCheckpointing (mzero `mplus` mzero :: Visitor Int)
+                        @?=
+                        [(Nothing,Unexplored)
+                        ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                        ]
+                    -- @+node:gcross.20111028153100.1297: *7* mzero + return
+                    ,testCase "mzero + return" $
+                        runVisitorWithCheckpointing (mzero `mplus` return 1 :: Visitor Int)
+                        @?=
+                        [(Nothing,Unexplored)
+                        ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                        ,(Just (VisitorSolution (labelFromBranching [RightBranch]) 1),Explored)
+                        ]
+                    -- @+node:gcross.20111028153100.1298: *7* return + mzero
+                    -- @+at
+                    --  ,testCase "return + mzero" $
+                    --      runVisitorWithCheckpointing (return 1 `mplus` mzero :: Visitor Int)
+                    --      @?=
+                    --      [(Nothing,Unexplored)
+                    --      ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                    --      ,(Just (VisitorSolution (labelFromBranching [LeftBranch]) 1),Explored)
+                    --      ]
+                    -- @-others
                     ]
-                -- @+node:gcross.20111028153100.1297: *6* mzero + return
-                ,testCase "mzero + return" $
-                    runVisitorWithCheckpointing (mzero `mplus` return 1 :: Visitor Int)
-                    @?=
-                    [(Nothing,Unexplored)
-                    ,(Nothing,ChoiceCheckpoint Explored Unexplored)
-                    ,(Just (VisitorSolution (labelFromBranching [RightBranch]) 1),Explored)
-                    ]
-                -- @+node:gcross.20111028153100.1298: *6* return + mzero
-                -- @+at
-                --  ,testCase "return + mzero" $
-                --      runVisitorWithCheckpointing (return 1 `mplus` mzero :: Visitor Int)
-                --      @?=
-                --      [(Nothing,Unexplored)
-                --      ,(Nothing,ChoiceCheckpoint Explored Unexplored)
-                --      ,(Just (VisitorSolution (labelFromBranching [LeftBranch]) 1),Explored)
-                --      ]
+                -- @+node:gcross.20111028153100.1287: *6* mzero
+                ,testCase "mzero" $ runVisitorWithCheckpointing (mzero :: Visitor Int) @?= []
+                -- @+node:gcross.20111028153100.1289: *6* return
+                ,testCase "return" $ runVisitorWithCheckpointing (return 0 :: Visitor Int) @?= [(Just (VisitorSolution rootLabel 0),Explored)]
                 -- @-others
                 ]
-            -- @+node:gcross.20111028153100.1287: *5* mzero
-            ,testCase "mzero" $ runVisitorWithCheckpointing (mzero :: Visitor Int) @?= []
-            -- @+node:gcross.20111028153100.1289: *5* return
-            ,testCase "return" $ runVisitorWithCheckpointing (return 0 :: Visitor Int) @?= [(Just (VisitorSolution rootLabel 0),Explored)]
+            -- @+node:gcross.20111028170027.1316: *5* same results as runVisitor
+            ,testProperty "same results as runVisitor" $ \(v :: Visitor Int) →
+                runVisitor v == fmap visitorSolutionResult (mapMaybe fst (runVisitorWithCheckpointing v))
             -- @-others
             ]
         -- @-others

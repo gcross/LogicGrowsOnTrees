@@ -56,7 +56,10 @@ newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } de
 -- @+node:gcross.20110923120247.1205: *3* VisitorPath
 type VisitorPath = Seq VisitorStep
 -- @+node:gcross.20111019113757.1250: *3* VisitorSolution
-data VisitorSolution α = VisitorSolution VisitorLabel α deriving (Eq,Ord,Show)
+data VisitorSolution α = VisitorSolution
+    {   visitorSolutionLabel :: VisitorLabel
+    ,   visitorSolutionResult :: α
+    } deriving (Eq,Ord,Show)
 -- @+node:gcross.20110923120247.1206: *3* VisitorStep
 data VisitorStep =
     CacheStep ByteString
