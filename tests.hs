@@ -86,6 +86,13 @@ main = defaultMain
     -- @+node:gcross.20110923164140.1187: *3* Control.Monad.Trans.Visitor
     [testGroup "Control.Monad.Trans.Visitor"
         -- @+others
+        -- @+node:gcross.20111028170027.1312: *4* Eq instance
+        [testGroup "Eq instance"
+            -- @+others
+            -- @+node:gcross.20111028170027.1313: *5* self
+            [testProperty "self" $ \(v :: Visitor Int) → v == v
+            -- @-others
+            ]
         -- @+node:gcross.20110722110408.1173: *4* runVisitor
         ,testGroup "runVisitor"
             -- @+others
