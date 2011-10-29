@@ -16,7 +16,7 @@ module Control.Monad.Trans.Visitor where
 -- @+<< Import needed modules >>
 -- @+node:gcross.20101114125204.1256: ** << Import needed modules >>
 import Control.Monad (MonadPlus(..),(>=>),liftM2)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
@@ -37,6 +37,8 @@ type VisitorInstruction = VisitorTInstruction Identity
 newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstruction m) m α }
 -- @+node:gcross.20110722110408.1168: *3* Visitor
 type Visitor = VisitorT Identity
+-- @+node:gcross.20111028181213.1332: *3* VisitorIO
+type VisitorIO = VisitorT IO
 -- @+node:gcross.20101114125204.1268: ** Instances
 -- @+node:gcross.20111028170027.1311: *3* Eq Visitor
 instance Eq α ⇒ Eq (Visitor α) where
@@ -54,6 +56,9 @@ instance Eq α ⇒ Eq (Visitor α) where
 instance Monad m ⇒ Monad (VisitorT m) where
     return = VisitorT . return
     mx >>= k = VisitorT $ (unwrapVisitorT mx) >>= (unwrapVisitorT . k)
+-- @+node:gcross.20111028181213.1335: *3* MonadIO
+instance MonadIO m ⇒ MonadIO (VisitorT m) where
+    liftIO = VisitorT . liftIO
 -- @+node:gcross.20101114125204.1271: *3* MonadPlus VisitorT
 instance Monad m ⇒ MonadPlus (VisitorT m) where
     mzero = VisitorT . singleton $ Null

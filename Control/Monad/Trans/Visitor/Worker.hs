@@ -77,6 +77,13 @@ data VisitorWorkload = VisitorWorkload
 -- @+node:gcross.20111028181213.1324: *3* entire_workload
 entire_workload = VisitorWorkload Seq.empty Unexplored
 -- @+node:gcross.20110923164140.1259: ** Functions
+-- @+node:gcross.20111028181213.1331: *3* forkVisitorIOWorkerThread
+forkVisitorIOWorkerThread ::
+    (VisitorWorkerTerminationReason α → IO ()) →
+    VisitorIO α →
+    VisitorWorkload →
+    IO (VisitorWorkerEnvironment α)
+forkVisitorIOWorkerThread = forkVisitorTWorkerThread id
 -- @+node:gcross.20111026220221.1454: *3* forkVisitorTWorkerThread
 forkVisitorTWorkerThread ::
     (Functor m, MonadIO m) ⇒

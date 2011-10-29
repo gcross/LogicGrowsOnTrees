@@ -13,8 +13,10 @@
 
 -- @+<< Import needed modules >>
 -- @+node:gcross.20101114125204.1260: ** << Import needed modules >>
+import Control.Concurrent.QSem
 import Control.Exception
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Operational (ProgramViewT(..),view)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Writer
@@ -376,8 +378,30 @@ main = defaultMain
     -- @+node:gcross.20111028181213.1319: *3* Control.Monad.Trans.Visitor.Worker
     ,testGroup "Control.Monad.Trans.Visitor.Worker"
         -- @+others
+        -- @+node:gcross.20111028181213.1333: *4* forkVisitorIOWorkerThread
+        [testGroup "forkVisitorIOWorkerThread"
+            -- @+others
+            -- @+node:gcross.20111028181213.1334: *5* abort
+            [testCase "abort" $ do
+                termination_result_ivar ← IVar.new
+                semaphore ← newQSem 0
+                VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                    (IVar.write termination_result_ivar)
+                    (liftIO (waitQSem semaphore) `mplus` error "should never get here")
+                    entire_workload
+                writeIORef workerPendingRequests Nothing
+                signalQSem semaphore
+                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                case termination_result of
+                    VisitorWorkerFinished _ → assertFailure "worker faled to abort"
+                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
+                    VisitorWorkerAborted → return ()
+                workerInitialPath @?= Seq.empty
+                readIORef workerPendingRequests >>= assertBool "is the request queue still null?" . isNothing
+            -- @-others
+            ]
         -- @+node:gcross.20111028181213.1320: *4* forkVisitorWorkerThread
-        [testGroup "forkVisitorWorkerThread"
+        ,testGroup "forkVisitorWorkerThread"
             -- @+others
             -- @+node:gcross.20111028181213.1321: *5* obtains all solutions
             [testGroup "obtains all solutions"
