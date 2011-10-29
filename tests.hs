@@ -104,6 +104,20 @@ echo x = trace (show x) x
 -- @+node:gcross.20111028170027.1301: *3* echoWithLabel
 echoWithLabel :: Show α ⇒ String → α → α
 echoWithLabel label x = trace (label ++ " " ++ show x) x
+-- @+node:gcross.20111029212714.1372: *3* randomCheckpointForVisitor
+randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint
+randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
+  where
+    go1 visitor = frequency
+        [(1,return Explored)
+        ,(1,return Unexplored)
+        ,(3,go2 visitor)
+        ]
+    go2 (view → Cache c :>>= k) =
+        fmap (CacheCheckpoint (encode . runIdentity $ c)) (go1 (k (runIdentity c)))
+    go2 (view → Choice (VisitorT x) (VisitorT y) :>>= k) =
+        liftM2 ChoiceCheckpoint (go1 (x >>= k)) (go1 (y >>= k))
+    go2 _ = elements [Explored,Unexplored]
 -- @+node:gcross.20111028181213.1315: *3* randomPathForVisitor
 randomPathForVisitor :: Visitor α → Gen VisitorPath
 randomPathForVisitor (VisitorT visitor) = go visitor
