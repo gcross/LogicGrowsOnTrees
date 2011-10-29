@@ -50,6 +50,7 @@ import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
+import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
 -- @-<< Import needed modules >>
 

@@ -16,6 +16,7 @@
 <v t="gcross.20110923164140.1252"><vh>@file Control/Monad/Trans/Visitor/Worker.hs</vh></v>
 <v t="gcross.20111026172030.1274"><vh>@file Control/Monad/Trans/Visitor/Worker/Reactive.hs</vh></v>
 <v t="gcross.20110923164140.1278"><vh>@file Control/Monad/Trans/Visitor/WorkerQueue.hs</vh></v>
+<v t="gcross.20111029192420.1349"><vh>@file Control/Monad/Trans/Visitor/Workload.hs</vh></v>
 <v t="gcross.20101114125204.1259"><vh>@file tests.hs</vh></v>
 <v t="gcross.20110923120247.1172"><vh>file template.hs</vh>
 <v t="gcross.20110923120247.1173"><vh>&lt;&lt; Language extensions &gt;&gt;</vh></v>

@@ -33,6 +33,7 @@ import Reactive.Banana
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Worker
+import Control.Monad.Trans.Visitor.Workload
 -- @-<< Import needed modules >>
 
 -- @+others

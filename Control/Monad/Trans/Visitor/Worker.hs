@@ -41,6 +41,7 @@ import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
+import Control.Monad.Trans.Visitor.Workload
 -- @-<< Import needed modules >>
 
 -- @+others
@@ -68,11 +69,6 @@ data VisitorWorkerTerminationReason α =
   | VisitorWorkerFailed SomeException
   | VisitorWorkerAborted
   deriving (Show)
--- @+node:gcross.20110923164140.1261: *3* VisitorWorkload
-data VisitorWorkload = VisitorWorkload
-    {   visitorWorkloadPath :: VisitorPath
-    ,   visitorWorkloadCheckpoint :: VisitorCheckpoint
-    }
 -- @+node:gcross.20111028181213.1323: ** Constants
 -- @+node:gcross.20111028181213.1324: *3* entire_workload
 entire_workload = VisitorWorkload Seq.empty Unexplored
