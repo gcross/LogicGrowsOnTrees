@@ -54,7 +54,10 @@ instance Exception VisitorWalkError
 -- @+node:gcross.20111029192420.1361: *3* Monoid VisitorLabel
 instance Monoid VisitorLabel where
     mempty = rootLabel
-    x `mappend` y = go y rootLabel x
+    x `mappend` y
+      | x == rootLabel = y
+      | y == rootLabel = x
+      | otherwise = go y rootLabel x
       where
         go original_label current_label product_label
           | current_label == original_label = product_label
