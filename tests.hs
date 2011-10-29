@@ -13,6 +13,7 @@
 
 -- @+<< Import needed modules >>
 -- @+node:gcross.20101114125204.1260: ** << Import needed modules >>
+import Control.Applicative (liftA2)
 import Control.Concurrent.QSem
 import Control.Exception
 import Control.Monad
@@ -28,6 +29,8 @@ import Data.IORef
 import qualified Data.IVar as IVar
 import Data.List (mapAccumL)
 import Data.Maybe
+import Data.Monoid
+import Data.Monoid.Unicode
 import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize,decode,encode)
@@ -89,6 +92,8 @@ instance Arbitrary VisitorCheckpoint where
                     ,(1,liftM2 CacheCheckpoint (fmap encode (arbitrary :: Gen Int)) (arb (n-1)))
                     ,(2,liftM2 ChoiceCheckpoint (arb (n `div` 2)) (arb (n `div` 2)))
                     ]
+-- @+node:gcross.20111029212714.1360: *3* VisitorLabel
+instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
 -- @+node:gcross.20111028170027.1298: ** Functions
 -- @+node:gcross.20111028170027.1299: *3* echo
 echo :: Show α ⇒ α → α
@@ -277,8 +282,33 @@ main = defaultMain
     -- @+node:gcross.20111029192420.1341: *3* Control.Monad.Trans.Visitor.Label
     ,testGroup "Control.Monad.Trans.Visitor.Label"
         -- @+others
+        -- @+node:gcross.20111029212714.1356: *4* branchingFromLabel . labelFromBranching = id
+        [testProperty "branchingFromLabel . labelFromBranching = id" $
+            liftA2 (==)
+                (branchingFromLabel . labelFromBranching)
+                id
+        -- @+node:gcross.20111029212714.1362: *4* labelFromBranching . branchingFromLabel = id
+        ,testProperty "labelFromBranching . branchingFromLabel = id" $
+            liftA2 (==)
+                (labelFromBranching . branchingFromLabel)
+                id
+        -- @+node:gcross.20111029192420.1362: *4* Monoid instance
+        ,testGroup "Monoid instance"
+            -- @+others
+            -- @+node:gcross.20111029192420.1363: *5* equivalent to concatenation of branchings
+            [testProperty "equivalent to concatenation of branchings" $ \(parent_branching :: [Branch]) (child_branching :: [Branch]) →
+                labelFromBranching parent_branching ⊕ labelFromBranching child_branching
+                ==
+                labelFromBranching (parent_branching ⊕ child_branching)
+            -- @+node:gcross.20111029212714.1357: *5* obeys monoid laws
+            ,testProperty "obeys monoid laws" $
+                liftA2 (&&)
+                    (liftA2 (==) id (⊕ (mempty :: VisitorLabel)))
+                    (liftA2 (==) id ((mempty :: VisitorLabel) ⊕))
+            -- @-others
+            ]
         -- @+node:gcross.20111029192420.1342: *4* runVisitorWithLabels
-        [testGroup "runVisitorWithLabels"
+        ,testGroup "runVisitorWithLabels"
             -- @+others
             -- @+node:gcross.20111029192420.1344: *5* same result as walking down path
             [testProperty "same result as walking down path" $ \(visitor :: Visitor Int) →

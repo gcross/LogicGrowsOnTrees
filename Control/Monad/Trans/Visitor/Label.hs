@@ -18,6 +18,7 @@ import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.Composition
 import Data.Maybe (fromJust)
+import Data.Monoid
 import Data.Foldable as Fold
 import Data.Foldable (Foldable)
 import Data.Functor.Identity (runIdentity)
@@ -50,18 +51,30 @@ data VisitorWalkError =
 
 instance Exception VisitorWalkError
 -- @+node:gcross.20111028153100.1295: ** Instances
--- @+node:gcross.20111028153100.1296: *3* Show VisitorLabel
-instance Show VisitorLabel where
-    show = go rootLabel
+-- @+node:gcross.20111029192420.1361: *3* Monoid VisitorLabel
+instance Monoid VisitorLabel where
+    mempty = rootLabel
+    x `mappend` y = go y rootLabel x
       where
-        go current_label original_label
-          | current_label == original_label = []
+        go original_label current_label product_label
+          | current_label == original_label = product_label
         -- Note:  the following is counter-intuitive, but it makes sense if you think of it as
         --        being where you need to go to get to the original label instead of where you
         --        currently are with respect to the original label
-          | current_label > original_label = 'L':go (leftChildLabel current_label) original_label
-          | current_label < original_label = 'R':go (rightChildLabel current_label) original_label
+          | current_label > original_label = go original_label (leftChildLabel current_label) (leftChildLabel product_label)
+          | current_label < original_label = go original_label (rightChildLabel current_label) (rightChildLabel product_label)
+-- @+node:gcross.20111028153100.1296: *3* Show VisitorLabel
+instance Show VisitorLabel where
+    show = fmap (\branch → case branch of {LeftBranch → 'L'; RightBranch → 'R'}) . branchingFromLabel
 -- @+node:gcross.20111029192420.1336: ** Functions
+-- @+node:gcross.20111029212714.1353: *3* branchingFromLabel
+branchingFromLabel :: VisitorLabel → [Branch]
+branchingFromLabel = go rootLabel
+  where
+    go current_label original_label
+      | current_label == original_label = []
+      | current_label > original_label = LeftBranch:go (leftChildLabel current_label) original_label
+      | current_label < original_label = RightBranch:go (rightChildLabel current_label) original_label
 -- @+node:gcross.20111028153100.1294: *3* labelFromBranching
 labelFromBranching :: Foldable t ⇒ t Branch → VisitorLabel
 labelFromBranching = Fold.foldl' (flip labelTransformerForBranch) rootLabel
