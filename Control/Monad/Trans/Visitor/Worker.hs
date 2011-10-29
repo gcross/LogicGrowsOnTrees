@@ -21,9 +21,8 @@ module Control.Monad.Trans.Visitor.Worker where
 import Prelude hiding (catch)
 
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
-import Control.Exception (SomeException,catch)
+import Control.Exception (SomeException,catch,evaluate)
 import Control.Monad.IO.Class
-import Control.Seq (withStrategy,rseq)
 
 import Data.Bool.Higher ((??))
 import Data.Composition
@@ -149,19 +148,17 @@ genericForkVisitorTWorkerThread
                                 -- @+<< Step visitor >>
                                 -- @+node:gcross.20111020182554.1283: *4* << Step visitor >>
                                 (maybe_solution,maybe_next) ← step context checkpoint visitor
-                                let new_solutions = withStrategy rseq . ($ solutions) $
-                                        case maybe_solution of
-                                            Nothing → id
-                                            Just solution → flip DList.snoc $
-                                                VisitorSolution
-                                                    (
-                                                        applyContextToLabel context
-                                                        .
-                                                        applyCheckpointCursorToLabel cursor
-                                                        $
-                                                        initial_label
-                                                    )
-                                                    solution
+                                new_solutions ← liftIO . evaluate . ($ solutions) $
+                                    case maybe_solution of
+                                        Nothing → id
+                                        Just solution →
+                                            let label =
+                                                    applyContextToLabel context
+                                                    .
+                                                    applyCheckpointCursorToLabel cursor
+                                                    $
+                                                    initial_label
+                                            in solution `seq` label `seq` (flip DList.snoc $ VisitorSolution label solution)
                                 case maybe_next of
                                     Nothing →
                                         return (VisitorWorkerFinished (DList.toList new_solutions))
