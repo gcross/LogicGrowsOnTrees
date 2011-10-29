@@ -216,6 +216,16 @@ main = defaultMain
                 checkpointFromContext Seq.empty checkpoint == checkpoint
             -- @-others
             ]
+        -- @+node:gcross.20111029212714.1374: *4* runVisitorThroughCheckpoint
+        ,testGroup "runVisitorThroughCheckpoint"
+            -- @+others
+            -- @+node:gcross.20111029212714.1376: *5* matches walk down path
+            [testProperty "matches walk down path" $ \(visitor :: Visitor Int) → randomPathForVisitor visitor >>= \path → return $
+                runVisitorWithStartingLabel (labelFromPath path) (walkVisitorDownPath path visitor)
+                ==
+                mapMaybe fst (runVisitorThroughCheckpoint (checkpointFromUnexploredPath path) visitor)
+            -- @-others
+            ]
         -- @+node:gcross.20111028153100.1286: *4* runVisitorWithCheckpoints
         ,testGroup "runVisitorWithCheckpoints"
             -- @+others

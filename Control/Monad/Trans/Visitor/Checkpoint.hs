@@ -121,6 +121,16 @@ checkpointFromSequence processStep (viewr → rest :> step) =
     mergeCheckpointRoot
     .
     processStep step
+-- @+node:gcross.20111029212714.1373: *3* checkpointFromUnexploredPath
+checkpointFromUnexploredPath :: VisitorPath → VisitorCheckpoint
+checkpointFromUnexploredPath (viewl → EmptyL) = Unexplored
+checkpointFromUnexploredPath (viewl → step :< rest_path) =
+    case step of
+        CacheStep c → CacheCheckpoint c
+        ChoiceStep LeftBranch → flip ChoiceCheckpoint Explored
+        ChoiceStep RightBranch → ChoiceCheckpoint Explored
+    $
+    checkpointFromUnexploredPath rest_path
 -- @+node:gcross.20111019113757.1412: *3* labelFromContext
 labelFromContext :: VisitorTContext m α → VisitorLabel
 labelFromContext = flip applyContextToLabel rootLabel
