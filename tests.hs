@@ -174,8 +174,8 @@ main = defaultMain
             ]
         -- @-others
         ]
-    -- @+node:gcross.20111028153100.1285: *3* Control.Monad.Trans.Checkpoint
-    ,testGroup "Control.Monad.Trans.Checkpoint"
+    -- @+node:gcross.20111028153100.1285: *3* Control.Monad.Trans.Visitor.Checkpoint
+    ,testGroup "Control.Monad.Trans.Visitor.Checkpoint"
         -- @+others
         -- @+node:gcross.20111028153100.1300: *4* contextFromCheckpoint
         [testGroup "contextFromCheckpoint"
