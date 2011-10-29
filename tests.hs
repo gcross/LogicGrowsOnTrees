@@ -7,12 +7,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE ViewPatterns #-}
 -- @-<< Language extensions >>
 
 -- @+<< Import needed modules >>
 -- @+node:gcross.20101114125204.1260: ** << Import needed modules >>
 import Control.Exception
 import Control.Monad
+import Control.Monad.Operational (ProgramViewT(..),view)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Writer
 
@@ -21,7 +23,7 @@ import qualified Data.ByteString as ByteString
 import Data.Functor.Identity
 import Data.List (mapAccumL)
 import Data.Maybe (mapMaybe)
-import Data.Sequence (Seq,(|>),(><))
+import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize,decode,encode)
 
@@ -85,6 +87,38 @@ echo x = trace (show x) x
 -- @+node:gcross.20111028170027.1301: *3* echoWithLabel
 echoWithLabel :: Show α ⇒ String → α → α
 echoWithLabel label x = trace (label ++ " " ++ show x) x
+-- @+node:gcross.20111028181213.1315: *3* randomPathForVisitor
+randomPathForVisitor :: Visitor α → Gen VisitorPath
+randomPathForVisitor (VisitorT visitor) = go visitor
+  where
+    go (view → Cache c :>>= k) = oneof
+        [return Seq.empty
+        ,fmap (CacheStep (encode . runIdentity $ c) <|) (go (k (runIdentity c)))
+        ]
+    go (view → Choice (VisitorT x) (VisitorT y) :>>= k) = oneof
+        [return Seq.empty
+        ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
+        ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
+        ]
+    go _ = return Seq.empty
+-- @+node:gcross.20111028181213.1318: *3* randomVisitorWithoutCache
+randomVisitorWithoutCache :: Arbitrary α ⇒ Gen (Visitor α)
+randomVisitorWithoutCache = sized arb
+  where
+    arb 0 = frequency
+                [(2,result)
+                ,(1,null)
+                ]
+    arb n = frequency
+                [(2,result)
+                ,(1,bindToArbitrary n result)
+                ,(1,bindToArbitrary n null)
+                ,(3,liftM2 mplus (arb (n `div` 2)) (arb (n `div` 2)))
+                ]
+    null = return mzero
+    result = fmap return arbitrary
+
+    bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
 -- @-others
 
 main = defaultMain
@@ -231,8 +265,22 @@ main = defaultMain
     -- @+node:gcross.20110923164140.1188: *3* Control.Monad.Trans.Visitor.Path
     ,testGroup "Control.Monad.Trans.Visitor.Path"
         -- @+others
-        -- @+node:gcross.20110923164140.1189: *4* walkVisitor
-        [testGroup "walkVisitor"
+        -- @+node:gcross.20111028181213.1313: *4* walkVisitorDownLabel
+        [testGroup "walkVisitorDownLabel"
+            -- @+others
+            -- @+node:gcross.20111028181213.1316: *5* same result as walking down path
+            [testProperty "same result as walking down path" $ do
+                visitor :: Visitor Int ← randomVisitorWithoutCache
+                path ← randomPathForVisitor visitor
+                let label = labelFromPath path
+                return $
+                    walkVisitorDownPath path visitor
+                    ==
+                    walkVisitorDownLabel label visitor
+            -- @-others
+            ]
+        -- @+node:gcross.20110923164140.1189: *4* walkVisitorDownPath
+        ,testGroup "walkVisitorDownPath"
             -- @+others
             -- @+node:gcross.20110923164140.1191: *5* null path
             [testCase "null path" $ (runVisitor . walkVisitorDownPath Seq.empty) (return 42) @?= [42]
@@ -295,7 +343,7 @@ main = defaultMain
                 ]
             -- @-others
             ]
-        -- @+node:gcross.20110923164140.1220: *4* walkVisitorT
+        -- @+node:gcross.20110923164140.1220: *4* walkVisitorTDownPath
         ,testGroup "walkVisitorT"
             -- @+others
             -- @+node:gcross.20110923164140.1223: *5* cache step

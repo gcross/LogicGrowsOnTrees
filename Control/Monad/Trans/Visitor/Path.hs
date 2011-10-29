@@ -64,6 +64,7 @@ data VisitorSolution α = VisitorSolution
 data VisitorStep =
     CacheStep ByteString
  |  ChoiceStep Branch
+ deriving (Eq,Show)
 -- @+node:gcross.20110923120247.1209: *3* VisitorWalkError
 data VisitorWalkError =
     VisitorTerminatedBeforeEndOfWalk
@@ -120,15 +121,15 @@ walkVisitorTDownLabel label = go rootLabel
           (viewT . unwrapVisitorT) visitor >>= \view → case view of
             Return x → throw VisitorTerminatedBeforeEndOfWalk
             Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
-            Cache mx :>>= k → mx >>= walkVisitorTDownLabel parent . VisitorT . k
+            Cache mx :>>= k → mx >>= go parent . VisitorT . k
             Choice left right :>>= k →
-                if label < parent
+                if parent > label
                 then
-                    walkVisitorTDownLabel
+                    go
                         (leftChildLabel parent)
                         (left >>= VisitorT . k)
                 else
-                    walkVisitorTDownLabel
+                    go
                         (rightChildLabel parent)
                         (right >>= VisitorT . k)
 -- @+node:gcross.20110923120247.1207: *3* walkVisitorTDownPath
