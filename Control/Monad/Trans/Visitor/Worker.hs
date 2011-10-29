@@ -237,16 +237,14 @@ genericForkVisitorTWorkerThread
             )
             `catch`
             (return . VisitorWorkerFailed)
-        case termination_reason of
-            VisitorWorkerFinished _ →
-                atomicModifyIORef pending_requests_ref (Nothing,)
-                >>=
-                maybe
-                    (return ())
-                    (Fold.mapM_ $ \request → case request of
-                        StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
-                        WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
-                    )
+        atomicModifyIORef pending_requests_ref (Nothing,)
+            >>=
+            maybe
+                (return ())
+                (Fold.mapM_ $ \request → case request of
+                    StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
+                    WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
+                )
         finishedCallback termination_reason
     return $
         VisitorWorkerEnvironment
