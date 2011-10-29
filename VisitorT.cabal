@@ -1,6 +1,6 @@
 -- @+leo-ver=5-thin
 -- @+node:gcross.20101114125204.1254: * @file VisitorT.cabal
--- @@language Haskell
+-- @@language haskell
 Name:                VisitorT
 Version:             1.0
 License:             BSD3
