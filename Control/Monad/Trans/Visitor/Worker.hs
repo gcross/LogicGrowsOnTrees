@@ -23,6 +23,7 @@ import Prelude hiding (catch)
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
 import Control.Exception (SomeException,catch)
 import Control.Monad.IO.Class
+import Control.Seq (withStrategy,rseq)
 
 import Data.Bool.Higher ((??))
 import Data.Composition
@@ -137,10 +138,10 @@ genericForkVisitorTWorkerThread
                                 -- @+<< Step visitor >>
                                 -- @+node:gcross.20111020182554.1283: *4* << Step visitor >>
                                 (maybe_solution,maybe_next) ← step context checkpoint visitor
-                                let new_solutions =
+                                let new_solutions = withStrategy rseq . ($ solutions) $
                                         case maybe_solution of
-                                            Nothing → new_solutions
-                                            Just solution → new_solutions `DList.snoc`
+                                            Nothing → id
+                                            Just solution → flip DList.snoc $
                                                 VisitorSolution
                                                     (
                                                         applyContextToLabel context
@@ -151,7 +152,7 @@ genericForkVisitorTWorkerThread
                                                     )
                                                     solution
                                 case maybe_next of
-                                    Nothing → do
+                                    Nothing →
                                         return (VisitorWorkerFinished (DList.toList new_solutions))
                                     Just (new_context,new_checkpoint,new_visitor) →
                                         loop
