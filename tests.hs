@@ -436,9 +436,7 @@ main = defaultMain
                                   (
                                     map visitorSolutionResult
                                     .
-                                    mapMaybe fst
-                                    .
-                                    runVisitorWithCheckpointing
+                                    runVisitorWithLabels
                                     .
                                     walkVisitorDownPath path
                                     $
@@ -458,7 +456,7 @@ main = defaultMain
                     return $
                         case worker_solutions of
                             VisitorWorkerFinished solutions
-                                | solutions == mapMaybe fst (runVisitorWithCheckpointing visitor)
+                                | solutions == runVisitorWithLabels visitor
                               → True
                             _ → False
                 -- @-others
