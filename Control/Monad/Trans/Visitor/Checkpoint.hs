@@ -61,6 +61,11 @@ data VisitorTContextStep m α =
   | LeftChoiceContextStep VisitorCheckpoint (VisitorT m α)
 
 type VisitorContextStep = VisitorTContextStep Identity
+
+instance Show (VisitorTContextStep m α) where
+    show (BranchContextStep branch) = "BranchContextStep{" ++ show branch ++ "}"
+    show (CacheContextStep c) = "CacheContextStep[" ++ show c ++ "]"
+    show (LeftChoiceContextStep checkpoint _) = "LeftChoiceContextStep(" ++ show checkpoint ++ ")"
 -- @+node:gcross.20110923164140.1238: *3* VisitorTContextUpdate
 type VisitorTContextUpdate m α =
     VisitorTContext m α →
