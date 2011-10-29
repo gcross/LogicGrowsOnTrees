@@ -37,6 +37,7 @@ Library
     Exposed-modules:
         Control.Monad.Trans.Visitor
         Control.Monad.Trans.Visitor.Checkpoint
+        Control.Monad.Trans.Visitor.Label
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Worker
         Control.Monad.Trans.Visitor.Worker.Reactive

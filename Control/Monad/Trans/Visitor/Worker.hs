@@ -39,6 +39,7 @@ import qualified Data.Sequence as Seq
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
 -- @-<< Import needed modules >>
 

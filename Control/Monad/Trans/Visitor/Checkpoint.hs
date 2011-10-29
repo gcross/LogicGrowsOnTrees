@@ -30,6 +30,7 @@ import Data.Serialize (Serialize(),decode,encode)
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor
+import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
 -- @-<< Import needed modules >>
 
