@@ -6,6 +6,7 @@
 -- @+node:gcross.20101114125204.1281: ** << Language extensions >>
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -24,6 +25,7 @@ import Control.Monad.Trans.Writer
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
+import qualified Data.DList as DList
 import Data.Functor.Identity
 import Data.IORef
 import qualified Data.IVar as IVar
@@ -505,6 +507,53 @@ main = defaultMain
                             _ → False
                 -- @-others
                 ]
+            -- @+node:gcross.20111028181213.1339: *5* status updates produce valid checkpoints
+            ,testProperty "status updates produce valid checkpoints" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                blocking_value_ivar ← IVar.new
+                let visitor_with_blocking_value = (return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_value_ivar) `mplus` visitor
+                termination_result_ivar ← IVar.new
+                VisitorWorkerEnvironment{..} ← forkVisitorWorkerThread
+                    (IVar.write termination_result_ivar)
+                    visitor_with_blocking_value
+                    entire_workload
+                checkpoints_ref ← newIORef DList.empty
+                let status_update_requests = Seq.singleton . StatusUpdateRequested $
+                        maybe
+                            (atomicModifyIORef workerPendingRequests $ (,()) . fmap (const Seq.empty))
+                            (\checkpoint → do
+                                atomicModifyIORef checkpoints_ref $ (,()) . flip DList.snoc checkpoint
+                                atomicModifyIORef workerPendingRequests $ (,()) . fmap (const status_update_requests)
+                            )
+                writeIORef workerPendingRequests . Just $ status_update_requests
+                IVar.write blocking_value_ivar 42
+                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                remaining_solutions ← case termination_result of
+                    VisitorWorkerFinished solutions → return solutions
+                    VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                    VisitorWorkerAborted → error "worker aborted prematurely"
+                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+                checkpoints ← fmap DList.toList (readIORef checkpoints_ref)
+                let correct_solutions = runVisitorWithLabels visitor_with_blocking_value
+                correct_solutions @=? ((++ remaining_solutions) . concat . fmap visitorWorkerNewSolutions $ checkpoints)
+                forM_ checkpoints $
+                    \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _)) →
+                        assertBool
+                            "checkpoint has null initial path"
+                            (Seq.null initial_path)
+                let (almost_final_solutions,solutions_using_progressive_checkpoints) =
+                        mapAccumL
+                            (\solutions_so_far (VisitorWorkerStatusUpdate new_solutions workload) →
+                                let new_solutions_so_far :: [VisitorSolution Int]
+                                    new_solutions_so_far = solutions_so_far ++ new_solutions
+                                in  (new_solutions_so_far
+                                    ,new_solutions_so_far ++ mapMaybe fst (runVisitorThroughWorkload workload visitor_with_blocking_value)
+                                    )
+                            )
+                            []
+                            checkpoints
+                almost_final_solutions ++ remaining_solutions @?= correct_solutions
+                forM_ solutions_using_progressive_checkpoints $ (@?= correct_solutions)
+                return True
             -- @+node:gcross.20111028181213.1325: *5* terminates successfully with null visitor
             ,testCase "terminates successfully with null visitor" $ do
                 termination_result_ivar ← IVar.new
