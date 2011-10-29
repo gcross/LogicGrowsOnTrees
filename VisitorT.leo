@@ -6,8 +6,9 @@
 <preferences/>
 <find_panel_settings/>
 <vnodes>
-<v t="gcross.20101114125120.1249"><vh>@chapters</vh></v>
+<v t="gcross.20111028153100.1304"><vh>! Cabal file</vh>
 <v t="gcross.20101114125204.1254"><vh>@file VisitorT.cabal</vh></v>
+</v>
 <v t="gcross.20101114125204.1255"><vh>@file Control/Monad/Trans/Visitor.hs</vh></v>
 <v t="gcross.20110923120247.1191"><vh>@file Control/Monad/Trans/Visitor/Checkpoint.hs</vh></v>
 <v t="gcross.20111029192420.1332"><vh>@file Control/Monad/Trans/Visitor/Label.hs</vh></v>
@@ -22,7 +23,6 @@
 </v>
 </vnodes>
 <tnodes>
-<t tx="gcross.20101114125120.1249"></t>
 <t tx="gcross.20110923120247.1172">@language haskell
 
 &lt;&lt; Language extensions &gt;&gt;
@@ -36,5 +36,6 @@ module Control.Monad.Trans.Visitor where
 <t tx="gcross.20110923120247.1173">{-# LANGUAGE UnicodeSyntax #-}
 </t>
 <t tx="gcross.20110923120247.1174"></t>
+<t tx="gcross.20111028153100.1304"></t>
 </tnodes>
 </leo_file>
