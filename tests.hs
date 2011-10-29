@@ -211,8 +211,8 @@ main = defaultMain
                 checkpointFromContext Seq.empty checkpoint == checkpoint
             -- @-others
             ]
-        -- @+node:gcross.20111028153100.1286: *4* runVisitorWithCheckpointing
-        ,testGroup "runVisitorWithCheckpointing"
+        -- @+node:gcross.20111028153100.1286: *4* runVisitorWithCheckpoints
+        ,testGroup "runVisitorWithCheckpoints"
             -- @+others
             -- @+node:gcross.20111028181213.1308: *5* checkpoints accurately capture remaining search space
             [testProperty "checkpoints accurately capture remaining search space" $ \(v :: Visitor Int) →
@@ -224,7 +224,7 @@ main = defaultMain
                                 in (new_solutions,new_solutions >< Seq.fromList (mapMaybe fst (runVisitorThroughCheckpoint checkpoint v)))
                             )
                             Seq.empty
-                            (runVisitorWithCheckpointing v)
+                            (runVisitorWithCheckpoints v)
                 in all (== final_results) results_using_progressive_checkpoints
             -- @+node:gcross.20111028170027.1315: *5* example instances
             ,testGroup "example instances"
@@ -234,14 +234,14 @@ main = defaultMain
                     -- @+others
                     -- @+node:gcross.20111028153100.1293: *7* mzero + mzero
                     [testCase "mzero + mzero" $
-                        runVisitorWithCheckpointing (mzero `mplus` mzero :: Visitor Int)
+                        runVisitorWithCheckpoints (mzero `mplus` mzero :: Visitor Int)
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
                         ]
                     -- @+node:gcross.20111028153100.1297: *7* mzero + return
                     ,testCase "mzero + return" $
-                        runVisitorWithCheckpointing (mzero `mplus` return 1 :: Visitor Int)
+                        runVisitorWithCheckpoints (mzero `mplus` return 1 :: Visitor Int)
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -250,7 +250,7 @@ main = defaultMain
                     -- @+node:gcross.20111028153100.1298: *7* return + mzero
                     -- @+at
                     --  ,testCase "return + mzero" $
-                    --      runVisitorWithCheckpointing (return 1 `mplus` mzero :: Visitor Int)
+                    --      runVisitorWithCheckpoints (return 1 `mplus` mzero :: Visitor Int)
                     --      @?=
                     --      [(Nothing,Unexplored)
                     --      ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -259,17 +259,17 @@ main = defaultMain
                     -- @-others
                     ]
                 -- @+node:gcross.20111028153100.1287: *6* mzero
-                ,testCase "mzero" $ runVisitorWithCheckpointing (mzero :: Visitor Int) @?= []
+                ,testCase "mzero" $ runVisitorWithCheckpoints (mzero :: Visitor Int) @?= []
                 -- @+node:gcross.20111028153100.1289: *6* return
-                ,testCase "return" $ runVisitorWithCheckpointing (return 0 :: Visitor Int) @?= [(Just (VisitorSolution rootLabel 0),Explored)]
+                ,testCase "return" $ runVisitorWithCheckpoints (return 0 :: Visitor Int) @?= [(Just (VisitorSolution rootLabel 0),Explored)]
                 -- @-others
                 ]
             -- @+node:gcross.20111028170027.1316: *5* same results as runVisitor
             ,testProperty "same results as runVisitor" $ \(v :: Visitor Int) →
-                runVisitor v == fmap visitorSolutionResult (mapMaybe fst (runVisitorWithCheckpointing v))
+                runVisitor v == fmap visitorSolutionResult (mapMaybe fst (runVisitorWithCheckpoints v))
             -- @+node:gcross.20111029192420.1345: *5* same results as runVisitorWithLabels
             ,testProperty "same results as runVisitorWithLabels" $ \(v :: Visitor Int) →
-                runVisitorWithLabels v == mapMaybe fst (runVisitorWithCheckpointing v)
+                runVisitorWithLabels v == mapMaybe fst (runVisitorWithCheckpoints v)
             -- @-others
             ]
         -- @-others

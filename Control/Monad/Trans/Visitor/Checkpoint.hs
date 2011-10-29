@@ -207,17 +207,17 @@ runVisitorTThroughCheckpoint = go Seq.empty
         stepVisitorTThroughCheckpoint context
       where
         labelSolution = VisitorSolution (labelFromContext context)
--- @+node:gcross.20111028170027.1294: *3* runVisitorTWithCheckpointing
-runVisitorTTWithCheckpointing ::
+-- @+node:gcross.20111028170027.1294: *3* runVisitorTWithCheckpoints
+runVisitorTTWithCheckpoints ::
     (Functor m, Monad m) ⇒
     VisitorT m α →
     VisitorTResultFetcher m α
-runVisitorTTWithCheckpointing = runVisitorTThroughCheckpoint Unexplored
--- @+node:gcross.20111028170027.1292: *3* runVisitorWithCheckpointing
-runVisitorWithCheckpointing ::
+runVisitorTTWithCheckpoints = runVisitorTThroughCheckpoint Unexplored
+-- @+node:gcross.20111028170027.1292: *3* runVisitorWithCheckpoints
+runVisitorWithCheckpoints ::
     Visitor α →
     [(Maybe (VisitorSolution α),VisitorCheckpoint)]
-runVisitorWithCheckpointing = runVisitorThroughCheckpoint Unexplored
+runVisitorWithCheckpoints = runVisitorThroughCheckpoint Unexplored
 -- @+node:gcross.20110923164140.1242: *3* stepVisitorThroughCheckpoint
 stepVisitorThroughCheckpoint ::
     VisitorContext α →
