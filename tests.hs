@@ -267,6 +267,9 @@ main = defaultMain
             -- @+node:gcross.20111028170027.1316: *5* same results as runVisitor
             ,testProperty "same results as runVisitor" $ \(v :: Visitor Int) →
                 runVisitor v == fmap visitorSolutionResult (mapMaybe fst (runVisitorWithCheckpointing v))
+            -- @+node:gcross.20111029192420.1345: *5* same results as runVisitorWithLabels
+            ,testProperty "same results as runVisitorWithLabels" $ \(v :: Visitor Int) →
+                runVisitorWithLabels v == mapMaybe fst (runVisitorWithCheckpointing v)
             -- @-others
             ]
         -- @-others
