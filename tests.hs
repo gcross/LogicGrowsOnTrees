@@ -4,6 +4,7 @@
 
 -- @+<< Language extensions >>
 -- @+node:gcross.20101114125204.1281: ** << Language extensions >>
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -21,24 +22,29 @@ import Control.Monad.Trans.Writer
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.Functor.Identity
+import Data.IORef
+import qualified Data.IVar as IVar
 import Data.List (mapAccumL)
-import Data.Maybe (mapMaybe)
+import Data.Maybe
 import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize,decode,encode)
 
 import Debug.Trace (trace)
 
+import System.IO.Unsafe
+
 import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
-import Test.HUnit ((@?=),assertBool)
+import Test.HUnit
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Path
+import Control.Monad.Trans.Visitor.Worker
 -- @-<< Import needed modules >>
 
 -- @+others
@@ -363,6 +369,77 @@ main = defaultMain
                             return 42
                 log @?= [1]
                 (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([42],[3,4])
+            -- @-others
+            ]
+        -- @-others
+        ]
+    -- @+node:gcross.20111028181213.1319: *3* Control.Monad.Trans.Visitor.Worker
+    ,testGroup "Control.Monad.Trans.Visitor.Worker"
+        -- @+others
+        -- @+node:gcross.20111028181213.1320: *4* forkVisitorWorkerThread
+        [testGroup "forkVisitorWorkerThread"
+            -- @+others
+            -- @+node:gcross.20111028181213.1321: *5* obtains all solutions
+            [testGroup "obtains all solutions"
+                -- @+others
+                -- @+node:gcross.20111028181213.1327: *6* with an initial path
+                [testProperty "with an initial path" $ \(visitor :: Visitor Int) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do
+                    solutions_ivar ← IVar.new
+                    worker_environment ←
+                        forkVisitorWorkerThread
+                            (IVar.write solutions_ivar)
+                            visitor
+                            (VisitorWorkload path Unexplored)
+                    worker_solutions ← IVar.blocking $ IVar.read solutions_ivar
+                    return $
+                        case worker_solutions of
+                            VisitorWorkerFinished solutions
+                                | map visitorSolutionResult solutions ==
+                                  (
+                                    map visitorSolutionResult
+                                    .
+                                    mapMaybe fst
+                                    .
+                                    runVisitorWithCheckpointing
+                                    .
+                                    walkVisitorDownPath path
+                                    $
+                                    visitor
+                                  )
+                              → True
+                            _ → False
+                -- @+node:gcross.20111028181213.1322: *6* with no initial path
+                ,testProperty "with no initial path" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                    solutions_ivar ← IVar.new
+                    worker_environment ←
+                        forkVisitorWorkerThread
+                            (IVar.write solutions_ivar)
+                            visitor
+                            entire_workload
+                    worker_solutions ← IVar.blocking $ IVar.read solutions_ivar
+                    return $
+                        case worker_solutions of
+                            VisitorWorkerFinished solutions
+                                | solutions == mapMaybe fst (runVisitorWithCheckpointing visitor)
+                              → True
+                            _ → False
+                -- @-others
+                ]
+            -- @+node:gcross.20111028181213.1325: *5* terminates successfully with null visitor
+            ,testCase "terminates successfully with null visitor" $ do
+                termination_result_ivar ← IVar.new
+                VisitorWorkerEnvironment{..} ←
+                    forkVisitorWorkerThread
+                        (IVar.write termination_result_ivar)
+                        (mzero :: Visitor Int)
+                        entire_workload
+                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                case termination_result of
+                    VisitorWorkerFinished solutions → solutions @?= []
+                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
+                    VisitorWorkerAborted → assertFailure "worker prematurely aborted"
+                workerInitialPath @?= Seq.empty
+                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
             -- @-others
             ]
         -- @-others
