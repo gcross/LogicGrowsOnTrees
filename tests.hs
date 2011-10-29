@@ -271,11 +271,19 @@ main = defaultMain
             ]
         -- @-others
         ]
-    -- @+node:gcross.20110923164140.1188: *3* Control.Monad.Trans.Visitor.Path
-    ,testGroup "Control.Monad.Trans.Visitor.Path"
+    -- @+node:gcross.20111029192420.1341: *3* Control.Monad.Trans.Visitor.Label
+    ,testGroup "Control.Monad.Trans.Visitor.Label"
         -- @+others
+        -- @+node:gcross.20111029192420.1342: *4* runVisitorWithLabels
+        [testGroup "runVisitorWithLabels"
+            -- @+others
+            -- @+node:gcross.20111029192420.1344: *5* same result as walking down path
+            [testProperty "same result as walking down path" $ \(visitor :: Visitor Int) →
+                runVisitor visitor == fmap visitorSolutionResult (runVisitorWithLabels visitor)
+            -- @-others
+            ]
         -- @+node:gcross.20111028181213.1313: *4* walkVisitorDownLabel
-        [testGroup "walkVisitorDownLabel"
+        ,testGroup "walkVisitorDownLabel"
             -- @+others
             -- @+node:gcross.20111028181213.1316: *5* same result as walking down path
             [testProperty "same result as walking down path" $ do
@@ -288,8 +296,13 @@ main = defaultMain
                     walkVisitorDownLabel label visitor
             -- @-others
             ]
+        -- @-others
+        ]
+    -- @+node:gcross.20110923164140.1188: *3* Control.Monad.Trans.Visitor.Path
+    ,testGroup "Control.Monad.Trans.Visitor.Path"
+        -- @+others
         -- @+node:gcross.20110923164140.1189: *4* walkVisitorDownPath
-        ,testGroup "walkVisitorDownPath"
+        [testGroup "walkVisitorDownPath"
             -- @+others
             -- @+node:gcross.20110923164140.1191: *5* null path
             [testCase "null path" $ (runVisitor . walkVisitorDownPath Seq.empty) (return 42) @?= [42]

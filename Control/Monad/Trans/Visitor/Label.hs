@@ -13,6 +13,7 @@ module Control.Monad.Trans.Visitor.Label where
 -- @+<< Import needed modules >>
 -- @+node:gcross.20111029192420.1334: ** << Import needed modules >>
 import Control.Exception (Exception(),throw)
+import Control.Monad ((>=>),liftM2)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.Maybe (fromJust)
@@ -80,6 +81,23 @@ rightChildLabel = VisitorLabel . fromJust . SequentialIndex.rightChild . unwrapV
 -- @+node:gcross.20111019113757.1413: *3* rootLabel
 rootLabel :: VisitorLabel
 rootLabel = VisitorLabel SequentialIndex.root
+-- @+node:gcross.20111029192420.1340: *3* runVisitorWithLabels
+runVisitorWithLabels :: Visitor α → [VisitorSolution α]
+runVisitorWithLabels = runIdentity . runVisitorTAndGatherLabeledResults
+-- @+node:gcross.20111029192420.1338: *3* runVisitorTAndGatherLabeledResults
+runVisitorTAndGatherLabeledResults :: Monad m ⇒ VisitorT m α → m [VisitorSolution α]
+runVisitorTAndGatherLabeledResults = go rootLabel
+  where
+    go label =
+        viewT . unwrapVisitorT >=> \view →
+        case view of
+            Return x → return [VisitorSolution label x]
+            (Cache mx :>>= k) → mx >>= go label . VisitorT . k
+            (Choice left right :>>= k) →
+                liftM2 (++)
+                    (go (leftChildLabel label) $ left >>= VisitorT . k)
+                    (go (rightChildLabel label) $ right >>= VisitorT . k)
+            (Null :>>= _) → return []
 -- @+node:gcross.20111019113757.1399: *3* walkVisitorDownLabel
 walkVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α
 walkVisitorDownLabel label = runIdentity . walkVisitorTDownLabel label
