@@ -24,6 +24,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.ByteString (ByteString)
 import Data.Composition
 import Data.Functor.Identity (Identity,runIdentity)
+import Data.Monoid.Unicode
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize(),decode,encode)
@@ -171,7 +172,14 @@ runVisitorThroughCheckpoint ::
     VisitorCheckpoint →
     Visitor α →
     [(Maybe (VisitorSolution α),VisitorCheckpoint)]
-runVisitorThroughCheckpoint checkpoint visitor = go (runVisitorTThroughCheckpoint checkpoint visitor)
+runVisitorThroughCheckpoint = runVisitorThroughCheckpointWithStartingLabel rootLabel
+-- @+node:gcross.20111029212714.1368: *3* runVisitorThroughCheckpointWithStartingLabel
+runVisitorThroughCheckpointWithStartingLabel ::
+    VisitorLabel →
+    VisitorCheckpoint →
+    Visitor α →
+    [(Maybe (VisitorSolution α),VisitorCheckpoint)]
+runVisitorThroughCheckpointWithStartingLabel = go .** runVisitorTThroughCheckpointWithStartingLabel
   where
     go (runIdentity . fetchVisitorTResult → Nothing) = []
     go (runIdentity . fetchVisitorTResult → Just (maybe_solution,checkpoint,next_result)) =
@@ -184,7 +192,15 @@ runVisitorTThroughCheckpoint ::
     VisitorCheckpoint →
     VisitorT m α →
     VisitorTResultFetcher m α
-runVisitorTThroughCheckpoint = go Seq.empty
+runVisitorTThroughCheckpoint = runVisitorTThroughCheckpointWithStartingLabel rootLabel
+-- @+node:gcross.20111029212714.1366: *3* runVisitorTThroughCheckpointWithStartingLabel
+runVisitorTThroughCheckpointWithStartingLabel ::
+    (Functor m, Monad m) ⇒
+    VisitorLabel →
+    VisitorCheckpoint →
+    VisitorT m α →
+    VisitorTResultFetcher m α
+runVisitorTThroughCheckpointWithStartingLabel initial_label = go Seq.empty
   where
     go context =
         (VisitorTResultFetcher
@@ -206,7 +222,7 @@ runVisitorTThroughCheckpoint = go Seq.empty
         .*
         stepVisitorTThroughCheckpoint context
       where
-        labelSolution = VisitorSolution (labelFromContext context)
+        labelSolution = VisitorSolution ((initial_label ⊕) . labelFromContext $ context)
 -- @+node:gcross.20111028170027.1294: *3* runVisitorTWithCheckpoints
 runVisitorTTWithCheckpoints ::
     (Functor m, Monad m) ⇒
