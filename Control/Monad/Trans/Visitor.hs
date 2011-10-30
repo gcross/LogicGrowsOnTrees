@@ -21,6 +21,7 @@ import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,vi
 import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.Functor.Identity (Identity(..),runIdentity)
+import Data.Monoid (Monoid(..))
 import Data.Serialize (Serialize(),encode)
 -- @-<< Import needed modules >>
 
@@ -66,6 +67,10 @@ instance Monad m ⇒ MonadPlus (VisitorT m) where
 -- @+node:gcross.20110923164140.1207: *3* MonadTrans VisitorT
 instance MonadTrans VisitorT where
     lift = VisitorT . lift
+-- @+node:gcross.20111030130309.1365: *3* Monoid VisitorT
+instance Monad m ⇒ Monoid (VisitorT m α) where
+    mempty = mzero
+    mappend = mplus
 -- @+node:gcross.20111028170027.1308: *3* Show Visitor
 instance Show α ⇒ Show (Visitor α) where
     show = s . unwrapVisitorT
