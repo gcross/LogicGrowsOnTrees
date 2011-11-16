@@ -22,8 +22,7 @@ import Data.Monoid
 import Data.Foldable as Fold
 import Data.Foldable (Foldable)
 import Data.Functor.Identity (runIdentity)
-import qualified Data.SequentialIndex as SequentialIndex
-import Data.SequentialIndex (SequentialIndex)
+import Data.SequentialIndex (SequentialIndex,root,leftChild,rightChild)
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor
@@ -87,17 +86,17 @@ labelTransformerForBranch LeftBranch = leftChildLabel
 labelTransformerForBranch RightBranch = rightChildLabel
 -- @+node:gcross.20111019113757.1414: *3* leftChildLabel
 leftChildLabel :: VisitorLabel → VisitorLabel
-leftChildLabel = VisitorLabel . fromJust . SequentialIndex.leftChild . unwrapVisitorLabel
+leftChildLabel = VisitorLabel . fromJust . leftChild . unwrapVisitorLabel
 -- @+node:gcross.20111019113757.1403: *3* oppositeBranchOf
 oppositeBranchOf :: Branch → Branch
 oppositeBranchOf LeftBranch = RightBranch
 oppositeBranchOf RightBranch = LeftBranch
 -- @+node:gcross.20111019113757.1416: *3* rightChildLabel
 rightChildLabel :: VisitorLabel → VisitorLabel
-rightChildLabel = VisitorLabel . fromJust . SequentialIndex.rightChild . unwrapVisitorLabel
+rightChildLabel = VisitorLabel . fromJust . rightChild . unwrapVisitorLabel
 -- @+node:gcross.20111019113757.1413: *3* rootLabel
 rootLabel :: VisitorLabel
-rootLabel = VisitorLabel SequentialIndex.root
+rootLabel = VisitorLabel root
 -- @+node:gcross.20111029192420.1338: *3* runVisitorTAndGatherLabeledResults
 runVisitorTAndGatherLabeledResults :: Monad m ⇒ VisitorT m α → m [VisitorSolution α]
 runVisitorTAndGatherLabeledResults = runVisitorTWithStartingLabel rootLabel
