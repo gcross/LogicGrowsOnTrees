@@ -334,6 +334,9 @@ main = defaultMain
                     (liftA2 (==) id ((mempty :: VisitorLabel) ⊕))
             -- @-others
             ]
+        -- @+node:gcross.20111116214909.1379: *4* Ord instance of VisitorLabel equivalent to Ord of branching
+        ,testProperty "Ord instance of VisitorLabel equivalent to Ord of branching" $ \a b →
+            (compare `on` branchingFromLabel) a b == compare a b
         -- @+node:gcross.20111029192420.1342: *4* runVisitorWithLabels
         ,testGroup "runVisitorWithLabels"
             -- @+others

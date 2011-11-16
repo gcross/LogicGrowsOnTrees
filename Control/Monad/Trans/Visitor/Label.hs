@@ -21,6 +21,7 @@ import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.Foldable as Fold
 import Data.Foldable (Foldable)
+import Data.Function (on)
 import Data.Functor.Identity (runIdentity)
 import Data.SequentialIndex (SequentialIndex,root,leftChild,rightChild)
 import Data.Typeable (Typeable)
@@ -34,9 +35,9 @@ import Control.Monad.Trans.Visitor
 data Branch =
     LeftBranch
   | RightBranch
-  deriving (Eq,Read,Show)
+  deriving (Eq,Ord,Read,Show)
 -- @+node:gcross.20111019113757.1409: *3* VisitorLabel
-newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq,Ord)
+newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq)
 -- @+node:gcross.20111019113757.1250: *3* VisitorSolution
 data VisitorSolution α = VisitorSolution
     {   visitorSolutionLabel :: VisitorLabel
@@ -53,30 +54,33 @@ instance Exception VisitorWalkError
 -- @+node:gcross.20111029192420.1361: *3* Monoid VisitorLabel
 instance Monoid VisitorLabel where
     mempty = rootLabel
-    x `mappend` y
-      | x == rootLabel = y
-      | y == rootLabel = x
-      | otherwise = go y rootLabel x
+    xl@(VisitorLabel x) `mappend` yl@(VisitorLabel y)
+      | x == root = yl
+      | y == root = xl
+      | otherwise = VisitorLabel $ go y root x
       where
         go original_label current_label product_label
           | current_label == original_label = product_label
         -- Note:  the following is counter-intuitive, but it makes sense if you think of it as
         --        being where you need to go to get to the original label instead of where you
         --        currently are with respect to the original label
-          | current_label > original_label = go original_label (leftChildLabel current_label) (leftChildLabel product_label)
-          | current_label < original_label = go original_label (rightChildLabel current_label) (rightChildLabel product_label)
+          | current_label > original_label = (go original_label `on` (fromJust . leftChild)) current_label product_label
+          | current_label < original_label = (go original_label `on` (fromJust . rightChild)) current_label product_label
+-- @+node:gcross.20111116214909.1376: *3* Ord VisitorLabel
+instance Ord VisitorLabel where
+    compare = compare `on` branchingFromLabel
 -- @+node:gcross.20111028153100.1296: *3* Show VisitorLabel
 instance Show VisitorLabel where
     show = fmap (\branch → case branch of {LeftBranch → 'L'; RightBranch → 'R'}) . branchingFromLabel
 -- @+node:gcross.20111029192420.1336: ** Functions
 -- @+node:gcross.20111029212714.1353: *3* branchingFromLabel
 branchingFromLabel :: VisitorLabel → [Branch]
-branchingFromLabel = go rootLabel
+branchingFromLabel = go root . unwrapVisitorLabel
   where
     go current_label original_label
       | current_label == original_label = []
-      | current_label > original_label = LeftBranch:go (leftChildLabel current_label) original_label
-      | current_label < original_label = RightBranch:go (rightChildLabel current_label) original_label
+      | current_label > original_label = LeftBranch:go (fromJust . leftChild $ current_label) original_label
+      | current_label < original_label = RightBranch:go (fromJust . rightChild $ current_label) original_label
 -- @+node:gcross.20111028153100.1294: *3* labelFromBranching
 labelFromBranching :: Foldable t ⇒ t Branch → VisitorLabel
 labelFromBranching = Fold.foldl' (flip labelTransformerForBranch) rootLabel
@@ -123,7 +127,7 @@ walkVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α
 walkVisitorDownLabel label = runIdentity . walkVisitorTDownLabel label
 -- @+node:gcross.20111019113757.1395: *3* walkVisitorTDownLabel
 walkVisitorTDownLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (VisitorT m α)
-walkVisitorTDownLabel label = go rootLabel
+walkVisitorTDownLabel (VisitorLabel label) = go root
   where
     go parent visitor
       | parent == label = return visitor
@@ -136,11 +140,11 @@ walkVisitorTDownLabel label = go rootLabel
                 if parent > label
                 then
                     go
-                        (leftChildLabel parent)
+                        (fromJust . leftChild $ parent)
                         (left >>= VisitorT . k)
                 else
                     go
-                        (rightChildLabel parent)
+                        (fromJust . rightChild $ parent)
                         (right >>= VisitorT . k)
 -- @-others
 -- @-leo
