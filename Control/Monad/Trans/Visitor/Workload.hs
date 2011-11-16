@@ -13,6 +13,8 @@ module Control.Monad.Trans.Visitor.Workload where
 -- @+<< Import needed modules >>
 -- @+node:gcross.20111029192420.1351: ** << Import needed modules >>
 import Control.Monad (join)
+import Data.Composition ((.*))
+import Data.Maybe (catMaybes)
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
@@ -59,5 +61,14 @@ runVisitorThroughWorkload VisitorWorkload{..} =
         visitorWorkloadCheckpoint
     .
     walkVisitorDownPath visitorWorkloadPath
+-- @+node:gcross.20111116214909.1373: *3* runVisitorThroughWorkloadAndReturnResults
+runVisitorThroughWorkloadAndReturnResults ::
+    VisitorWorkload →
+    Visitor α →
+    [VisitorSolution α]
+runVisitorThroughWorkloadAndReturnResults =
+    (catMaybes . map fst)
+    .*
+    runVisitorThroughWorkload
 -- @-others
 -- @-leo

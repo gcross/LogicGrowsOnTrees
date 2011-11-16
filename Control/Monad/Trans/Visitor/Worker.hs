@@ -179,7 +179,7 @@ genericForkVisitorTWorkerThread
                                 checkpoint
                                 visitor
                         Just (WorkloadStealRequested submitMaybeWorkload) →
-                            case tryStealWorkload initial_path context of
+                            case tryStealWorkload initial_path cursor context of
                                 Nothing → do
                                     liftIO $ do
                                         submitMaybeWorkload Nothing
@@ -190,12 +190,12 @@ genericForkVisitorTWorkerThread
                                         solutions
                                         checkpoint
                                         visitor
-                                Just (append_to_cursor,new_context,workload) → do
+                                Just (new_cursor,new_context,workload) → do
                                     liftIO $ do
                                         submitMaybeWorkload (Just workload)
                                         yield
                                     loop2
-                                        (cursor >< append_to_cursor)
+                                        new_cursor
                                         new_context
                                         solutions
                                         checkpoint
@@ -269,9 +269,10 @@ genericForkVisitorTWorkerThread
 -- @+node:gcross.20110923164140.1260: *3* tryStealWorkload
 tryStealWorkload ::
     VisitorPath →
+    VisitorCheckpointCursor →
     VisitorTContext m α →
     Maybe (VisitorCheckpointCursor,VisitorTContext m α,VisitorWorkload)
-tryStealWorkload initial_path = go Seq.empty
+tryStealWorkload initial_path = go
   where
     go _      (viewl → EmptyL) = Nothing
     go cursor (viewl → step :< rest_context) = case step of
@@ -280,12 +281,11 @@ tryStealWorkload initial_path = go Seq.empty
         CacheContextStep cache →
             go (cursor |> CacheCheckpointD cache) rest_context
         LeftChoiceContextStep other_checkpoint _ →
-            let new_cursor = (cursor |> ChoiceCheckpointD RightBranch other_checkpoint)
-            in Just
-                (new_cursor
+            Just
+                (cursor |> ChoiceCheckpointD LeftBranch Unexplored
                 ,rest_context
                 ,VisitorWorkload
-                    (initial_path >< pathFromCursor new_cursor)
+                    ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
                     other_checkpoint
                 )
 -- @-others

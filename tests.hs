@@ -26,10 +26,11 @@ import Control.Monad.Trans.Writer
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import qualified Data.DList as DList
+import Data.Function
 import Data.Functor.Identity
 import Data.IORef
 import qualified Data.IVar as IVar
-import Data.List (mapAccumL)
+import Data.List (mapAccumL,sort)
 import Data.Maybe
 import Data.Monoid
 import Data.Monoid.Unicode
@@ -97,6 +98,9 @@ instance Arbitrary VisitorCheckpoint where
                     ]
 -- @+node:gcross.20111029212714.1360: *3* VisitorLabel
 instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
+-- @+node:gcross.20111116214909.1383: *3* VisitorPath
+instance Arbitrary VisitorPath where
+    arbitrary = fmap Seq.fromList . listOf . oneof $ [fmap (CacheStep . encode) (arbitrary :: Gen Int),fmap ChoiceStep arbitrary]
 -- @+node:gcross.20111028170027.1298: ** Functions
 -- @+node:gcross.20111028170027.1299: *3* echo
 echo :: Show α ⇒ α → α
@@ -586,6 +590,73 @@ main = defaultMain
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
                 readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+            -- @+node:gcross.20111116214909.1369: *5* work stealing correctly preserves total workload
+            ,testGroup "work stealing correctly preserves total workload"
+                -- @+others
+                -- @+node:gcross.20111116214909.1371: *6* single steal
+                [testProperty "single steal" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                    blocking_value_ivar ← IVar.new
+                    let visitor_with_blocking_value = ((return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_value_ivar) `mplus` return 24) `mplus` visitor
+                    termination_result_ivar ← IVar.new
+                    VisitorWorkerEnvironment{..} ← forkVisitorWorkerThread
+                        (IVar.write termination_result_ivar)
+                        visitor_with_blocking_value
+                        entire_workload
+                    maybe_maybe_workload_ref ← newIORef Nothing
+                    writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
+                    IVar.write blocking_value_ivar 42
+                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                    remaining_solutions ← case termination_result of
+                        VisitorWorkerFinished solutions → return solutions
+                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                        VisitorWorkerAborted → error "worker aborted prematurely"
+                    readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+                    workload ←
+                        fmap (
+                            fromMaybe (error "stolen workload not available")
+                            .
+                            fromMaybe (error "steal request ignored")
+                        )
+                        $
+                        readIORef maybe_maybe_workload_ref
+                    let stolen_solutions = runVisitorThroughWorkloadAndReturnResults workload visitor_with_blocking_value
+                        solutions = sort (remaining_solutions ++ stolen_solutions)
+                        correct_solutions = runVisitorWithLabels visitor_with_blocking_value
+                    solutions @?= correct_solutions
+                    return True
+                -- @+node:gcross.20111116214909.1375: *6* continuous stealing
+                ,testProperty "continuous stealing" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                    blocking_value_ivar ← IVar.new
+                    let visitor_with_blocking_value = (return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_value_ivar) `mplus` visitor
+                    termination_result_ivar ← IVar.new
+                    VisitorWorkerEnvironment{..} ← forkVisitorWorkerThread
+                        (IVar.write termination_result_ivar)
+                        visitor_with_blocking_value
+                        entire_workload
+                    workloads_ref ← newIORef DList.empty
+                    let submitWorkloadStealReqest = atomicModifyIORef workerPendingRequests $ (,()) . fmap (const workload_steal_requests)
+                        workload_steal_requests = Seq.singleton . WorkloadStealRequested $
+                            maybe
+                                submitWorkloadStealReqest
+                                (\workload → do
+                                    atomicModifyIORef workloads_ref $ (,()) . flip DList.snoc workload
+                                    submitWorkloadStealReqest
+                                )
+                    writeIORef workerPendingRequests . Just $ workload_steal_requests
+                    IVar.write blocking_value_ivar 42
+                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                    remaining_solutions ← case termination_result of
+                        VisitorWorkerFinished solutions → return solutions
+                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                        VisitorWorkerAborted → error "worker aborted prematurely"
+                    workloads ← readIORef workloads_ref
+                    let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndReturnResults visitor_with_blocking_value) . DList.toList $ workloads
+                        solutions = sort (remaining_solutions ++ stolen_solutions)
+                        correct_solutions = runVisitorWithLabels visitor_with_blocking_value
+                    solutions @?= correct_solutions
+                    return True
+                -- @-others
+                ]
             -- @-others
             ]
         -- @-others
