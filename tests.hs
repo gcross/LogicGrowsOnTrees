@@ -533,12 +533,10 @@ main = defaultMain
                 ]
             -- @+node:gcross.20111028181213.1339: *5* status updates produce valid checkpoints
             ,testProperty "status updates produce valid checkpoints" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
-                blocking_value_ivar ← IVar.new
-                let visitor_with_blocking_value = (return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_value_ivar) `mplus` visitor
                 termination_result_ivar ← IVar.new
-                VisitorWorkerEnvironment{..} ← forkVisitorWorkerThread
+                (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
                     (IVar.write termination_result_ivar)
-                    visitor_with_blocking_value
+                    visitor
                     entire_workload
                 checkpoints_ref ← newIORef DList.empty
                 let status_update_requests = Seq.singleton . StatusUpdateRequested $
@@ -549,7 +547,7 @@ main = defaultMain
                                 atomicModifyIORef workerPendingRequests $ (,()) . fmap (const status_update_requests)
                             )
                 writeIORef workerPendingRequests . Just $ status_update_requests
-                IVar.write blocking_value_ivar 42
+                startWorker
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 remaining_solutions ← case termination_result of
                     VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → return solutions
@@ -557,7 +555,7 @@ main = defaultMain
                     VisitorWorkerAborted → error "worker aborted prematurely"
                 readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
                 checkpoints ← fmap DList.toList (readIORef checkpoints_ref)
-                let correct_solutions = runVisitorWithLabels visitor_with_blocking_value
+                let correct_solutions = runVisitorWithLabels visitor
                 correct_solutions @=? ((++ remaining_solutions) . concat . fmap visitorWorkerNewSolutions $ checkpoints)
                 forM_ checkpoints $
                     \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _)) →
@@ -570,7 +568,7 @@ main = defaultMain
                                 let new_solutions_so_far :: [VisitorSolution Int]
                                     new_solutions_so_far = solutions_so_far ++ new_solutions
                                 in  (new_solutions_so_far
-                                    ,new_solutions_so_far ++ mapMaybe fst (runVisitorThroughWorkload workload visitor_with_blocking_value)
+                                    ,new_solutions_so_far ++ mapMaybe fst (runVisitorThroughWorkload workload visitor)
                                     )
                             )
                             []
@@ -635,12 +633,10 @@ main = defaultMain
                     return True
                 -- @+node:gcross.20111116214909.1375: *6* continuous stealing
                 ,testProperty "continuous stealing" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
-                    blocking_value_ivar ← IVar.new
-                    let visitor_with_blocking_value = (return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_value_ivar) `mplus` visitor
                     termination_result_ivar ← IVar.new
-                    VisitorWorkerEnvironment{..} ← forkVisitorWorkerThread
+                    (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
                         (IVar.write termination_result_ivar)
-                        visitor_with_blocking_value
+                        visitor
                         entire_workload
                     workloads_ref ← newIORef DList.empty
                     let submitWorkloadStealReqest = atomicModifyIORef workerPendingRequests $ (,()) . fmap (const workload_steal_requests)
@@ -652,16 +648,16 @@ main = defaultMain
                                     submitWorkloadStealReqest
                                 )
                     writeIORef workerPendingRequests . Just $ workload_steal_requests
-                    IVar.write blocking_value_ivar 42
+                    startWorker
                     termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                     remaining_solutions ← case termination_result of
                         VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
                     workloads ← readIORef workloads_ref
-                    let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndReturnResults visitor_with_blocking_value) . DList.toList $ workloads
+                    let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndReturnResults visitor) . DList.toList $ workloads
                         solutions = sort (remaining_solutions ++ stolen_solutions)
-                        correct_solutions = runVisitorWithLabels visitor_with_blocking_value
+                        correct_solutions = runVisitorWithLabels visitor
                     solutions @?= correct_solutions
                     return True
                 -- @-others
