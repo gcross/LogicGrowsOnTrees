@@ -21,7 +21,7 @@ import Control.Exception (Exception(..),SomeException)
 import Control.Concurrent (killThread)
 import Control.Monad ((>=>),unless)
 import Control.Monad.IO.Class
-import Control.Monad.Tools (ifM,whenM)
+import Control.Monad.Tools (whenM,unlessM)
 
 import Data.Either.Unwrap (fromLeft,fromRight,isLeft,isRight)
 import Data.IORef (IORef,atomicModifyIORef,newIORef,readIORef,writeIORef)
@@ -221,9 +221,7 @@ genericCreateVisitorTWorkerReactiveNetwork
             worker_environment ← fork workerTerminated visitor workload
             whenM (readIORef worker_starting_ref)
                   (do (newWorkerEnvironment worker_environment)
-                      ifM (readIORef worker_starting_ref)
-                          (writeIORef worker_starting_ref False)
-                          (resetWorkerEnvironment ())
+                      unlessM (readIORef worker_starting_ref) (resetWorkerEnvironment ())
                   )
         )
         $
