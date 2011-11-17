@@ -95,7 +95,6 @@ genericCreateVisitorTWorkerReactiveNetwork
     (update_maybe_status_event_,updateMaybeStatus) ← newHandler
     (worker_terminated_event,workerTerminated) ← newHandler
     (new_worker_environment_event,newWorkerEnvironment) ← newHandler
-    (reset_worker_environment_event,resetWorkerEnvironment) ← newHandler
 
     let current_worker_environment = stepper Nothing current_worker_environment_change_event
 
@@ -144,7 +143,6 @@ genericCreateVisitorTWorkerReactiveNetwork
             mconcat
                 [fmap (const Nothing) worker_terminated_event
                 ,fmap (const Nothing) shutdown_event
-                ,fmap (const Nothing) reset_worker_environment_event
                 ,fmap Just new_worker_environment_event
                 ]
 
