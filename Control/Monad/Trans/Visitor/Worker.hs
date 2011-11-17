@@ -275,16 +275,16 @@ genericPreforkVisitorTWorkerThread
             -- @-<< Step visitor >>
     start_flag_ivar ← IVar.new
     thread_id ← forkIO $ do
-        IVar.blocking . IVar.read $ start_flag_ivar
         termination_reason ←
-            run (
-                walk initial_path visitor
-                >>=
-                loop1
-                    Seq.empty
-                    Seq.empty
-                    DList.empty
-                    initial_checkpoint
+            (do IVar.blocking . IVar.read $ start_flag_ivar
+                run $
+                    walk initial_path visitor
+                    >>=
+                    loop1
+                        Seq.empty
+                        Seq.empty
+                        DList.empty
+                        initial_checkpoint
             )
             `catch`
             (return . VisitorWorkerFailed)
