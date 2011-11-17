@@ -16,6 +16,7 @@
 -- @+<< Import needed modules >>
 -- @+node:gcross.20101114125204.1260: ** << Import needed modules >>
 import Control.Applicative (liftA2)
+import Control.Concurrent
 import Control.Concurrent.QSem
 import Control.Exception
 import Control.Monad
@@ -854,6 +855,39 @@ main = defaultMain
             response ← IVar.blocking $ IVar.read response_ivar
             pause event_network
             fromException response @?= Just e
+        -- @+node:gcross.20111117140347.1407: *4* shutdown of worker is propagated to event
+        ,testCase "shutdown of worker is propagated to event" $ do
+            (event_handler,triggerEventWith) ← newAddHandler
+            (shutdown_event_handler,triggerShutdownEvent) ← newAddHandler
+            response_ref ← newIORef ()
+            blocking_ivar ← IVar.new
+            event_network ← compile $ do
+                event ← fromAddHandler event_handler
+                shutdown_event ← fromAddHandler shutdown_event_handler
+                ( update_maybe_status_event
+                 ,submit_maybe_workload_event
+                 ,send_request_workload_event
+                 ,send_steal_workload_event
+                 ,failure_event
+                 ) ← createVisitorWorkerReactiveNetwork
+                        never
+                        never
+                        shutdown_event
+                        never
+                        event
+                        ((return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_ivar) `mplus` return ())
+                reactimate (fmap (const (writeIORef response_ref (error "received update_maybe_status_event"))) update_maybe_status_event)
+                reactimate (fmap (const (writeIORef response_ref (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                reactimate (fmap (const (writeIORef response_ref (error "received send_steal_workload_event"))) send_steal_workload_event)
+                reactimate (fmap (const (writeIORef response_ref (error "received send_request_workload_event"))) send_request_workload_event)
+                reactimate (fmap (writeIORef response_ref . error . ("received failure_event: " ++) . show) failure_event)
+            actuate event_network
+            triggerEventWith (Just entire_workload)
+            triggerShutdownEvent ()
+            IVar.write blocking_ivar ()
+            threadDelay 1000
+            pause event_network
+            readIORef response_ref >>= evaluate
         -- @-others
         ]
     -- @-others
