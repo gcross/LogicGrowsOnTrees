@@ -225,7 +225,7 @@ genericCreateVisitorTWorkerReactiveNetwork
 
     reactimate
         .
-        fmap (return . workerThreadId >=> IVar.blocking . IVar.read >=> killThread)
+        fmap (killThread . workerThreadId)
         .
         filterJust
         .

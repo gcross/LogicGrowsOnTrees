@@ -49,7 +49,7 @@ import Control.Monad.Trans.Visitor.Workload
 -- @+node:gcross.20110923164140.1257: *3* VisitorWorkerEnvironment
 data VisitorWorkerEnvironment α = VisitorWorkerEnvironment
     {   workerInitialPath :: VisitorPath
-    ,   workerThreadId :: IVar ThreadId
+    ,   workerThreadId :: ThreadId
     ,   workerPendingRequests :: IORef (VisitorWorkerRequestQueue α)
     }
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
@@ -152,7 +152,6 @@ genericPreforkVisitorTWorkerThread
     visitor
     (VisitorWorkload initial_path initial_checkpoint)
   = do
-    thread_id_ivar ← IVar.new
     pending_requests_ref ← newIORef $ (Just Seq.empty)
     let initial_label = labelFromPath initial_path
         loop1
@@ -274,33 +273,35 @@ genericPreforkVisitorTWorkerThread
                         new_checkpoint
                         new_visitor
             -- @-<< Step visitor >>
-    return
-        ((forkIO $ do
-            termination_reason ←
-                run (
-                    walk initial_path visitor
-                    >>=
-                    loop1
-                        Seq.empty
-                        Seq.empty
-                        DList.empty
-                        initial_checkpoint
-                )
-                `catch`
-                (return . VisitorWorkerFailed)
-            atomicModifyIORef pending_requests_ref (Nothing,)
+    start_flag_ivar ← IVar.new
+    thread_id ← forkIO $ do
+        IVar.blocking . IVar.read $ start_flag_ivar
+        termination_reason ←
+            run (
+                walk initial_path visitor
                 >>=
-                maybe
-                    (return ())
-                    (Fold.mapM_ $ \request → case request of
-                        StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
-                        WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
-                    )
-            finishedCallback termination_reason
-         ) >>= IVar.write thread_id_ivar
+                loop1
+                    Seq.empty
+                    Seq.empty
+                    DList.empty
+                    initial_checkpoint
+            )
+            `catch`
+            (return . VisitorWorkerFailed)
+        atomicModifyIORef pending_requests_ref (Nothing,)
+            >>=
+            maybe
+                (return ())
+                (Fold.mapM_ $ \request → case request of
+                    StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
+                    WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
+                )
+        finishedCallback termination_reason
+    return
+        (IVar.write start_flag_ivar ()
         ,VisitorWorkerEnvironment
             initial_path
-            thread_id_ivar
+            thread_id
             pending_requests_ref
         )
 -- @+node:gcross.20111028181213.1331: *3* preforkVisitorIOWorkerThread
