@@ -69,9 +69,6 @@ data VisitorWorkerTerminationReason α =
   | VisitorWorkerFailed SomeException
   | VisitorWorkerAborted
   deriving (Show)
--- @+node:gcross.20111028181213.1323: ** Constants
--- @+node:gcross.20111028181213.1324: *3* entire_workload
-entire_workload = VisitorWorkload Seq.empty Unexplored
 -- @+node:gcross.20110923164140.1259: ** Functions
 -- @+node:gcross.20111028181213.1331: *3* forkVisitorIOWorkerThread
 forkVisitorIOWorkerThread ::

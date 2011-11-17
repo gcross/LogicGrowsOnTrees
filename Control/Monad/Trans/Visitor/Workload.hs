@@ -15,6 +15,7 @@ module Control.Monad.Trans.Visitor.Workload where
 import Control.Monad (join)
 import Data.Composition ((.*))
 import Data.Maybe (catMaybes)
+import qualified Data.Sequence as Seq
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
@@ -29,6 +30,9 @@ data VisitorWorkload = VisitorWorkload
     {   visitorWorkloadPath :: VisitorPath
     ,   visitorWorkloadCheckpoint :: VisitorCheckpoint
     } deriving (Eq,Show)
+-- @+node:gcross.20111117140347.1386: ** Constants
+-- @+node:gcross.20111117140347.1385: *3* entire_workload
+entire_workload = VisitorWorkload Seq.empty Unexplored
 -- @+node:gcross.20111029192420.1352: ** Functions
 -- @+node:gcross.20111029192420.1356: *3* runVisitorTThroughWorkload
 runVisitorTThroughWorkload ::
