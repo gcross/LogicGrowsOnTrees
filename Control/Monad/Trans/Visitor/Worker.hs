@@ -49,7 +49,7 @@ import Control.Monad.Trans.Visitor.Workload
 -- @+node:gcross.20110923164140.1257: *3* VisitorWorkerEnvironment
 data VisitorWorkerEnvironment α = VisitorWorkerEnvironment
     {   workerInitialPath :: VisitorPath
-    ,   workerThreadId :: ThreadId
+    ,   workerThreadId :: IVar ThreadId
     ,   workerPendingRequests :: IORef (VisitorWorkerRequestQueue α)
     }
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
@@ -70,7 +70,7 @@ data VisitorWorkerTerminationReason α =
   | VisitorWorkerAborted
   deriving (Show)
 -- @+node:gcross.20110923164140.1259: ** Functions
--- @+node:gcross.20111028181213.1331: *3* forkVisitorIOWorkerThread
+-- @+node:gcross.20111117140347.1400: *3* forkVisitorIOWorkerThread
 forkVisitorIOWorkerThread ::
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorIO α →
@@ -123,8 +123,36 @@ genericForkVisitorTWorkerThread
     run
     finishedCallback
     visitor
+    workload
+  = do (start,environment) ← genericPreforkVisitorTWorkerThread walk step run finishedCallback visitor workload
+       start
+       return environment
+-- @+node:gcross.20111117140347.1392: *3* genericPreforkVisitorTWorkerThread
+genericPreforkVisitorTWorkerThread ::
+    MonadIO n ⇒
+    (
+        VisitorPath → VisitorT m α → n (VisitorT m α)
+    ) →
+    (
+        VisitorTContext m α →
+        VisitorCheckpoint →
+        VisitorT m α →
+        n (Maybe α,Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α))
+    ) →
+    (∀ β. n β → IO β) →
+    (VisitorWorkerTerminationReason α → IO ()) →
+    VisitorT m α →
+    VisitorWorkload →
+    IO (IO (), VisitorWorkerEnvironment α)
+genericPreforkVisitorTWorkerThread
+    walk
+    step
+    run
+    finishedCallback
+    visitor
     (VisitorWorkload initial_path initial_checkpoint)
   = do
+    thread_id_ivar ← IVar.new
     pending_requests_ref ← newIORef $ (Just Seq.empty)
     let initial_label = labelFromPath initial_path
         loop1
@@ -138,7 +166,7 @@ genericForkVisitorTWorkerThread
                 Nothing → return VisitorWorkerAborted
                 Just (viewl → _ :< _) → do
                     -- @+<< Respond to request >>
-                    -- @+node:gcross.20111020182554.1282: *4* << Respond to request >>
+                    -- @+node:gcross.20111117140347.1393: *4* << Respond to request >>
                     request ← liftIO $
                         atomicModifyIORef pending_requests_ref (
                             \maybe_requests → case fmap viewl maybe_requests of
@@ -212,7 +240,7 @@ genericForkVisitorTWorkerThread
             visitor
           = do
             -- @+<< Step visitor >>
-            -- @+node:gcross.20111020182554.1283: *4* << Step visitor >>
+            -- @+node:gcross.20111117140347.1394: *4* << Step visitor >>
             (maybe_solution,maybe_next) ← step context checkpoint visitor
             new_solutions ← liftIO . evaluate . ($ solutions) $
                 case maybe_solution of
@@ -246,33 +274,65 @@ genericForkVisitorTWorkerThread
                         new_checkpoint
                         new_visitor
             -- @-<< Step visitor >>
-    thread_id ← forkIO $ do
-        termination_reason ←
-            run (
-                walk initial_path visitor
-                >>=
-                loop1
-                    Seq.empty
-                    Seq.empty
-                    DList.empty
-                    initial_checkpoint
-            )
-            `catch`
-            (return . VisitorWorkerFailed)
-        atomicModifyIORef pending_requests_ref (Nothing,)
-            >>=
-            maybe
-                (return ())
-                (Fold.mapM_ $ \request → case request of
-                    StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
-                    WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
+    return
+        ((forkIO $ do
+            termination_reason ←
+                run (
+                    walk initial_path visitor
+                    >>=
+                    loop1
+                        Seq.empty
+                        Seq.empty
+                        DList.empty
+                        initial_checkpoint
                 )
-        finishedCallback termination_reason
-    return $
-        VisitorWorkerEnvironment
+                `catch`
+                (return . VisitorWorkerFailed)
+            atomicModifyIORef pending_requests_ref (Nothing,)
+                >>=
+                maybe
+                    (return ())
+                    (Fold.mapM_ $ \request → case request of
+                        StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
+                        WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
+                    )
+            finishedCallback termination_reason
+         ) >>= IVar.write thread_id_ivar
+        ,VisitorWorkerEnvironment
             initial_path
-            thread_id
+            thread_id_ivar
             pending_requests_ref
+        )
+-- @+node:gcross.20111028181213.1331: *3* preforkVisitorIOWorkerThread
+preforkVisitorIOWorkerThread ::
+    (VisitorWorkerTerminationReason α → IO ()) →
+    VisitorIO α →
+    VisitorWorkload →
+    IO (IO (), VisitorWorkerEnvironment α)
+preforkVisitorIOWorkerThread = preforkVisitorTWorkerThread id
+-- @+node:gcross.20111117140347.1398: *3* preforkVisitorTWorkerThread
+preforkVisitorTWorkerThread ::
+    (Functor m, MonadIO m) ⇒
+    (∀ β. m β → IO β) →
+    (VisitorWorkerTerminationReason α → IO ()) →
+    VisitorT m α →
+    VisitorWorkload →
+    IO (IO (),VisitorWorkerEnvironment α)
+preforkVisitorTWorkerThread =
+    genericPreforkVisitorTWorkerThread
+        walkVisitorTDownPath
+        stepVisitorTThroughCheckpoint
+-- @+node:gcross.20111117140347.1396: *3* preforkVisitorWorkerThread
+preforkVisitorWorkerThread ::
+    (VisitorWorkerTerminationReason α → IO ()) →
+    Visitor α →
+    VisitorWorkload →
+    IO (IO (), VisitorWorkerEnvironment α)
+preforkVisitorWorkerThread =
+    genericPreforkVisitorTWorkerThread
+        (return .* walkVisitorDownPath)
+        (return .** stepVisitorThroughCheckpoint)
+        id
 -- @+node:gcross.20110923164140.1260: *3* tryStealWorkload
 tryStealWorkload ::
     VisitorPath →

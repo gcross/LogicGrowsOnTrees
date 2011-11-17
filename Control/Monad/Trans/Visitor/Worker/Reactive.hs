@@ -25,6 +25,7 @@ import Control.Monad.Tools (whenM,unlessM)
 
 import Data.Either.Unwrap (fromLeft,fromRight,isLeft,isRight)
 import Data.IORef (IORef,atomicModifyIORef,newIORef,readIORef,writeIORef)
+import qualified Data.IVar as IVar
 import Data.Maybe (fromJust,isJust)
 import Data.Monoid (mappend,mconcat)
 import Data.Sequence ((|>))
@@ -63,7 +64,7 @@ genericCreateVisitorTWorkerReactiveNetwork ::
         (VisitorWorkerTerminationReason α → IO ()) →
         VisitorT m α →
         VisitorWorkload →
-        IO (VisitorWorkerEnvironment α)
+        IO (IO (), VisitorWorkerEnvironment α)
     ) →
     Event () →
     Event id →
@@ -80,7 +81,7 @@ genericCreateVisitorTWorkerReactiveNetwork ::
         )
 
 genericCreateVisitorTWorkerReactiveNetwork
-    fork
+    prefork
     request_status_update_event
     request_workload_steal_event
     shutdown_event
@@ -88,8 +89,6 @@ genericCreateVisitorTWorkerReactiveNetwork
     received_response_to_steal_request_event
     visitor
     = do
-
-    worker_starting_ref ← liftIO (newIORef False)
 
     (request_not_received_event,requestNotReceived) ← newHandler
     (submit_maybe_workload_event_,submitMaybeWorkload) ← newHandler
@@ -217,31 +216,22 @@ genericCreateVisitorTWorkerReactiveNetwork
     reactimate
         .
         fmap (\workload → do
-            writeIORef worker_starting_ref True
-            worker_environment ← fork workerTerminated visitor workload
-            whenM (readIORef worker_starting_ref)
-                  (do (newWorkerEnvironment worker_environment)
-                      unlessM (readIORef worker_starting_ref) (resetWorkerEnvironment ())
-                  )
+            (start,worker_environment) ← prefork workerTerminated visitor workload
+            newWorkerEnvironment worker_environment
+            start
         )
         $
         non_redundant_workload_received_event
 
     reactimate
         .
-        fmap (killThread . workerThreadId)
+        fmap (return . workerThreadId >=> IVar.blocking . IVar.read >=> killThread)
         .
         filterJust
         .
         (current_worker_environment <@)
         $
         shutdown_event
-
-    reactimate
-        .
-        fmap (const $ writeIORef worker_starting_ref False)
-        $
-        worker_terminated_event
 
     return
         (update_maybe_status_event
@@ -269,7 +259,7 @@ createVisitorTWorkerReactiveNetwork ::
         )
 createVisitorTWorkerReactiveNetwork run =
     genericCreateVisitorTWorkerReactiveNetwork
-        (forkVisitorTWorkerThread run)
+        (preforkVisitorTWorkerThread run)
 -- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
 createVisitorWorkerReactiveNetwork ::
     Event () →
@@ -287,7 +277,7 @@ createVisitorWorkerReactiveNetwork ::
         )
 createVisitorWorkerReactiveNetwork =
     genericCreateVisitorTWorkerReactiveNetwork
-        forkVisitorWorkerThread
+        preforkVisitorWorkerThread
 -- @+node:gcross.20111026213013.1282: *3* switch
 switch :: Event (Either a b) → (Event a,Event b)
 switch = (fmap fromLeft . filterE isLeft) &&& (fmap fromRight . filterE isRight)
