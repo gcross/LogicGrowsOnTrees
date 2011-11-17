@@ -4,6 +4,7 @@
 
 -- @+<< Language extensions >>
 -- @+node:gcross.20101114125204.1281: ** << Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
@@ -104,6 +105,11 @@ instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbit
 -- @+node:gcross.20111116214909.1383: *3* VisitorPath
 instance Arbitrary VisitorPath where
     arbitrary = fmap Seq.fromList . listOf . oneof $ [fmap (CacheStep . encode) (arbitrary :: Gen Int),fmap ChoiceStep arbitrary]
+-- @+node:gcross.20111117140347.1401: ** Exceptions
+-- @+node:gcross.20111117140347.1402: *3* TestException
+data TestException = TestException Int deriving (Eq,Show,Typeable)
+
+instance Exception TestException
 -- @+node:gcross.20111028170027.1298: ** Functions
 -- @+node:gcross.20111028170027.1299: *3* echo
 echo :: Show α ⇒ α → α
@@ -819,6 +825,35 @@ main = defaultMain
                 response @?= 42
             -- @-others
             ]
+        -- @+node:gcross.20111117140347.1405: *4* exception in worker is propagated to event
+        ,testCase "exception in worker is propagated to event" $ do
+            (event_handler,triggerEventWith) ← newAddHandler
+            response_ivar ← IVar.new
+            let e = TestException 42
+            event_network ← compile $ do
+                event ← fromAddHandler event_handler
+                ( update_maybe_status_event
+                 ,submit_maybe_workload_event
+                 ,send_request_workload_event
+                 ,send_steal_workload_event
+                 ,failure_event
+                 ) ← createVisitorWorkerReactiveNetwork
+                        never
+                        never
+                        never
+                        never
+                        event
+                        (throw e)
+                reactimate (fmap (IVar.write response_ivar) failure_event)
+                reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
+                reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                reactimate (fmap (const (IVar.write response_ivar (error "received send_steal_workload_event"))) send_steal_workload_event)
+                reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
+            actuate event_network
+            triggerEventWith (Just entire_workload)
+            response ← IVar.blocking $ IVar.read response_ivar
+            pause event_network
+            fromException response @?= Just e
         -- @-others
         ]
     -- @-others
