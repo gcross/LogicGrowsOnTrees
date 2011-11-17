@@ -145,6 +145,11 @@ mergeCheckpointRoot (ChoiceCheckpoint Unexplored Unexplored) = Unexplored
 mergeCheckpointRoot (ChoiceCheckpoint Explored Explored) = Explored
 mergeCheckpointRoot (CacheCheckpoint _ Explored) = Explored
 mergeCheckpointRoot checkpoint = checkpoint
+-- @+node:gcross.20111117140347.1388: *3* mergeAllCheckpointNodes
+mergeAllCheckpointNodes :: VisitorCheckpoint → VisitorCheckpoint
+mergeAllCheckpointNodes (ChoiceCheckpoint left right) = mergeCheckpointRoot (ChoiceCheckpoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
+mergeAllCheckpointNodes (CacheCheckpoint cache checkpoint) = mergeCheckpointRoot (CacheCheckpoint cache (mergeAllCheckpointNodes checkpoint))
+mergeAllCheckpointNodes checkpoint = checkpoint
 -- @+node:gcross.20111020182554.1281: *3* moveDownContext
 moveDownContext ::
     VisitorTContextStep m α →

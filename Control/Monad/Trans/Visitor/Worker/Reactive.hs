@@ -21,9 +21,10 @@ import Control.Exception (Exception(..),SomeException)
 import Control.Concurrent (killThread)
 import Control.Monad ((>=>),unless)
 import Control.Monad.IO.Class
+import Control.Monad.Tools (ifM,whenM)
 
 import Data.Either.Unwrap (fromLeft,fromRight,isLeft,isRight)
-import Data.IORef (IORef,atomicModifyIORef)
+import Data.IORef (IORef,atomicModifyIORef,newIORef,readIORef,writeIORef)
 import Data.Maybe (fromJust,isJust)
 import Data.Monoid (mappend,mconcat)
 import Data.Sequence ((|>))
@@ -48,7 +49,7 @@ data VisitorWorkerReactiveRequest id =
     StatusUpdateReactiveRequest
   | WorkloadStealReactiveRequest id
 -- @+node:gcross.20111026172030.1281: ** Functions
--- @+node:gcross.20111026213013.1281: *3* addHandler
+-- @+node:gcross.20111026213013.1281: *3* newHandler
 newHandler = do
     (event_handler,callback) ← liftIO newAddHandler
     event ← fromAddHandler event_handler
@@ -88,11 +89,14 @@ genericCreateVisitorTWorkerReactiveNetwork
     visitor
     = do
 
+    worker_starting_ref ← liftIO (newIORef False)
+
     (request_not_received_event,requestNotReceived) ← newHandler
     (submit_maybe_workload_event_,submitMaybeWorkload) ← newHandler
     (update_maybe_status_event_,updateMaybeStatus) ← newHandler
     (worker_terminated_event,workerTerminated) ← newHandler
     (new_worker_environment_event,newWorkerEnvironment) ← newHandler
+    (reset_worker_environment_event,resetWorkerEnvironment) ← newHandler
 
     let current_worker_environment = stepper Nothing current_worker_environment_change_event
 
@@ -141,6 +145,7 @@ genericCreateVisitorTWorkerReactiveNetwork
             mconcat
                 [fmap (const Nothing) worker_terminated_event
                 ,fmap (const Nothing) shutdown_event
+                ,fmap (const Nothing) reset_worker_environment_event
                 ,fmap Just new_worker_environment_event
                 ]
 
@@ -148,7 +153,7 @@ genericCreateVisitorTWorkerReactiveNetwork
             filterJust
             .
             fmap (\reason → case reason of
-                VisitorWorkerFinished solutions → Just solutions
+                VisitorWorkerFinished status_update → Just status_update
                 _ → Nothing
             )
             $
@@ -175,17 +180,8 @@ genericCreateVisitorTWorkerReactiveNetwork
             mconcat
                 [update_maybe_status_event_
                 ,(fmap (const Nothing) update_request_rejected_event)
-                ,fmap
-                    (\(Just (VisitorWorkerEnvironment{workerInitialPath})) solutions →
-                        Just $
-                        VisitorWorkerStatusUpdate
-                            solutions
-                            (VisitorWorkload workerInitialPath Explored)
-                    )
-                    current_worker_environment
-                  <@>
-                  worker_terminated_successfully_event
-                 ]
+                ,fmap Just worker_terminated_successfully_event
+                ]
         submit_maybe_workload_event =
             mappend
                 submit_maybe_workload_event_
@@ -220,10 +216,15 @@ genericCreateVisitorTWorkerReactiveNetwork
 
     reactimate
         .
-        fmap (
-            fork workerTerminated visitor
-            >=>
-            newWorkerEnvironment
+        fmap (\workload → do
+            writeIORef worker_starting_ref True
+            worker_environment ← fork workerTerminated visitor workload
+            whenM (readIORef worker_starting_ref)
+                  (do (newWorkerEnvironment worker_environment)
+                      ifM (readIORef worker_starting_ref)
+                          (writeIORef worker_starting_ref False)
+                          (resetWorkerEnvironment ())
+                  )
         )
         $
         non_redundant_workload_received_event
@@ -237,6 +238,12 @@ genericCreateVisitorTWorkerReactiveNetwork
         (current_worker_environment <@)
         $
         shutdown_event
+
+    reactimate
+        .
+        fmap (const $ writeIORef worker_starting_ref False)
+        $
+        worker_terminated_event
 
     return
         (update_maybe_status_event

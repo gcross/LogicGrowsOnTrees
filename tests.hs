@@ -40,6 +40,8 @@ import Data.Serialize (Serialize,decode,encode)
 
 import Debug.Trace (trace)
 
+import Reactive.Banana
+
 import System.IO.Unsafe
 
 import Test.Framework
@@ -55,6 +57,7 @@ import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
+import Control.Monad.Trans.Visitor.Worker.Reactive
 -- @-<< Import needed modules >>
 
 -- @+others
@@ -495,22 +498,18 @@ main = defaultMain
                             (IVar.write solutions_ivar)
                             visitor
                             (VisitorWorkload path Unexplored)
-                    worker_solutions ← IVar.blocking $ IVar.read solutions_ivar
-                    return $
-                        case worker_solutions of
-                            VisitorWorkerFinished solutions
-                                | map visitorSolutionResult solutions ==
-                                  (
-                                    map visitorSolutionResult
-                                    .
-                                    runVisitorWithLabels
-                                    .
-                                    walkVisitorDownPath path
-                                    $
-                                    visitor
-                                  )
-                              → True
-                            _ → False
+                    VisitorWorkerStatusUpdate solutions (VisitorWorkload initial_path checkpoint) ←
+                        (IVar.blocking $ IVar.read solutions_ivar)
+                        >>=
+                        \termination_reason → case termination_reason of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            other → error ("terminated unsuccessfully with reason " ++ show other)
+                    initial_path @?= path
+                    checkpoint @?= Explored
+                    ((@?=) `on` (map visitorSolutionResult))
+                        solutions
+                        (runVisitorWithLabels . walkVisitorDownPath path $ visitor)
+                    return True
                 -- @+node:gcross.20111028181213.1322: *6* with no initial path
                 ,testProperty "with no initial path" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
                     solutions_ivar ← IVar.new
@@ -519,13 +518,17 @@ main = defaultMain
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
-                    worker_solutions ← IVar.blocking $ IVar.read solutions_ivar
-                    return $
-                        case worker_solutions of
-                            VisitorWorkerFinished solutions
-                                | solutions == runVisitorWithLabels visitor
-                              → True
-                            _ → False
+                    VisitorWorkerStatusUpdate solutions (VisitorWorkload initial_path checkpoint) ←
+                        (IVar.blocking $ IVar.read solutions_ivar)
+                        >>=
+                        \termination_reason → case termination_reason of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            other → error ("terminated unsuccessfully with reason " ++ show other)
+                    assertBool "Is the initial path null?" $ Seq.null initial_path
+                    checkpoint @?= Explored
+                    solutions @?= runVisitorWithLabels visitor
+                    return True
+
                 -- @-others
                 ]
             -- @+node:gcross.20111028181213.1339: *5* status updates produce valid checkpoints
@@ -549,7 +552,7 @@ main = defaultMain
                 IVar.write blocking_value_ivar 42
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 remaining_solutions ← case termination_result of
-                    VisitorWorkerFinished solutions → return solutions
+                    VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → return solutions
                     VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → error "worker aborted prematurely"
                 readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
@@ -585,7 +588,7 @@ main = defaultMain
                         entire_workload
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
-                    VisitorWorkerFinished solutions → solutions @?= []
+                    VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → solutions @?= []
                     VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
@@ -595,21 +598,25 @@ main = defaultMain
                 -- @+others
                 -- @+node:gcross.20111116214909.1371: *6* single steal
                 [testProperty "single steal" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                    worker_started_qsem ← newQSem 0
                     blocking_value_ivar ← IVar.new
-                    let visitor_with_blocking_value = ((return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_value_ivar) `mplus` return 24) `mplus` visitor
+                    let visitor_with_blocking_value = (return $ unsafePerformIO (signalQSem worker_started_qsem >> (IVar.blocking . IVar.read $ blocking_value_ivar))) `mplus` return 24 `mplus` visitor
                     termination_result_ivar ← IVar.new
                     VisitorWorkerEnvironment{..} ← forkVisitorWorkerThread
                         (IVar.write termination_result_ivar)
                         visitor_with_blocking_value
                         entire_workload
                     maybe_maybe_workload_ref ← newIORef Nothing
+                    waitQSem worker_started_qsem
                     writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
                     IVar.write blocking_value_ivar 42
-                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                    remaining_solutions ← case termination_result of
-                        VisitorWorkerFinished solutions → return solutions
-                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                        VisitorWorkerAborted → error "worker aborted prematurely"
+                    VisitorWorkerStatusUpdate remaining_solutions (VisitorWorkload initial_path checkpoint) ←
+                        (IVar.blocking $ IVar.read termination_result_ivar)
+                        >>=
+                        \termination_result → case termination_result of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            VisitorWorkerAborted → error "worker aborted prematurely"
                     readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
                     workload ←
                         fmap (
@@ -619,6 +626,8 @@ main = defaultMain
                         )
                         $
                         readIORef maybe_maybe_workload_ref
+                    assertBool "Is the initial path null?" $ Seq.null initial_path
+                    assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
                     let stolen_solutions = runVisitorThroughWorkloadAndReturnResults workload visitor_with_blocking_value
                         solutions = sort (remaining_solutions ++ stolen_solutions)
                         correct_solutions = runVisitorWithLabels visitor_with_blocking_value
@@ -646,7 +655,7 @@ main = defaultMain
                     IVar.write blocking_value_ivar 42
                     termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                     remaining_solutions ← case termination_result of
-                        VisitorWorkerFinished solutions → return solutions
+                        VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
                     workloads ← readIORef workloads_ref
@@ -657,6 +666,161 @@ main = defaultMain
                     return True
                 -- @-others
                 ]
+            -- @-others
+            ]
+        -- @-others
+        ]
+    -- @+node:gcross.20111116214909.1384: *3* Control.Monad.Trans.Visitor.Worker.Reactive
+    ,testGroup "Control.Monad.Trans.Visitor.Worker.Reactive"
+        -- @+others
+        -- @+node:gcross.20111116214909.1388: *4* absense of workload results in
+        [testGroup "absense of workload results in"
+            -- @+others
+            -- @+node:gcross.20111117140347.1384: *5* incoming workload starts the worker
+            [testProperty "incoming workload starts the worker" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                (event_handler,triggerEventWith) ← newAddHandler
+                status_ivar ← IVar.new
+                request_workload_ivar ← IVar.new
+                event_network ← compile $ do
+                    event ← fromAddHandler event_handler
+                    ( update_maybe_status_event
+                     ,submit_maybe_workload_event
+                     ,send_request_workload_event
+                     ,send_steal_workload_event
+                     ,failure_event
+                     ) ← createVisitorWorkerReactiveNetwork
+                            never
+                            never
+                            never
+                            never
+                            event
+                            visitor
+                    reactimate (fmap (IVar.write status_ivar) update_maybe_status_event)
+                    reactimate (fmap (IVar.write request_workload_ivar) send_request_workload_event)
+                    reactimate (fmap (const (IVar.write request_workload_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                    reactimate (fmap (const (IVar.write request_workload_ivar (error "received send_steal_workload_event"))) send_steal_workload_event)
+                    reactimate (fmap (const (IVar.write request_workload_ivar (error "received failure_event"))) failure_event)
+                actuate event_network
+                triggerEventWith (Just entire_workload)
+                request_workload ← (IVar.blocking $ IVar.read request_workload_ivar) >>= evaluate
+                status ← IVar.blocking $ IVar.read status_ivar
+                pause event_network
+                request_workload @?= ()
+                status @?= Just (VisitorWorkerStatusUpdate (runVisitorWithLabels visitor) (VisitorWorkload Seq.empty Explored))
+                return True
+            -- @+node:gcross.20111116214909.1385: *5* null status update event
+            ,testCase "null status update event" $ do
+                (event_handler,triggerEventWith) ← newAddHandler
+                response_ivar ← IVar.new
+                event_network ← compile $ do
+                    event ← fromAddHandler event_handler
+                    ( update_maybe_status_event
+                     ,submit_maybe_workload_event
+                     ,send_request_workload_event
+                     ,send_steal_workload_event
+                     ,failure_event
+                     ) ← createVisitorWorkerReactiveNetwork
+                            event
+                            never
+                            never
+                            never
+                            never
+                            undefined
+                    reactimate (fmap (IVar.write response_ivar) update_maybe_status_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received send_steal_workload_event"))) send_steal_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
+                actuate event_network
+                triggerEventWith ()
+                response ← IVar.blocking $ IVar.read response_ivar
+                pause event_network
+                assertBool "is the status update Nothing?" $ isNothing response
+            -- @+node:gcross.20111117140347.1382: *5* null steal request response causes workload request
+            ,testCase "null steal request response causes workload request" $ do
+                (event_handler,triggerEventWith) ← newAddHandler
+                response_ivar ← IVar.new
+                event_network ← compile $ do
+                    event ← fromAddHandler event_handler
+                    ( update_maybe_status_event
+                     ,submit_maybe_workload_event
+                     ,send_request_workload_event
+                     ,send_steal_workload_event
+                     ,failure_event
+                     ) ← createVisitorWorkerReactiveNetwork
+                            never
+                            never
+                            never
+                            never
+                            event
+                            undefined
+                    reactimate (fmap (IVar.write response_ivar) send_request_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received send_steal_workload_event"))) send_steal_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
+                actuate event_network
+                triggerEventWith Nothing
+                response ← (IVar.blocking $ IVar.read response_ivar) >>= evaluate
+                pause event_network
+                response @?= ()
+            -- @+node:gcross.20111116214909.1387: *5* null workload steal event
+            ,testCase "null workload steal event" $ do
+                (event_handler,triggerEventWith) ← newAddHandler
+                response_ivar ← IVar.new
+                event_network ← compile $ do
+                    event ← fromAddHandler event_handler
+                    ( update_maybe_status_event
+                     ,submit_maybe_workload_event
+                     ,send_request_workload_event
+                     ,send_steal_workload_event
+                     ,failure_event
+                     ) ← createVisitorWorkerReactiveNetwork
+                            never
+                            event
+                            never
+                            never
+                            never
+                            undefined
+                    reactimate (fmap (IVar.write response_ivar) submit_maybe_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received send_steal_workload_event"))) send_steal_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
+                actuate event_network
+                triggerEventWith 42
+                response ← IVar.blocking $ IVar.read response_ivar
+                pause event_network
+                fst response @?= 42
+                assertBool "is the workload nothing?" $ isNothing (snd response)
+            -- @+node:gcross.20111116214909.1389: *5* workload request response causes steal request
+            ,testCase "workload request response causes steal request" $ do
+                (event_handler,triggerEventWith) ← newAddHandler
+                response_ivar ← IVar.new
+                event_network ← compile $ do
+                    event ← fromAddHandler event_handler
+                    ( update_maybe_status_event
+                     ,submit_maybe_workload_event
+                     ,send_request_workload_event
+                     ,send_steal_workload_event
+                     ,failure_event
+                     ) ← createVisitorWorkerReactiveNetwork
+                            never
+                            never
+                            never
+                            event
+                            never
+                            undefined
+                    reactimate (fmap (IVar.write response_ivar) send_steal_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
+                actuate event_network
+                triggerEventWith 42
+                response ← IVar.blocking $ IVar.read response_ivar
+                pause event_network
+                response @?= 42
             -- @-others
             ]
         -- @-others

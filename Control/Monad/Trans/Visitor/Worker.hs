@@ -62,10 +62,10 @@ type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
 data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate
     {   visitorWorkerNewSolutions :: [VisitorSolution α]
     ,   visitorWorkerRemainingWorkload :: VisitorWorkload
-    }
+    } deriving (Eq,Show)
 -- @+node:gcross.20111020182554.1276: *3* VisitorWorkerTerminationReason
 data VisitorWorkerTerminationReason α =
-    VisitorWorkerFinished [VisitorSolution α]
+    VisitorWorkerFinished (VisitorWorkerStatusUpdate α)
   | VisitorWorkerFailed SomeException
   | VisitorWorkerAborted
   deriving (Show)
@@ -227,7 +227,17 @@ genericForkVisitorTWorkerThread
                         in solution `seq` label `seq` (flip DList.snoc $ VisitorSolution label solution)
             case maybe_next of
                 Nothing →
-                    return (VisitorWorkerFinished (DList.toList new_solutions))
+                    return
+                    .
+                    VisitorWorkerFinished
+                    .
+                    VisitorWorkerStatusUpdate (DList.toList new_solutions)
+                    .
+                    VisitorWorkload initial_path
+                    .
+                    checkpointFromCursor cursor
+                    $
+                    Explored
                 Just (new_context,new_checkpoint,new_visitor) →
                     loop1
                         cursor

@@ -34,7 +34,8 @@ Library
         reactive-banana >= 0.4.3 && < 0.5,
         sequential-index == 0.2.*,
         stm == 2.2.*,
-        transformers == 0.2.*
+        transformers == 0.2.*,
+        yjtools >= 0.9.7 && < 0.10
     Exposed-modules:
         Control.Monad.Trans.Visitor
         Control.Monad.Trans.Visitor.Checkpoint
