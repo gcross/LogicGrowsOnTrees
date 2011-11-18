@@ -46,9 +46,9 @@ data RedundantWorkloadReceived = RedundantWorkloadReceived deriving (Eq,Show,Typ
 instance Exception RedundantWorkloadReceived
 -- @+node:gcross.20111026172030.1280: ** Types
 -- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
-data VisitorWorkerReactiveRequest id =
+data VisitorWorkerReactiveRequest =
     StatusUpdateReactiveRequest
-  | WorkloadStealReactiveRequest id
+  | WorkloadStealReactiveRequest
 -- @+node:gcross.20111026172030.1281: ** Functions
 -- @+node:gcross.20111026213013.1281: *3* newHandler
 newHandler = do
@@ -67,16 +67,14 @@ genericCreateVisitorTWorkerReactiveNetwork ::
         IO (IO (), VisitorWorkerEnvironment α)
     ) →
     Event () →
-    Event id →
     Event () →
-    Event id →
-    Event (Maybe VisitorWorkload) →
+    Event () →
+    Event VisitorWorkload →
     VisitorT m α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
-        ,Event (id,Maybe VisitorWorkload)
+        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
         ,Event ()
-        ,Event id
         ,Event SomeException
         )
 
@@ -85,8 +83,7 @@ genericCreateVisitorTWorkerReactiveNetwork
     request_status_update_event
     request_workload_steal_event
     shutdown_event
-    received_response_to_workload_request_event
-    received_response_to_steal_request_event
+    workload_received_event
     visitor
     = do
 
@@ -101,7 +98,7 @@ genericCreateVisitorTWorkerReactiveNetwork
         request_event =
             mappend
                 (fmap (const StatusUpdateReactiveRequest) request_status_update_event)
-                (fmap WorkloadStealReactiveRequest request_workload_steal_event)
+                (fmap (const WorkloadStealReactiveRequest) request_workload_steal_event)
         (request_not_receivable_event,request_receivable_event) =
             switchApply (
                 fmap (\maybe_request_queue request →
@@ -122,13 +119,10 @@ genericCreateVisitorTWorkerReactiveNetwork
             (fmap (\request →
                 case request of
                     StatusUpdateReactiveRequest → Left ()
-                    WorkloadStealReactiveRequest id → Right id
+                    WorkloadStealReactiveRequest → Right ()
             ))
             $
             request_rejected_event
-
-        (workload_not_received_event,workload_received_event) =
-            switch . fmap (maybe (Left ()) Right) $ received_response_to_steal_request_event
 
         (redundant_workload_received_event,non_redundant_workload_received_event) =
             switchApply
@@ -156,12 +150,7 @@ genericCreateVisitorTWorkerReactiveNetwork
             $
             worker_terminated_event
 
-        send_request_workload_event =
-            mappend
-                (fmap (const ()) worker_terminated_successfully_event)
-                (fmap (const ()) workload_not_received_event)
-
-        send_steal_workload_event = received_response_to_workload_request_event
+        send_request_workload_event = fmap (const ()) worker_terminated_successfully_event
 
         worker_terminated_unsuccessfully_event =
             filterJust
@@ -182,7 +171,7 @@ genericCreateVisitorTWorkerReactiveNetwork
         submit_maybe_workload_event =
             mappend
                 submit_maybe_workload_event_
-                (fmap (,Nothing) steal_request_rejected_event)
+                (fmap (const Nothing) steal_request_rejected_event)
 
         failure_event :: Event SomeException
         failure_event =
@@ -201,8 +190,8 @@ genericCreateVisitorTWorkerReactiveNetwork
                         case request of
                             StatusUpdateReactiveRequest →
                                 StatusUpdateRequested updateMaybeStatus
-                            WorkloadStealReactiveRequest id →
-                                WorkloadStealRequested (submitMaybeWorkload . (id,))
+                            WorkloadStealReactiveRequest →
+                                WorkloadStealRequested submitMaybeWorkload
                     ))
                 )
             >>=
@@ -235,7 +224,6 @@ genericCreateVisitorTWorkerReactiveNetwork
         (update_maybe_status_event
         ,submit_maybe_workload_event
         ,send_request_workload_event
-        ,send_steal_workload_event
         ,failure_event
         )
 -- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerNetwork
@@ -243,16 +231,14 @@ createVisitorTWorkerReactiveNetwork ::
     (Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
     Event () →
-    Event id →
     Event () →
-    Event id →
-    Event (Maybe VisitorWorkload) →
+    Event () →
+    Event VisitorWorkload →
     VisitorT m α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
-        ,Event (id,Maybe VisitorWorkload)
+        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
         ,Event ()
-        ,Event id
         ,Event SomeException
         )
 createVisitorTWorkerReactiveNetwork run =
@@ -261,16 +247,14 @@ createVisitorTWorkerReactiveNetwork run =
 -- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
 createVisitorWorkerReactiveNetwork ::
     Event () →
-    Event id →
     Event () →
-    Event id →
-    Event (Maybe VisitorWorkload) →
+    Event () →
+    Event VisitorWorkload →
     Visitor α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
-        ,Event (id,Maybe VisitorWorkload)
+        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
         ,Event ()
-        ,Event id
         ,Event SomeException
         )
 createVisitorWorkerReactiveNetwork =

@@ -55,7 +55,7 @@ data VisitorWorkerEnvironment α = VisitorWorkerEnvironment
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
 data VisitorWorkerRequest α =
     StatusUpdateRequested (Maybe (VisitorWorkerStatusUpdate α) → IO ())
-  | WorkloadStealRequested (Maybe VisitorWorkload → IO ())
+  | WorkloadStealRequested (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload) → IO ())
 -- @+node:gcross.20111026172030.1278: *3* VisitorWorkerRequestQueue
 type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
 -- @+node:gcross.20111020182554.1275: *3* VisitorWorkerStatusUpdate
@@ -70,6 +70,25 @@ data VisitorWorkerTerminationReason α =
   | VisitorWorkerAborted
   deriving (Show)
 -- @+node:gcross.20110923164140.1259: ** Functions
+-- @+node:gcross.20111117140347.1410: *3* computeStatusUpdate
+computeStatusUpdate ::
+    DList (VisitorSolution α) →
+    VisitorPath →
+    VisitorCheckpointCursor →
+    VisitorTContext m α →
+    VisitorCheckpoint →
+    VisitorWorkerStatusUpdate α
+computeStatusUpdate solutions initial_path cursor context checkpoint =
+    VisitorWorkerStatusUpdate
+        (DList.toList solutions)
+        (VisitorWorkload initial_path
+         .
+         checkpointFromCursor cursor
+         .
+         checkpointFromContext context
+         $
+         checkpoint
+        )
 -- @+node:gcross.20111117140347.1400: *3* forkVisitorIOWorkerThread
 forkVisitorIOWorkerThread ::
     (VisitorWorkerTerminationReason α → IO ()) →
@@ -184,17 +203,7 @@ genericPreforkVisitorTWorkerThread
                                 visitor
                         Just (StatusUpdateRequested submitMaybeStatusUpdate) → do
                             liftIO $ do
-                                submitMaybeStatusUpdate . Just $
-                                    VisitorWorkerStatusUpdate
-                                        (DList.toList solutions)
-                                        (VisitorWorkload initial_path
-                                         .
-                                         checkpointFromCursor cursor
-                                         .
-                                         checkpointFromContext context
-                                         $
-                                         checkpoint
-                                        )
+                                submitMaybeStatusUpdate . Just $ computeStatusUpdate solutions initial_path cursor context checkpoint
                                 yield
                             loop2
                                 cursor
@@ -216,12 +225,12 @@ genericPreforkVisitorTWorkerThread
                                         visitor
                                 Just (new_cursor,new_context,workload) → do
                                     liftIO $ do
-                                        submitMaybeWorkload (Just workload)
+                                        submitMaybeWorkload (Just (computeStatusUpdate solutions initial_path new_cursor new_context checkpoint,workload))
                                         yield
                                     loop2
                                         new_cursor
                                         new_context
-                                        solutions
+                                        DList.empty
                                         checkpoint
                                         visitor
                     -- @-<< Respond to request >>
