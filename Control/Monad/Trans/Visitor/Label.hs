@@ -17,6 +17,7 @@ import Control.Monad ((>=>),liftM2)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.Composition
+import Data.Map as Map
 import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.Foldable as Fold
@@ -122,6 +123,9 @@ runVisitorWithLabels = runIdentity . runVisitorTAndGatherLabeledResults
 -- @+node:gcross.20111029192420.1360: *3* runVisitorWithStartingLabel
 runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [VisitorSolution α]
 runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel
+-- @+node:gcross.20111117140347.1430: *3* solutionsToMap
+solutionsToMap :: Foldable t ⇒ t (VisitorSolution α) → Map VisitorLabel α
+solutionsToMap = Fold.foldl' (flip $ \(VisitorSolution label solution) → Map.insert label solution) Map.empty
 -- @+node:gcross.20111019113757.1399: *3* walkVisitorDownLabel
 walkVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α
 walkVisitorDownLabel label = runIdentity . walkVisitorTDownLabel label
