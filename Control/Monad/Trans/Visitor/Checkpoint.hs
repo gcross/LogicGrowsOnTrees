@@ -146,17 +146,17 @@ checkpointFromUnexploredPath (viewl → step :< rest_path) =
 -- @+node:gcross.20111019113757.1412: *3* labelFromContext
 labelFromContext :: VisitorTContext m α → VisitorLabel
 labelFromContext = flip applyContextToLabel rootLabel
+-- @+node:gcross.20111117140347.1388: *3* mergeAllCheckpointNodes
+mergeAllCheckpointNodes :: VisitorCheckpoint → VisitorCheckpoint
+mergeAllCheckpointNodes (ChoiceCheckpoint left right) = mergeCheckpointRoot (ChoiceCheckpoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
+mergeAllCheckpointNodes (CacheCheckpoint cache checkpoint) = mergeCheckpointRoot (CacheCheckpoint cache (mergeAllCheckpointNodes checkpoint))
+mergeAllCheckpointNodes checkpoint = checkpoint
 -- @+node:gcross.20111020182554.1266: *3* mergeCheckpointRoot
 mergeCheckpointRoot :: VisitorCheckpoint → VisitorCheckpoint
 mergeCheckpointRoot (ChoiceCheckpoint Unexplored Unexplored) = Unexplored
 mergeCheckpointRoot (ChoiceCheckpoint Explored Explored) = Explored
 mergeCheckpointRoot (CacheCheckpoint _ Explored) = Explored
 mergeCheckpointRoot checkpoint = checkpoint
--- @+node:gcross.20111117140347.1388: *3* mergeAllCheckpointNodes
-mergeAllCheckpointNodes :: VisitorCheckpoint → VisitorCheckpoint
-mergeAllCheckpointNodes (ChoiceCheckpoint left right) = mergeCheckpointRoot (ChoiceCheckpoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
-mergeAllCheckpointNodes (CacheCheckpoint cache checkpoint) = mergeCheckpointRoot (CacheCheckpoint cache (mergeAllCheckpointNodes checkpoint))
-mergeAllCheckpointNodes checkpoint = checkpoint
 -- @+node:gcross.20111020182554.1281: *3* moveDownContext
 moveDownContext ::
     VisitorTContextStep m α →
