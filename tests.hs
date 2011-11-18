@@ -505,14 +505,13 @@ main = defaultMain
                             (IVar.write solutions_ivar)
                             visitor
                             (VisitorWorkload path Unexplored)
-                    VisitorWorkerStatusUpdate solutions (VisitorWorkload initial_path checkpoint) ←
+                    VisitorWorkerFinalUpdate solutions checkpoint ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
                             VisitorWorkerFinished final_status_update → return final_status_update
                             other → error ("terminated unsuccessfully with reason " ++ show other)
-                    initial_path @?= path
-                    checkpoint @?= Explored
+                    checkpoint @?= checkpointFromInitialPath path Explored
                     ((@?=) `on` (map visitorSolutionResult))
                         solutions
                         (runVisitorWithLabels . walkVisitorDownPath path $ visitor)
@@ -525,13 +524,12 @@ main = defaultMain
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
-                    VisitorWorkerStatusUpdate solutions (VisitorWorkload initial_path checkpoint) ←
+                    VisitorWorkerFinalUpdate solutions checkpoint ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
                             VisitorWorkerFinished final_status_update → return final_status_update
                             other → error ("terminated unsuccessfully with reason " ++ show other)
-                    assertBool "Is the initial path null?" $ Seq.null initial_path
                     checkpoint @?= Explored
                     solutions @?= runVisitorWithLabels visitor
                     return True
@@ -557,7 +555,7 @@ main = defaultMain
                 startWorker
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 remaining_solutions ← case termination_result of
-                    VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → return solutions
+                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
                     VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → error "worker aborted prematurely"
                 readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
@@ -565,13 +563,13 @@ main = defaultMain
                 let correct_solutions = runVisitorWithLabels visitor
                 correct_solutions @=? ((++ remaining_solutions) . concat . fmap visitorWorkerNewSolutions $ checkpoints)
                 forM_ checkpoints $
-                    \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _)) →
+                    \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _) _) →
                         assertBool
                             "checkpoint has null initial path"
                             (Seq.null initial_path)
                 let (almost_final_solutions,solutions_using_progressive_checkpoints) =
                         mapAccumL
-                            (\solutions_so_far (VisitorWorkerStatusUpdate new_solutions workload) →
+                            (\solutions_so_far (VisitorWorkerStatusUpdate new_solutions workload _) →
                                 let new_solutions_so_far :: [VisitorSolution Int]
                                     new_solutions_so_far = solutions_so_far ++ new_solutions
                                 in  (new_solutions_so_far
@@ -593,7 +591,7 @@ main = defaultMain
                         entire_workload
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
-                    VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → solutions @?= []
+                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → solutions @?= []
                     VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
@@ -615,7 +613,7 @@ main = defaultMain
                     waitQSem worker_started_qsem
                     writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
                     IVar.write blocking_value_ivar 42
-                    VisitorWorkerStatusUpdate remaining_solutions (VisitorWorkload initial_path checkpoint) ←
+                    VisitorWorkerFinalUpdate remaining_solutions checkpoint ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of
@@ -623,7 +621,7 @@ main = defaultMain
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                     readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                    (VisitorWorkerStatusUpdate prestolen_solutions _,workload) ←
+                    (VisitorWorkerStatusUpdate prestolen_solutions remaining_workload _,workload) ←
                         fmap (
                             fromMaybe (error "stolen workload not available")
                             .
@@ -631,8 +629,8 @@ main = defaultMain
                         )
                         $
                         readIORef maybe_maybe_workload_ref
-                    assertBool "Is the initial path null?" $ Seq.null initial_path
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
+                    remaining_solutions @?= runVisitorThroughWorkloadAndReturnResults remaining_workload visitor_with_blocking_value
                     let stolen_solutions = runVisitorThroughWorkloadAndReturnResults workload visitor_with_blocking_value
                         solutions = sort (prestolen_solutions ++ remaining_solutions ++ stolen_solutions)
                         correct_solutions = runVisitorWithLabels visitor_with_blocking_value
@@ -658,7 +656,7 @@ main = defaultMain
                     startWorker
                     termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                     remaining_solutions ← case termination_result of
-                        VisitorWorkerFinished (visitorWorkerNewSolutions → solutions) → return solutions
+                        VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
                     workloads ← fmap (map snd . DList.toList) (readIORef workloads_ref)
@@ -682,13 +680,12 @@ main = defaultMain
             -- @+node:gcross.20111117140347.1384: *5* incoming workload starts the worker
             [testProperty "incoming workload starts the worker" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
                 (event_handler,triggerEventWith) ← newAddHandler
-                status_ivar ← IVar.new
-                request_workload_ivar ← IVar.new
+                response_ivar ← IVar.new
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     ( update_maybe_status_event
                      ,submit_maybe_workload_event
-                     ,send_request_workload_event
+                     ,worker_finished_event
                      ,failure_event
                      ) ← createVisitorWorkerReactiveNetwork
                             never
@@ -696,17 +693,15 @@ main = defaultMain
                             never
                             event
                             visitor
-                    reactimate (fmap (IVar.write status_ivar) update_maybe_status_event)
-                    reactimate (fmap (IVar.write request_workload_ivar) send_request_workload_event)
-                    reactimate (fmap (const (IVar.write request_workload_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                    reactimate (fmap (const (IVar.write request_workload_ivar (error "received failure_event"))) failure_event)
+                    reactimate (fmap (IVar.write response_ivar) worker_finished_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
                 actuate event_network
                 triggerEventWith entire_workload
-                request_workload ← (IVar.blocking $ IVar.read request_workload_ivar) >>= evaluate
-                status ← IVar.blocking $ IVar.read status_ivar
+                response ← IVar.blocking $ IVar.read response_ivar
                 pause event_network
-                request_workload @?= ()
-                status @?= Just (VisitorWorkerStatusUpdate (runVisitorWithLabels visitor) (VisitorWorkload Seq.empty Explored))
+                response @?= VisitorWorkerFinalUpdate (runVisitorWithLabels visitor) Explored
                 return True
             -- @+node:gcross.20111116214909.1385: *5* null status update event
             ,testCase "null status update event" $ do

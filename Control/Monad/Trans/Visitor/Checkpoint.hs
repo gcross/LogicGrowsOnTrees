@@ -113,6 +113,13 @@ checkpointFromCursor = checkpointFromSequence $
         CacheCheckpointD cache → CacheCheckpoint cache
         ChoiceCheckpointD LeftBranch right_checkpoint → flip ChoiceCheckpoint right_checkpoint
         ChoiceCheckpointD RightBranch left_checkpoint → ChoiceCheckpoint left_checkpoint
+-- @+node:gcross.20111117140347.1412: *3* checkpointFromInitialPath
+checkpointFromInitialPath :: VisitorPath → VisitorCheckpoint → VisitorCheckpoint
+checkpointFromInitialPath = checkpointFromSequence $
+    \step → case step of
+        CacheStep c → CacheCheckpoint c
+        ChoiceStep LeftBranch → flip ChoiceCheckpoint Unexplored
+        ChoiceStep RightBranch → ChoiceCheckpoint Unexplored
 -- @+node:gcross.20111020182554.1267: *3* checkpointFromSequence
 checkpointFromSequence ::
     (α → (VisitorCheckpoint → VisitorCheckpoint)) →

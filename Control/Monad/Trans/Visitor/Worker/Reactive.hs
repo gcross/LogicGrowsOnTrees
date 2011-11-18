@@ -74,7 +74,7 @@ genericCreateVisitorTWorkerReactiveNetwork ::
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
         ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-        ,Event ()
+        ,Event (VisitorWorkerFinalUpdate α)
         ,Event SomeException
         )
 
@@ -144,13 +144,13 @@ genericCreateVisitorTWorkerReactiveNetwork
             filterJust
             .
             fmap (\reason → case reason of
-                VisitorWorkerFinished status_update → Just status_update
+                VisitorWorkerFinished final_update → Just final_update
                 _ → Nothing
             )
             $
             worker_terminated_event
 
-        send_request_workload_event = fmap (const ()) worker_terminated_successfully_event
+        worker_finished_event = worker_terminated_successfully_event
 
         worker_terminated_unsuccessfully_event =
             filterJust
@@ -163,11 +163,9 @@ genericCreateVisitorTWorkerReactiveNetwork
             worker_terminated_event
 
         update_maybe_status_event =
-            mconcat
-                [update_maybe_status_event_
-                ,(fmap (const Nothing) update_request_rejected_event)
-                ,fmap Just worker_terminated_successfully_event
-                ]
+            mappend
+                update_maybe_status_event_
+                (fmap (const Nothing) update_request_rejected_event)
         submit_maybe_workload_event =
             mappend
                 submit_maybe_workload_event_
@@ -223,7 +221,7 @@ genericCreateVisitorTWorkerReactiveNetwork
     return
         (update_maybe_status_event
         ,submit_maybe_workload_event
-        ,send_request_workload_event
+        ,worker_finished_event
         ,failure_event
         )
 -- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerNetwork
@@ -238,7 +236,7 @@ createVisitorTWorkerReactiveNetwork ::
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
         ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-        ,Event ()
+        ,Event (VisitorWorkerFinalUpdate α)
         ,Event SomeException
         )
 createVisitorTWorkerReactiveNetwork run =
@@ -254,7 +252,7 @@ createVisitorWorkerReactiveNetwork ::
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
         ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-        ,Event ()
+        ,Event (VisitorWorkerFinalUpdate α)
         ,Event SomeException
         )
 createVisitorWorkerReactiveNetwork =
