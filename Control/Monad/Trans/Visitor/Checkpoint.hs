@@ -4,6 +4,7 @@
 
 -- @+<< Language extensions >>
 -- @+node:gcross.20110923120247.1192: ** << Language extensions >>
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -26,6 +27,7 @@ import Data.Composition
 import qualified Data.DList as DList
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Maybe (mapMaybe)
+import Data.Monoid (Monoid(..))
 import Data.Monoid.Unicode
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
@@ -80,6 +82,23 @@ newtype VisitorTResultFetcher m α = VisitorTResultFetcher
     }
 
 type VisitorResultFetcher = VisitorTResultFetcher Identity
+-- @+node:gcross.20111117140347.1417: ** Exceptions
+-- @+node:gcross.20111117140347.1418: *3* InconsistentCheckpoints
+data InconsistentCheckpoints = InconsistentCheckpoints VisitorCheckpoint VisitorCheckpoint deriving (Eq,Show,Typeable)
+
+instance Exception InconsistentCheckpoints
+-- @+node:gcross.20111117140347.1415: ** Instances
+-- @+node:gcross.20111117140347.1416: *3* Monoid VisitorCheckpoint
+instance Monoid VisitorCheckpoint where
+    mempty = Unexplored
+    Explored `mappend` _ = Explored
+    _ `mappend` Explored = Explored
+    Unexplored `mappend` x = x
+    x `mappend` Unexplored = x
+    (ChoiceCheckpoint lx rx) `mappend` (ChoiceCheckpoint ly ry) = mergeCheckpointRoot (ChoiceCheckpoint (lx ⊕ ly) (rx ⊕ ry))
+    (CacheCheckpoint cx x) `mappend` (CacheCheckpoint cy y)
+      | cx == cy = mergeCheckpointRoot (CacheCheckpoint cx (x ⊕ y))
+    mappend x y = throw (InconsistentCheckpoints x y)
 -- @+node:gcross.20110923164140.1179: ** Functions
 -- @+node:gcross.20111020151748.1288: *3* applyCheckpointCursorToLabel
 applyCheckpointCursorToLabel :: VisitorCheckpointCursor → VisitorLabel → VisitorLabel

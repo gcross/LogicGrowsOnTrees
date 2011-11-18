@@ -33,6 +33,7 @@ import Data.Functor.Identity
 import Data.IORef
 import qualified Data.IVar as IVar
 import Data.List (mapAccumL,sort)
+import Data.List.Unicode
 import Data.Maybe
 import Data.Monoid
 import Data.Monoid.Unicode
@@ -245,6 +246,37 @@ main = defaultMain
             -- @+node:gcross.20111028170027.1295: *5* empty
             ,testProperty "empty" $ \(checkpoint :: VisitorCheckpoint) →
                 checkpointFromContext Seq.empty checkpoint == checkpoint
+            -- @-others
+            ]
+        -- @+node:gcross.20111117140347.1419: *4* Monoid instance
+        ,testGroup "Monoid instance"
+            -- @+others
+            -- @+node:gcross.20111117140347.1421: *5* product results in intersection of solutions
+            [testProperty "product results in intersection of solutions" $ \(visitor :: Visitor Int) → do
+                checkpoint1 ← randomCheckpointForVisitor visitor
+                checkpoint2 ← randomCheckpointForVisitor visitor
+                let checkpoint3 = checkpoint1 ⊕ checkpoint2
+                    solutions1 = runVisitorThroughCheckpointAndGatherResults checkpoint1 visitor
+                    solutions2 = runVisitorThroughCheckpointAndGatherResults checkpoint2 visitor
+                    solutions3 = runVisitorThroughCheckpointAndGatherResults checkpoint3 visitor
+                return $ solutions3 == solutions1 ∩ solutions2
+            -- @+node:gcross.20111117140347.1431: *5* throws the correct exceptions
+            ,testCase "throws the correct exceptions" $
+                mapM_ (\(x,y) →
+                    try (
+                        evaluate (x ⊕ y)
+                        >>
+                        assertFailure (show x ++ " and " ++ show y ++ " were not recognized as being inconsistent")
+                    )
+                    >>=
+                    assertEqual "the thrown exception was incorrect" (Left $ InconsistentCheckpoints x y)
+                )
+                [((CacheCheckpoint (encode (42 :: Int)) Unexplored),(CacheCheckpoint (encode (42 :: Integer)) Unexplored))
+                ,((ChoiceCheckpoint Unexplored Unexplored),CacheCheckpoint (encode (42 :: Int)) Unexplored)
+                ]
+            -- @+node:gcross.20111117140347.1420: *5* unit element laws
+            ,testProperty "unit element laws" $ \(checkpoint :: VisitorCheckpoint) →
+                mempty ⊕ checkpoint == checkpoint && checkpoint ⊕ mempty == checkpoint
             -- @-others
             ]
         -- @+node:gcross.20111029212714.1374: *4* runVisitorThroughCheckpoint
