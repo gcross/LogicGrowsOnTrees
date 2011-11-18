@@ -23,7 +23,9 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
 import Data.Composition
+import qualified Data.DList as DList
 import Data.Functor.Identity (Identity,runIdentity)
+import Data.Maybe (mapMaybe)
 import Data.Monoid.Unicode
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
@@ -200,6 +202,12 @@ runVisitorThroughCheckpoint ::
     Visitor α →
     [(Maybe (VisitorSolution α),VisitorCheckpoint)]
 runVisitorThroughCheckpoint = runVisitorThroughCheckpointWithStartingLabel rootLabel
+-- @+node:gcross.20111117140347.1423: *3* runVisitorThroughCheckpointAndGatherResults
+runVisitorThroughCheckpointAndGatherResults ::
+    VisitorCheckpoint →
+    Visitor α →
+    [VisitorSolution α]
+runVisitorThroughCheckpointAndGatherResults = mapMaybe fst .* runVisitorThroughCheckpoint
 -- @+node:gcross.20111029212714.1368: *3* runVisitorThroughCheckpointWithStartingLabel
 runVisitorThroughCheckpointWithStartingLabel ::
     VisitorLabel →
@@ -213,6 +221,13 @@ runVisitorThroughCheckpointWithStartingLabel = go .** runVisitorTThroughCheckpoi
       (maybe_solution,checkpoint)
       :
       go next_result
+-- @+node:gcross.20111117140347.1425: *3* runVisitorThroughCheckpointWithStartingLabelAndGatherResults
+runVisitorThroughCheckpointWithStartingLabelAndGatherResults ::
+    VisitorLabel →
+    VisitorCheckpoint →
+    Visitor α →
+    [VisitorSolution α]
+runVisitorThroughCheckpointWithStartingLabelAndGatherResults = mapMaybe fst .** runVisitorThroughCheckpointWithStartingLabel
 -- @+node:gcross.20110923164140.1244: *3* runVisitorTThroughCheckpoint
 runVisitorTThroughCheckpoint ::
     (Functor m, Monad m) ⇒
@@ -250,6 +265,22 @@ runVisitorTThroughCheckpointWithStartingLabel initial_label = go Seq.empty
         stepVisitorTThroughCheckpoint context
       where
         labelSolution = VisitorSolution ((initial_label ⊕) . labelFromContext $ context)
+-- @+node:gcross.20111117140347.1429: *3* runVisitorTThroughCheckpointWithStartingLabelAndGatherResults
+runVisitorTThroughCheckpointWithStartingLabelAndGatherResults ::
+    (Functor m, Monad m) ⇒
+    VisitorLabel →
+    VisitorCheckpoint →
+    VisitorT m α →
+    m [VisitorSolution α]
+runVisitorTThroughCheckpointWithStartingLabelAndGatherResults =
+    go DList.empty .** runVisitorTThroughCheckpointWithStartingLabel
+  where
+    go solutions =
+        fetchVisitorTResult
+        >=>
+        maybe
+            (return $ DList.toList solutions)
+            (\(maybe_solution,_,fetcher) → go (maybe id (flip DList.snoc) maybe_solution $ solutions) fetcher)
 -- @+node:gcross.20111028170027.1294: *3* runVisitorTWithCheckpoints
 runVisitorTTWithCheckpoints ::
     (Functor m, Monad m) ⇒
