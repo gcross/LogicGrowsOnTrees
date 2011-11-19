@@ -501,8 +501,8 @@ main = defaultMain
     -- @+node:gcross.20111028181213.1319: *3* Control.Monad.Trans.Visitor.Worker
     ,testGroup "Control.Monad.Trans.Visitor.Worker"
         -- @+others
-        -- @+node:gcross.20111028181213.1333: *4* forkVisitorIOWorkerThread
-        [testGroup "forkVisitorIOWorkerThread"
+        -- @+node:gcross.20111028181213.1320: *4* forkVisitor(X)WorkerThread
+        [testGroup "forkVisitor(X)WorkerThread"
             -- @+others
             -- @+node:gcross.20111028181213.1334: *5* abort
             [testCase "abort" $ do
@@ -521,13 +521,8 @@ main = defaultMain
                     VisitorWorkerAborted → return ()
                 workerInitialPath @?= Seq.empty
                 readIORef workerPendingRequests >>= assertBool "is the request queue still null?" . isNothing
-            -- @-others
-            ]
-        -- @+node:gcross.20111028181213.1320: *4* forkVisitorWorkerThread
-        ,testGroup "forkVisitorWorkerThread"
-            -- @+others
             -- @+node:gcross.20111028181213.1321: *5* obtains all solutions
-            [testGroup "obtains all solutions"
+            ,testGroup "obtains all solutions"
                 -- @+others
                 -- @+node:gcross.20111028181213.1327: *6* with an initial path
                 [testProperty "with an initial path" $ \(visitor :: Visitor Int) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do
