@@ -102,9 +102,9 @@ rightChildLabel = VisitorLabel . fromJust . rightChild . unwrapVisitorLabel
 -- @+node:gcross.20111019113757.1413: *3* rootLabel
 rootLabel :: VisitorLabel
 rootLabel = VisitorLabel root
--- @+node:gcross.20111029192420.1338: *3* runVisitorTAndGatherLabeledResults
-runVisitorTAndGatherLabeledResults :: Monad m ⇒ VisitorT m α → m [VisitorSolution α]
-runVisitorTAndGatherLabeledResults = runVisitorTWithStartingLabel rootLabel
+-- @+node:gcross.20111029192420.1338: *3* runVisitorTWithLabelsAndGatherResults
+runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ VisitorT m α → m [VisitorSolution α]
+runVisitorTWithLabelsAndGatherResults = runVisitorTWithStartingLabel rootLabel
 -- @+node:gcross.20111029192420.1358: *3* runVisitorTWithStartingLabel
 runVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m [VisitorSolution α]
 runVisitorTWithStartingLabel label =
@@ -119,7 +119,7 @@ runVisitorTWithStartingLabel label =
         (Null :>>= _) → return []
 -- @+node:gcross.20111029192420.1340: *3* runVisitorWithLabels
 runVisitorWithLabels :: Visitor α → [VisitorSolution α]
-runVisitorWithLabels = runIdentity . runVisitorTAndGatherLabeledResults
+runVisitorWithLabels = runIdentity . runVisitorTWithLabelsAndGatherResults
 -- @+node:gcross.20111029192420.1360: *3* runVisitorWithStartingLabel
 runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [VisitorSolution α]
 runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel

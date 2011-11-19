@@ -164,6 +164,19 @@ checkpointFromUnexploredPath (viewl → step :< rest_path) =
         ChoiceStep RightBranch → ChoiceCheckpoint Explored
     $
     checkpointFromUnexploredPath rest_path
+-- @+node:gcross.20111117140347.1438: *3* gatherResults
+gatherResults ::
+    (Functor m, Monad m) ⇒
+    VisitorTResultFetcher m α →
+    m [VisitorSolution α]
+gatherResults = go DList.empty
+  where
+    go solutions =
+        fetchVisitorTResult
+        >=>
+        maybe
+            (return $ DList.toList solutions)
+            (\(maybe_solution,_,fetcher) → go (maybe id (flip DList.snoc) maybe_solution $ solutions) fetcher)
 -- @+node:gcross.20111019113757.1412: *3* labelFromContext
 labelFromContext :: VisitorTContext m α → VisitorLabel
 labelFromContext = flip applyContextToLabel rootLabel
@@ -292,14 +305,7 @@ runVisitorTThroughCheckpointWithStartingLabelAndGatherResults ::
     VisitorT m α →
     m [VisitorSolution α]
 runVisitorTThroughCheckpointWithStartingLabelAndGatherResults =
-    go DList.empty .** runVisitorTThroughCheckpointWithStartingLabel
-  where
-    go solutions =
-        fetchVisitorTResult
-        >=>
-        maybe
-            (return $ DList.toList solutions)
-            (\(maybe_solution,_,fetcher) → go (maybe id (flip DList.snoc) maybe_solution $ solutions) fetcher)
+    gatherResults .** runVisitorTThroughCheckpointWithStartingLabel
 -- @+node:gcross.20111028170027.1294: *3* runVisitorTWithCheckpoints
 runVisitorTTWithCheckpoints ::
     (Functor m, Monad m) ⇒

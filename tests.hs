@@ -627,12 +627,18 @@ main = defaultMain
             ,testGroup "work stealing correctly preserves total workload"
                 -- @+others
                 -- @+node:gcross.20111116214909.1371: *6* single steal
-                [testProperty "single steal" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                [testProperty "single steal" $ flip fmap arbitrary $ \(visitor :: VisitorIO Int) → unsafePerformIO $ do
                     worker_started_qsem ← newQSem 0
                     blocking_value_ivar ← IVar.new
-                    let visitor_with_blocking_value = (return $ unsafePerformIO (signalQSem worker_started_qsem >> (IVar.blocking . IVar.read $ blocking_value_ivar))) `mplus` return 24 `mplus` visitor
+                    let visitor_with_blocking_value =
+                            ((liftIO (do
+                                signalQSem worker_started_qsem
+                                IVar.blocking . IVar.read $ blocking_value_ivar
+                            ))
+                            ⊕ return 24)
+                            ⊕ visitor
                     termination_result_ivar ← IVar.new
-                    VisitorWorkerEnvironment{..} ← forkVisitorWorkerThread
+                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
                         (IVar.write termination_result_ivar)
                         visitor_with_blocking_value
                         entire_workload
@@ -648,7 +654,7 @@ main = defaultMain
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                     readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                    (VisitorWorkerStatusUpdate prestolen_solutions remaining_workload _,workload) ←
+                    (VisitorWorkerStatusUpdate prestolen_solutions remaining_workload checkpoint,workload) ←
                         fmap (
                             fromMaybe (error "stolen workload not available")
                             .
@@ -657,10 +663,10 @@ main = defaultMain
                         $
                         readIORef maybe_maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
-                    remaining_solutions @?= runVisitorThroughWorkloadAndReturnResults remaining_workload visitor_with_blocking_value
-                    let stolen_solutions = runVisitorThroughWorkloadAndReturnResults workload visitor_with_blocking_value
-                        solutions = sort (prestolen_solutions ++ remaining_solutions ++ stolen_solutions)
-                        correct_solutions = runVisitorWithLabels visitor_with_blocking_value
+                    runVisitorTThroughWorkloadAndGatherResults remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
+                    stolen_solutions ← runVisitorTThroughWorkloadAndGatherResults workload visitor_with_blocking_value
+                    let solutions = sort (prestolen_solutions ++ remaining_solutions ++ stolen_solutions)
+                    correct_solutions ← runVisitorTWithLabelsAndGatherResults visitor_with_blocking_value
                     solutions @?= correct_solutions
                     return True
                 -- @+node:gcross.20111116214909.1375: *6* continuous stealing
@@ -687,7 +693,7 @@ main = defaultMain
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
                     workloads ← fmap (map snd . DList.toList) (readIORef workloads_ref)
-                    let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndReturnResults visitor) $ workloads
+                    let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndGatherResults visitor) $ workloads
                         solutions = sort (remaining_solutions ++ stolen_solutions)
                         correct_solutions = runVisitorWithLabels visitor
                     solutions @?= correct_solutions
@@ -821,12 +827,12 @@ main = defaultMain
                  ,submit_maybe_workload_event
                  ,send_request_workload_event
                  ,failure_event
-                 ) ← createVisitorWorkerReactiveNetwork
+                 ) ← createVisitorIOWorkerReactiveNetwork
                         never
                         never
                         shutdown_event
                         event
-                        ((return . unsafePerformIO . IVar.blocking . IVar.read $ blocking_ivar) `mplus` return ())
+                        (liftIO (IVar.blocking . IVar.read $ blocking_ivar) ⊕ return ())
                 reactimate (fmap (const (writeIORef response_ref (error "received update_maybe_status_event"))) update_maybe_status_event)
                 reactimate (fmap (const (writeIORef response_ref (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
                 reactimate (fmap (writeIORef response_ref . error . ("received failure_event: " ++) . show) failure_event)

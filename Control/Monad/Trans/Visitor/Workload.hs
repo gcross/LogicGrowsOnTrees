@@ -54,6 +54,13 @@ runVisitorTThroughWorkload VisitorWorkload{..} =
     )
     .
     walkVisitorTDownPath visitorWorkloadPath
+-- @+node:gcross.20111117140347.1437: *3* runVisitorTThroughWorkloadAndGatherResults
+runVisitorTThroughWorkloadAndGatherResults ::
+    (Functor m, Monad m) ⇒
+    VisitorWorkload →
+    VisitorT m α →
+    m [VisitorSolution α]
+runVisitorTThroughWorkloadAndGatherResults = gatherResults .* runVisitorTThroughWorkload
 -- @+node:gcross.20111029212714.1370: *3* runVisitorThroughWorkload
 runVisitorThroughWorkload ::
     VisitorWorkload →
@@ -65,12 +72,12 @@ runVisitorThroughWorkload VisitorWorkload{..} =
         visitorWorkloadCheckpoint
     .
     walkVisitorDownPath visitorWorkloadPath
--- @+node:gcross.20111116214909.1373: *3* runVisitorThroughWorkloadAndReturnResults
-runVisitorThroughWorkloadAndReturnResults ::
+-- @+node:gcross.20111116214909.1373: *3* runVisitorThroughWorkloadAndGatherResults
+runVisitorThroughWorkloadAndGatherResults ::
     VisitorWorkload →
     Visitor α →
     [VisitorSolution α]
-runVisitorThroughWorkloadAndReturnResults =
+runVisitorThroughWorkloadAndGatherResults =
     (catMaybes . map fst)
     .*
     runVisitorThroughWorkload

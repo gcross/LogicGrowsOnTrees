@@ -242,6 +242,20 @@ createVisitorTWorkerReactiveNetwork ::
 createVisitorTWorkerReactiveNetwork run =
     genericCreateVisitorTWorkerReactiveNetwork
         (preforkVisitorTWorkerThread run)
+-- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerNetwork
+createVisitorIOWorkerReactiveNetwork ::
+    Event () →
+    Event () →
+    Event () →
+    Event VisitorWorkload →
+    VisitorIO α →
+    NetworkDescription
+        (Event (Maybe (VisitorWorkerStatusUpdate α))
+        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
+        ,Event (VisitorWorkerFinalUpdate α)
+        ,Event SomeException
+        )
+createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
 -- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
 createVisitorWorkerReactiveNetwork ::
     Event () →
