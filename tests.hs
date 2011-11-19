@@ -848,6 +848,141 @@ main = defaultMain
                 readIORef response_ref >>= evaluate
             -- @-others
             ]
+        -- @+node:gcross.20111117140347.1440: *4* correct response to
+        ,testGroup "correct response to"
+            -- @+others
+            -- @+node:gcross.20111117140347.1446: *5* status update request
+            [testProperty "status update request" $ flip fmap arbitrary $ \(visitor :: VisitorIO Int) → unsafePerformIO $ do
+                worker_started_qsem ← newQSem 0
+                blocking_value_mvar ← newEmptyMVar
+                let visitor_with_blocking_value =
+                        ((liftIO (do
+                            signalQSem worker_started_qsem
+                            takeMVar blocking_value_mvar
+                        ))
+                        ⊕ return 24)
+                        ⊕ visitor
+                (status_update_1,final_status_update_1) ← do
+                    termination_result_ivar ← IVar.new
+                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                        (IVar.write termination_result_ivar)
+                        visitor_with_blocking_value
+                        entire_workload
+                    status_update_response_ref ← newIORef Nothing
+                    waitQSem worker_started_qsem
+                    writeIORef workerPendingRequests . Just . Seq.singleton . StatusUpdateRequested $ writeIORef status_update_response_ref . Just
+                    putMVar blocking_value_mvar 42
+                    final_status_update ←
+                        (IVar.blocking $ IVar.read termination_result_ivar)
+                        >>=
+                        \termination_result → case termination_result of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            VisitorWorkerAborted → error "worker aborted prematurely"
+                    status_update_response ← readIORef status_update_response_ref
+                    return (status_update_response,final_status_update)
+                (status_update_2,final_status_update_2) ← do
+                    (steal_event_handler,triggerStealEventWith) ← newAddHandler
+                    (workload_event_handler,triggerWorkloadEventWith) ← newAddHandler
+                    update_maybe_status_ivar ← IVar.new
+                    workload_finished_ivar ← IVar.new
+                    let e = TestException 42
+                    event_network ← compile $ do
+                        status_update_event ← fromAddHandler steal_event_handler
+                        workload_event ← fromAddHandler workload_event_handler
+                        ( update_maybe_status_event
+                         ,submit_maybe_workload_event
+                         ,workload_finished_event
+                         ,failure_event
+                         ) ← createVisitorIOWorkerReactiveNetwork
+                                status_update_event
+                                never
+                                never
+                                workload_event
+                                visitor_with_blocking_value
+                        reactimate (fmap (IVar.write update_maybe_status_ivar) update_maybe_status_event)
+                        reactimate (fmap (IVar.write workload_finished_ivar) workload_finished_event)
+                        reactimate (fmap (const (IVar.write update_maybe_status_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                        reactimate (fmap (const (IVar.write update_maybe_status_ivar (error "received failure_event"))) failure_event)
+                    actuate event_network
+                    triggerWorkloadEventWith entire_workload
+                    waitQSem worker_started_qsem
+                    triggerStealEventWith ()
+                    putMVar blocking_value_mvar 42
+                    update_maybe_status ← IVar.blocking $ IVar.read update_maybe_status_ivar
+                    final_status_update ← IVar.blocking $ IVar.read workload_finished_ivar
+                    pause event_network
+                    return (update_maybe_status,final_status_update)
+                status_update_1 @?= status_update_1
+                final_status_update_1 @?= final_status_update_2
+                return True
+            -- @+node:gcross.20111117140347.1444: *5* workload steal request
+            ,testProperty "workload steal request" $ flip fmap arbitrary $ \(visitor :: VisitorIO Int) → unsafePerformIO $ do
+                worker_started_qsem ← newQSem 0
+                blocking_value_mvar ← newEmptyMVar
+                let visitor_with_blocking_value =
+                        ((liftIO (do
+                            signalQSem worker_started_qsem
+                            takeMVar blocking_value_mvar
+                        ))
+                        ⊕ return 24)
+                        ⊕ visitor
+                (steal_response_1,final_status_update_1) ← do
+                    termination_result_ivar ← IVar.new
+                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                        (IVar.write termination_result_ivar)
+                        visitor_with_blocking_value
+                        entire_workload
+                    workload_response_ref ← newIORef Nothing
+                    waitQSem worker_started_qsem
+                    writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef workload_response_ref . Just
+                    putMVar blocking_value_mvar 42
+                    final_status_update ←
+                        (IVar.blocking $ IVar.read termination_result_ivar)
+                        >>=
+                        \termination_result → case termination_result of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            VisitorWorkerAborted → error "worker aborted prematurely"
+                    workload_response ← readIORef workload_response_ref
+                    return (workload_response,final_status_update)
+                (steal_response_2,final_status_update_2) ← do
+                    (steal_event_handler,triggerStealEventWith) ← newAddHandler
+                    (workload_event_handler,triggerWorkloadEventWith) ← newAddHandler
+                    steal_response_ivar ← IVar.new
+                    workload_finished_ivar ← IVar.new
+                    let e = TestException 42
+                    event_network ← compile $ do
+                        steal_event ← fromAddHandler steal_event_handler
+                        workload_event ← fromAddHandler workload_event_handler
+                        ( update_maybe_status_event
+                         ,submit_maybe_workload_event
+                         ,workload_finished_event
+                         ,failure_event
+                         ) ← createVisitorIOWorkerReactiveNetwork
+                                never
+                                steal_event
+                                never
+                                workload_event
+                                visitor_with_blocking_value
+                        reactimate (fmap (IVar.write steal_response_ivar) submit_maybe_workload_event)
+                        reactimate (fmap (IVar.write workload_finished_ivar) workload_finished_event)
+                        reactimate (fmap (const (IVar.write steal_response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
+                        reactimate (fmap (const (IVar.write steal_response_ivar (error "received failure_event"))) failure_event)
+                    actuate event_network
+                    triggerWorkloadEventWith entire_workload
+                    waitQSem worker_started_qsem
+                    triggerStealEventWith ()
+                    putMVar blocking_value_mvar 42
+                    steal_response ← IVar.blocking $ IVar.read steal_response_ivar
+                    final_status_update ← IVar.blocking $ IVar.read workload_finished_ivar
+                    pause event_network
+                    return (Just steal_response,final_status_update)
+                steal_response_1 @?= steal_response_2
+                final_status_update_1 @?= final_status_update_2
+                return True
+            -- @-others
+            ]
         -- @-others
         ]
     -- @-others
