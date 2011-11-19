@@ -68,10 +68,10 @@ import Control.Monad.Trans.Visitor.Worker.Reactive
 -- @+node:gcross.20111028170027.1297: *3* Branch
 instance Arbitrary Branch where arbitrary = elements [LeftBranch,RightBranch]
 -- @+node:gcross.20111028170027.1307: *3* Visitor
-instance (Serialize α, Arbitrary α) ⇒ Arbitrary (Visitor α) where
+instance (Serialize α, Arbitrary α, Monad m) ⇒ Arbitrary (VisitorT m α) where
     arbitrary = sized arb
       where
-        arb :: Int → Gen (Visitor α)
+        arb :: Int → Gen (VisitorT m α)
         arb 0 = frequency
                     [(3,result)
                     ,(1,null)
@@ -84,12 +84,12 @@ instance (Serialize α, Arbitrary α) ⇒ Arbitrary (Visitor α) where
                     ,(2,bindToArbitrary n cached)
                     ,(4,liftM2 mplus (arb (n `div` 2)) (arb (n `div` 2)))
                     ]
-        null, result, cached :: Gen (Visitor α)
+        null, result, cached :: Gen (VisitorT m α)
         null = return mzero
         result = fmap return arbitrary
         cached = fmap cache arbitrary
 
-        bindToArbitrary :: Int → Gen (Visitor α) → Gen (Visitor α)
+        bindToArbitrary :: Int → Gen (VisitorT m α) → Gen (VisitorT m α)
         bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
 -- @+node:gcross.20111028153100.1303: *3* VisitorCheckpoint
 instance Arbitrary VisitorCheckpoint where
