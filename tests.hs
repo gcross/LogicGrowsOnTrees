@@ -788,61 +788,66 @@ main = defaultMain
                 assertBool "is the workload nothing?" $ isNothing response
             -- @-others
             ]
-        -- @+node:gcross.20111117140347.1405: *4* exception in worker is propagated to event
-        ,testCase "exception in worker is propagated to event" $ do
-            (event_handler,triggerEventWith) ← newAddHandler
-            response_ivar ← IVar.new
-            let e = TestException 42
-            event_network ← compile $ do
-                event ← fromAddHandler event_handler
-                ( update_maybe_status_event
-                 ,submit_maybe_workload_event
-                 ,send_request_workload_event
-                 ,failure_event
-                 ) ← createVisitorWorkerReactiveNetwork
-                        never
-                        never
-                        never
-                        event
-                        (throw e)
-                reactimate (fmap (IVar.write response_ivar) failure_event)
-                reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
-                reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
-            actuate event_network
-            triggerEventWith entire_workload
-            response ← IVar.blocking $ IVar.read response_ivar
-            pause event_network
-            fromException response @?= Just e
-        -- @+node:gcross.20111117140347.1407: *4* shutdown of worker is propagated to event
-        ,testCase "shutdown of worker is propagated to event" $ do
-            (event_handler,triggerEventWith) ← newAddHandler
-            (shutdown_event_handler,triggerShutdownEvent) ← newAddHandler
-            response_ref ← newIORef ()
-            blocking_ivar ← IVar.new
-            event_network ← compile $ do
-                event ← fromAddHandler event_handler
-                shutdown_event ← fromAddHandler shutdown_event_handler
-                ( update_maybe_status_event
-                 ,submit_maybe_workload_event
-                 ,send_request_workload_event
-                 ,failure_event
-                 ) ← createVisitorIOWorkerReactiveNetwork
-                        never
-                        never
-                        shutdown_event
-                        event
-                        (liftIO (IVar.blocking . IVar.read $ blocking_ivar) ⊕ return ())
-                reactimate (fmap (const (writeIORef response_ref (error "received update_maybe_status_event"))) update_maybe_status_event)
-                reactimate (fmap (const (writeIORef response_ref (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                reactimate (fmap (writeIORef response_ref . error . ("received failure_event: " ++) . show) failure_event)
-            actuate event_network
-            triggerEventWith entire_workload
-            triggerShutdownEvent ()
-            IVar.write blocking_ivar ()
-            threadDelay 1000
-            pause event_network
-            readIORef response_ref >>= evaluate
+        -- @+node:gcross.20111117140347.1439: *4* correct propagation of
+        ,testGroup "correct propagation of"
+            -- @+others
+            -- @+node:gcross.20111117140347.1405: *5* exception in worker
+            [testCase "exception in worker" $ do
+                (event_handler,triggerEventWith) ← newAddHandler
+                response_ivar ← IVar.new
+                let e = TestException 42
+                event_network ← compile $ do
+                    event ← fromAddHandler event_handler
+                    ( update_maybe_status_event
+                     ,submit_maybe_workload_event
+                     ,send_request_workload_event
+                     ,failure_event
+                     ) ← createVisitorWorkerReactiveNetwork
+                            never
+                            never
+                            never
+                            event
+                            (throw e)
+                    reactimate (fmap (IVar.write response_ivar) failure_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
+                actuate event_network
+                triggerEventWith entire_workload
+                response ← IVar.blocking $ IVar.read response_ivar
+                pause event_network
+                fromException response @?= Just e
+            -- @+node:gcross.20111117140347.1407: *5* shutdown of worker
+            ,testCase "shutdown of worker" $ do
+                (event_handler,triggerEventWith) ← newAddHandler
+                (shutdown_event_handler,triggerShutdownEvent) ← newAddHandler
+                response_ref ← newIORef ()
+                blocking_ivar ← IVar.new
+                event_network ← compile $ do
+                    event ← fromAddHandler event_handler
+                    shutdown_event ← fromAddHandler shutdown_event_handler
+                    ( update_maybe_status_event
+                     ,submit_maybe_workload_event
+                     ,send_request_workload_event
+                     ,failure_event
+                     ) ← createVisitorIOWorkerReactiveNetwork
+                            never
+                            never
+                            shutdown_event
+                            event
+                            (liftIO (IVar.blocking . IVar.read $ blocking_ivar) ⊕ return ())
+                    reactimate (fmap (const (writeIORef response_ref (error "received update_maybe_status_event"))) update_maybe_status_event)
+                    reactimate (fmap (const (writeIORef response_ref (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
+                    reactimate (fmap (writeIORef response_ref . error . ("received failure_event: " ++) . show) failure_event)
+                actuate event_network
+                triggerEventWith entire_workload
+                triggerShutdownEvent ()
+                IVar.write blocking_ivar ()
+                threadDelay 1000
+                pause event_network
+                readIORef response_ref >>= evaluate
+            -- @-others
+            ]
         -- @-others
         ]
     -- @-others
