@@ -99,8 +99,8 @@ genericCreateVisitorTWorkerReactiveNetwork
     = do
 
     (request_not_received_event,requestNotReceived) ← newHandler
-    (submit_maybe_workload_event_,submitMaybeWorkload) ← newHandler
-    (update_maybe_status_event_,updateMaybeStatus) ← newHandler
+    (submit_maybe_workload_event,submitMaybeWorkload) ← newHandler
+    (update_maybe_status_event,updateMaybeStatus) ← newHandler
     (worker_terminated_event,workerTerminated) ← newHandler
     (new_worker_environment_event,newWorkerEnvironment) ← newHandler
 
@@ -175,11 +175,11 @@ genericCreateVisitorTWorkerReactiveNetwork
 
         workerOutgoingMaybeStatusUpdatedEvent =
             mappend
-                update_maybe_status_event_
+                update_maybe_status_event
                 (fmap (const Nothing) update_request_rejected_event)
         workerOutgoingMaybeWorkloadSubmittedEvent =
             mappend
-                submit_maybe_workload_event_
+                submit_maybe_workload_event
                 (fmap (const Nothing) steal_request_rejected_event)
 
         workerOutgoingFailureEvent :: Event SomeException
