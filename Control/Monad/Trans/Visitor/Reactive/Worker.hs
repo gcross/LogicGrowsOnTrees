@@ -108,8 +108,8 @@ genericCreateVisitorTWorkerReactiveNetwork
 
         request_event =
             mappend
-                (fmap (const StatusUpdateReactiveRequest) workerIncomingStatusUpdateRequestedEvent)
-                (fmap (const WorkloadStealReactiveRequest) workerIncomingWorkloadStealRequestedEvent)
+                (StatusUpdateReactiveRequest <$ workerIncomingStatusUpdateRequestedEvent)
+                (WorkloadStealReactiveRequest <$ workerIncomingWorkloadStealRequestedEvent)
         (request_not_receivable_event,request_receivable_event) =
             switchApply (
                 fmap (\maybe_request_queue request →
@@ -146,8 +146,8 @@ genericCreateVisitorTWorkerReactiveNetwork
 
         current_worker_environment_change_event =
             mconcat
-                [fmap (const Nothing) worker_terminated_event
-                ,fmap (const Nothing) workerIncomingShutdownEvent
+                [Nothing <$ worker_terminated_event
+                ,Nothing <$ workerIncomingShutdownEvent
                 ,fmap Just new_worker_environment_event
                 ]
 
@@ -176,16 +176,16 @@ genericCreateVisitorTWorkerReactiveNetwork
         workerOutgoingMaybeStatusUpdatedEvent =
             mappend
                 update_maybe_status_event
-                (fmap (const Nothing) update_request_rejected_event)
+                (Nothing <$ update_request_rejected_event)
         workerOutgoingMaybeWorkloadSubmittedEvent =
             mappend
                 submit_maybe_workload_event
-                (fmap (const Nothing) steal_request_rejected_event)
+                (Nothing <$ steal_request_rejected_event)
 
         workerOutgoingFailureEvent :: Event SomeException
         workerOutgoingFailureEvent =
             mappend
-                (fmap (const . toException $ RedundantWorkloadReceived) redundant_workerIncomingWorkloadReceivedEvent)
+                (toException RedundantWorkloadReceived <$ redundant_workerIncomingWorkloadReceivedEvent)
                 worker_terminated_unsuccessfully_event
 
     reactimate
