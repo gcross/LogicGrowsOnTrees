@@ -7,7 +7,9 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-<< Language extensions >>
@@ -23,11 +25,13 @@ import Control.Monad ((>=>),unless)
 import Control.Monad.IO.Class
 import Control.Monad.Tools (whenM,unlessM)
 
+import Data.Derive.Monoid
+import Data.DeriveTH
 import Data.Either.Unwrap (fromLeft,fromRight,isLeft,isRight)
 import Data.IORef (IORef,atomicModifyIORef,newIORef,readIORef,writeIORef)
 import qualified Data.IVar as IVar
 import Data.Maybe (fromJust,isJust)
-import Data.Monoid (mappend,mconcat)
+import Data.Monoid (Monoid(..))
 import Data.Sequence ((|>))
 
 import Reactive.Banana
@@ -45,6 +49,15 @@ data RedundantWorkloadReceived = RedundantWorkloadReceived deriving (Eq,Show,Typ
 
 instance Exception RedundantWorkloadReceived
 -- @+node:gcross.20111026172030.1280: ** Types
+-- @+node:gcross.20111219115425.1411: *3* WorkerIncomingEvents
+data WorkerIncomingEvents = WorkerIncomingEvents
+	{	workerIncomingStatusUpdateRequestedEvent :: Event ()
+	,	workerIncomingWorkloadStealRequestedEvent :: Event ()
+	,	workerIncomingShutdownEvent :: Event ()
+	,	workerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
+	}
+
+$( derive makeMonoid ''WorkerIncomingEvents )
 -- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
 data VisitorWorkerReactiveRequest =
     StatusUpdateReactiveRequest
@@ -66,10 +79,7 @@ genericCreateVisitorTWorkerReactiveNetwork ::
         VisitorWorkload →
         IO (IO (), VisitorWorkerEnvironment α)
     ) →
-    Event () →
-    Event () →
-    Event () →
-    Event VisitorWorkload →
+    WorkerIncomingEvents →
     VisitorT m α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
@@ -80,10 +90,7 @@ genericCreateVisitorTWorkerReactiveNetwork ::
 
 genericCreateVisitorTWorkerReactiveNetwork
     prefork
-    request_status_update_event
-    request_workload_steal_event
-    shutdown_event
-    workload_received_event
+    WorkerIncomingEvents{..}
     visitor
     = do
 
@@ -97,8 +104,8 @@ genericCreateVisitorTWorkerReactiveNetwork
 
         request_event =
             mappend
-                (fmap (const StatusUpdateReactiveRequest) request_status_update_event)
-                (fmap (const WorkloadStealReactiveRequest) request_workload_steal_event)
+                (fmap (const StatusUpdateReactiveRequest) workerIncomingStatusUpdateRequestedEvent)
+                (fmap (const WorkloadStealReactiveRequest) workerIncomingWorkloadStealRequestedEvent)
         (request_not_receivable_event,request_receivable_event) =
             switchApply (
                 fmap (\maybe_request_queue request →
@@ -124,19 +131,19 @@ genericCreateVisitorTWorkerReactiveNetwork
             $
             request_rejected_event
 
-        (redundant_workload_received_event,non_redundant_workload_received_event) =
+        (redundant_workerIncomingWorkloadReceivedEvent,non_redundant_workerIncomingWorkloadReceivedEvent) =
             switchApply
                 (fmap (\maybe_environment workload →
                     case maybe_environment of
                         Nothing → Right workload
                         Just _ → Left ()
                 ) current_worker_environment)
-                workload_received_event
+                workerIncomingWorkloadReceivedEvent
 
         current_worker_environment_change_event =
             mconcat
                 [fmap (const Nothing) worker_terminated_event
-                ,fmap (const Nothing) shutdown_event
+                ,fmap (const Nothing) workerIncomingShutdownEvent
                 ,fmap Just new_worker_environment_event
                 ]
 
@@ -174,7 +181,7 @@ genericCreateVisitorTWorkerReactiveNetwork
         failure_event :: Event SomeException
         failure_event =
             mappend
-                (fmap (const . toException $ RedundantWorkloadReceived) redundant_workload_received_event)
+                (fmap (const . toException $ RedundantWorkloadReceived) redundant_workerIncomingWorkloadReceivedEvent)
                 worker_terminated_unsuccessfully_event
 
     reactimate
@@ -206,7 +213,7 @@ genericCreateVisitorTWorkerReactiveNetwork
             start
         )
         $
-        non_redundant_workload_received_event
+        non_redundant_workerIncomingWorkloadReceivedEvent
 
     reactimate
         .
@@ -216,7 +223,7 @@ genericCreateVisitorTWorkerReactiveNetwork
         .
         (current_worker_environment <@)
         $
-        shutdown_event
+        workerIncomingShutdownEvent
 
     return
         (update_maybe_status_event
@@ -228,10 +235,7 @@ genericCreateVisitorTWorkerReactiveNetwork
 createVisitorTWorkerReactiveNetwork ::
     (Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    Event () →
-    Event () →
-    Event () →
-    Event VisitorWorkload →
+    WorkerIncomingEvents →
     VisitorT m α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
@@ -244,10 +248,7 @@ createVisitorTWorkerReactiveNetwork run =
         (preforkVisitorTWorkerThread run)
 -- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerNetwork
 createVisitorIOWorkerReactiveNetwork ::
-    Event () →
-    Event () →
-    Event () →
-    Event VisitorWorkload →
+    WorkerIncomingEvents →
     VisitorIO α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))
@@ -258,10 +259,7 @@ createVisitorIOWorkerReactiveNetwork ::
 createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
 -- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
 createVisitorWorkerReactiveNetwork ::
-    Event () →
-    Event () →
-    Event () →
-    Event VisitorWorkload →
+    WorkerIncomingEvents →
     Visitor α →
     NetworkDescription
         (Event (Maybe (VisitorWorkerStatusUpdate α))

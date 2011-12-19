@@ -515,10 +515,7 @@ main = defaultMain
                      ,worker_finished_event
                      ,failure_event
                      ) ← createVisitorWorkerReactiveNetwork
-                            never
-                            never
-                            never
-                            event
+                            (mempty { workerIncomingWorkloadReceivedEvent = event })
                             visitor
                     reactimate (fmap (IVar.write response_ivar) worker_finished_event)
                     reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
@@ -541,10 +538,7 @@ main = defaultMain
                      ,send_request_workload_event
                      ,failure_event
                      ) ← createVisitorWorkerReactiveNetwork
-                            event
-                            never
-                            never
-                            never
+                            (mempty { workerIncomingStatusUpdateRequestedEvent = event })
                             undefined
                     reactimate (fmap (IVar.write response_ivar) update_maybe_status_event)
                     reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
@@ -566,10 +560,7 @@ main = defaultMain
                      ,send_request_workload_event
                      ,failure_event
                      ) ← createVisitorWorkerReactiveNetwork
-                            never
-                            event
-                            never
-                            never
+                            (mempty { workerIncomingWorkloadStealRequestedEvent = event })
                             undefined
                     reactimate (fmap (IVar.write response_ivar) submit_maybe_workload_event)
                     reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
@@ -597,10 +588,7 @@ main = defaultMain
                      ,send_request_workload_event
                      ,failure_event
                      ) ← createVisitorWorkerReactiveNetwork
-                            never
-                            never
-                            never
-                            event
+                            (mempty { workerIncomingWorkloadReceivedEvent = event })
                             (throw e)
                     reactimate (fmap (IVar.write response_ivar) failure_event)
                     reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
@@ -625,10 +613,10 @@ main = defaultMain
                      ,send_request_workload_event
                      ,failure_event
                      ) ← createVisitorIOWorkerReactiveNetwork
-                            never
-                            never
-                            shutdown_event
-                            event
+                            (mempty { workerIncomingShutdownEvent = shutdown_event
+                                    , workerIncomingWorkloadReceivedEvent = event
+                                    }
+                            )
                             (liftIO (IVar.blocking . IVar.read $ blocking_ivar) ⊕ return ())
                     reactimate (fmap (const (writeIORef response_ref (error "received update_maybe_status_event"))) update_maybe_status_event)
                     reactimate (fmap (const (writeIORef response_ref (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
@@ -689,10 +677,10 @@ main = defaultMain
                          ,workload_finished_event
                          ,failure_event
                          ) ← createVisitorIOWorkerReactiveNetwork
-                                status_update_event
-                                never
-                                never
-                                workload_event
+                                (mempty { workerIncomingStatusUpdateRequestedEvent = status_update_event
+                                        , workerIncomingWorkloadReceivedEvent = workload_event
+                                        }
+                                )
                                 visitor_with_blocking_value
                         reactimate (fmap (IVar.write update_maybe_status_ivar) update_maybe_status_event)
                         reactimate (fmap (IVar.write workload_finished_ivar) workload_finished_event)
@@ -754,10 +742,10 @@ main = defaultMain
                          ,workload_finished_event
                          ,failure_event
                          ) ← createVisitorIOWorkerReactiveNetwork
-                                never
-                                steal_event
-                                never
-                                workload_event
+                                (mempty { workerIncomingWorkloadStealRequestedEvent = steal_event
+                                        , workerIncomingWorkloadReceivedEvent = workload_event
+                                        }
+                                )
                                 visitor_with_blocking_value
                         reactimate (fmap (IVar.write steal_response_ivar) submit_maybe_workload_event)
                         reactimate (fmap (IVar.write workload_finished_ivar) workload_finished_event)
