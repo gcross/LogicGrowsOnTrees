@@ -32,6 +32,7 @@ import Data.IORef (IORef,atomicModifyIORef,newIORef,readIORef,writeIORef)
 import qualified Data.IVar as IVar
 import Data.Maybe (fromJust,isJust)
 import Data.Monoid (Monoid(..))
+import Data.Monoid.Unicode ((⊕))
 import Data.Sequence ((|>))
 
 import Reactive.Banana
@@ -107,90 +108,91 @@ genericCreateVisitorTWorkerReactiveNetwork
     let current_worker_environment = stepper Nothing current_worker_environment_change_event
 
         request_event =
-            mappend
-                (StatusUpdateReactiveRequest <$ workerIncomingStatusUpdateRequestedEvent)
-                (WorkloadStealReactiveRequest <$ workerIncomingWorkloadStealRequestedEvent)
+            (StatusUpdateReactiveRequest <$ workerIncomingStatusUpdateRequestedEvent)
+            ⊕
+            (WorkloadStealReactiveRequest <$ workerIncomingWorkloadStealRequestedEvent)
+
         (request_not_receivable_event,request_receivable_event) =
-            switchApply (
-                fmap (\maybe_request_queue request →
+            switchApply
+                ((\maybe_request_queue request →
                         case maybe_request_queue of
                             Nothing → Left request
                             Just request_queue → Right (workerPendingRequests request_queue,request)
-                     )
-                     current_worker_environment
-            ) request_event
+                ) <$> current_worker_environment)
+            $
+            request_event
 
-        request_rejected_event =
-            mappend
-                request_not_received_event
-                request_not_receivable_event
+        request_rejected_event = request_not_received_event ⊕ request_not_receivable_event
+
         (update_request_rejected_event,steal_request_rejected_event) =
             switch
-            .
-            (fmap (\request →
+            $
+            (\request →
                 case request of
                     StatusUpdateReactiveRequest → Left ()
                     WorkloadStealReactiveRequest → Right ()
-            ))
-            $
+            )
+            <$>
             request_rejected_event
 
-        (redundant_workerIncomingWorkloadReceivedEvent,non_redundant_workerIncomingWorkloadReceivedEvent) =
+        (redundant_workload_received_event,non_redundant_workload_received_event) =
             switchApply
-                (fmap (\maybe_environment workload →
+                ((\maybe_environment workload →
                     case maybe_environment of
                         Nothing → Right workload
                         Just _ → Left ()
-                ) current_worker_environment)
-                workerIncomingWorkloadReceivedEvent
+                ) <$> current_worker_environment)
+            $
+            workerIncomingWorkloadReceivedEvent
 
         current_worker_environment_change_event =
             mconcat
                 [Nothing <$ worker_terminated_event
                 ,Nothing <$ workerIncomingShutdownEvent
-                ,fmap Just new_worker_environment_event
+                ,Just <$> new_worker_environment_event
                 ]
 
         worker_terminated_successfully_event =
             filterJust
-            .
-            fmap (\reason → case reason of
+            $
+            (\reason → case reason of
                 VisitorWorkerFinished final_update → Just final_update
                 _ → Nothing
             )
-            $
+            <$>
             worker_terminated_event
 
         workerOutgoingFinishedEvent = worker_terminated_successfully_event
 
         worker_terminated_unsuccessfully_event =
             filterJust
-            .
-            fmap (\reason → case reason of
+            $
+            (\reason → case reason of
                 VisitorWorkerFailed exception → Just exception
                 _ → Nothing
             )
-            $
+            <$>
             worker_terminated_event
 
         workerOutgoingMaybeStatusUpdatedEvent =
-            mappend
-                update_maybe_status_event
-                (Nothing <$ update_request_rejected_event)
+            update_maybe_status_event
+            ⊕
+            (Nothing <$ update_request_rejected_event)
+
         workerOutgoingMaybeWorkloadSubmittedEvent =
-            mappend
-                submit_maybe_workload_event
-                (Nothing <$ steal_request_rejected_event)
+            submit_maybe_workload_event
+            ⊕
+            (Nothing <$ steal_request_rejected_event)
 
         workerOutgoingFailureEvent :: Event SomeException
         workerOutgoingFailureEvent =
-            mappend
-                (toException RedundantWorkloadReceived <$ redundant_workerIncomingWorkloadReceivedEvent)
-                worker_terminated_unsuccessfully_event
+            (toException RedundantWorkloadReceived <$ redundant_workload_received_event)
+            ⊕
+            worker_terminated_unsuccessfully_event
 
     reactimate
-        .
-        fmap (\(request_queue :: IORef (VisitorWorkerRequestQueue α),request) →
+        $
+        (\(request_queue :: IORef (VisitorWorkerRequestQueue α),request) →
             atomicModifyIORef
                 request_queue
                 (maybe
@@ -206,18 +208,18 @@ genericCreateVisitorTWorkerReactiveNetwork
             >>=
             flip unless (requestNotReceived request)
         )
-        $
+        <$>
         request_receivable_event
 
     reactimate
-        .
-        fmap (\workload → do
+        $
+        (\workload → do
             (start,worker_environment) ← prefork workerTerminated visitor workload
             newWorkerEnvironment worker_environment
             start
         )
-        $
-        non_redundant_workerIncomingWorkloadReceivedEvent
+        <$>
+        non_redundant_workload_received_event
 
     reactimate
         .
