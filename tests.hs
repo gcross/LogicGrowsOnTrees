@@ -498,212 +498,6 @@ main = defaultMain
             ]
         -- @-others
         ]
-    -- @+node:gcross.20111028181213.1319: *3* Control.Monad.Trans.Visitor.Worker
-    ,testGroup "Control.Monad.Trans.Visitor.Worker"
-        -- @+others
-        -- @+node:gcross.20111028181213.1320: *4* forkVisitor(X)WorkerThread
-        [testGroup "forkVisitor(X)WorkerThread"
-            -- @+others
-            -- @+node:gcross.20111028181213.1334: *5* abort
-            [testCase "abort" $ do
-                termination_result_ivar ← IVar.new
-                semaphore ← newQSem 0
-                VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
-                    (IVar.write termination_result_ivar)
-                    (liftIO (waitQSem semaphore) `mplus` error "should never get here")
-                    entire_workload
-                writeIORef workerPendingRequests Nothing
-                signalQSem semaphore
-                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                case termination_result of
-                    VisitorWorkerFinished _ → assertFailure "worker faled to abort"
-                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
-                    VisitorWorkerAborted → return ()
-                workerInitialPath @?= Seq.empty
-                readIORef workerPendingRequests >>= assertBool "is the request queue still null?" . isNothing
-            -- @+node:gcross.20111028181213.1321: *5* obtains all solutions
-            ,testGroup "obtains all solutions"
-                -- @+others
-                -- @+node:gcross.20111028181213.1327: *6* with an initial path
-                [testProperty "with an initial path" $ \(visitor :: Visitor Int) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do
-                    solutions_ivar ← IVar.new
-                    worker_environment ←
-                        forkVisitorWorkerThread
-                            (IVar.write solutions_ivar)
-                            visitor
-                            (VisitorWorkload path Unexplored)
-                    VisitorWorkerFinalUpdate solutions checkpoint ←
-                        (IVar.blocking $ IVar.read solutions_ivar)
-                        >>=
-                        \termination_reason → case termination_reason of
-                            VisitorWorkerFinished final_status_update → return final_status_update
-                            other → error ("terminated unsuccessfully with reason " ++ show other)
-                    checkpoint @?= checkpointFromInitialPath path Explored
-                    ((@?=) `on` (map visitorSolutionResult))
-                        solutions
-                        (runVisitorWithLabels . walkVisitorDownPath path $ visitor)
-                    return True
-                -- @+node:gcross.20111028181213.1322: *6* with no initial path
-                ,testProperty "with no initial path" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
-                    solutions_ivar ← IVar.new
-                    worker_environment ←
-                        forkVisitorWorkerThread
-                            (IVar.write solutions_ivar)
-                            visitor
-                            entire_workload
-                    VisitorWorkerFinalUpdate solutions checkpoint ←
-                        (IVar.blocking $ IVar.read solutions_ivar)
-                        >>=
-                        \termination_reason → case termination_reason of
-                            VisitorWorkerFinished final_status_update → return final_status_update
-                            other → error ("terminated unsuccessfully with reason " ++ show other)
-                    checkpoint @?= Explored
-                    solutions @?= runVisitorWithLabels visitor
-                    return True
-
-                -- @-others
-                ]
-            -- @+node:gcross.20111028181213.1339: *5* status updates produce valid checkpoints
-            ,testProperty "status updates produce valid checkpoints" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
-                termination_result_ivar ← IVar.new
-                (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
-                    (IVar.write termination_result_ivar)
-                    visitor
-                    entire_workload
-                checkpoints_ref ← newIORef DList.empty
-                let status_update_requests = Seq.singleton . StatusUpdateRequested $
-                        maybe
-                            (atomicModifyIORef workerPendingRequests $ (,()) . fmap (const Seq.empty))
-                            (\checkpoint → do
-                                atomicModifyIORef checkpoints_ref $ (,()) . flip DList.snoc checkpoint
-                                atomicModifyIORef workerPendingRequests $ (,()) . fmap (const status_update_requests)
-                            )
-                writeIORef workerPendingRequests . Just $ status_update_requests
-                startWorker
-                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                remaining_solutions ← case termination_result of
-                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
-                    VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                    VisitorWorkerAborted → error "worker aborted prematurely"
-                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                checkpoints ← fmap DList.toList (readIORef checkpoints_ref)
-                let correct_solutions = runVisitorWithLabels visitor
-                correct_solutions @=? ((++ remaining_solutions) . concat . fmap visitorWorkerNewSolutions $ checkpoints)
-                forM_ checkpoints $
-                    \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _) _) →
-                        assertBool
-                            "checkpoint has null initial path"
-                            (Seq.null initial_path)
-                let (almost_final_solutions,solutions_using_progressive_checkpoints) =
-                        mapAccumL
-                            (\solutions_so_far (VisitorWorkerStatusUpdate new_solutions workload _) →
-                                let new_solutions_so_far :: [VisitorSolution Int]
-                                    new_solutions_so_far = solutions_so_far ++ new_solutions
-                                in  (new_solutions_so_far
-                                    ,new_solutions_so_far ++ mapMaybe fst (runVisitorThroughWorkload workload visitor)
-                                    )
-                            )
-                            []
-                            checkpoints
-                almost_final_solutions ++ remaining_solutions @?= correct_solutions
-                forM_ solutions_using_progressive_checkpoints $ (@?= correct_solutions)
-                return True
-            -- @+node:gcross.20111028181213.1325: *5* terminates successfully with null visitor
-            ,testCase "terminates successfully with null visitor" $ do
-                termination_result_ivar ← IVar.new
-                VisitorWorkerEnvironment{..} ←
-                    forkVisitorWorkerThread
-                        (IVar.write termination_result_ivar)
-                        (mzero :: Visitor Int)
-                        entire_workload
-                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                case termination_result of
-                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → solutions @?= []
-                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
-                    VisitorWorkerAborted → assertFailure "worker prematurely aborted"
-                workerInitialPath @?= Seq.empty
-                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-            -- @+node:gcross.20111116214909.1369: *5* work stealing correctly preserves total workload
-            ,testGroup "work stealing correctly preserves total workload"
-                -- @+others
-                -- @+node:gcross.20111116214909.1371: *6* single steal
-                [testProperty "single steal" $ flip fmap arbitrary $ \(visitor :: VisitorIO Int) → unsafePerformIO $ do
-                    worker_started_qsem ← newQSem 0
-                    blocking_value_ivar ← IVar.new
-                    let visitor_with_blocking_value =
-                            ((liftIO (do
-                                signalQSem worker_started_qsem
-                                IVar.blocking . IVar.read $ blocking_value_ivar
-                            ))
-                            ⊕ return 24)
-                            ⊕ visitor
-                    termination_result_ivar ← IVar.new
-                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
-                        (IVar.write termination_result_ivar)
-                        visitor_with_blocking_value
-                        entire_workload
-                    maybe_maybe_workload_ref ← newIORef Nothing
-                    waitQSem worker_started_qsem
-                    writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
-                    IVar.write blocking_value_ivar 42
-                    VisitorWorkerFinalUpdate remaining_solutions checkpoint ←
-                        (IVar.blocking $ IVar.read termination_result_ivar)
-                        >>=
-                        \termination_result → case termination_result of
-                            VisitorWorkerFinished final_status_update → return final_status_update
-                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                            VisitorWorkerAborted → error "worker aborted prematurely"
-                    readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                    (VisitorWorkerStatusUpdate prestolen_solutions remaining_workload checkpoint,workload) ←
-                        fmap (
-                            fromMaybe (error "stolen workload not available")
-                            .
-                            fromMaybe (error "steal request ignored")
-                        )
-                        $
-                        readIORef maybe_maybe_workload_ref
-                    assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
-                    runVisitorTThroughWorkloadAndGatherResults remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
-                    stolen_solutions ← runVisitorTThroughWorkloadAndGatherResults workload visitor_with_blocking_value
-                    let solutions = sort (prestolen_solutions ++ remaining_solutions ++ stolen_solutions)
-                    correct_solutions ← runVisitorTWithLabelsAndGatherResults visitor_with_blocking_value
-                    solutions @?= correct_solutions
-                    return True
-                -- @+node:gcross.20111116214909.1375: *6* continuous stealing
-                ,testProperty "continuous stealing" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
-                    termination_result_ivar ← IVar.new
-                    (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
-                        (IVar.write termination_result_ivar)
-                        visitor
-                        entire_workload
-                    workloads_ref ← newIORef DList.empty
-                    let submitWorkloadStealReqest = atomicModifyIORef workerPendingRequests $ (,()) . fmap (const workload_steal_requests)
-                        workload_steal_requests = Seq.singleton . WorkloadStealRequested $
-                            maybe
-                                submitWorkloadStealReqest
-                                (\workload → do
-                                    atomicModifyIORef workloads_ref $ (,()) . flip DList.snoc workload
-                                    submitWorkloadStealReqest
-                                )
-                    writeIORef workerPendingRequests . Just $ workload_steal_requests
-                    startWorker
-                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                    remaining_solutions ← case termination_result of
-                        VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
-                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                        VisitorWorkerAborted → error "worker aborted prematurely"
-                    workloads ← fmap (map snd . DList.toList) (readIORef workloads_ref)
-                    let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndGatherResults visitor) $ workloads
-                        solutions = sort (remaining_solutions ++ stolen_solutions)
-                        correct_solutions = runVisitorWithLabels visitor
-                    solutions @?= correct_solutions
-                    return True
-                -- @-others
-                ]
-            -- @-others
-            ]
-        -- @-others
-        ]
     -- @+node:gcross.20111116214909.1384: *3* Control.Monad.Trans.Visitor.Reactive.Worker
     ,testGroup "Control.Monad.Trans.Visitor.Reactive.Worker"
         -- @+others
@@ -981,6 +775,212 @@ main = defaultMain
                 steal_response_1 @?= steal_response_2
                 final_status_update_1 @?= final_status_update_2
                 return True
+            -- @-others
+            ]
+        -- @-others
+        ]
+    -- @+node:gcross.20111028181213.1319: *3* Control.Monad.Trans.Visitor.Worker
+    ,testGroup "Control.Monad.Trans.Visitor.Worker"
+        -- @+others
+        -- @+node:gcross.20111028181213.1320: *4* forkVisitor(X)WorkerThread
+        [testGroup "forkVisitor(X)WorkerThread"
+            -- @+others
+            -- @+node:gcross.20111028181213.1334: *5* abort
+            [testCase "abort" $ do
+                termination_result_ivar ← IVar.new
+                semaphore ← newQSem 0
+                VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                    (IVar.write termination_result_ivar)
+                    (liftIO (waitQSem semaphore) `mplus` error "should never get here")
+                    entire_workload
+                writeIORef workerPendingRequests Nothing
+                signalQSem semaphore
+                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                case termination_result of
+                    VisitorWorkerFinished _ → assertFailure "worker faled to abort"
+                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
+                    VisitorWorkerAborted → return ()
+                workerInitialPath @?= Seq.empty
+                readIORef workerPendingRequests >>= assertBool "is the request queue still null?" . isNothing
+            -- @+node:gcross.20111028181213.1321: *5* obtains all solutions
+            ,testGroup "obtains all solutions"
+                -- @+others
+                -- @+node:gcross.20111028181213.1327: *6* with an initial path
+                [testProperty "with an initial path" $ \(visitor :: Visitor Int) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do
+                    solutions_ivar ← IVar.new
+                    worker_environment ←
+                        forkVisitorWorkerThread
+                            (IVar.write solutions_ivar)
+                            visitor
+                            (VisitorWorkload path Unexplored)
+                    VisitorWorkerFinalUpdate solutions checkpoint ←
+                        (IVar.blocking $ IVar.read solutions_ivar)
+                        >>=
+                        \termination_reason → case termination_reason of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            other → error ("terminated unsuccessfully with reason " ++ show other)
+                    checkpoint @?= checkpointFromInitialPath path Explored
+                    ((@?=) `on` (map visitorSolutionResult))
+                        solutions
+                        (runVisitorWithLabels . walkVisitorDownPath path $ visitor)
+                    return True
+                -- @+node:gcross.20111028181213.1322: *6* with no initial path
+                ,testProperty "with no initial path" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                    solutions_ivar ← IVar.new
+                    worker_environment ←
+                        forkVisitorWorkerThread
+                            (IVar.write solutions_ivar)
+                            visitor
+                            entire_workload
+                    VisitorWorkerFinalUpdate solutions checkpoint ←
+                        (IVar.blocking $ IVar.read solutions_ivar)
+                        >>=
+                        \termination_reason → case termination_reason of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            other → error ("terminated unsuccessfully with reason " ++ show other)
+                    checkpoint @?= Explored
+                    solutions @?= runVisitorWithLabels visitor
+                    return True
+
+                -- @-others
+                ]
+            -- @+node:gcross.20111028181213.1339: *5* status updates produce valid checkpoints
+            ,testProperty "status updates produce valid checkpoints" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                termination_result_ivar ← IVar.new
+                (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
+                    (IVar.write termination_result_ivar)
+                    visitor
+                    entire_workload
+                checkpoints_ref ← newIORef DList.empty
+                let status_update_requests = Seq.singleton . StatusUpdateRequested $
+                        maybe
+                            (atomicModifyIORef workerPendingRequests $ (,()) . fmap (const Seq.empty))
+                            (\checkpoint → do
+                                atomicModifyIORef checkpoints_ref $ (,()) . flip DList.snoc checkpoint
+                                atomicModifyIORef workerPendingRequests $ (,()) . fmap (const status_update_requests)
+                            )
+                writeIORef workerPendingRequests . Just $ status_update_requests
+                startWorker
+                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                remaining_solutions ← case termination_result of
+                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
+                    VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                    VisitorWorkerAborted → error "worker aborted prematurely"
+                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+                checkpoints ← fmap DList.toList (readIORef checkpoints_ref)
+                let correct_solutions = runVisitorWithLabels visitor
+                correct_solutions @=? ((++ remaining_solutions) . concat . fmap visitorWorkerNewSolutions $ checkpoints)
+                forM_ checkpoints $
+                    \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _) _) →
+                        assertBool
+                            "checkpoint has null initial path"
+                            (Seq.null initial_path)
+                let (almost_final_solutions,solutions_using_progressive_checkpoints) =
+                        mapAccumL
+                            (\solutions_so_far (VisitorWorkerStatusUpdate new_solutions workload _) →
+                                let new_solutions_so_far :: [VisitorSolution Int]
+                                    new_solutions_so_far = solutions_so_far ++ new_solutions
+                                in  (new_solutions_so_far
+                                    ,new_solutions_so_far ++ mapMaybe fst (runVisitorThroughWorkload workload visitor)
+                                    )
+                            )
+                            []
+                            checkpoints
+                almost_final_solutions ++ remaining_solutions @?= correct_solutions
+                forM_ solutions_using_progressive_checkpoints $ (@?= correct_solutions)
+                return True
+            -- @+node:gcross.20111028181213.1325: *5* terminates successfully with null visitor
+            ,testCase "terminates successfully with null visitor" $ do
+                termination_result_ivar ← IVar.new
+                VisitorWorkerEnvironment{..} ←
+                    forkVisitorWorkerThread
+                        (IVar.write termination_result_ivar)
+                        (mzero :: Visitor Int)
+                        entire_workload
+                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                case termination_result of
+                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → solutions @?= []
+                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
+                    VisitorWorkerAborted → assertFailure "worker prematurely aborted"
+                workerInitialPath @?= Seq.empty
+                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+            -- @+node:gcross.20111116214909.1369: *5* work stealing correctly preserves total workload
+            ,testGroup "work stealing correctly preserves total workload"
+                -- @+others
+                -- @+node:gcross.20111116214909.1371: *6* single steal
+                [testProperty "single steal" $ flip fmap arbitrary $ \(visitor :: VisitorIO Int) → unsafePerformIO $ do
+                    worker_started_qsem ← newQSem 0
+                    blocking_value_ivar ← IVar.new
+                    let visitor_with_blocking_value =
+                            ((liftIO (do
+                                signalQSem worker_started_qsem
+                                IVar.blocking . IVar.read $ blocking_value_ivar
+                            ))
+                            ⊕ return 24)
+                            ⊕ visitor
+                    termination_result_ivar ← IVar.new
+                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                        (IVar.write termination_result_ivar)
+                        visitor_with_blocking_value
+                        entire_workload
+                    maybe_maybe_workload_ref ← newIORef Nothing
+                    waitQSem worker_started_qsem
+                    writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
+                    IVar.write blocking_value_ivar 42
+                    VisitorWorkerFinalUpdate remaining_solutions checkpoint ←
+                        (IVar.blocking $ IVar.read termination_result_ivar)
+                        >>=
+                        \termination_result → case termination_result of
+                            VisitorWorkerFinished final_status_update → return final_status_update
+                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            VisitorWorkerAborted → error "worker aborted prematurely"
+                    readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+                    (VisitorWorkerStatusUpdate prestolen_solutions remaining_workload checkpoint,workload) ←
+                        fmap (
+                            fromMaybe (error "stolen workload not available")
+                            .
+                            fromMaybe (error "steal request ignored")
+                        )
+                        $
+                        readIORef maybe_maybe_workload_ref
+                    assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
+                    runVisitorTThroughWorkloadAndGatherResults remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
+                    stolen_solutions ← runVisitorTThroughWorkloadAndGatherResults workload visitor_with_blocking_value
+                    let solutions = sort (prestolen_solutions ++ remaining_solutions ++ stolen_solutions)
+                    correct_solutions ← runVisitorTWithLabelsAndGatherResults visitor_with_blocking_value
+                    solutions @?= correct_solutions
+                    return True
+                -- @+node:gcross.20111116214909.1375: *6* continuous stealing
+                ,testProperty "continuous stealing" $ \(visitor :: Visitor Int) → unsafePerformIO $ do
+                    termination_result_ivar ← IVar.new
+                    (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
+                        (IVar.write termination_result_ivar)
+                        visitor
+                        entire_workload
+                    workloads_ref ← newIORef DList.empty
+                    let submitWorkloadStealReqest = atomicModifyIORef workerPendingRequests $ (,()) . fmap (const workload_steal_requests)
+                        workload_steal_requests = Seq.singleton . WorkloadStealRequested $
+                            maybe
+                                submitWorkloadStealReqest
+                                (\workload → do
+                                    atomicModifyIORef workloads_ref $ (,()) . flip DList.snoc workload
+                                    submitWorkloadStealReqest
+                                )
+                    writeIORef workerPendingRequests . Just $ workload_steal_requests
+                    startWorker
+                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                    remaining_solutions ← case termination_result of
+                        VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
+                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                        VisitorWorkerAborted → error "worker aborted prematurely"
+                    workloads ← fmap (map snd . DList.toList) (readIORef workloads_ref)
+                    let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndGatherResults visitor) $ workloads
+                        solutions = sort (remaining_solutions ++ stolen_solutions)
+                        correct_solutions = runVisitorWithLabels visitor
+                    solutions @?= correct_solutions
+                    return True
+                -- @-others
+                ]
             -- @-others
             ]
         -- @-others
