@@ -13,8 +13,8 @@
 <v t="gcross.20110923120247.1191"><vh>@file Control/Monad/Trans/Visitor/Checkpoint.hs</vh></v>
 <v t="gcross.20111029192420.1332"><vh>@file Control/Monad/Trans/Visitor/Label.hs</vh></v>
 <v t="gcross.20110923120247.1201"><vh>@file Control/Monad/Trans/Visitor/Path.hs</vh></v>
+<v t="gcross.20111026172030.1274"><vh>@file Control/Monad/Trans/Visitor/Reactive/Worker.hs</vh></v>
 <v t="gcross.20110923164140.1252"><vh>@file Control/Monad/Trans/Visitor/Worker.hs</vh></v>
-<v t="gcross.20111026172030.1274"><vh>@file Control/Monad/Trans/Visitor/Worker/Reactive.hs</vh></v>
 <v t="gcross.20110923164140.1278"><vh>@file Control/Monad/Trans/Visitor/WorkerQueue.hs</vh></v>
 <v t="gcross.20111029192420.1349"><vh>@file Control/Monad/Trans/Visitor/Workload.hs</vh></v>
 <v t="gcross.20101114125204.1259"><vh>@file tests.hs</vh></v>

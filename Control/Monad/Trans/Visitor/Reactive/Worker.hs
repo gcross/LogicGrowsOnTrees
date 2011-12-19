@@ -1,5 +1,5 @@
 -- @+leo-ver=5-thin
--- @+node:gcross.20111026172030.1274: * @file Control/Monad/Trans/Visitor/Worker/Reactive.hs
+-- @+node:gcross.20111026172030.1274: * @file Control/Monad/Trans/Visitor/Reactive/Worker.hs
 -- @@language haskell
 
 -- @+<< Language extensions >>
@@ -12,7 +12,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- @-<< Language extensions >>
 
-module Control.Monad.Trans.Visitor.Worker.Reactive where
+module Control.Monad.Trans.Visitor.Reactive.Worker where
 
 -- @+<< Import needed modules >>
 -- @+node:gcross.20111026172030.1276: ** << Import needed modules >>

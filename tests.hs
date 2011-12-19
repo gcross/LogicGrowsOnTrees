@@ -58,9 +58,9 @@ import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
+import Control.Monad.Trans.Visitor.Reactive.Worker
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
-import Control.Monad.Trans.Visitor.Worker.Reactive
 -- @-<< Import needed modules >>
 
 -- @+others
@@ -704,8 +704,8 @@ main = defaultMain
             ]
         -- @-others
         ]
-    -- @+node:gcross.20111116214909.1384: *3* Control.Monad.Trans.Visitor.Worker.Reactive
-    ,testGroup "Control.Monad.Trans.Visitor.Worker.Reactive"
+    -- @+node:gcross.20111116214909.1384: *3* Control.Monad.Trans.Visitor.Reactive.Worker
+    ,testGroup "Control.Monad.Trans.Visitor.Reactive.Worker"
         -- @+others
         -- @+node:gcross.20111116214909.1388: *4* absense of workload results in
         [testGroup "absense of workload results in"
