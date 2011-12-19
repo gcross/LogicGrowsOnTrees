@@ -58,6 +58,15 @@ data WorkerIncomingEvents = WorkerIncomingEvents
 	}
 
 $( derive makeMonoid ''WorkerIncomingEvents )
+-- @+node:gcross.20111219115425.1412: *3* WorkerOutgoingEvents
+data WorkerOutgoingEvents α = WorkerOutgoingEvents
+	{	workerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
+	,	workerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
+	,	workerOutgoingFinishedEvent :: Event (VisitorWorkerFinalUpdate α)
+	,	workerOutgoingFailureEvent :: Event SomeException
+	}
+
+$( derive makeMonoid ''WorkerOutgoingEvents )
 -- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
 data VisitorWorkerReactiveRequest =
     StatusUpdateReactiveRequest
@@ -81,12 +90,7 @@ genericCreateVisitorTWorkerReactiveNetwork ::
     ) →
     WorkerIncomingEvents →
     VisitorT m α →
-    NetworkDescription
-        (Event (Maybe (VisitorWorkerStatusUpdate α))
-        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-        ,Event (VisitorWorkerFinalUpdate α)
-        ,Event SomeException
-        )
+    NetworkDescription (WorkerOutgoingEvents α)
 
 genericCreateVisitorTWorkerReactiveNetwork
     prefork
@@ -157,7 +161,7 @@ genericCreateVisitorTWorkerReactiveNetwork
             $
             worker_terminated_event
 
-        worker_finished_event = worker_terminated_successfully_event
+        workerOutgoingFinishedEvent = worker_terminated_successfully_event
 
         worker_terminated_unsuccessfully_event =
             filterJust
@@ -169,17 +173,17 @@ genericCreateVisitorTWorkerReactiveNetwork
             $
             worker_terminated_event
 
-        update_maybe_status_event =
+        workerOutgoingMaybeStatusUpdatedEvent =
             mappend
                 update_maybe_status_event_
                 (fmap (const Nothing) update_request_rejected_event)
-        submit_maybe_workload_event =
+        workerOutgoingMaybeWorkloadSubmittedEvent =
             mappend
                 submit_maybe_workload_event_
                 (fmap (const Nothing) steal_request_rejected_event)
 
-        failure_event :: Event SomeException
-        failure_event =
+        workerOutgoingFailureEvent :: Event SomeException
+        workerOutgoingFailureEvent =
             mappend
                 (fmap (const . toException $ RedundantWorkloadReceived) redundant_workerIncomingWorkloadReceivedEvent)
                 worker_terminated_unsuccessfully_event
@@ -225,24 +229,14 @@ genericCreateVisitorTWorkerReactiveNetwork
         $
         workerIncomingShutdownEvent
 
-    return
-        (update_maybe_status_event
-        ,submit_maybe_workload_event
-        ,worker_finished_event
-        ,failure_event
-        )
+    return WorkerOutgoingEvents{..}
 -- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerNetwork
 createVisitorTWorkerReactiveNetwork ::
     (Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
     WorkerIncomingEvents →
     VisitorT m α →
-    NetworkDescription
-        (Event (Maybe (VisitorWorkerStatusUpdate α))
-        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-        ,Event (VisitorWorkerFinalUpdate α)
-        ,Event SomeException
-        )
+    NetworkDescription (WorkerOutgoingEvents α)
 createVisitorTWorkerReactiveNetwork run =
     genericCreateVisitorTWorkerReactiveNetwork
         (preforkVisitorTWorkerThread run)
@@ -250,23 +244,13 @@ createVisitorTWorkerReactiveNetwork run =
 createVisitorIOWorkerReactiveNetwork ::
     WorkerIncomingEvents →
     VisitorIO α →
-    NetworkDescription
-        (Event (Maybe (VisitorWorkerStatusUpdate α))
-        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-        ,Event (VisitorWorkerFinalUpdate α)
-        ,Event SomeException
-        )
+    NetworkDescription (WorkerOutgoingEvents α)
 createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
 -- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
 createVisitorWorkerReactiveNetwork ::
     WorkerIncomingEvents →
     Visitor α →
-    NetworkDescription
-        (Event (Maybe (VisitorWorkerStatusUpdate α))
-        ,Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-        ,Event (VisitorWorkerFinalUpdate α)
-        ,Event SomeException
-        )
+    NetworkDescription (WorkerOutgoingEvents α)
 createVisitorWorkerReactiveNetwork =
     genericCreateVisitorTWorkerReactiveNetwork
         preforkVisitorWorkerThread

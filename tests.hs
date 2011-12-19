@@ -510,17 +510,13 @@ main = defaultMain
                 response_ivar ← IVar.new
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
-                    ( update_maybe_status_event
-                     ,submit_maybe_workload_event
-                     ,worker_finished_event
-                     ,failure_event
-                     ) ← createVisitorWorkerReactiveNetwork
+                    WorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
                             (mempty { workerIncomingWorkloadReceivedEvent = event })
                             visitor
-                    reactimate (fmap (IVar.write response_ivar) worker_finished_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
+                    reactimate (fmap (IVar.write response_ivar) workerOutgoingFinishedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingMaybeStatusUpdatedEvent"))) workerOutgoingMaybeStatusUpdatedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingMaybeWorkloadSubmittedEvent"))) workerOutgoingMaybeWorkloadSubmittedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingFailureEvent"))) workerOutgoingFailureEvent)
                 actuate event_network
                 triggerEventWith entire_workload
                 response ← IVar.blocking $ IVar.read response_ivar
@@ -533,17 +529,13 @@ main = defaultMain
                 response_ivar ← IVar.new
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
-                    ( update_maybe_status_event
-                     ,submit_maybe_workload_event
-                     ,send_request_workload_event
-                     ,failure_event
-                     ) ← createVisitorWorkerReactiveNetwork
+                    WorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
                             (mempty { workerIncomingStatusUpdateRequestedEvent = event })
                             undefined
-                    reactimate (fmap (IVar.write response_ivar) update_maybe_status_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
+                    reactimate (fmap (IVar.write response_ivar) workerOutgoingMaybeStatusUpdatedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingMaybeWorkloadSubmittedEvent"))) workerOutgoingMaybeWorkloadSubmittedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingFinishedEvent"))) workerOutgoingFinishedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingFailureEvent"))) workerOutgoingFailureEvent)
                 actuate event_network
                 triggerEventWith ()
                 response ← IVar.blocking $ IVar.read response_ivar
@@ -555,17 +547,13 @@ main = defaultMain
                 response_ivar ← IVar.new
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
-                    ( update_maybe_status_event
-                     ,submit_maybe_workload_event
-                     ,send_request_workload_event
-                     ,failure_event
-                     ) ← createVisitorWorkerReactiveNetwork
+                    WorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
                             (mempty { workerIncomingWorkloadStealRequestedEvent = event })
                             undefined
-                    reactimate (fmap (IVar.write response_ivar) submit_maybe_workload_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received failure_event"))) failure_event)
+                    reactimate (fmap (IVar.write response_ivar) workerOutgoingMaybeWorkloadSubmittedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingMaybeStatusUpdatedEvent"))) workerOutgoingMaybeStatusUpdatedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingFinishedEvent"))) workerOutgoingFinishedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingFailureEvent"))) workerOutgoingFailureEvent)
                 actuate event_network
                 triggerEventWith ()
                 response ← IVar.blocking $ IVar.read response_ivar
@@ -583,17 +571,13 @@ main = defaultMain
                 let e = TestException 42
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
-                    ( update_maybe_status_event
-                     ,submit_maybe_workload_event
-                     ,send_request_workload_event
-                     ,failure_event
-                     ) ← createVisitorWorkerReactiveNetwork
+                    WorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
                             (mempty { workerIncomingWorkloadReceivedEvent = event })
                             (throw e)
-                    reactimate (fmap (IVar.write response_ivar) failure_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                    reactimate (fmap (const (IVar.write response_ivar (error "received send_request_workload_event"))) send_request_workload_event)
+                    reactimate (fmap (IVar.write response_ivar) workerOutgoingFailureEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingMaybeStatusUpdatedEvent"))) workerOutgoingMaybeStatusUpdatedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingMaybeWorkloadSubmittedEvent"))) workerOutgoingMaybeWorkloadSubmittedEvent)
+                    reactimate (fmap (const (IVar.write response_ivar (error "received workerOutgoingFinishedEvent"))) workerOutgoingFinishedEvent)
                 actuate event_network
                 triggerEventWith entire_workload
                 response ← IVar.blocking $ IVar.read response_ivar
@@ -608,19 +592,15 @@ main = defaultMain
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     shutdown_event ← fromAddHandler shutdown_event_handler
-                    ( update_maybe_status_event
-                     ,submit_maybe_workload_event
-                     ,send_request_workload_event
-                     ,failure_event
-                     ) ← createVisitorIOWorkerReactiveNetwork
+                    WorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
                             (mempty { workerIncomingShutdownEvent = shutdown_event
                                     , workerIncomingWorkloadReceivedEvent = event
                                     }
                             )
                             (liftIO (IVar.blocking . IVar.read $ blocking_ivar) ⊕ return ())
-                    reactimate (fmap (const (writeIORef response_ref (error "received update_maybe_status_event"))) update_maybe_status_event)
-                    reactimate (fmap (const (writeIORef response_ref (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                    reactimate (fmap (writeIORef response_ref . error . ("received failure_event: " ++) . show) failure_event)
+                    reactimate (fmap (const (writeIORef response_ref (error "received workerOutgoingMaybeStatusUpdatedEvent"))) workerOutgoingMaybeStatusUpdatedEvent)
+                    reactimate (fmap (const (writeIORef response_ref (error "received workerOutgoingMaybeWorkloadSubmittedEvent"))) workerOutgoingMaybeWorkloadSubmittedEvent)
+                    reactimate (fmap (writeIORef response_ref . error . ("received workerOutgoingFailureEvent: " ++) . show) workerOutgoingFailureEvent)
                 actuate event_network
                 triggerEventWith entire_workload
                 triggerShutdownEvent ()
@@ -672,20 +652,16 @@ main = defaultMain
                     event_network ← compile $ do
                         status_update_event ← fromAddHandler steal_event_handler
                         workload_event ← fromAddHandler workload_event_handler
-                        ( update_maybe_status_event
-                         ,submit_maybe_workload_event
-                         ,workload_finished_event
-                         ,failure_event
-                         ) ← createVisitorIOWorkerReactiveNetwork
+                        WorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
                                 (mempty { workerIncomingStatusUpdateRequestedEvent = status_update_event
                                         , workerIncomingWorkloadReceivedEvent = workload_event
                                         }
                                 )
                                 visitor_with_blocking_value
-                        reactimate (fmap (IVar.write update_maybe_status_ivar) update_maybe_status_event)
-                        reactimate (fmap (IVar.write workload_finished_ivar) workload_finished_event)
-                        reactimate (fmap (const (IVar.write update_maybe_status_ivar (error "received submit_maybe_workload_event"))) submit_maybe_workload_event)
-                        reactimate (fmap (const (IVar.write update_maybe_status_ivar (error "received failure_event"))) failure_event)
+                        reactimate (fmap (IVar.write update_maybe_status_ivar) workerOutgoingMaybeStatusUpdatedEvent)
+                        reactimate (fmap (IVar.write workload_finished_ivar) workerOutgoingFinishedEvent)
+                        reactimate (fmap (const (IVar.write update_maybe_status_ivar (error "received workerOutgoingMaybeWorkloadSubmittedEvent"))) workerOutgoingMaybeWorkloadSubmittedEvent)
+                        reactimate (fmap (const (IVar.write update_maybe_status_ivar (error "received workerOutgoingFailureEvent"))) workerOutgoingFailureEvent)
                     actuate event_network
                     triggerWorkloadEventWith entire_workload
                     waitQSem worker_started_qsem
@@ -737,20 +713,16 @@ main = defaultMain
                     event_network ← compile $ do
                         steal_event ← fromAddHandler steal_event_handler
                         workload_event ← fromAddHandler workload_event_handler
-                        ( update_maybe_status_event
-                         ,submit_maybe_workload_event
-                         ,workload_finished_event
-                         ,failure_event
-                         ) ← createVisitorIOWorkerReactiveNetwork
+                        WorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
                                 (mempty { workerIncomingWorkloadStealRequestedEvent = steal_event
                                         , workerIncomingWorkloadReceivedEvent = workload_event
                                         }
                                 )
                                 visitor_with_blocking_value
-                        reactimate (fmap (IVar.write steal_response_ivar) submit_maybe_workload_event)
-                        reactimate (fmap (IVar.write workload_finished_ivar) workload_finished_event)
-                        reactimate (fmap (const (IVar.write steal_response_ivar (error "received update_maybe_status_event"))) update_maybe_status_event)
-                        reactimate (fmap (const (IVar.write steal_response_ivar (error "received failure_event"))) failure_event)
+                        reactimate (fmap (IVar.write steal_response_ivar) workerOutgoingMaybeWorkloadSubmittedEvent)
+                        reactimate (fmap (IVar.write workload_finished_ivar) workerOutgoingFinishedEvent)
+                        reactimate (fmap (const (IVar.write steal_response_ivar (error "received workerOutgoingMaybeStatusUpdatedEvent"))) workerOutgoingMaybeStatusUpdatedEvent)
+                        reactimate (fmap (const (IVar.write steal_response_ivar (error "received workerOutgoingFailureEvent"))) workerOutgoingFailureEvent)
                     actuate event_network
                     triggerWorkloadEventWith entire_workload
                     waitQSem worker_started_qsem
