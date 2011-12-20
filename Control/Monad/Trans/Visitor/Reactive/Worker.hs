@@ -74,11 +74,42 @@ data VisitorWorkerReactiveRequest =
     StatusUpdateReactiveRequest
   | WorkloadStealReactiveRequest
 -- @+node:gcross.20111026172030.1281: ** Functions
--- @+node:gcross.20111026213013.1281: *3* newHandler
-newHandler = do
-    (event_handler,callback) ← liftIO newAddHandler
-    event ← fromAddHandler event_handler
-    return (event,callback)
+-- @+node:gcross.20111219132352.1427: *3* (<$↔>)
+infixl 4 <$↔>
+
+(<$↔>) :: (a → Either b c) → Event a → (Event b,Event c)
+f <$↔> x = split (f <$> x)
+-- @+node:gcross.20111026220221.1283: *3* (<@↔>)
+infixl 4 <@↔>
+
+(<@↔>) ::
+    Apply f Event ⇒
+    f (a → Either b c) → Event a → (Event b,Event c)
+f <@↔> x = split (f <@> x)
+-- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerNetwork
+createVisitorIOWorkerReactiveNetwork ::
+    WorkerIncomingEvents →
+    VisitorIO α →
+    NetworkDescription (WorkerOutgoingEvents α)
+createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
+-- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerNetwork
+createVisitorTWorkerReactiveNetwork ::
+    (Functor m, MonadIO m) ⇒
+    (∀ β. m β → IO β) →
+    WorkerIncomingEvents →
+    VisitorT m α →
+    NetworkDescription (WorkerOutgoingEvents α)
+createVisitorTWorkerReactiveNetwork run =
+    genericCreateVisitorTWorkerReactiveNetwork
+        (preforkVisitorTWorkerThread run)
+-- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
+createVisitorWorkerReactiveNetwork ::
+    WorkerIncomingEvents →
+    Visitor α →
+    NetworkDescription (WorkerOutgoingEvents α)
+createVisitorWorkerReactiveNetwork =
+    genericCreateVisitorTWorkerReactiveNetwork
+        preforkVisitorWorkerThread
 -- @+node:gcross.20111026213013.1279: *3* filterJust
 filterJust :: Event (Maybe a) → Event a
 filterJust = fmap fromJust . filterE isJust
@@ -118,31 +149,25 @@ genericCreateVisitorTWorkerReactiveNetwork
                     case maybe_request_queue of
                         Nothing → Left request
                         Just request_queue → Right (workerPendingRequests request_queue,request)
-            )
-            <$> current_worker_environment
-            <@↔> request_event
+            ) <$>  current_worker_environment
+              <@↔> request_event
 
         request_rejected_event = request_not_received_event ⊕ request_not_receivable_event
 
         (update_request_rejected_event,steal_request_rejected_event) =
-            split
-            $
             (\request →
                 case request of
                     StatusUpdateReactiveRequest → Left ()
                     WorkloadStealReactiveRequest → Right ()
-            )
-            <$>
-            request_rejected_event
+            ) <$↔> request_rejected_event
 
         (redundant_workload_received_event,non_redundant_workload_received_event) =
             (\maybe_environment workload →
                     case maybe_environment of
                         Nothing → Right workload
                         Just _ → Left ()
-            )
-            <$> current_worker_environment
-            <@↔> workerIncomingWorkloadReceivedEvent
+            ) <$>  current_worker_environment
+              <@↔> workerIncomingWorkloadReceivedEvent
 
         current_worker_environment_change_event =
             mconcat
@@ -231,44 +256,13 @@ genericCreateVisitorTWorkerReactiveNetwork
         workerIncomingShutdownEvent
 
     return WorkerOutgoingEvents{..}
--- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerNetwork
-createVisitorTWorkerReactiveNetwork ::
-    (Functor m, MonadIO m) ⇒
-    (∀ β. m β → IO β) →
-    WorkerIncomingEvents →
-    VisitorT m α →
-    NetworkDescription (WorkerOutgoingEvents α)
-createVisitorTWorkerReactiveNetwork run =
-    genericCreateVisitorTWorkerReactiveNetwork
-        (preforkVisitorTWorkerThread run)
--- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerNetwork
-createVisitorIOWorkerReactiveNetwork ::
-    WorkerIncomingEvents →
-    VisitorIO α →
-    NetworkDescription (WorkerOutgoingEvents α)
-createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
--- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
-createVisitorWorkerReactiveNetwork ::
-    WorkerIncomingEvents →
-    Visitor α →
-    NetworkDescription (WorkerOutgoingEvents α)
-createVisitorWorkerReactiveNetwork =
-    genericCreateVisitorTWorkerReactiveNetwork
-        preforkVisitorWorkerThread
+-- @+node:gcross.20111026213013.1281: *3* newHandler
+newHandler = do
+    (event_handler,callback) ← liftIO newAddHandler
+    event ← fromAddHandler event_handler
+    return (event,callback)
 -- @+node:gcross.20111026213013.1282: *3* split
 split :: Event (Either a b) → (Event a,Event b)
 split = (fmap fromLeft . filterE isLeft) &&& (fmap fromRight . filterE isRight)
--- @+node:gcross.20111026220221.1283: *3* (<@↔>)
-infixl 4 <@↔>
-
-(<@↔>) ::
-    Apply f Event ⇒
-    f (a → Either b c) → Event a → (Event b,Event c)
-f <@↔> x = split (f <@> x)
--- @+node:gcross.20111219132352.1427: *3* (<$↔>)
-infixl 4 <$↔>
-
-(<$↔>) :: (a → Either b c) → Event a → (Event b,Event c)
-f <$↔> x = split (f <$> x)
 -- @-others
 -- @-leo
