@@ -5,6 +5,7 @@
 -- @+<< Language extensions >>
 -- @+node:gcross.20111026172030.1275: ** << Language extensions >>
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -113,19 +114,18 @@ genericCreateVisitorTWorkerReactiveNetwork
             (WorkloadStealReactiveRequest <$ workerIncomingWorkloadStealRequestedEvent)
 
         (request_not_receivable_event,request_receivable_event) =
-            switchApply
-                ((\maybe_request_queue request →
-                        case maybe_request_queue of
-                            Nothing → Left request
-                            Just request_queue → Right (workerPendingRequests request_queue,request)
-                ) <$> current_worker_environment)
-            $
-            request_event
+            (\maybe_request_queue request →
+                    case maybe_request_queue of
+                        Nothing → Left request
+                        Just request_queue → Right (workerPendingRequests request_queue,request)
+            )
+            <$> current_worker_environment
+            <@↔> request_event
 
         request_rejected_event = request_not_received_event ⊕ request_not_receivable_event
 
         (update_request_rejected_event,steal_request_rejected_event) =
-            switch
+            split
             $
             (\request →
                 case request of
@@ -136,14 +136,13 @@ genericCreateVisitorTWorkerReactiveNetwork
             request_rejected_event
 
         (redundant_workload_received_event,non_redundant_workload_received_event) =
-            switchApply
-                ((\maybe_environment workload →
+            (\maybe_environment workload →
                     case maybe_environment of
                         Nothing → Right workload
                         Just _ → Left ()
-                ) <$> current_worker_environment)
-            $
-            workerIncomingWorkloadReceivedEvent
+            )
+            <$> current_worker_environment
+            <@↔> workerIncomingWorkloadReceivedEvent
 
         current_worker_environment_change_event =
             mconcat
@@ -256,11 +255,20 @@ createVisitorWorkerReactiveNetwork ::
 createVisitorWorkerReactiveNetwork =
     genericCreateVisitorTWorkerReactiveNetwork
         preforkVisitorWorkerThread
--- @+node:gcross.20111026213013.1282: *3* switch
-switch :: Event (Either a b) → (Event a,Event b)
-switch = (fmap fromLeft . filterE isLeft) &&& (fmap fromRight . filterE isRight)
--- @+node:gcross.20111026220221.1283: *3* switchApply
-switchApply :: Behavior (a → Either b c) → Event a → (Event b,Event c)
-switchApply behavior event = switch (apply behavior event)
+-- @+node:gcross.20111026213013.1282: *3* split
+split :: Event (Either a b) → (Event a,Event b)
+split = (fmap fromLeft . filterE isLeft) &&& (fmap fromRight . filterE isRight)
+-- @+node:gcross.20111026220221.1283: *3* (<@↔>)
+infixl 4 <@↔>
+
+(<@↔>) ::
+    Apply f Event ⇒
+    f (a → Either b c) → Event a → (Event b,Event c)
+f <@↔> x = split (f <@> x)
+-- @+node:gcross.20111219132352.1427: *3* (<$↔>)
+infixl 4 <$↔>
+
+(<$↔>) :: (a → Either b c) → Event a → (Event b,Event c)
+f <$↔> x = split (f <$> x)
 -- @-others
 -- @-leo
