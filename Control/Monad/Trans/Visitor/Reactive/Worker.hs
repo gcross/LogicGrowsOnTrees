@@ -74,6 +74,11 @@ data VisitorWorkerReactiveRequest =
     StatusUpdateReactiveRequest
   | WorkloadStealReactiveRequest
 -- @+node:gcross.20111026172030.1281: ** Functions
+-- @+node:gcross.20111219132352.1428: *3* (<$?>)
+infixl 4 <$?>
+
+(<$?>) :: (a → Maybe b) → Event a → Event b
+(<$?>) f = filterJust . fmap f
 -- @+node:gcross.20111219132352.1427: *3* (<$↔>)
 infixl 4 <$↔>
 
@@ -175,26 +180,18 @@ genericCreateVisitorTWorkerReactiveNetwork
                 ]
 
         worker_terminated_successfully_event =
-            filterJust
-            $
             (\reason → case reason of
                 VisitorWorkerFinished final_update → Just final_update
                 _ → Nothing
-            )
-            <$>
-            worker_terminated_event
+            ) <$?> worker_terminated_event
 
         workerOutgoingFinishedEvent = worker_terminated_successfully_event
 
         worker_terminated_unsuccessfully_event =
-            filterJust
-            $
             (\reason → case reason of
                 VisitorWorkerFailed exception → Just exception
                 _ → Nothing
-            )
-            <$>
-            worker_terminated_event
+            ) <$?> worker_terminated_event
 
         workerOutgoingMaybeStatusUpdatedEvent =
             update_maybe_status_event
