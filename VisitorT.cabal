@@ -23,6 +23,7 @@ Library
         composition == 0.2.*,
         containers == 0.4.*,
         data-ivar == 0.30.*,
+        derive == 2.5.*,
         dlist == 0.5.*,
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,
@@ -41,8 +42,8 @@ Library
         Control.Monad.Trans.Visitor.Checkpoint
         Control.Monad.Trans.Visitor.Label
         Control.Monad.Trans.Visitor.Path
+        Control.Monad.Trans.Visitor.Reactive.Worker
         Control.Monad.Trans.Visitor.Worker
-        Control.Monad.Trans.Visitor.Worker.Reactive
         Control.Monad.Trans.Visitor.WorkerQueue
     Extensions:
 -- @-leo
