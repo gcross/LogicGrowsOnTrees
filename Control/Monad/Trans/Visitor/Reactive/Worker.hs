@@ -89,13 +89,13 @@ infixl 4 <@↔>
 
 (<@↔>) :: Apply f Event ⇒ f (a → Either b c) → Event a → (Event b,Event c)
 f <@↔> x = split (f <@> x)
--- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerNetwork
+-- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerReactiveNetwork
 createVisitorIOWorkerReactiveNetwork ::
     WorkerIncomingEvents →
     VisitorIO α →
     NetworkDescription (WorkerOutgoingEvents α)
 createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
--- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerNetwork
+-- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerReactiveNetwork
 createVisitorTWorkerReactiveNetwork ::
     (Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
@@ -105,7 +105,7 @@ createVisitorTWorkerReactiveNetwork ::
 createVisitorTWorkerReactiveNetwork run =
     genericCreateVisitorTWorkerReactiveNetwork
         (preforkVisitorTWorkerThread run)
--- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerNetwork
+-- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerReactiveNetwork
 createVisitorWorkerReactiveNetwork ::
     WorkerIncomingEvents →
     Visitor α →
