@@ -49,24 +49,24 @@ data RedundantWorkloadReceived = RedundantWorkloadReceived deriving (Eq,Show,Typ
 
 instance Exception RedundantWorkloadReceived
 -- @+node:gcross.20111026172030.1280: ** Types
--- @+node:gcross.20111219115425.1411: *3* WorkerIncomingEvents
-data WorkerIncomingEvents = WorkerIncomingEvents
-    {   workerIncomingStatusUpdateRequestedEvent :: Event ()
-    ,   workerIncomingWorkloadStealRequestedEvent :: Event ()
-    ,   workerIncomingShutdownEvent :: Event ()
-    ,   workerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
+-- @+node:gcross.20111219115425.1411: *3* VisitorWorkerIncomingEvents
+data VisitorWorkerIncomingEvents = VisitorWorkerIncomingEvents
+    {   visitorWorkerIncomingStatusUpdateRequestedEvent :: Event ()
+    ,   visitorWorkerIncomingWorkloadStealRequestedEvent :: Event ()
+    ,   visitorWorkerIncomingShutdownEvent :: Event ()
+    ,   visitorWorkerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
     }
 
-$( derive makeMonoid ''WorkerIncomingEvents )
--- @+node:gcross.20111219115425.1412: *3* WorkerOutgoingEvents
-data WorkerOutgoingEvents α = WorkerOutgoingEvents
-    {   workerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
-    ,   workerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-    ,   workerOutgoingFinishedEvent :: Event (VisitorWorkerFinalUpdate α)
-    ,   workerOutgoingFailureEvent :: Event SomeException
+$( derive makeMonoid ''VisitorWorkerIncomingEvents )
+-- @+node:gcross.20111219115425.1412: *3* VisitorWorkerOutgoingEvents
+data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
+    {   visitorWorkerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
+    ,   visitorWorkerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
+    ,   visitorWorkerOutgoingFinishedEvent :: Event (VisitorWorkerFinalUpdate α)
+    ,   visitorWorkerOutgoingFailureEvent :: Event SomeException
     }
 
-$( derive makeMonoid ''WorkerOutgoingEvents )
+$( derive makeMonoid ''VisitorWorkerOutgoingEvents )
 -- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
 data VisitorWorkerReactiveRequest =
     StatusUpdateReactiveRequest
@@ -74,25 +74,25 @@ data VisitorWorkerReactiveRequest =
 -- @+node:gcross.20111026172030.1281: ** Functions
 -- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerReactiveNetwork
 createVisitorIOWorkerReactiveNetwork ::
-    WorkerIncomingEvents →
+    VisitorWorkerIncomingEvents →
     VisitorIO α →
-    NetworkDescription (WorkerOutgoingEvents α)
+    NetworkDescription (VisitorWorkerOutgoingEvents α)
 createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
 -- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerReactiveNetwork
 createVisitorTWorkerReactiveNetwork ::
     (Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    WorkerIncomingEvents →
+    VisitorWorkerIncomingEvents →
     VisitorT m α →
-    NetworkDescription (WorkerOutgoingEvents α)
+    NetworkDescription (VisitorWorkerOutgoingEvents α)
 createVisitorTWorkerReactiveNetwork run =
     genericCreateVisitorTWorkerReactiveNetwork
         (preforkVisitorTWorkerThread run)
 -- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerReactiveNetwork
 createVisitorWorkerReactiveNetwork ::
-    WorkerIncomingEvents →
+    VisitorWorkerIncomingEvents →
     Visitor α →
-    NetworkDescription (WorkerOutgoingEvents α)
+    NetworkDescription (VisitorWorkerOutgoingEvents α)
 createVisitorWorkerReactiveNetwork =
     genericCreateVisitorTWorkerReactiveNetwork
         preforkVisitorWorkerThread
@@ -104,13 +104,13 @@ genericCreateVisitorTWorkerReactiveNetwork ::
         VisitorWorkload →
         IO (IO (), VisitorWorkerEnvironment α)
     ) →
-    WorkerIncomingEvents →
+    VisitorWorkerIncomingEvents →
     VisitorT m α →
-    NetworkDescription (WorkerOutgoingEvents α)
+    NetworkDescription (VisitorWorkerOutgoingEvents α)
 
 genericCreateVisitorTWorkerReactiveNetwork
     prefork
-    WorkerIncomingEvents{..}
+    VisitorWorkerIncomingEvents{..}
     visitor
     = do
 
@@ -123,9 +123,9 @@ genericCreateVisitorTWorkerReactiveNetwork
     let current_worker_environment = stepper Nothing current_worker_environment_change_event
 
         request_event =
-            (StatusUpdateReactiveRequest <$ workerIncomingStatusUpdateRequestedEvent)
+            (StatusUpdateReactiveRequest <$ visitorWorkerIncomingStatusUpdateRequestedEvent)
             ⊕
-            (WorkloadStealReactiveRequest <$ workerIncomingWorkloadStealRequestedEvent)
+            (WorkloadStealReactiveRequest <$ visitorWorkerIncomingWorkloadStealRequestedEvent)
 
         (request_not_receivable_event,request_receivable_event) =
             (\maybe_request_queue request →
@@ -150,12 +150,12 @@ genericCreateVisitorTWorkerReactiveNetwork
                         Nothing → Right workload
                         Just _ → Left ()
             ) <$>  current_worker_environment
-              <@↔> workerIncomingWorkloadReceivedEvent
+              <@↔> visitorWorkerIncomingWorkloadReceivedEvent
 
         current_worker_environment_change_event =
             mconcat
                 [Nothing <$ worker_terminated_event
-                ,Nothing <$ workerIncomingShutdownEvent
+                ,Nothing <$ visitorWorkerIncomingShutdownEvent
                 ,Just <$> new_worker_environment_event
                 ]
 
@@ -165,7 +165,7 @@ genericCreateVisitorTWorkerReactiveNetwork
                 _ → Nothing
             ) <$?> worker_terminated_event
 
-        workerOutgoingFinishedEvent = worker_terminated_successfully_event
+        visitorWorkerOutgoingFinishedEvent = worker_terminated_successfully_event
 
         worker_terminated_unsuccessfully_event =
             (\reason → case reason of
@@ -173,18 +173,18 @@ genericCreateVisitorTWorkerReactiveNetwork
                 _ → Nothing
             ) <$?> worker_terminated_event
 
-        workerOutgoingMaybeStatusUpdatedEvent =
+        visitorWorkerOutgoingMaybeStatusUpdatedEvent =
             update_maybe_status_event
             ⊕
             (Nothing <$ update_request_rejected_event)
 
-        workerOutgoingMaybeWorkloadSubmittedEvent =
+        visitorWorkerOutgoingMaybeWorkloadSubmittedEvent =
             submit_maybe_workload_event
             ⊕
             (Nothing <$ steal_request_rejected_event)
 
-        workerOutgoingFailureEvent :: Event SomeException
-        workerOutgoingFailureEvent =
+        visitorWorkerOutgoingFailureEvent :: Event SomeException
+        visitorWorkerOutgoingFailureEvent =
             (toException RedundantWorkloadReceived <$ redundant_workload_received_event)
             ⊕
             worker_terminated_unsuccessfully_event
@@ -228,8 +228,8 @@ genericCreateVisitorTWorkerReactiveNetwork
         .
         (current_worker_environment <@)
         $
-        workerIncomingShutdownEvent
+        visitorWorkerIncomingShutdownEvent
 
-    return WorkerOutgoingEvents{..}
+    return VisitorWorkerOutgoingEvents{..}
 -- @-others
 -- @-leo
