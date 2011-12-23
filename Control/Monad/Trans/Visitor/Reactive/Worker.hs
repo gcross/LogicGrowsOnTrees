@@ -84,6 +84,11 @@ infixl 4 <$↔>
 
 (<$↔>) :: (a → Either b c) → Event a → (Event b,Event c)
 f <$↔> x = split (f <$> x)
+-- @+node:gcross.20111223134617.1427: *3* (<@?>)
+infixl 4 <@?>
+
+(<@?>) :: Apply f Event ⇒ f (a → Maybe b) → Event a → Event b
+f <@?> x = filterJust (f <@> x)
 -- @+node:gcross.20111026220221.1283: *3* (<@↔>)
 infixl 4 <@↔>
 
