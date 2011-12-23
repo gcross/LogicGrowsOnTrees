@@ -1,5 +1,5 @@
 -- @+leo-ver=5-thin
--- @+node:gcross.20110923120247.1191: * @file Control/Monad/Trans/Visitor/Checkpoint.hs
+-- @+node:gcross.20110923120247.1191: * @file Checkpoint.hs
 -- @@language haskell
 
 -- @+<< Language extensions >>

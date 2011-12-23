@@ -1,5 +1,5 @@
 -- @+leo-ver=5-thin
--- @+node:gcross.20110923164140.1278: * @file Control/Monad/Trans/Visitor/WorkerQueue.hs
+-- @+node:gcross.20110923164140.1278: * @file WorkerQueue.hs
 -- @@language haskell
 
 -- @+<< Language extensions >>

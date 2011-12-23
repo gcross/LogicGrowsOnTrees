@@ -1,5 +1,5 @@
 -- @+leo-ver=5-thin
--- @+node:gcross.20101114125204.1255: * @file Control/Monad/Trans/Visitor.hs
+-- @+node:gcross.20101114125204.1255: * @file Visitor.hs
 -- @@language haskell
 
 -- @+<< Language extensions >>

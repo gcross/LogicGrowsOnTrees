@@ -1,5 +1,5 @@
 -- @+leo-ver=5-thin
--- @+node:gcross.20111029192420.1332: * @file Control/Monad/Trans/Visitor/Label.hs
+-- @+node:gcross.20111029192420.1332: * @file Label.hs
 -- @@language haskell
 
 -- @+<< Language extensions >>

@@ -1,5 +1,5 @@
 -- @+leo-ver=5-thin
--- @+node:gcross.20111029192420.1349: * @file Control/Monad/Trans/Visitor/Workload.hs
+-- @+node:gcross.20111029192420.1349: * @file Workload.hs
 -- @@language haskell
 
 -- @+<< Language extensions >>

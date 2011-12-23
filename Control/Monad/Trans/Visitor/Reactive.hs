@@ -1,5 +1,5 @@
 -- @+leo-ver=5-thin
--- @+node:gcross.20111223134617.1431: * @file Control/Monad/Trans/Visitor/Reactive.hs
+-- @+node:gcross.20111223134617.1431: * @file Reactive.hs
 -- @@language haskell
 
 -- @+<< Language extensions >>
