@@ -53,20 +53,20 @@ instance Exception RedundantWorkloadReceived
 -- @+node:gcross.20111026172030.1280: ** Types
 -- @+node:gcross.20111219115425.1411: *3* WorkerIncomingEvents
 data WorkerIncomingEvents = WorkerIncomingEvents
-	{	workerIncomingStatusUpdateRequestedEvent :: Event ()
-	,	workerIncomingWorkloadStealRequestedEvent :: Event ()
-	,	workerIncomingShutdownEvent :: Event ()
-	,	workerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
-	}
+    {   workerIncomingStatusUpdateRequestedEvent :: Event ()
+    ,   workerIncomingWorkloadStealRequestedEvent :: Event ()
+    ,   workerIncomingShutdownEvent :: Event ()
+    ,   workerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
+    }
 
 $( derive makeMonoid ''WorkerIncomingEvents )
 -- @+node:gcross.20111219115425.1412: *3* WorkerOutgoingEvents
 data WorkerOutgoingEvents α = WorkerOutgoingEvents
-	{	workerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
-	,	workerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-	,	workerOutgoingFinishedEvent :: Event (VisitorWorkerFinalUpdate α)
-	,	workerOutgoingFailureEvent :: Event SomeException
-	}
+    {   workerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
+    ,   workerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
+    ,   workerOutgoingFinishedEvent :: Event (VisitorWorkerFinalUpdate α)
+    ,   workerOutgoingFailureEvent :: Event SomeException
+    }
 
 $( derive makeMonoid ''WorkerOutgoingEvents )
 -- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
