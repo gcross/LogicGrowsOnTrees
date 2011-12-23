@@ -52,11 +52,6 @@ data VisitorWorkerEnvironment α = VisitorWorkerEnvironment
     ,   workerThreadId :: ThreadId
     ,   workerPendingRequests :: IORef (VisitorWorkerRequestQueue α)
     }
--- @+node:gcross.20111117140347.1414: *3* VisitorWorkerFinalUpdate
-data VisitorWorkerFinalUpdate α = VisitorWorkerFinalUpdate
-    {   visitorWorkerFinalNewSolutions :: [VisitorSolution α]
-    ,   visitorWorkerFinalGlobalCheckpoint :: VisitorCheckpoint
-    } deriving (Eq,Show)
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
 data VisitorWorkerRequest α =
     StatusUpdateRequested (Maybe (VisitorWorkerStatusUpdate α) → IO ())
@@ -65,13 +60,12 @@ data VisitorWorkerRequest α =
 type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
 -- @+node:gcross.20111020182554.1275: *3* VisitorWorkerStatusUpdate
 data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate
-    {   visitorWorkerNewSolutions :: [VisitorSolution α]
+    {   visitorWorkerStatusUpdate :: VisitorStatusUpdate α
     ,   visitorWorkerRemainingWorkload :: VisitorWorkload
-    ,   visitorWorkerGlobalCheckpoint :: VisitorCheckpoint
     } deriving (Eq,Show)
 -- @+node:gcross.20111020182554.1276: *3* VisitorWorkerTerminationReason
 data VisitorWorkerTerminationReason α =
-    VisitorWorkerFinished (VisitorWorkerFinalUpdate α)
+    VisitorWorkerFinished (VisitorStatusUpdate α)
   | VisitorWorkerFailed SomeException
   | VisitorWorkerAborted
   deriving (Show)
@@ -86,21 +80,24 @@ computeStatusUpdate ::
     VisitorWorkerStatusUpdate α
 computeStatusUpdate solutions initial_path cursor context checkpoint =
     VisitorWorkerStatusUpdate
-        (DList.toList solutions)
+        (VisitorStatusUpdate
+            (checkpointFromInitialPath initial_path
+             .
+             checkpointFromCursor cursor
+             .
+             checkpointFromContext context
+             $
+             checkpoint
+            )
+            (Seq.fromList . DList.toList $ solutions)
+        )
         (VisitorWorkload (initial_path >< pathFromCursor cursor)
          .
          checkpointFromContext context
          $
          checkpoint
         )
-        (checkpointFromInitialPath initial_path
-         .
-         checkpointFromCursor cursor
-         .
-         checkpointFromContext context
-         $
-         checkpoint
-        )
+
 -- @+node:gcross.20111117140347.1400: *3* forkVisitorIOWorkerThread
 forkVisitorIOWorkerThread ::
     (VisitorWorkerTerminationReason α → IO ()) →
@@ -279,7 +276,7 @@ genericPreforkVisitorTWorkerThread
                     .
                     VisitorWorkerFinished
                     .
-                    VisitorWorkerFinalUpdate (DList.toList new_solutions)
+                    flip VisitorStatusUpdate (Seq.fromList . DList.toList $ new_solutions)
                     .
                     checkpointFromInitialPath initial_path
                     .

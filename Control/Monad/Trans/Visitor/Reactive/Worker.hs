@@ -65,7 +65,7 @@ $( derive makeMonoid ''VisitorWorkerIncomingEvents )
 data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
     {   visitorWorkerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
     ,   visitorWorkerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
-    ,   visitorWorkerOutgoingFinishedEvent :: Event (VisitorWorkerFinalUpdate α)
+    ,   visitorWorkerOutgoingFinishedEvent :: Event (VisitorStatusUpdate α)
     ,   visitorWorkerOutgoingFailureEvent :: Event SomeException
     }
 

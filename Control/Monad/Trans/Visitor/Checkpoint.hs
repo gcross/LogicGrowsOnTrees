@@ -8,6 +8,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -24,6 +25,8 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
 import Data.Composition
+import Data.Derive.Monoid
+import Data.DeriveTH
 import qualified Data.DList as DList
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Maybe (mapMaybe)
@@ -55,6 +58,13 @@ data VisitorCheckpointDifferential =
     CacheCheckpointD ByteString
   | ChoiceCheckpointD Branch VisitorCheckpoint
   deriving (Eq,Read,Show)
+-- @+node:gcross.20111223183218.1441: *3* VisitorStatusUpdate
+data VisitorStatusUpdate α = VisitorStatusUpdate
+    {   visitorStatusCheckpoint :: VisitorCheckpoint
+    ,   visitorStatusNewSolutions :: Seq (VisitorSolution α)
+    } deriving (Eq,Show)
+
+$( derive makeMonoid ''VisitorStatusUpdate )
 -- @+node:gcross.20110923164140.1178: *3* VisitorTContext
 type VisitorTContext m α = Seq (VisitorTContextStep m α)
 type VisitorContext α = VisitorTContext Identity α

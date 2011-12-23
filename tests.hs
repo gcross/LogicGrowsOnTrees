@@ -28,6 +28,7 @@ import Control.Monad.Trans.Writer
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import qualified Data.DList as DList
+import qualified Data.Foldable as Fold
 import Data.Function
 import Data.Functor.Identity
 import Data.IORef
@@ -521,7 +522,7 @@ main = defaultMain
                 triggerEventWith entire_workload
                 response ← IVar.blocking $ IVar.read response_ivar
                 pause event_network
-                response @?= VisitorWorkerFinalUpdate (runVisitorWithLabels visitor) Explored
+                response @?= VisitorStatusUpdate Explored (Seq.fromList . runVisitorWithLabels $ visitor)
                 return True
             -- @+node:gcross.20111116214909.1385: *5* null status update event
             ,testCase "null status update event" $ do
@@ -773,7 +774,7 @@ main = defaultMain
                             (IVar.write solutions_ivar)
                             visitor
                             (VisitorWorkload path Unexplored)
-                    VisitorWorkerFinalUpdate solutions checkpoint ←
+                    VisitorStatusUpdate checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
@@ -781,7 +782,7 @@ main = defaultMain
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= checkpointFromInitialPath path Explored
                     ((@?=) `on` (map visitorSolutionResult))
-                        solutions
+                        (Fold.toList solutions)
                         (runVisitorWithLabels . walkVisitorDownPath path $ visitor)
                     return True
                 -- @+node:gcross.20111028181213.1322: *6* with no initial path
@@ -792,16 +793,15 @@ main = defaultMain
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
-                    VisitorWorkerFinalUpdate solutions checkpoint ←
+                    VisitorStatusUpdate checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
                             VisitorWorkerFinished final_status_update → return final_status_update
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= Explored
-                    solutions @?= runVisitorWithLabels visitor
+                    Fold.toList solutions @?= runVisitorWithLabels visitor
                     return True
-
                 -- @-others
                 ]
             -- @+node:gcross.20111028181213.1339: *5* status updates produce valid checkpoints
@@ -823,23 +823,23 @@ main = defaultMain
                 startWorker
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 remaining_solutions ← case termination_result of
-                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
+                    VisitorWorkerFinished (visitorStatusNewSolutions → solutions) → return (Fold.toList solutions)
                     VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → error "worker aborted prematurely"
                 readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
                 checkpoints ← fmap DList.toList (readIORef checkpoints_ref)
                 let correct_solutions = runVisitorWithLabels visitor
-                correct_solutions @=? ((++ remaining_solutions) . concat . fmap visitorWorkerNewSolutions $ checkpoints)
+                correct_solutions @=? ((++ remaining_solutions) . concat . fmap (Fold.toList . visitorStatusNewSolutions . visitorWorkerStatusUpdate) $ checkpoints)
                 forM_ checkpoints $
-                    \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _) _) →
+                    \(VisitorWorkerStatusUpdate _ (VisitorWorkload initial_path _)) →
                         assertBool
                             "checkpoint has null initial path"
                             (Seq.null initial_path)
                 let (almost_final_solutions,solutions_using_progressive_checkpoints) =
                         mapAccumL
-                            (\solutions_so_far (VisitorWorkerStatusUpdate new_solutions workload _) →
+                            (\solutions_so_far (VisitorWorkerStatusUpdate (VisitorStatusUpdate _ new_solutions) workload) →
                                 let new_solutions_so_far :: [VisitorSolution Int]
-                                    new_solutions_so_far = solutions_so_far ++ new_solutions
+                                    new_solutions_so_far = solutions_so_far ++ Fold.toList new_solutions
                                 in  (new_solutions_so_far
                                     ,new_solutions_so_far ++ mapMaybe fst (runVisitorThroughWorkload workload visitor)
                                     )
@@ -859,7 +859,7 @@ main = defaultMain
                         entire_workload
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
-                    VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → solutions @?= []
+                    VisitorWorkerFinished (visitorStatusNewSolutions → solutions) → solutions @?= Seq.empty
                     VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
@@ -887,7 +887,7 @@ main = defaultMain
                     waitQSem worker_started_qsem
                     writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
                     IVar.write blocking_value_ivar 42
-                    VisitorWorkerFinalUpdate remaining_solutions checkpoint ←
+                    VisitorStatusUpdate checkpoint remaining_solutions ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of
@@ -895,7 +895,7 @@ main = defaultMain
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                     readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                    (VisitorWorkerStatusUpdate prestolen_solutions remaining_workload checkpoint,workload) ←
+                    (VisitorWorkerStatusUpdate (VisitorStatusUpdate checkpoint prestolen_solutions) remaining_workload,workload) ←
                         fmap (
                             fromMaybe (error "stolen workload not available")
                             .
@@ -904,9 +904,9 @@ main = defaultMain
                         $
                         readIORef maybe_maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
-                    runVisitorTThroughWorkloadAndGatherResults remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
+                    runVisitorTThroughWorkloadAndGatherResults remaining_workload visitor_with_blocking_value >>= (Fold.toList remaining_solutions @?=)
                     stolen_solutions ← runVisitorTThroughWorkloadAndGatherResults workload visitor_with_blocking_value
-                    let solutions = sort (prestolen_solutions ++ remaining_solutions ++ stolen_solutions)
+                    let solutions = sort (Fold.toList prestolen_solutions ++ Fold.toList remaining_solutions ++ stolen_solutions)
                     correct_solutions ← runVisitorTWithLabelsAndGatherResults visitor_with_blocking_value
                     solutions @?= correct_solutions
                     return True
@@ -930,12 +930,12 @@ main = defaultMain
                     startWorker
                     termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                     remaining_solutions ← case termination_result of
-                        VisitorWorkerFinished (visitorWorkerFinalNewSolutions → solutions) → return solutions
+                        VisitorWorkerFinished (visitorStatusNewSolutions → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
                     workloads ← fmap (map snd . DList.toList) (readIORef workloads_ref)
                     let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndGatherResults visitor) $ workloads
-                        solutions = sort (remaining_solutions ++ stolen_solutions)
+                        solutions = sort (Fold.toList remaining_solutions ++ stolen_solutions)
                         correct_solutions = runVisitorWithLabels visitor
                     solutions @?= correct_solutions
                     return True
