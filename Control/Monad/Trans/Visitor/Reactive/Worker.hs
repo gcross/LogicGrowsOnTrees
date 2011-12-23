@@ -49,10 +49,13 @@ data RedundantWorkloadReceived = RedundantWorkloadReceived deriving (Eq,Show,Typ
 
 instance Exception RedundantWorkloadReceived
 -- @+node:gcross.20111026172030.1280: ** Types
+-- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
+data VisitorWorkerReactiveRequest =
+    StatusUpdateReactiveRequest
+  | WorkloadStealReactiveRequest
 -- @+node:gcross.20111219115425.1411: *3* VisitorWorkerIncomingEvents
 data VisitorWorkerIncomingEvents = VisitorWorkerIncomingEvents
-    {   visitorWorkerIncomingStatusUpdateRequestedEvent :: Event ()
-    ,   visitorWorkerIncomingWorkloadStealRequestedEvent :: Event ()
+    {   visitorWorkerIncomingRequestEvent :: Event VisitorWorkerReactiveRequest
     ,   visitorWorkerIncomingShutdownEvent :: Event ()
     ,   visitorWorkerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
     }
@@ -67,10 +70,6 @@ data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
     }
 
 $( derive makeMonoid ''VisitorWorkerOutgoingEvents )
--- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
-data VisitorWorkerReactiveRequest =
-    StatusUpdateReactiveRequest
-  | WorkloadStealReactiveRequest
 -- @+node:gcross.20111026172030.1281: ** Functions
 -- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerReactiveNetwork
 createVisitorIOWorkerReactiveNetwork ::
@@ -122,18 +121,13 @@ genericCreateVisitorTWorkerReactiveNetwork
 
     let current_worker_environment = stepper Nothing current_worker_environment_change_event
 
-        request_event =
-            (StatusUpdateReactiveRequest <$ visitorWorkerIncomingStatusUpdateRequestedEvent)
-            ⊕
-            (WorkloadStealReactiveRequest <$ visitorWorkerIncomingWorkloadStealRequestedEvent)
-
         (request_not_receivable_event,request_receivable_event) =
             (\maybe_request_queue request →
                     case maybe_request_queue of
                         Nothing → Left request
                         Just request_queue → Right (workerPendingRequests request_queue,request)
             ) <$>  current_worker_environment
-              <@↔> request_event
+              <@↔> visitorWorkerIncomingRequestEvent
 
         request_rejected_event = request_not_received_event ⊕ request_not_receivable_event
 

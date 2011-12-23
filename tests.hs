@@ -530,14 +530,14 @@ main = defaultMain
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     VisitorWorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
-                            (mempty { visitorWorkerIncomingStatusUpdateRequestedEvent = event })
+                            (mempty { visitorWorkerIncomingRequestEvent = event })
                             undefined
                     reactimate (fmap (IVar.write response_ivar) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingMaybeWorkloadSubmittedEvent"))) visitorWorkerOutgoingMaybeWorkloadSubmittedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingFinishedEvent"))) visitorWorkerOutgoingFinishedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingFailureEvent"))) visitorWorkerOutgoingFailureEvent)
                 actuate event_network
-                triggerEventWith ()
+                triggerEventWith StatusUpdateReactiveRequest
                 response ← IVar.blocking $ IVar.read response_ivar
                 pause event_network
                 assertBool "is the status update Nothing?" $ isNothing response
@@ -548,14 +548,14 @@ main = defaultMain
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     VisitorWorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
-                            (mempty { visitorWorkerIncomingWorkloadStealRequestedEvent = event })
+                            (mempty { visitorWorkerIncomingRequestEvent = event })
                             undefined
                     reactimate (fmap (IVar.write response_ivar) visitorWorkerOutgoingMaybeWorkloadSubmittedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingMaybeStatusUpdatedEvent"))) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingFinishedEvent"))) visitorWorkerOutgoingFinishedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingFailureEvent"))) visitorWorkerOutgoingFailureEvent)
                 actuate event_network
-                triggerEventWith ()
+                triggerEventWith WorkloadStealReactiveRequest
                 response ← IVar.blocking $ IVar.read response_ivar
                 pause event_network
                 assertBool "is the workload nothing?" $ isNothing response
@@ -644,16 +644,16 @@ main = defaultMain
                     status_update_response ← readIORef status_update_response_ref
                     return (status_update_response,final_status_update)
                 (status_update_2,final_status_update_2) ← do
-                    (steal_event_handler,triggerStealEventWith) ← newAddHandler
+                    (request_event_handler,triggerRequestEventWith) ← newAddHandler
                     (workload_event_handler,triggerWorkloadEventWith) ← newAddHandler
                     update_maybe_status_ivar ← IVar.new
                     workload_finished_ivar ← IVar.new
                     let e = TestException 42
                     event_network ← compile $ do
-                        status_update_event ← fromAddHandler steal_event_handler
+                        request_event ← fromAddHandler request_event_handler
                         workload_event ← fromAddHandler workload_event_handler
                         VisitorWorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
-                                (mempty { visitorWorkerIncomingStatusUpdateRequestedEvent = status_update_event
+                                (mempty { visitorWorkerIncomingRequestEvent = request_event
                                         , visitorWorkerIncomingWorkloadReceivedEvent = workload_event
                                         }
                                 )
@@ -665,7 +665,7 @@ main = defaultMain
                     actuate event_network
                     triggerWorkloadEventWith entire_workload
                     waitQSem worker_started_qsem
-                    triggerStealEventWith ()
+                    triggerRequestEventWith StatusUpdateReactiveRequest
                     putMVar blocking_value_mvar 42
                     update_maybe_status ← IVar.blocking $ IVar.read update_maybe_status_ivar
                     final_status_update ← IVar.blocking $ IVar.read workload_finished_ivar
@@ -705,16 +705,16 @@ main = defaultMain
                     workload_response ← readIORef workload_response_ref
                     return (workload_response,final_status_update)
                 (steal_response_2,final_status_update_2) ← do
-                    (steal_event_handler,triggerStealEventWith) ← newAddHandler
+                    (request_event_handler,triggerRequestEventWith) ← newAddHandler
                     (workload_event_handler,triggerWorkloadEventWith) ← newAddHandler
                     steal_response_ivar ← IVar.new
                     workload_finished_ivar ← IVar.new
                     let e = TestException 42
                     event_network ← compile $ do
-                        steal_event ← fromAddHandler steal_event_handler
+                        request_event ← fromAddHandler request_event_handler
                         workload_event ← fromAddHandler workload_event_handler
                         VisitorWorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
-                                (mempty { visitorWorkerIncomingWorkloadStealRequestedEvent = steal_event
+                                (mempty { visitorWorkerIncomingRequestEvent = request_event
                                         , visitorWorkerIncomingWorkloadReceivedEvent = workload_event
                                         }
                                 )
@@ -726,7 +726,7 @@ main = defaultMain
                     actuate event_network
                     triggerWorkloadEventWith entire_workload
                     waitQSem worker_started_qsem
-                    triggerStealEventWith ()
+                    triggerRequestEventWith WorkloadStealReactiveRequest
                     putMVar blocking_value_mvar 42
                     steal_response ← IVar.blocking $ IVar.read steal_response_ivar
                     final_status_update ← IVar.blocking $ IVar.read workload_finished_ivar
