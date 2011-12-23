@@ -119,7 +119,11 @@ genericCreateVisitorTWorkerReactiveNetwork
     (worker_terminated_event,workerTerminated) ← newHandler
     (new_worker_environment_event,newWorkerEnvironment) ← newHandler
 
-    let current_worker_environment = stepper Nothing current_worker_environment_change_event
+    let current_worker_environment = stepper Nothing . mconcat $
+            [Nothing <$ worker_terminated_event
+            ,Nothing <$ visitorWorkerIncomingShutdownEvent
+            ,Just <$> new_worker_environment_event
+            ]
 
         (request_not_receivable_event,request_receivable_event) =
             (\maybe_request_queue request →
@@ -129,14 +133,12 @@ genericCreateVisitorTWorkerReactiveNetwork
             ) <$>  current_worker_environment
               <@↔> visitorWorkerIncomingRequestEvent
 
-        request_rejected_event = request_not_received_event ⊕ request_not_receivable_event
-
         (update_request_rejected_event,steal_request_rejected_event) =
             (\request →
                 case request of
                     StatusUpdateReactiveRequest → Left ()
                     WorkloadStealReactiveRequest → Right ()
-            ) <$↔> request_rejected_event
+            ) <$↔> (request_not_received_event ⊕ request_not_receivable_event)
 
         (redundant_workload_received_event,non_redundant_workload_received_event) =
             (\maybe_environment workload →
@@ -146,26 +148,12 @@ genericCreateVisitorTWorkerReactiveNetwork
             ) <$>  current_worker_environment
               <@↔> visitorWorkerIncomingWorkloadReceivedEvent
 
-        current_worker_environment_change_event =
-            mconcat
-                [Nothing <$ worker_terminated_event
-                ,Nothing <$ visitorWorkerIncomingShutdownEvent
-                ,Just <$> new_worker_environment_event
-                ]
-
-        worker_terminated_successfully_event =
+        (visitorWorkerOutgoingFinishedEvent,worker_terminated_unsuccessfully_event) =
             (\reason → case reason of
-                VisitorWorkerFinished final_update → Just final_update
-                _ → Nothing
-            ) <$?> worker_terminated_event
-
-        visitorWorkerOutgoingFinishedEvent = worker_terminated_successfully_event
-
-        worker_terminated_unsuccessfully_event =
-            (\reason → case reason of
-                VisitorWorkerFailed exception → Just exception
-                _ → Nothing
-            ) <$?> worker_terminated_event
+                VisitorWorkerFinished final_update → Just (Left final_update)
+                VisitorWorkerFailed exception → Just (Right exception)
+                VisitorWorkerAborted → Nothing
+            ) <$?↔> worker_terminated_event
 
         visitorWorkerOutgoingMaybeStatusUpdatedEvent =
             update_maybe_status_event

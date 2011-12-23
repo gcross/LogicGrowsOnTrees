@@ -29,6 +29,11 @@ infixl 4 <$?>
 
 (<$?>) :: FRP ξ ⇒ (a → Maybe b) → Event ξ a → Event ξ b
 f <$?> x = filterJust (f <$> x)
+-- @+node:gcross.20111223170956.1440: *3* (<$?↔>)
+infixl 4 <$?↔>
+
+(<$?↔>) :: FRP ξ ⇒ (a → Maybe (Either b c)) → Event ξ a → (Event ξ b,Event ξ c)
+f <$?↔> x = split . filterJust $ (f <$> x)
 -- @+node:gcross.20111219132352.1427: *3* (<$↔>)
 infixl 4 <$↔>
 
