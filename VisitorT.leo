@@ -14,6 +14,7 @@
 <v t="gcross.20111029192420.1332"><vh>@file Label.hs</vh></v>
 <v t="gcross.20110923120247.1201"><vh>@file Path.hs</vh></v>
 <v t="gcross.20111223134617.1431"><vh>@file Reactive.hs</vh></v>
+<v t="gcross.20111223170956.1430"><vh>@file Reactive/Supervisor.hs</vh></v>
 <v t="gcross.20111026172030.1274"><vh>@file Reactive/Worker.hs</vh></v>
 <v t="gcross.20110923164140.1252"><vh>@file Worker.hs</vh></v>
 <v t="gcross.20110923164140.1278"><vh>@file WorkerQueue.hs</vh></v>
