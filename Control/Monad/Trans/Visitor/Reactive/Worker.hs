@@ -64,7 +64,7 @@ $( derive makeMonoid ''VisitorWorkerIncomingEvents )
 -- @+node:gcross.20111219115425.1412: *3* VisitorWorkerOutgoingEvents
 data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
     {   visitorWorkerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
-    ,   visitorWorkerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload))
+    ,   visitorWorkerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStolenWorkload α))
     ,   visitorWorkerOutgoingFinishedEvent :: Event (VisitorStatusUpdate α)
     ,   visitorWorkerOutgoingFailureEvent :: Event SomeException
     }

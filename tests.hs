@@ -895,7 +895,7 @@ main = defaultMain
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                     readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                    (VisitorWorkerStatusUpdate (VisitorStatusUpdate checkpoint prestolen_solutions) remaining_workload,workload) ←
+                    VisitorWorkerStolenWorkload (VisitorWorkerStatusUpdate (VisitorStatusUpdate checkpoint prestolen_solutions) remaining_workload) workload ←
                         fmap (
                             fromMaybe (error "stolen workload not available")
                             .
@@ -933,7 +933,7 @@ main = defaultMain
                         VisitorWorkerFinished (visitorStatusNewSolutions → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
-                    workloads ← fmap (map snd . DList.toList) (readIORef workloads_ref)
+                    workloads ← fmap (map visitorWorkerStolenWorkload . DList.toList) (readIORef workloads_ref)
                     let stolen_solutions = concatMap (flip runVisitorThroughWorkloadAndGatherResults visitor) $ workloads
                         solutions = sort (Fold.toList remaining_solutions ++ stolen_solutions)
                         correct_solutions = runVisitorWithLabels visitor

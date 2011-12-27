@@ -55,13 +55,18 @@ data VisitorWorkerEnvironment α = VisitorWorkerEnvironment
 -- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
 data VisitorWorkerRequest α =
     StatusUpdateRequested (Maybe (VisitorWorkerStatusUpdate α) → IO ())
-  | WorkloadStealRequested (Maybe (VisitorWorkerStatusUpdate α,VisitorWorkload) → IO ())
+  | WorkloadStealRequested (Maybe (VisitorWorkerStolenWorkload α) → IO ())
 -- @+node:gcross.20111026172030.1278: *3* VisitorWorkerRequestQueue
 type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
 -- @+node:gcross.20111020182554.1275: *3* VisitorWorkerStatusUpdate
 data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate
     {   visitorWorkerStatusUpdate :: VisitorStatusUpdate α
     ,   visitorWorkerRemainingWorkload :: VisitorWorkload
+    } deriving (Eq,Show)
+-- @+node:gcross.20111226153030.1435: *3* VisitorWorkerStolenWorkload
+data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload
+    {   visitorWorkerStolenWorkerStatusUpdate :: VisitorWorkerStatusUpdate α
+    ,   visitorWorkerStolenWorkload :: VisitorWorkload
     } deriving (Eq,Show)
 -- @+node:gcross.20111020182554.1276: *3* VisitorWorkerTerminationReason
 data VisitorWorkerTerminationReason α =
@@ -234,7 +239,11 @@ genericPreforkVisitorTWorkerThread
                                         visitor
                                 Just (new_cursor,new_context,workload) → do
                                     liftIO $ do
-                                        submitMaybeWorkload (Just (computeStatusUpdate solutions initial_path new_cursor new_context checkpoint,workload))
+                                        submitMaybeWorkload (Just (
+                                            VisitorWorkerStolenWorkload
+                                                (computeStatusUpdate solutions initial_path new_cursor new_context checkpoint)
+                                                workload
+                                         ))
                                         yield
                                     loop2
                                         new_cursor
