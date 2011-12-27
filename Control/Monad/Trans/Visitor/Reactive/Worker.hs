@@ -25,8 +25,6 @@ import Control.Monad ((>=>),unless)
 import Control.Monad.IO.Class
 import Control.Monad.Tools (whenM,unlessM)
 
-import Data.Derive.Monoid
-import Data.DeriveTH
 import Data.IORef (IORef,atomicModifyIORef,newIORef,readIORef,writeIORef)
 import qualified Data.IVar as IVar
 import Data.Monoid (Monoid(..))
@@ -59,8 +57,6 @@ data VisitorWorkerIncomingEvents = VisitorWorkerIncomingEvents
     ,   visitorWorkerIncomingShutdownEvent :: Event ()
     ,   visitorWorkerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
     }
-
-$( derive makeMonoid ''VisitorWorkerIncomingEvents )
 -- @+node:gcross.20111219115425.1412: *3* VisitorWorkerOutgoingEvents
 data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
     {   visitorWorkerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
@@ -68,8 +64,6 @@ data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
     ,   visitorWorkerOutgoingFinishedEvent :: Event (VisitorStatusUpdate α)
     ,   visitorWorkerOutgoingFailureEvent :: Event SomeException
     }
-
-$( derive makeMonoid ''VisitorWorkerOutgoingEvents )
 -- @+node:gcross.20111026172030.1281: ** Functions
 -- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerReactiveNetwork
 createVisitorIOWorkerReactiveNetwork ::

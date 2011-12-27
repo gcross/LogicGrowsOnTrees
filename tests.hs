@@ -108,6 +108,13 @@ instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbit
 -- @+node:gcross.20111116214909.1383: *3* VisitorPath
 instance Arbitrary VisitorPath where
     arbitrary = fmap Seq.fromList . listOf . oneof $ [fmap (CacheStep . encode) (arbitrary :: Gen Int),fmap ChoiceStep arbitrary]
+-- @+node:gcross.20111228031800.1824: ** Values
+-- @+node:gcross.20111228031800.1825: *3* empty_worker_incoming_events
+empty_worker_incoming_events =
+    VisitorWorkerIncomingEvents
+        never
+        never
+        never
 -- @+node:gcross.20111117140347.1401: ** Exceptions
 -- @+node:gcross.20111117140347.1402: *3* TestException
 data TestException = TestException Int deriving (Eq,Show,Typeable)
@@ -512,7 +519,7 @@ main = defaultMain
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     VisitorWorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
-                            (mempty { visitorWorkerIncomingWorkloadReceivedEvent = event })
+                            (empty_worker_incoming_events { visitorWorkerIncomingWorkloadReceivedEvent = event })
                             visitor
                     reactimate (fmap (IVar.write response_ivar) visitorWorkerOutgoingFinishedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingMaybeStatusUpdatedEvent"))) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
@@ -531,7 +538,7 @@ main = defaultMain
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     VisitorWorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
-                            (mempty { visitorWorkerIncomingRequestEvent = event })
+                            (empty_worker_incoming_events { visitorWorkerIncomingRequestEvent = event })
                             undefined
                     reactimate (fmap (IVar.write response_ivar) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingMaybeWorkloadSubmittedEvent"))) visitorWorkerOutgoingMaybeWorkloadSubmittedEvent)
@@ -549,7 +556,7 @@ main = defaultMain
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     VisitorWorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
-                            (mempty { visitorWorkerIncomingRequestEvent = event })
+                            (empty_worker_incoming_events { visitorWorkerIncomingRequestEvent = event })
                             undefined
                     reactimate (fmap (IVar.write response_ivar) visitorWorkerOutgoingMaybeWorkloadSubmittedEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingMaybeStatusUpdatedEvent"))) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
@@ -573,7 +580,7 @@ main = defaultMain
                 event_network ← compile $ do
                     event ← fromAddHandler event_handler
                     VisitorWorkerOutgoingEvents{..} ← createVisitorWorkerReactiveNetwork
-                            (mempty { visitorWorkerIncomingWorkloadReceivedEvent = event })
+                            (empty_worker_incoming_events { visitorWorkerIncomingWorkloadReceivedEvent = event })
                             (throw e)
                     reactimate (fmap (IVar.write response_ivar) visitorWorkerOutgoingFailureEvent)
                     reactimate (fmap (const (IVar.write response_ivar (error "received visitorWorkerOutgoingMaybeStatusUpdatedEvent"))) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
@@ -594,9 +601,10 @@ main = defaultMain
                     event ← fromAddHandler event_handler
                     shutdown_event ← fromAddHandler shutdown_event_handler
                     VisitorWorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
-                            (mempty { visitorWorkerIncomingShutdownEvent = shutdown_event
-                                    , visitorWorkerIncomingWorkloadReceivedEvent = event
-                                    }
+                            (empty_worker_incoming_events
+                                { visitorWorkerIncomingShutdownEvent = shutdown_event
+                                , visitorWorkerIncomingWorkloadReceivedEvent = event
+                                }
                             )
                             (liftIO (IVar.blocking . IVar.read $ blocking_ivar) ⊕ return ())
                     reactimate (fmap (const (writeIORef response_ref (error "received visitorWorkerOutgoingMaybeStatusUpdatedEvent"))) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
@@ -654,9 +662,10 @@ main = defaultMain
                         request_event ← fromAddHandler request_event_handler
                         workload_event ← fromAddHandler workload_event_handler
                         VisitorWorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
-                                (mempty { visitorWorkerIncomingRequestEvent = request_event
-                                        , visitorWorkerIncomingWorkloadReceivedEvent = workload_event
-                                        }
+                                (empty_worker_incoming_events
+                                    { visitorWorkerIncomingRequestEvent = request_event
+                                    , visitorWorkerIncomingWorkloadReceivedEvent = workload_event
+                                    }
                                 )
                                 visitor_with_blocking_value
                         reactimate (fmap (IVar.write update_maybe_status_ivar) visitorWorkerOutgoingMaybeStatusUpdatedEvent)
@@ -715,9 +724,10 @@ main = defaultMain
                         request_event ← fromAddHandler request_event_handler
                         workload_event ← fromAddHandler workload_event_handler
                         VisitorWorkerOutgoingEvents{..} ← createVisitorIOWorkerReactiveNetwork
-                                (mempty { visitorWorkerIncomingRequestEvent = request_event
-                                        , visitorWorkerIncomingWorkloadReceivedEvent = workload_event
-                                        }
+                                (empty_worker_incoming_events
+                                    { visitorWorkerIncomingRequestEvent = request_event
+                                    , visitorWorkerIncomingWorkloadReceivedEvent = workload_event
+                                    }
                                 )
                                 visitor_with_blocking_value
                         reactimate (fmap (IVar.write steal_response_ivar) visitorWorkerOutgoingMaybeWorkloadSubmittedEvent)
