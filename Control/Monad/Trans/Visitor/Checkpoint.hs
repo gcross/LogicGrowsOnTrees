@@ -8,7 +8,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -25,8 +24,6 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
 import Data.Composition
-import Data.Derive.Monoid
-import Data.DeriveTH
 import qualified Data.DList as DList
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Maybe (mapMaybe)
@@ -63,8 +60,6 @@ data VisitorStatusUpdate α = VisitorStatusUpdate
     {   visitorStatusCheckpoint :: VisitorCheckpoint
     ,   visitorStatusNewSolutions :: Seq (VisitorSolution α)
     } deriving (Eq,Show)
-
-$( derive makeMonoid ''VisitorStatusUpdate )
 -- @+node:gcross.20110923164140.1178: *3* VisitorTContext
 type VisitorTContext m α = Seq (VisitorTContextStep m α)
 type VisitorContext α = VisitorTContext Identity α
@@ -109,6 +104,10 @@ instance Monoid VisitorCheckpoint where
     (CacheCheckpoint cx x) `mappend` (CacheCheckpoint cy y)
       | cx == cy = mergeCheckpointRoot (CacheCheckpoint cx (x ⊕ y))
     mappend x y = throw (InconsistentCheckpoints x y)
+-- @+node:gcross.20111228145321.1838: *3* Monoid VisitorStatusUpdate
+instance Monoid (VisitorStatusUpdate α) where
+    mempty = VisitorStatusUpdate mempty mempty
+    VisitorStatusUpdate a1 b1 `mappend` VisitorStatusUpdate a2 b2 = VisitorStatusUpdate (a1 `mappend` a2) (b1 `mappend` b2)
 -- @+node:gcross.20110923164140.1179: ** Functions
 -- @+node:gcross.20111020151748.1288: *3* applyCheckpointCursorToLabel
 applyCheckpointCursorToLabel :: VisitorCheckpointCursor → VisitorLabel → VisitorLabel
