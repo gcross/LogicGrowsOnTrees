@@ -23,7 +23,6 @@ Library
         composition == 0.2.*,
         containers == 0.4.*,
         data-ivar == 0.30.*,
-        derive == 2.5.*,
         dlist == 0.5.*,
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,
