@@ -298,16 +298,35 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
 
     steal_workloads_event :: Event ξ ()
     steal_workloads_event =
-        filterJust
-        .
-        changes
-        $
-        (\waiting_workers_or_available_workloads workers_with_pending_workload_steals →
-            case waiting_workers_or_available_workloads of
-                Left (Seq.null → False) | Set.null workers_with_pending_workload_steals → Just ()
-                _ → Nothing
-        ) <$> waiting_workers_or_available_workloads
-          <*> workers_with_pending_workload_steals
+        void . filterE id . mconcat $
+        [applyOutOfPendingWorkersStealCondition 1
+            <$> workers_with_pending_workload_steals
+            <*> waiting_workers_or_available_workloads
+            <@> (workerId <$> visitorSupervisorIncomingWorkerWorkloadStolenEvent)
+        ,applyOutOfPendingWorkersStealCondition 0
+            <$> workers_with_pending_workload_steals
+            <*> waiting_workers_or_available_workloads
+            <@> visitorSupervisorIncomingWorkerShutdownEvent
+        ,applyWorkloadRequestedStealCondition
+            <$> workers_with_pending_workload_steals
+            <*> waiting_workers_or_available_workloads
+            <@> (void workload_requested)
+        ]
+      where
+        applyOutOfPendingWorkersStealCondition
+            minimum_waiting_workers
+            workers_with_pending_workload_steals
+            waiting_workers_or_available_workloads
+            worker_id
+          = (Set.null . Set.delete worker_id) workers_with_pending_workload_steals
+         && either ((> minimum_waiting_workers) . Seq.length) (const False) waiting_workers_or_available_workloads
+
+        applyWorkloadRequestedStealCondition
+            workers_with_pending_workload_steals
+            waiting_workers_or_available_workloads
+            _
+          = Set.null workers_with_pending_workload_steals
+         && either (const True) Seq.null waiting_workers_or_available_workloads
 
     waiting_worker_ids :: Discrete ξ (Set worker_id)
     waiting_worker_ids =
