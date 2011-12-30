@@ -57,7 +57,7 @@ instance Exception VisitorSupervisorConsistencyError
 data WorkerIdTagged worker_id α = WorkerIdTagged
     {   workerId :: worker_id
     ,   workerIdTaggedData :: α
-    }
+    } deriving (Eq,Show)
 -- @+node:gcross.20111219132352.1421: *3* VisitorSupervisorIncomingEvents
 data VisitorSupervisorIncomingEvents ξ worker_id α = VisitorSupervisorIncomingEvents
     {   visitorSupervisorIncomingWorkerRecruitedEvent :: Event ξ worker_id

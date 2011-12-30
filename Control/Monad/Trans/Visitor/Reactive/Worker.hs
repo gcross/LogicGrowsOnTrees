@@ -50,6 +50,7 @@ instance Exception RedundantWorkloadReceived
 data VisitorWorkerReactiveRequest =
     StatusUpdateReactiveRequest
   | WorkloadStealReactiveRequest
+  deriving (Eq,Show)
 -- @+node:gcross.20111219115425.1411: *3* VisitorWorkerIncomingEvents
 data VisitorWorkerIncomingEvents = VisitorWorkerIncomingEvents
     {   visitorWorkerIncomingRequestEvent :: Event VisitorWorkerReactiveRequest

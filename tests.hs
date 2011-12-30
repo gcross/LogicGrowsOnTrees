@@ -28,6 +28,7 @@ import Control.Monad.Trans.Writer
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import qualified Data.DList as DList
+import Data.Either.Unwrap
 import qualified Data.Foldable as Fold
 import Data.Function
 import Data.Functor.Identity
@@ -41,10 +42,13 @@ import Data.Monoid.Unicode
 import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import Data.Serialize (Serialize,decode,encode)
+import Data.Set (Set)
 
 import Debug.Trace (trace)
 
 import Reactive.Banana
+import qualified Reactive.Banana.Model as Model
+import qualified Reactive.Banana.Implementation as PushIO
 
 import System.IO.Unsafe
 
@@ -59,6 +63,8 @@ import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
+import Control.Monad.Trans.Visitor.Reactive
+import Control.Monad.Trans.Visitor.Reactive.Supervisor
 import Control.Monad.Trans.Visitor.Reactive.Worker
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
@@ -127,6 +133,100 @@ echo x = trace (show x) x
 -- @+node:gcross.20111028170027.1301: *3* echoWithLabel
 echoWithLabel :: Show α ⇒ String → α → α
 echoWithLabel label x = trace (label ++ " " ++ show x) x
+-- @+node:gcross.20111228145321.1852: *3* interpretSupervisorUsingModel
+interpretSupervisorUsingModel ::
+    ∀ α worker_id. (Ord worker_id) ⇒
+    [VisitorSupervisorIncomingEvent worker_id α] →
+    [[VisitorSupervisorOutgoingEvent worker_id α]]
+interpretSupervisorUsingModel = Model.interpret mapSupervisorEvents
+-- @+node:gcross.20111228145321.1853: *3* interpretSupervisorUsingPushIO
+interpretSupervisorUsingPushIO ::
+    ∀ α worker_id. (Ord worker_id) ⇒
+    [VisitorSupervisorIncomingEvent worker_id α] →
+    IO [[VisitorSupervisorOutgoingEvent worker_id α]]
+interpretSupervisorUsingPushIO = PushIO.interpret mapSupervisorEvents
+-- @+node:gcross.20111228145321.1849: *3* mapSupervisorEvents
+mapSupervisorEvents ::
+    ∀ α ξ worker_id. (FRP ξ, Ord worker_id) ⇒
+    Model.Event ξ (VisitorSupervisorIncomingEvent worker_id α) →
+    Model.Event ξ (VisitorSupervisorOutgoingEvent worker_id α)
+mapSupervisorEvents incoming = outgoing
+  where
+    VisitorSupervisorOutgoingEvents{..} = createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..}
+
+    visitorSupervisorIncomingWorkerRecruitedEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingWorkerRecruitedEvent x → Just x
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingWorkerShutdownEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingWorkerShutdownEvent x → Just x
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingWorkerStatusUpdateEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingWorkerStatusUpdateEvent x → Just x
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingWorkerWorkloadStolenEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingWorkerWorkloadStolenEvent x → Just x
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingWorkerFinishedEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingWorkerFinishedEvent x → Just x
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingWorkerFailedEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingWorkerFailedEvent x → Just x
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingRequestCurrentCheckpointEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingRequestCurrentCheckpointEvent → Just ()
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingRequestFullCheckpointEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingRequestFullCheckpointEvent → Just ()
+                _ → Nothing
+        ) <$?> incoming
+
+    visitorSupervisorIncomingRequestShutdownEvent =
+        (\incoming_event →
+            case incoming_event of
+                VisitorSupervisorIncomingRequestShutdownEvent → Just ()
+                _ → Nothing
+        ) <$?> incoming
+
+    outgoing :: Model.Event ξ (VisitorSupervisorOutgoingEvent worker_id α)
+    outgoing = mconcat
+        [VisitorSupervisorOutgoingWorkloadEvent <$> visitorSupervisorOutgoingWorkloadEvent
+        ,VisitorSupervisorOutgoingTerminatedEvent . mapLeft show <$> visitorSupervisorOutgoingTerminatedEvent
+        ,VisitorSupervisorOutgoingShutdownWorkersEvent <$> visitorSupervisorOutgoingShutdownWorkersEvent
+        ,VisitorSupervisorOutgoingShutdownCompleteEvent <$ visitorSupervisorOutgoingShutdownCompleteEvent
+        ,VisitorSupervisorOutgoingBroadcastWorkerRequestEvent <$> visitorSupervisorOutgoingBroadcastWorkerRequestEvent
+        ,VisitorSupervisorOutgoingStatusUpdateEvent <$> visitorSupervisorOutgoingStatusUpdateEvent
+        ,VisitorSupervisorOutgoingNewSolutionsEvent <$> visitorSupervisorOutgoingNewSolutionsEvent
+        ]
 -- @+node:gcross.20111029212714.1372: *3* randomCheckpointForVisitor
 randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint
 randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
@@ -173,6 +273,30 @@ randomVisitorWithoutCache = sized arb
     result = fmap return arbitrary
 
     bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
+-- @+node:gcross.20111228145321.1845: ** Types
+-- @+node:gcross.20111228145321.1847: *3* VisitorSupervisorIncomingEvent
+data VisitorSupervisorIncomingEvent worker_id α =
+    VisitorSupervisorIncomingWorkerRecruitedEvent worker_id
+  | VisitorSupervisorIncomingWorkerShutdownEvent worker_id
+  | VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged worker_id (Maybe (VisitorWorkerStatusUpdate α)))
+  | VisitorSupervisorIncomingWorkerWorkloadStolenEvent (WorkerIdTagged worker_id (Maybe (VisitorWorkerStolenWorkload α)))
+  | VisitorSupervisorIncomingWorkerFinishedEvent (WorkerIdTagged worker_id (VisitorStatusUpdate α))
+  | VisitorSupervisorIncomingWorkerFailedEvent (WorkerIdTagged worker_id SomeException)
+  | VisitorSupervisorIncomingRequestCurrentCheckpointEvent
+  | VisitorSupervisorIncomingRequestFullCheckpointEvent
+  | VisitorSupervisorIncomingRequestShutdownEvent
+  | VisitorSupervisorIncomingNullEvent
+  deriving (Show)
+-- @+node:gcross.20111228145321.1848: *3* VisitorSupervisorOutgoingEvent
+data VisitorSupervisorOutgoingEvent worker_id α =
+    VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged worker_id VisitorWorkload)
+  | VisitorSupervisorOutgoingTerminatedEvent (Either String (Either (VisitorStatusUpdate α) (Seq (VisitorSolution α))))
+  | VisitorSupervisorOutgoingShutdownWorkersEvent (Set worker_id)
+  | VisitorSupervisorOutgoingShutdownCompleteEvent
+  | VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([worker_id],VisitorWorkerReactiveRequest)
+  | VisitorSupervisorOutgoingStatusUpdateEvent (VisitorStatusUpdate α)
+  | VisitorSupervisorOutgoingNewSolutionsEvent (Seq (VisitorSolution α))
+  deriving (Eq,Show)
 -- @-others
 
 main = defaultMain
@@ -502,6 +626,19 @@ main = defaultMain
                             return 42
                 log @?= [1]
                 (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([42],[3,4])
+            -- @-others
+            ]
+        -- @-others
+        ]
+    -- @+node:gcross.20111228145321.1839: *3* Control.Monad.Trans.Visitor.Reactive.Supervisor
+    ,testGroup "Control.Monad.Trans.Visitor.Reactive.Supervisor"
+        -- @+others
+        -- @+node:gcross.20111228145321.1840: *4* createVisitorSupervisorReactiveNetwork
+        [testGroup "createVisitorSupervisorReactiveNetwork"
+            -- @+others
+            -- @+node:gcross.20111228145321.1854: *5* null case
+            [testCase "current checkpoint results in mempty" $ do
+                [[]] @=? interpretSupervisorUsingModel ([VisitorSupervisorIncomingNullEvent :: VisitorSupervisorIncomingEvent () ()])
             -- @-others
             ]
         -- @-others
