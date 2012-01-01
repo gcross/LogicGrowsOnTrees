@@ -167,17 +167,17 @@ mapSupervisorEvents incoming = outgoing
   where
     VisitorSupervisorOutgoingEvents{..} = createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..}
 
-    visitorSupervisorIncomingWorkerRecruitedEvent =
+    visitorSupervisorIncomingWorkerAddedEvent =
         (\incoming_event →
             case incoming_event of
-                VisitorSupervisorIncomingWorkerRecruitedEvent x → Just x
+                VisitorSupervisorIncomingWorkerAddedEvent x → Just x
                 _ → Nothing
         ) <$?> incoming
 
-    visitorSupervisorIncomingWorkerShutdownEvent =
+    visitorSupervisorIncomingWorkerRemovedEvent =
         (\incoming_event →
             case incoming_event of
-                VisitorSupervisorIncomingWorkerShutdownEvent x → Just x
+                VisitorSupervisorIncomingWorkerRemovedEvent x → Just x
                 _ → Nothing
         ) <$?> incoming
 
@@ -202,13 +202,6 @@ mapSupervisorEvents incoming = outgoing
                 _ → Nothing
         ) <$?> incoming
 
-    visitorSupervisorIncomingWorkerFailedEvent =
-        (\incoming_event →
-            case incoming_event of
-                VisitorSupervisorIncomingWorkerFailedEvent x → Just x
-                _ → Nothing
-        ) <$?> incoming
-
     visitorSupervisorIncomingRequestFullCheckpointEvent =
         (\incoming_event →
             case incoming_event of
@@ -223,22 +216,14 @@ mapSupervisorEvents incoming = outgoing
                 _ → Nothing
         ) <$?> incoming
 
-    readVisitorSupervisorCurrentRecruitedWorkers =
-        (\incoming_event →
-            case incoming_event of
-                ReadVisitorSupervisorCurrentRecruitedWorkers → Just ()
-                _ → Nothing
-        ) <$?> incoming
-
     outgoing :: Model.Event ξ (VisitorSupervisorOutgoingEvent worker_id α)
     outgoing = mconcat
         [VisitorSupervisorOutgoingWorkloadEvent <$> visitorSupervisorOutgoingWorkloadEvent
-        ,VisitorSupervisorOutgoingTerminatedEvent <$> visitorSupervisorOutgoingTerminatedEvent
+        ,VisitorSupervisorOutgoingFinishedEvent <$> visitorSupervisorOutgoingFinishedEvent
         ,VisitorSupervisorOutgoingBroadcastWorkerRequestEvent <$> visitorSupervisorOutgoingBroadcastWorkerRequestEvent
         ,VisitorSupervisorOutgoingCheckpointCompleteEvent <$> visitorSupervisorOutgoingCheckpointCompleteEvent
         ,VisitorSupervisorOutgoingNewSolutionsFoundEvent <$> visitorSupervisorOutgoingNewSolutionsFoundEvent
         ,ResultVisitorSupervisorCurrentStatus <$> visitorSupervisorCurrentStatus <@ readVisitorSupervisorCurrentStatus
-        ,ResultVisitorSupervisorCurrentRecruitedWorkers <$> visitorSupervisorCurrentRecruitedWorkers <@ readVisitorSupervisorCurrentRecruitedWorkers
         ]
 -- @+node:gcross.20120101164703.1864: *3* newSolutionsEventsFromStatusUpdate
 newSolutionsEventsFromStatusUpdate VisitorStatusUpdate{..}
@@ -293,12 +278,11 @@ randomVisitorWithoutCache = sized arb
 -- @+node:gcross.20111228145321.1845: ** Types
 -- @+node:gcross.20111228145321.1847: *3* VisitorSupervisorIncomingEvent
 data VisitorSupervisorIncomingEvent worker_id α =
-    VisitorSupervisorIncomingWorkerRecruitedEvent worker_id
-  | VisitorSupervisorIncomingWorkerShutdownEvent worker_id
+    VisitorSupervisorIncomingWorkerAddedEvent worker_id
+  | VisitorSupervisorIncomingWorkerRemovedEvent worker_id
   | VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged worker_id (Maybe (VisitorWorkerStatusUpdate α)))
   | VisitorSupervisorIncomingWorkerWorkloadStolenEvent (WorkerIdTagged worker_id (Maybe (VisitorWorkerStolenWorkload α)))
   | VisitorSupervisorIncomingWorkerFinishedEvent (WorkerIdTagged worker_id (VisitorStatusUpdate α))
-  | VisitorSupervisorIncomingWorkerFailedEvent (WorkerIdTagged worker_id String)
   | VisitorSupervisorIncomingRequestFullCheckpointEvent
   | VisitorSupervisorIncomingNullEvent
   | ReadVisitorSupervisorCurrentStatus
@@ -307,12 +291,11 @@ data VisitorSupervisorIncomingEvent worker_id α =
 -- @+node:gcross.20111228145321.1848: *3* VisitorSupervisorOutgoingEvent
 data VisitorSupervisorOutgoingEvent worker_id α =
     VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged worker_id VisitorWorkload)
-  | VisitorSupervisorOutgoingTerminatedEvent (Either VisitorException (Seq (VisitorSolution α)))
+  | VisitorSupervisorOutgoingFinishedEvent (Seq (VisitorSolution α))
   | VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([worker_id],VisitorWorkerReactiveRequest)
   | VisitorSupervisorOutgoingCheckpointCompleteEvent (VisitorStatusUpdate α)
   | VisitorSupervisorOutgoingNewSolutionsFoundEvent (Seq (VisitorSolution α))
   | ResultVisitorSupervisorCurrentStatus (VisitorStatusUpdate α)
-  | ResultVisitorSupervisorCurrentRecruitedWorkers (Set worker_id)
   deriving (Eq,Show)
 -- @-others
 
@@ -663,7 +646,7 @@ main = defaultMain
                 [testCase "worker recruited" $
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                            [VisitorSupervisorIncomingWorkerAddedEvent ()
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                         correct_outgoing =
@@ -674,8 +657,8 @@ main = defaultMain
                 ,testCase "worker recruited, then shuts down" $
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
-                            ,VisitorSupervisorIncomingWorkerShutdownEvent ()
+                            [VisitorSupervisorIncomingWorkerAddedEvent ()
+                            ,VisitorSupervisorIncomingWorkerRemovedEvent ()
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                         correct_outgoing =
@@ -687,9 +670,9 @@ main = defaultMain
                 ,testCase "worker recruited, then shuts down, then is recruited again" $
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
-                            ,VisitorSupervisorIncomingWorkerShutdownEvent ()
-                            ,VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                            [VisitorSupervisorIncomingWorkerAddedEvent ()
+                            ,VisitorSupervisorIncomingWorkerRemovedEvent ()
+                            ,VisitorSupervisorIncomingWorkerAddedEvent ()
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                         correct_outgoing =
@@ -708,7 +691,7 @@ main = defaultMain
                   \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate Int) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () Int]
                         incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                            [VisitorSupervisorIncomingWorkerAddedEvent ()
                             ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
                             ,ReadVisitorSupervisorCurrentStatus
                             ]
@@ -725,13 +708,13 @@ main = defaultMain
                    (workload :: VisitorWorkload) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                            [VisitorSupervisorIncomingWorkerAddedEvent ()
                             ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () $ Just (VisitorWorkerStatusUpdate
                                 (VisitorStatusUpdate status_checkpoint Seq.empty)
                                 workload
                              ))
-                            ,VisitorSupervisorIncomingWorkerShutdownEvent ()
-                            ,VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                            ,VisitorSupervisorIncomingWorkerRemovedEvent ()
+                            ,VisitorSupervisorIncomingWorkerAddedEvent ()
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                         correct_outgoing =
@@ -746,10 +729,10 @@ main = defaultMain
                   \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate Int) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () Int]
                         incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                            [VisitorSupervisorIncomingWorkerAddedEvent ()
                             ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
                             ,ReadVisitorSupervisorCurrentStatus
-                            ,VisitorSupervisorIncomingWorkerShutdownEvent ()
+                            ,VisitorSupervisorIncomingWorkerRemovedEvent ()
                             ,VisitorSupervisorIncomingRequestFullCheckpointEvent
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () Int]]
@@ -766,7 +749,7 @@ main = defaultMain
                   \(maybe_worker_status_update :: Maybe (VisitorWorkerStatusUpdate Int)) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () Int]
                         incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                            [VisitorSupervisorIncomingWorkerAddedEvent ()
                             ,VisitorSupervisorIncomingRequestFullCheckpointEvent
                             ,VisitorSupervisorIncomingNullEvent
                             ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () maybe_worker_status_update)

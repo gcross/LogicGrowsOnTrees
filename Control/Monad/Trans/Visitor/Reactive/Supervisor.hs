@@ -16,7 +16,7 @@ module Control.Monad.Trans.Visitor.Reactive.Supervisor where
 
 -- @+<< Import needed modules >>
 -- @+node:gcross.20111219132352.1419: ** << Import needed modules >>
-import Control.Exception (Exception(toException),SomeException)
+import Control.Exception (Exception,throw)
 import Control.Monad (void)
 
 import qualified Data.Foldable as Fold
@@ -43,14 +43,14 @@ import Control.Monad.Trans.Visitor.Workload
 -- @-<< Import needed modules >>
 
 -- @+others
--- @+node:gcross.20111223212822.1433: ** Exceptions
--- @+node:gcross.20111223212822.1434: *3* VisitorException
-data VisitorException =
-    UnexploredSpaceRemainsAfterSearchException VisitorCheckpoint
-  | VisitorFailed String
-  deriving (Eq,Show,Typeable)
+-- @+node:gcross.20120101200431.1880: ** Exceptions
+-- @+node:gcross.20120101200431.1881: *3* IncompleteVisitError
+data IncompleteVisitError = IncompleteVisitError VisitorCheckpoint deriving Typeable
 
-instance Exception VisitorException
+instance Show IncompleteVisitError where
+    show (IncompleteVisitError checkpoint) = "After visiting the entire search space, the cumulative checkpoint was not Explored but " ++ show checkpoint
+
+instance Exception IncompleteVisitError
 -- @+node:gcross.20111219132352.1420: ** Types
 -- @+node:gcross.20111226153030.1436: *3* WorkerIdTagged
 data WorkerIdTagged worker_id α = WorkerIdTagged
@@ -59,23 +59,21 @@ data WorkerIdTagged worker_id α = WorkerIdTagged
     } deriving (Eq,Show)
 -- @+node:gcross.20111219132352.1421: *3* VisitorSupervisorIncomingEvents
 data VisitorSupervisorIncomingEvents ξ worker_id α = VisitorSupervisorIncomingEvents
-    {   visitorSupervisorIncomingWorkerRecruitedEvent :: Event ξ worker_id
-    ,   visitorSupervisorIncomingWorkerShutdownEvent :: Event ξ worker_id
+    {   visitorSupervisorIncomingWorkerAddedEvent :: Event ξ worker_id
+    ,   visitorSupervisorIncomingWorkerRemovedEvent :: Event ξ worker_id
     ,   visitorSupervisorIncomingWorkerStatusUpdateEvent :: Event ξ (WorkerIdTagged worker_id (Maybe (VisitorWorkerStatusUpdate α)))
     ,   visitorSupervisorIncomingWorkerWorkloadStolenEvent :: Event ξ (WorkerIdTagged worker_id (Maybe (VisitorWorkerStolenWorkload α)))
     ,   visitorSupervisorIncomingWorkerFinishedEvent :: Event ξ (WorkerIdTagged worker_id (VisitorStatusUpdate α))
-    ,   visitorSupervisorIncomingWorkerFailedEvent :: Event ξ (WorkerIdTagged worker_id String)
     ,   visitorSupervisorIncomingRequestFullCheckpointEvent :: Event ξ ()
     }
 -- @+node:gcross.20111219132352.1423: *3* VisitorSupervisorOutgoingEvents
 data VisitorSupervisorOutgoingEvents ξ worker_id α = VisitorSupervisorOutgoingEvents
     {   visitorSupervisorOutgoingWorkloadEvent :: Event ξ (WorkerIdTagged worker_id VisitorWorkload)
-    ,   visitorSupervisorOutgoingTerminatedEvent :: Event ξ (Either VisitorException (Seq (VisitorSolution α)))
+    ,   visitorSupervisorOutgoingFinishedEvent :: Event ξ (Seq (VisitorSolution α))
     ,   visitorSupervisorOutgoingBroadcastWorkerRequestEvent :: Event ξ ([worker_id],VisitorWorkerReactiveRequest)
     ,   visitorSupervisorOutgoingCheckpointCompleteEvent :: Event ξ (VisitorStatusUpdate α)
     ,   visitorSupervisorOutgoingNewSolutionsFoundEvent :: Event ξ (Seq (VisitorSolution α))
     ,   visitorSupervisorCurrentStatus :: Discrete ξ (VisitorStatusUpdate α)
-    ,   visitorSupervisorCurrentRecruitedWorkers :: Discrete ξ (Set worker_id)
     }
 -- @+node:gcross.20111219132352.1424: ** Functions
 -- @+node:gcross.20111219132352.1425: *3* createVisitorSupervisorReactiveNetwork
@@ -87,7 +85,7 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
   where
     -- @+others
     -- @+node:gcross.20111227142510.1840: *4* Network termination
-    network_has_finished :: Event ξ (VisitorStatusUpdate α)
+    network_has_finished :: Event ξ (Seq (VisitorSolution α))
     network_has_finished =
         filterJust
         $
@@ -95,29 +93,17 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
             if (not . Map.null . Map.delete worker_id) active_workers
             || either (const False) (not . Seq.null) waiting_workers_or_available_workloads
             then Nothing
-            else Just (current_status ⊕ update)
+            else Just (
+                case current_status ⊕ update of
+                    VisitorStatusUpdate Explored all_solutions → all_solutions
+                    VisitorStatusUpdate remaining_checkpoint _ → throw (IncompleteVisitError remaining_checkpoint)
+            )
         ) <$> current_status
           <*> active_workers
           <*> waiting_workers_or_available_workloads
           <@> visitorSupervisorIncomingWorkerFinishedEvent
 
-    (unexplored_space_remains_after_search_event,network_has_succeeded) =
-        (\VisitorStatusUpdate{..} →
-            case visitorStatusCheckpoint of
-                Explored → Right visitorStatusNewSolutions
-                _ → Left (UnexploredSpaceRemainsAfterSearchException visitorStatusCheckpoint)
-        ) <$↔> network_has_finished
-
-    network_has_failed :: Event ξ VisitorException
-    network_has_failed = mconcat
-        [VisitorFailed . workerIdTaggedData <$> visitorSupervisorIncomingWorkerFailedEvent
-        ,unexplored_space_remains_after_search_event
-        ]
-
-    network_has_died :: Event ξ (Either VisitorException (Seq (VisitorSolution α)))
-    network_has_died = (Left <$> network_has_failed) ⊕ (Right <$> network_has_succeeded)
-
-    visitorSupervisorOutgoingTerminatedEvent = network_has_died
+    visitorSupervisorOutgoingFinishedEvent = network_has_finished
     -- @+node:gcross.20111227142510.1841: *4* Request broadcasting
     visitorSupervisorOutgoingBroadcastWorkerRequestEvent =
         (\active_worker_ids request → (Set.toList active_worker_ids,request))
@@ -157,11 +143,9 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
     visitorSupervisorCurrentStatus = current_status
 
     workers_with_pending_status_updates :: Discrete ξ (Set worker_id)
-    workers_with_pending_status_updates = accumD (Set.empty) . mconcat $
-        [Set.union <$> active_worker_ids <@ visitorSupervisorIncomingRequestFullCheckpointEvent
-        ,Set.delete . workerId <$> worker_status_updated_event
-        ,Set.delete <$> visitorSupervisorIncomingWorkerShutdownEvent
-        ]
+    workers_with_pending_status_updates = accumD Set.empty $
+        (Set.union <$> active_worker_ids <@ visitorSupervisorIncomingRequestFullCheckpointEvent)
+      ⊕ (Set.delete . workerId <$> worker_status_updated_event)
 
     full_status_update_in_progress :: Behavior ξ Bool
     full_status_update_in_progress = stepper False $
@@ -184,36 +168,23 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
     -- @+node:gcross.20120101200431.1879: *4* Worker tracking
     active_workers :: Discrete ξ (Map worker_id VisitorWorkload)
     active_workers = accumD Map.empty . mconcat $
-        [Map.delete <$> (visitorSupervisorIncomingWorkerShutdownEvent ⊕ (workerId <$> visitorSupervisorIncomingWorkerFinishedEvent))
+        [Map.delete <$> (visitorSupervisorIncomingWorkerRemovedEvent ⊕ (workerId <$> visitorSupervisorIncomingWorkerFinishedEvent))
         ,(\(WorkerIdTagged worker_id workload) →
             Map.insert worker_id workload
          ) <$> worker_deployed
         ,(\(WorkerIdTagged worker_id maybe_update) →
             maybe (Map.delete worker_id) (Map.insert worker_id . visitorWorkerRemainingWorkload) maybe_update
          ) <$> worker_progress_status_updated_event
-        ,const Map.empty <$ network_has_died
         ]
 
     active_worker_ids :: Discrete ξ (Set worker_id)
     active_worker_ids = Map.keysSet <$> active_workers
-
-    waiting_worker_ids :: Discrete ξ (Set worker_id)
-    waiting_worker_ids =
-        either (Set.fromList . Fold.toList) mempty
-        <$>
-        waiting_workers_or_available_workloads
-
-    all_known_worker_ids :: Discrete ξ (Set worker_id)
-    all_known_worker_ids = (⊕) <$> waiting_worker_ids <*> active_worker_ids
-
-    visitorSupervisorCurrentRecruitedWorkers = all_known_worker_ids
     -- @+node:gcross.20120101200431.1878: *4* Workload stealing
     workers_with_pending_workload_steals :: Discrete ξ (Set worker_id)
     workers_with_pending_workload_steals = accumD (Set.empty) . mconcat $
         [Set.union <$> active_worker_ids <@ steal_workloads_event
         ,Set.delete . workerId <$> visitorSupervisorIncomingWorkerWorkloadStolenEvent
-        ,Set.delete <$> visitorSupervisorIncomingWorkerShutdownEvent
-        ,const Set.empty <$ network_has_died
+        ,Set.delete <$> visitorSupervisorIncomingWorkerRemovedEvent
         ]
 
     (worker_id_without_stolen_workload,worker_id_with_stolen_workload) =
@@ -233,7 +204,7 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
         ,applyOutOfPendingWorkersStealCondition 0
             <$> workers_with_pending_workload_steals
             <*> waiting_workers_or_available_workloads
-            <@> (visitorSupervisorIncomingWorkerShutdownEvent ⊕ worker_id_without_stolen_workload)
+            <@> (visitorSupervisorIncomingWorkerRemovedEvent ⊕ worker_id_without_stolen_workload)
         ,applyWorkloadRequestedStealCondition
             <$> workers_with_pending_workload_steals
             <*> waiting_workers_or_available_workloads
@@ -259,7 +230,6 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
     waiting_workers_or_available_workloads = stepperD (Right (Seq.singleton entire_workload)) $
         (Left <$> (new_waiting_workers_event_1 ⊕ new_waiting_workers_event_2))
       ⊕ (Right <$> (new_available_workloads_event_1 ⊕ new_available_workloads_event_2))
-      ⊕ (Right Seq.empty <$ network_has_failed)
 
     worker_deployed_1 = fst <$> worker_deployed_and_queue_updated_1
     new_available_workloads_event_1 = snd <$> worker_deployed_and_queue_updated_1
@@ -286,13 +256,13 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
     workload_requested :: Event ξ worker_id
     workload_requested =
         (workerId <$> visitorSupervisorIncomingWorkerFinishedEvent)
-      ⊕  visitorSupervisorIncomingWorkerRecruitedEvent
+      ⊕  visitorSupervisorIncomingWorkerAddedEvent
 
     workload_arrived :: Event ξ VisitorWorkload
     workload_arrived =
         filterJust (
             ((visitorWorkerStolenWorkload <$>) . workerIdTaggedData <$> visitorSupervisorIncomingWorkerWorkloadStolenEvent)
-          ⊕ (flip Map.lookup <$> active_workers <@> visitorSupervisorIncomingWorkerShutdownEvent)
+          ⊕ (flip Map.lookup <$> active_workers <@> visitorSupervisorIncomingWorkerRemovedEvent)
         )
 
     worker_deployed = worker_deployed_1 ⊕ worker_deployed_2
