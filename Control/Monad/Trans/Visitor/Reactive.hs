@@ -49,9 +49,6 @@ infixl 4 <@↔>
 
 (<@↔>) :: (FRP ξ, Apply f (Event ξ)) ⇒ f (a → Either b c) → Event ξ a → (Event ξ b,Event ξ c)
 f <@↔> x = split (f <@> x)
--- @+node:gcross.20111026213013.1279: *3* filterJust
-filterJust :: FRP ξ ⇒ Event ξ (Maybe a) → Event ξ a
-filterJust = fmap fromJust . filterE isJust
 -- @+node:gcross.20111026213013.1281: *3* newHandler
 newHandler = do
     (event_handler,callback) ← liftIO newAddHandler
