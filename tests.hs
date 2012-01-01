@@ -114,6 +114,15 @@ instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbit
 -- @+node:gcross.20111116214909.1383: *3* VisitorPath
 instance Arbitrary VisitorPath where
     arbitrary = fmap Seq.fromList . listOf . oneof $ [fmap (CacheStep . encode) (arbitrary :: Gen Int),fmap ChoiceStep arbitrary]
+-- @+node:gcross.20120101164703.1858: *3* VisitorSolution
+instance Arbitrary α ⇒ Arbitrary (VisitorSolution α) where
+    arbitrary = VisitorSolution <$> arbitrary <*> arbitrary
+-- @+node:gcross.20120101164703.1859: *3* VisitorStatusUpdate
+instance Arbitrary α ⇒ Arbitrary (VisitorStatusUpdate α) where
+    arbitrary = VisitorStatusUpdate <$> arbitrary <*> (Seq.fromList <$> arbitrary)
+-- @+node:gcross.20120101164703.1861: *3* VisitorWorkerStatusUpdate
+instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStatusUpdate α) where
+    arbitrary = VisitorWorkerStatusUpdate <$> arbitrary <*> arbitrary
 -- @+node:gcross.20120101164703.1853: *3* VisitorWorkload
 instance Arbitrary VisitorWorkload where
     arbitrary = VisitorWorkload <$> arbitrary <*> arbitrary
@@ -230,6 +239,10 @@ mapSupervisorEvents incoming = outgoing
         ,VisitorSupervisorOutgoingStatusUpdateEvent <$> visitorSupervisorOutgoingStatusUpdateEvent
         ,VisitorSupervisorOutgoingNewSolutionsEvent <$> visitorSupervisorOutgoingNewSolutionsEvent
         ]
+-- @+node:gcross.20120101164703.1864: *3* newSolutionsEventsFromStatusUpdate
+newSolutionsEventsFromStatusUpdate VisitorStatusUpdate{..}
+  | Seq.null visitorStatusNewSolutions = []
+  | otherwise = [VisitorSupervisorOutgoingNewSolutionsEvent visitorStatusNewSolutions]
 -- @+node:gcross.20111029212714.1372: *3* randomCheckpointForVisitor
 randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint
 randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
@@ -650,8 +663,7 @@ main = defaultMain
                         ]
                     correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                     correct_outgoing =
-                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
-                         ]
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                         ]
                 in correct_outgoing @=? interpretSupervisorUsingModel incoming
             -- @+node:gcross.20120101151410.1851: *5* worker recruited, then goes missing
@@ -663,8 +675,7 @@ main = defaultMain
                         ]
                     correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                     correct_outgoing =
-                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
-                         ]
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                         ,[]
                         ]
                 in correct_outgoing @=? interpretSupervisorUsingModel incoming
@@ -678,11 +689,25 @@ main = defaultMain
                         ]
                     correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                     correct_outgoing =
-                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
-                         ]
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                         ,[]
-                        ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
-                         ]
+                        ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
+                        ]
+                in correct_outgoing @=? interpretSupervisorUsingModel incoming
+            -- @+node:gcross.20120101164703.1857: *5* recruitment, update, current checkpoint
+            ,testProperty "recruitment, update, current checkpoint" $
+              \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate Int) → unsafePerformIO $
+                let incoming :: [VisitorSupervisorIncomingEvent () Int]
+                    incoming =
+                        [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
+                        ,VisitorSupervisorIncomingRequestCurrentCheckpointEvent
+                        ]
+                    correct_outgoing :: [[VisitorSupervisorOutgoingEvent () Int]]
+                    correct_outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
+                        ,newSolutionsEventsFromStatusUpdate status_update
+                        ,[VisitorSupervisorOutgoingStatusUpdateEvent status_update]
                         ]
                 in correct_outgoing @=? interpretSupervisorUsingModel incoming
             -- @+node:gcross.20120101164703.1852: *5* recruitment, update (no new solutions), shutdown, recruitment
@@ -701,12 +726,29 @@ main = defaultMain
                         ]
                     correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
                     correct_outgoing =
-                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
-                         ]
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                         ,[]
                         ,[]
-                        ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () workload)
-                         ]
+                        ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () workload)]
+                        ]
+                in correct_outgoing @=? interpretSupervisorUsingModel incoming
+            -- @+node:gcross.20120101164703.1855: *5* recruitment, update, current checkpoint, shutdown, current checkpoint
+            ,testProperty "recruitment, update, current checkpoint, shutdown, full checkpoint" $
+              \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate Int) → unsafePerformIO $
+                let incoming :: [VisitorSupervisorIncomingEvent () Int]
+                    incoming =
+                        [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
+                        ,VisitorSupervisorIncomingRequestCurrentCheckpointEvent
+                        ,VisitorSupervisorIncomingWorkerShutdownEvent ()
+                        ,VisitorSupervisorIncomingRequestFullCheckpointEvent
+                        ]
+                    correct_outgoing :: [[VisitorSupervisorOutgoingEvent () Int]]
+                    correct_outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
+                        ,newSolutionsEventsFromStatusUpdate status_update
+                        ,[]
+                        ,newSolutionsEventsFromStatusUpdate status_update
                         ]
                 in correct_outgoing @=? interpretSupervisorUsingModel incoming
             -- @-others
