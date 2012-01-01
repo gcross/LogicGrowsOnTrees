@@ -260,21 +260,28 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
         ,const Set.empty <$ network_has_died
         ]
 
+    (worker_id_without_stolen_workload,worker_id_with_stolen_workload) =
+        (\(WorkerIdTagged worker_id maybe_stolen_workload) →
+            case maybe_stolen_workload of
+                Nothing → Left worker_id
+                Just _ → Right worker_id
+        ) <$↔> visitorSupervisorIncomingWorkerWorkloadStolenEvent
+
     steal_workloads_event :: Event ξ ()
     steal_workloads_event =
         void . filterE id . mconcat $
         [applyOutOfPendingWorkersStealCondition 1
             <$> workers_with_pending_workload_steals
             <*> waiting_workers_or_available_workloads
-            <@> (workerId <$> visitorSupervisorIncomingWorkerWorkloadStolenEvent)
+            <@> worker_id_with_stolen_workload
         ,applyOutOfPendingWorkersStealCondition 0
             <$> workers_with_pending_workload_steals
             <*> waiting_workers_or_available_workloads
-            <@> visitorSupervisorIncomingWorkerShutdownEvent
+            <@> (visitorSupervisorIncomingWorkerShutdownEvent ⊕ worker_id_without_stolen_workload)
         ,applyWorkloadRequestedStealCondition
             <$> workers_with_pending_workload_steals
             <*> waiting_workers_or_available_workloads
-            <@> (void workload_requested)
+            <@> void workload_requested
         ]
       where
         applyOutOfPendingWorkersStealCondition
