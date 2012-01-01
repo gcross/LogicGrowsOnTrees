@@ -639,6 +639,32 @@ main = defaultMain
             -- @+node:gcross.20111228145321.1854: *5* null case
             [testCase "current checkpoint results in mempty" $ do
                 [[]] @=? interpretSupervisorUsingModel ([VisitorSupervisorIncomingNullEvent :: VisitorSupervisorIncomingEvent () ()])
+            -- @+node:gcross.20120101151410.1849: *5* worker recruited
+            ,testCase "worker recruited" $
+                let incoming :: [VisitorSupervisorIncomingEvent () ()]
+                    incoming =
+                        [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ]
+                    outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
+                    outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () (VisitorWorkload Seq.empty Unexplored))
+                         ]
+                        ]
+                in outgoing @=? interpretSupervisorUsingModel incoming
+            -- @+node:gcross.20120101151410.1851: *5* worker recruited, then goes missing
+            ,testCase "worker recruited, then shuts down" $
+                let incoming :: [VisitorSupervisorIncomingEvent () ()]
+                    incoming =
+                        [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ,VisitorSupervisorIncomingWorkerShutdownEvent ()
+                        ]
+                    outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
+                    outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () (VisitorWorkload Seq.empty Unexplored))
+                         ]
+                        ,[]
+                        ]
+                in outgoing @=? interpretSupervisorUsingModel incoming
             -- @-others
             ]
         -- @-others

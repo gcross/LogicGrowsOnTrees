@@ -157,16 +157,17 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
     -- @+node:gcross.20111227142510.1840: *4* Network termination
     network_has_finished :: Event ξ (VisitorStatusUpdate α)
     network_has_finished =
-        filterJust . changes
+        filterJust
         $
-        (\current_status active_workers waiting_workers_or_available_workloads →
-            if (not . Map.null) active_workers
+        (\current_status active_workers waiting_workers_or_available_workloads (WorkerIdTagged worker_id update) →
+            if (not . Map.null . Map.delete worker_id) active_workers
             || either (const False) (not . Seq.null) waiting_workers_or_available_workloads
             then Nothing
-            else Just current_status
+            else Just (current_status ⊕ update)
         ) <$> current_status
           <*> active_workers
           <*> waiting_workers_or_available_workloads
+          <@> visitorSupervisorIncomingWorkerFinishedEvent
 
     (unexplored_space_remains_after_search_event,network_has_succeeded) =
         (\VisitorStatusUpdate{..} →
