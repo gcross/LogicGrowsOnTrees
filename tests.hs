@@ -209,13 +209,6 @@ mapSupervisorEvents incoming = outgoing
                 _ → Nothing
         ) <$?> incoming
 
-    visitorSupervisorIncomingRequestCurrentCheckpointEvent =
-        (\incoming_event →
-            case incoming_event of
-                VisitorSupervisorIncomingRequestCurrentCheckpointEvent → Just ()
-                _ → Nothing
-        ) <$?> incoming
-
     visitorSupervisorIncomingRequestFullCheckpointEvent =
         (\incoming_event →
             case incoming_event of
@@ -223,17 +216,17 @@ mapSupervisorEvents incoming = outgoing
                 _ → Nothing
         ) <$?> incoming
 
-    visitorSupervisorIncomingRequestShutdownEvent =
+    readVisitorSupervisorCurrentStatus =
         (\incoming_event →
             case incoming_event of
-                VisitorSupervisorIncomingRequestShutdownEvent → Just ()
+                ReadVisitorSupervisorCurrentStatus → Just ()
                 _ → Nothing
         ) <$?> incoming
 
-    visitorSupervisorIncomingAllRecruitmentEndedEvent =
+    readVisitorSupervisorCurrentRecruitedWorkers =
         (\incoming_event →
             case incoming_event of
-                VisitorSupervisorIncomingAllRecruitmentEndedEvent → Just ()
+                ReadVisitorSupervisorCurrentRecruitedWorkers → Just ()
                 _ → Nothing
         ) <$?> incoming
 
@@ -241,16 +234,16 @@ mapSupervisorEvents incoming = outgoing
     outgoing = mconcat
         [VisitorSupervisorOutgoingWorkloadEvent <$> visitorSupervisorOutgoingWorkloadEvent
         ,VisitorSupervisorOutgoingTerminatedEvent <$> visitorSupervisorOutgoingTerminatedEvent
-        ,VisitorSupervisorOutgoingShutdownWorkersEvent <$> visitorSupervisorOutgoingShutdownWorkersEvent
-        ,VisitorSupervisorOutgoingShutdownCompleteEvent <$ visitorSupervisorOutgoingShutdownCompleteEvent
         ,VisitorSupervisorOutgoingBroadcastWorkerRequestEvent <$> visitorSupervisorOutgoingBroadcastWorkerRequestEvent
-        ,VisitorSupervisorOutgoingStatusUpdateEvent <$> visitorSupervisorOutgoingStatusUpdateEvent
-        ,VisitorSupervisorOutgoingNewSolutionsEvent <$> visitorSupervisorOutgoingNewSolutionsEvent
+        ,VisitorSupervisorOutgoingCheckpointCompleteEvent <$> visitorSupervisorOutgoingCheckpointCompleteEvent
+        ,VisitorSupervisorOutgoingNewSolutionsFoundEvent <$> visitorSupervisorOutgoingNewSolutionsFoundEvent
+        ,ResultVisitorSupervisorCurrentStatus <$> visitorSupervisorCurrentStatus <@ readVisitorSupervisorCurrentStatus
+        ,ResultVisitorSupervisorCurrentRecruitedWorkers <$> visitorSupervisorCurrentRecruitedWorkers <@ readVisitorSupervisorCurrentRecruitedWorkers
         ]
 -- @+node:gcross.20120101164703.1864: *3* newSolutionsEventsFromStatusUpdate
 newSolutionsEventsFromStatusUpdate VisitorStatusUpdate{..}
   | Seq.null visitorStatusNewSolutions = []
-  | otherwise = [VisitorSupervisorOutgoingNewSolutionsEvent visitorStatusNewSolutions]
+  | otherwise = [VisitorSupervisorOutgoingNewSolutionsFoundEvent visitorStatusNewSolutions]
 -- @+node:gcross.20111029212714.1372: *3* randomCheckpointForVisitor
 randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint
 randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
@@ -306,21 +299,20 @@ data VisitorSupervisorIncomingEvent worker_id α =
   | VisitorSupervisorIncomingWorkerWorkloadStolenEvent (WorkerIdTagged worker_id (Maybe (VisitorWorkerStolenWorkload α)))
   | VisitorSupervisorIncomingWorkerFinishedEvent (WorkerIdTagged worker_id (VisitorStatusUpdate α))
   | VisitorSupervisorIncomingWorkerFailedEvent (WorkerIdTagged worker_id String)
-  | VisitorSupervisorIncomingRequestCurrentCheckpointEvent
   | VisitorSupervisorIncomingRequestFullCheckpointEvent
-  | VisitorSupervisorIncomingRequestShutdownEvent
-  | VisitorSupervisorIncomingAllRecruitmentEndedEvent
   | VisitorSupervisorIncomingNullEvent
+  | ReadVisitorSupervisorCurrentStatus
+  | ReadVisitorSupervisorCurrentRecruitedWorkers
   deriving (Show)
 -- @+node:gcross.20111228145321.1848: *3* VisitorSupervisorOutgoingEvent
 data VisitorSupervisorOutgoingEvent worker_id α =
     VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged worker_id VisitorWorkload)
-  | VisitorSupervisorOutgoingTerminatedEvent (Either VisitorException (Either (VisitorStatusUpdate α) (Seq (VisitorSolution α))))
-  | VisitorSupervisorOutgoingShutdownWorkersEvent (Set worker_id)
-  | VisitorSupervisorOutgoingShutdownCompleteEvent
+  | VisitorSupervisorOutgoingTerminatedEvent (Either VisitorException (Seq (VisitorSolution α)))
   | VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([worker_id],VisitorWorkerReactiveRequest)
-  | VisitorSupervisorOutgoingStatusUpdateEvent (VisitorStatusUpdate α)
-  | VisitorSupervisorOutgoingNewSolutionsEvent (Seq (VisitorSolution α))
+  | VisitorSupervisorOutgoingCheckpointCompleteEvent (VisitorStatusUpdate α)
+  | VisitorSupervisorOutgoingNewSolutionsFoundEvent (Seq (VisitorSolution α))
+  | ResultVisitorSupervisorCurrentStatus (VisitorStatusUpdate α)
+  | ResultVisitorSupervisorCurrentRecruitedWorkers (Set worker_id)
   deriving (Eq,Show)
 -- @-others
 
@@ -718,13 +710,13 @@ main = defaultMain
                         incoming =
                             [VisitorSupervisorIncomingWorkerRecruitedEvent ()
                             ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
-                            ,VisitorSupervisorIncomingRequestCurrentCheckpointEvent
+                            ,ReadVisitorSupervisorCurrentStatus
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () Int]]
                         correct_outgoing =
                             [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                             ,newSolutionsEventsFromStatusUpdate status_update
-                            ,[VisitorSupervisorOutgoingStatusUpdateEvent status_update]
+                            ,[ResultVisitorSupervisorCurrentStatus status_update]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
                 -- @+node:gcross.20120101164703.1852: *6* recruitment, update (no new solutions), shutdown, recruitment
@@ -756,7 +748,7 @@ main = defaultMain
                         incoming =
                             [VisitorSupervisorIncomingWorkerRecruitedEvent ()
                             ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
-                            ,VisitorSupervisorIncomingRequestCurrentCheckpointEvent
+                            ,ReadVisitorSupervisorCurrentStatus
                             ,VisitorSupervisorIncomingWorkerShutdownEvent ()
                             ,VisitorSupervisorIncomingRequestFullCheckpointEvent
                             ]
@@ -764,8 +756,9 @@ main = defaultMain
                         correct_outgoing =
                             [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                             ,newSolutionsEventsFromStatusUpdate status_update
+                            ,newSolutionsEventsFromStatusUpdate status_update ++ [ResultVisitorSupervisorCurrentStatus status_update]
                             ,[]
-                            ,newSolutionsEventsFromStatusUpdate status_update
+                            ,newSolutionsEventsFromStatusUpdate status_update ++ [ResultVisitorSupervisorCurrentStatus status_update]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
                 -- @+node:gcross.20120101164703.1867: *6* recruitment, full checkpoint, null, update
@@ -784,68 +777,10 @@ main = defaultMain
                             ,[]
                             ,[]
                             ,case maybe_worker_status_update of
-                                Nothing → [VisitorSupervisorOutgoingStatusUpdateEvent mempty]
+                                Nothing → [VisitorSupervisorOutgoingCheckpointCompleteEvent mempty]
                                 Just (VisitorWorkerStatusUpdate status_update _) →
-                                    VisitorSupervisorOutgoingStatusUpdateEvent status_update
+                                    VisitorSupervisorOutgoingCheckpointCompleteEvent status_update
                                    :newSolutionsEventsFromStatusUpdate status_update
-                            ]
-                    in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @-others
-                ]
-            -- @+node:gcross.20120101200431.1864: *5* basic shutdown events
-            ,testGroup "basic shutdown events"
-                -- @+others
-                -- @+node:gcross.20120101200431.1865: *6* shutdown with no workers
-                [testCase "shutdown with no workers" $
-                    let incoming :: [VisitorSupervisorIncomingEvent () ()]
-                        incoming =
-                            [VisitorSupervisorIncomingRequestShutdownEvent
-                            ,VisitorSupervisorIncomingAllRecruitmentEndedEvent
-                            ]
-                        correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
-                        correct_outgoing =
-                            [[VisitorSupervisorOutgoingTerminatedEvent (Right . Left $ mempty)
-                             ,VisitorSupervisorOutgoingShutdownWorkersEvent (Set.empty)
-                             ]
-                            ,[VisitorSupervisorOutgoingShutdownCompleteEvent]
-                            ]
-                    in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101200431.1867: *6* shutdown with one workers (recruitment ends before worker shutdown)
-                ,testCase "shutdown with one workers (recruitment ends before worker shutdown)" $
-                    let incoming :: [VisitorSupervisorIncomingEvent () ()]
-                        incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
-                            ,VisitorSupervisorIncomingRequestShutdownEvent
-                            ,VisitorSupervisorIncomingAllRecruitmentEndedEvent
-                            ,VisitorSupervisorIncomingWorkerShutdownEvent ()
-                            ]
-                        correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
-                        correct_outgoing =
-                            [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
-                            ,[VisitorSupervisorOutgoingTerminatedEvent (Right . Left $ mempty)
-                             ,VisitorSupervisorOutgoingShutdownWorkersEvent (Set.fromList [()])
-                             ]
-                            ,[]
-                            ,[VisitorSupervisorOutgoingShutdownCompleteEvent]
-                            ]
-                    in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101200431.1869: *6* shutdown with one workers (worker shutdown ends before worker recruitment)
-                ,testCase "shutdown with one workers (worker shutdown ends before worker recruitment)" $
-                    let incoming :: [VisitorSupervisorIncomingEvent () ()]
-                        incoming =
-                            [VisitorSupervisorIncomingWorkerRecruitedEvent ()
-                            ,VisitorSupervisorIncomingRequestShutdownEvent
-                            ,VisitorSupervisorIncomingWorkerShutdownEvent ()
-                            ,VisitorSupervisorIncomingAllRecruitmentEndedEvent
-                            ]
-                        correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
-                        correct_outgoing =
-                            [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
-                            ,[VisitorSupervisorOutgoingTerminatedEvent (Right . Left $ mempty)
-                             ,VisitorSupervisorOutgoingShutdownWorkersEvent (Set.fromList [()])
-                             ]
-                            ,[]
-                            ,[VisitorSupervisorOutgoingShutdownCompleteEvent]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
                 -- @-others
