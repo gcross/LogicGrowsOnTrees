@@ -751,6 +751,28 @@ main = defaultMain
                         ,newSolutionsEventsFromStatusUpdate status_update
                         ]
                 in correct_outgoing @=? interpretSupervisorUsingModel incoming
+            -- @+node:gcross.20120101164703.1867: *5* recruitment, full checkpoint, null, update
+            ,testProperty "recruitment, full checkpoint, null, update" $
+              \(maybe_worker_status_update :: Maybe (VisitorWorkerStatusUpdate Int)) → unsafePerformIO $
+                let incoming :: [VisitorSupervisorIncomingEvent () Int]
+                    incoming =
+                        [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ,VisitorSupervisorIncomingRequestFullCheckpointEvent
+                        ,VisitorSupervisorIncomingNullEvent
+                        ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () maybe_worker_status_update)
+                        ]
+                    correct_outgoing :: [[VisitorSupervisorOutgoingEvent () Int]]
+                    correct_outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
+                        ,[]
+                        ,[]
+                        ,case maybe_worker_status_update of
+                            Nothing → [VisitorSupervisorOutgoingStatusUpdateEvent mempty]
+                            Just (VisitorWorkerStatusUpdate status_update _) →
+                                VisitorSupervisorOutgoingStatusUpdateEvent status_update
+                               :newSolutionsEventsFromStatusUpdate status_update
+                        ]
+                in correct_outgoing @=? interpretSupervisorUsingModel incoming
             -- @-others
             ]
         -- @-others
