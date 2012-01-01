@@ -199,7 +199,7 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
 
     visitorSupervisorOutgoingShutdownWorkersEvent =
         (all_known_worker_ids <@ network_has_died)
-      ⊕ (Set.singleton <$> visitorSupervisorIncomingWorkerRecruitedEvent)
+      ⊕ (whenNetworkIsDead $ Set.singleton <$> visitorSupervisorIncomingWorkerRecruitedEvent)
 
     worker_ids_pending_shutdown :: Discrete ξ (Set worker_id)
     worker_ids_pending_shutdown = accumD Set.empty (Set.union <$> visitorSupervisorOutgoingShutdownWorkersEvent)
