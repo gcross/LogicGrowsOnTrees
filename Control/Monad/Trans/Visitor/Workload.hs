@@ -14,6 +14,7 @@ module Control.Monad.Trans.Visitor.Workload where
 -- @+node:gcross.20111029192420.1351: ** << Import needed modules >>
 import Control.Monad (join)
 import Data.Composition ((.*))
+import Data.Function (on)
 import Data.Maybe (catMaybes)
 import qualified Data.Sequence as Seq
 
@@ -30,6 +31,10 @@ data VisitorWorkload = VisitorWorkload
     {   visitorWorkloadPath :: VisitorPath
     ,   visitorWorkloadCheckpoint :: VisitorCheckpoint
     } deriving (Eq,Show)
+-- @+node:gcross.20120101231106.1863: ** Instances
+-- @+node:gcross.20120101231106.1864: *3* Ord VisitorWorkload
+instance Ord VisitorWorkload where
+    compare = compare `on` (Seq.length . visitorWorkloadPath)
 -- @+node:gcross.20111117140347.1386: ** Constants
 -- @+node:gcross.20111117140347.1385: *3* entire_workload
 entire_workload = VisitorWorkload Seq.empty Unexplored

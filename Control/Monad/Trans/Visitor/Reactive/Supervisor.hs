@@ -91,7 +91,7 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
         $
         (\current_status active_workers waiting_workers_or_available_workloads (WorkerIdTagged worker_id update) →
             if (not . Map.null . Map.delete worker_id) active_workers
-            || either (const False) (not . Seq.null) waiting_workers_or_available_workloads
+            || either (const False) (not . Set.null) waiting_workers_or_available_workloads
             then Nothing
             else Just (
                 case current_status ⊕ update of
@@ -224,10 +224,10 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
             waiting_workers_or_available_workloads
             _
           = Set.null workers_with_pending_workload_steals
-         && either (const True) Seq.null waiting_workers_or_available_workloads
+         && either (const True) Set.null waiting_workers_or_available_workloads
     -- @+node:gcross.20111227142510.1839: *4* Workload tracking and queueing
-    waiting_workers_or_available_workloads :: Discrete ξ (Either (Seq worker_id) (Seq VisitorWorkload))
-    waiting_workers_or_available_workloads = stepperD (Right (Seq.singleton entire_workload)) $
+    waiting_workers_or_available_workloads :: Discrete ξ (Either (Seq worker_id) (Set VisitorWorkload))
+    waiting_workers_or_available_workloads = stepperD (Right (Set.singleton entire_workload)) $
         (Left <$> (new_waiting_workers_event_1 ⊕ new_waiting_workers_event_2))
       ⊕ (Right <$> (new_available_workloads_event_1 ⊕ new_available_workloads_event_2))
 
@@ -237,8 +237,8 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
         (\waiting_workers_or_available_workloads worker_id →
             case waiting_workers_or_available_workloads of
                 Left waiting_workers → Left (waiting_workers |> worker_id)
-                Right (Seq.viewl → EmptyL) → Left (Seq.singleton worker_id)
-                Right (Seq.viewl → workload :< remaining_workloads) → Right (WorkerIdTagged worker_id workload,remaining_workloads)
+                Right (Set.minView → Nothing) → Left (Seq.singleton worker_id)
+                Right (Set.minView → Just (workload,remaining_workloads)) → Right (WorkerIdTagged worker_id workload,remaining_workloads)
         ) <$>  waiting_workers_or_available_workloads
           <@↔> workload_requested
 
@@ -247,9 +247,9 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
     (worker_deployed_and_queue_updated_2,new_available_workloads_event_2) =
         (\waiting_workers_or_available_workloads workload →
             case waiting_workers_or_available_workloads of
-                Left (Seq.viewl → EmptyL) → Right (Seq.singleton workload)
+                Left (Seq.viewl → EmptyL) → Right (Set.singleton workload)
                 Left (Seq.viewl → worker_id :< remaining_workers) → Left (WorkerIdTagged worker_id workload,remaining_workers)
-                Right available_workloads → Right (available_workloads |> workload)
+                Right available_workloads → Right (Set.insert workload available_workloads)
         ) <$>  waiting_workers_or_available_workloads
           <@↔> workload_arrived
 
