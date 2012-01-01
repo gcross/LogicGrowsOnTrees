@@ -114,6 +114,9 @@ instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbit
 -- @+node:gcross.20111116214909.1383: *3* VisitorPath
 instance Arbitrary VisitorPath where
     arbitrary = fmap Seq.fromList . listOf . oneof $ [fmap (CacheStep . encode) (arbitrary :: Gen Int),fmap ChoiceStep arbitrary]
+-- @+node:gcross.20120101164703.1853: *3* VisitorWorkload
+instance Arbitrary VisitorWorkload where
+    arbitrary = VisitorWorkload <$> arbitrary <*> arbitrary
 -- @+node:gcross.20111228031800.1824: ** Values
 -- @+node:gcross.20111228031800.1825: *3* empty_worker_incoming_events
 empty_worker_incoming_events =
@@ -663,6 +666,47 @@ main = defaultMain
                         [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
                          ]
                         ,[]
+                        ]
+                in correct_outgoing @=? interpretSupervisorUsingModel incoming
+            -- @+node:gcross.20120101164703.1850: *5* worker recruited, then goes missing, then is recruited again
+            ,testCase "worker recruited, then shuts down, then is recruited again" $
+                let incoming :: [VisitorSupervisorIncomingEvent () ()]
+                    incoming =
+                        [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ,VisitorSupervisorIncomingWorkerShutdownEvent ()
+                        ,VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ]
+                    correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
+                    correct_outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
+                         ]
+                        ,[]
+                        ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
+                         ]
+                        ]
+                in correct_outgoing @=? interpretSupervisorUsingModel incoming
+            -- @+node:gcross.20120101164703.1852: *5* recruitment, update (no new solutions), shutdown, recruitment
+            ,testProperty "recruitment, update (no new solutions), shutdown, recruitment" $
+              \(status_checkpoint :: VisitorCheckpoint)
+               (workload :: VisitorWorkload) → unsafePerformIO $
+                let incoming :: [VisitorSupervisorIncomingEvent () ()]
+                    incoming =
+                        [VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () $ Just (VisitorWorkerStatusUpdate
+                            (VisitorStatusUpdate status_checkpoint Seq.empty)
+                            workload
+                         ))
+                        ,VisitorSupervisorIncomingWorkerShutdownEvent ()
+                        ,VisitorSupervisorIncomingWorkerRecruitedEvent ()
+                        ]
+                    correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
+                    correct_outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
+                         ]
+                        ,[]
+                        ,[]
+                        ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () workload)
+                         ]
                         ]
                 in correct_outgoing @=? interpretSupervisorUsingModel incoming
             -- @-others
