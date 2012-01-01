@@ -645,12 +645,12 @@ main = defaultMain
                     incoming =
                         [VisitorSupervisorIncomingWorkerRecruitedEvent ()
                         ]
-                    outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
-                    outgoing =
-                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () (VisitorWorkload Seq.empty Unexplored))
+                    correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
+                    correct_outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
                          ]
                         ]
-                in outgoing @=? interpretSupervisorUsingModel incoming
+                in correct_outgoing @=? interpretSupervisorUsingModel incoming
             -- @+node:gcross.20120101151410.1851: *5* worker recruited, then goes missing
             ,testCase "worker recruited, then shuts down" $
                 let incoming :: [VisitorSupervisorIncomingEvent () ()]
@@ -658,13 +658,13 @@ main = defaultMain
                         [VisitorSupervisorIncomingWorkerRecruitedEvent ()
                         ,VisitorSupervisorIncomingWorkerShutdownEvent ()
                         ]
-                    outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
-                    outgoing =
-                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () (VisitorWorkload Seq.empty Unexplored))
+                    correct_outgoing :: [[VisitorSupervisorOutgoingEvent () ()]]
+                    correct_outgoing =
+                        [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)
                          ]
                         ,[]
                         ]
-                in outgoing @=? interpretSupervisorUsingModel incoming
+                in correct_outgoing @=? interpretSupervisorUsingModel incoming
             -- @-others
             ]
         -- @-others
