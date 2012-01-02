@@ -124,6 +124,9 @@ instance Arbitrary α ⇒ Arbitrary (VisitorStatusUpdate α) where
 -- @+node:gcross.20120101164703.1861: *3* VisitorWorkerStatusUpdate
 instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStatusUpdate α) where
     arbitrary = VisitorWorkerStatusUpdate <$> arbitrary <*> arbitrary
+-- @+node:gcross.20120101231106.1874: *3* VisitorWorkerStolenWorkload
+instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStolenWorkload α) where
+    arbitrary = VisitorWorkerStolenWorkload <$> arbitrary <*> arbitrary
 -- @+node:gcross.20120101164703.1853: *3* VisitorWorkload
 instance Arbitrary VisitorWorkload where
     arbitrary = VisitorWorkload <$> arbitrary <*> arbitrary
@@ -765,6 +768,66 @@ main = defaultMain
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
                 -- @-others
                 ]
+            -- @+node:gcross.20120101231106.1865: *5* basic stealing events
+            ,testGroup "basic stealing events"
+                -- @+others
+                -- @+node:gcross.20120101231106.1866: *6* two workers
+                [testCase "two workers" $
+                    let incoming :: [VisitorSupervisorIncomingEvent Bool Int]
+                        incoming =
+                            [VisitorSupervisorIncomingWorkerAddedEvent True
+                            ,VisitorSupervisorIncomingWorkerAddedEvent False
+                            ]
+                        correct_outgoing :: [[VisitorSupervisorOutgoingEvent Bool Int]]
+                        correct_outgoing =
+                            [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged True entire_workload)]
+                            ,[VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([True],WorkloadStealReactiveRequest)]
+                            ]
+                    in correct_outgoing @=? interpretSupervisorUsingModel incoming
+                -- @+node:gcross.20120101231106.1872: *6* two workers, workload returned
+                ,testProperty "two workers, workload returned" $
+                  \(stolen_workload@(VisitorWorkerStolenWorkload update workload) :: VisitorWorkerStolenWorkload Int) → unsafePerformIO $
+                    let incoming :: [VisitorSupervisorIncomingEvent Bool Int]
+                        incoming =
+                            [VisitorSupervisorIncomingWorkerAddedEvent True
+                            ,VisitorSupervisorIncomingWorkerAddedEvent False
+                            ,VisitorSupervisorIncomingWorkerWorkloadStolenEvent (WorkerIdTagged True (Just stolen_workload))
+                            ]
+                        correct_outgoing :: [[VisitorSupervisorOutgoingEvent Bool Int]]
+                        correct_outgoing =
+                            [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged True entire_workload)]
+                            ,[VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([True],WorkloadStealReactiveRequest)]
+                            ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged True workload)]
+                            ]
+                    in correct_outgoing @=? interpretSupervisorUsingModel incoming
+                -- @+node:gcross.20120101231106.1876: *6* two workers, no workload returned
+                ,testCase "two workers, no workload returned" $
+                    let incoming :: [VisitorSupervisorIncomingEvent Bool Int]
+                        incoming =
+                            [VisitorSupervisorIncomingWorkerAddedEvent True
+                            ,VisitorSupervisorIncomingWorkerAddedEvent False
+                            ,VisitorSupervisorIncomingWorkerWorkloadStolenEvent (WorkerIdTagged True Nothing)
+                            ]
+                        correct_outgoing :: [[VisitorSupervisorOutgoingEvent Bool Int]]
+                        correct_outgoing =
+                            [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged True entire_workload)]
+                            ,[VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([True],WorkloadStealReactiveRequest)]
+                            ,[VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([True],WorkloadStealReactiveRequest)]
+                            ]
+                    in correct_outgoing @=? interpretSupervisorUsingModel incoming
+                -- @+node:gcross.20120101231106.1868: *6* three workers
+                ,testCase "three workers" $
+                    let incoming :: [VisitorSupervisorIncomingEvent Ordering Int]
+                        incoming =
+                            [VisitorSupervisorIncomingWorkerAddedEvent LT
+                            ,VisitorSupervisorIncomingWorkerAddedEvent EQ
+                            ,VisitorSupervisorIncomingWorkerAddedEvent GT
+                            ]
+                        correct_outgoing :: [[VisitorSupervisorOutgoingEvent Ordering Int]]
+                        correct_outgoing =
+                            [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged LT entire_workload)]
+                            ,[VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([LT],WorkloadStealReactiveRequest)]
+                            ,[]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
                 -- @-others
