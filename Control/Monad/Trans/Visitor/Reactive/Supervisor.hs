@@ -23,6 +23,7 @@ import qualified Data.Foldable as Fold
 import Data.Functor
 import qualified Data.Map as Map
 import Data.Map (Map)
+import Data.Maybe (isJust)
 import Data.Monoid (Monoid(..))
 import Data.Monoid.Unicode
 import qualified Data.Set as Set
@@ -61,7 +62,7 @@ data WorkerIdTagged worker_id α = WorkerIdTagged
 data VisitorSupervisorIncomingEvents ξ worker_id α = VisitorSupervisorIncomingEvents
     {   visitorSupervisorIncomingWorkerAddedEvent :: Event ξ worker_id
     ,   visitorSupervisorIncomingWorkerRemovedEvent :: Event ξ worker_id
-    ,   visitorSupervisorIncomingWorkerStatusUpdateEvent :: Event ξ (WorkerIdTagged worker_id (Maybe (VisitorWorkerStatusUpdate α)))
+    ,   visitorSupervisorIncomingWorkerStatusUpdateEvent :: Event ξ (WorkerIdTagged worker_id (VisitorWorkerStatusUpdate α))
     ,   visitorSupervisorIncomingWorkerWorkloadStolenEvent :: Event ξ (WorkerIdTagged worker_id (Maybe (VisitorWorkerStolenWorkload α)))
     ,   visitorSupervisorIncomingWorkerFinishedEvent :: Event ξ (WorkerIdTagged worker_id (VisitorStatusUpdate α))
     ,   visitorSupervisorIncomingRequestFullCheckpointEvent :: Event ξ ()
@@ -113,32 +114,27 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
                   ⊕ (WorkloadStealReactiveRequest <$ steal_workloads_event)
                 )
     -- @+node:gcross.20111227142510.1838: *4* Status updates and checkpointing
-    worker_progress_status_updated_event :: Event ξ (WorkerIdTagged worker_id (Maybe (VisitorWorkerStatusUpdate α)))
+    worker_progress_status_updated_event :: Event ξ (WorkerIdTagged worker_id (VisitorWorkerStatusUpdate α))
     worker_progress_status_updated_event =
          visitorSupervisorIncomingWorkerStatusUpdateEvent
-      ⊕ (modifyTaggedDataWith (visitorWorkerStolenWorkerStatusUpdate <$>) <$> visitorSupervisorIncomingWorkerWorkloadStolenEvent)
+      ⊕ ((\(WorkerIdTagged worker_id maybe_stolen_workload) →
+            WorkerIdTagged worker_id <$> (visitorWorkerStolenWorkerStatusUpdate <$> maybe_stolen_workload)
+        ) <$?> visitorSupervisorIncomingWorkerWorkloadStolenEvent)
 
-    worker_status_updated_event :: Event ξ (WorkerIdTagged worker_id (Maybe (VisitorStatusUpdate α)))
+    worker_status_updated_event :: Event ξ (WorkerIdTagged worker_id (VisitorStatusUpdate α))
     worker_status_updated_event =
-        (modifyTaggedDataWith (visitorWorkerStatusUpdate <$>) <$> worker_progress_status_updated_event)
-      ⊕ (modifyTaggedDataWith Just <$> visitorSupervisorIncomingWorkerFinishedEvent)
+        (modifyTaggedDataWith visitorWorkerStatusUpdate <$> worker_progress_status_updated_event)
+      ⊕  visitorSupervisorIncomingWorkerFinishedEvent
 
     visitorSupervisorOutgoingNewSolutionsFoundEvent =
-        (\WorkerIdTagged{..} →
-            case workerIdTaggedData of
-                Just VisitorStatusUpdate{..}
-                  | (not . Seq.null) visitorStatusNewSolutions
-                  → Just visitorStatusNewSolutions
-                _ → Nothing
+        (\(WorkerIdTagged _ VisitorStatusUpdate{visitorStatusNewSolutions}) →
+            if (not . Seq.null) visitorStatusNewSolutions
+                then Just visitorStatusNewSolutions
+                else Nothing
         ) <$?> worker_status_updated_event
 
     current_status :: Discrete ξ (VisitorStatusUpdate α)
-    current_status =
-        accumD mempty
-        .
-        (maybe id (⊕) . workerIdTaggedData <$>)
-        $
-        worker_status_updated_event
+    current_status = accumD mempty $ (⊕) . workerIdTaggedData <$> worker_status_updated_event
 
     visitorSupervisorCurrentStatus = current_status
 
@@ -172,8 +168,8 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
         ,(\(WorkerIdTagged worker_id workload) →
             Map.insert worker_id workload
          ) <$> worker_deployed
-        ,(\(WorkerIdTagged worker_id maybe_update) →
-            maybe (Map.delete worker_id) (Map.insert worker_id . visitorWorkerRemainingWorkload) maybe_update
+        ,(\(WorkerIdTagged worker_id update) →
+            (Map.insert worker_id . visitorWorkerRemainingWorkload) update
          ) <$> worker_progress_status_updated_event
         ]
 

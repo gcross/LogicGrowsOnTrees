@@ -280,7 +280,7 @@ randomVisitorWithoutCache = sized arb
 data VisitorSupervisorIncomingEvent worker_id α =
     VisitorSupervisorIncomingWorkerAddedEvent worker_id
   | VisitorSupervisorIncomingWorkerRemovedEvent worker_id
-  | VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged worker_id (Maybe (VisitorWorkerStatusUpdate α)))
+  | VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged worker_id (VisitorWorkerStatusUpdate α))
   | VisitorSupervisorIncomingWorkerWorkloadStolenEvent (WorkerIdTagged worker_id (Maybe (VisitorWorkerStolenWorkload α)))
   | VisitorSupervisorIncomingWorkerFinishedEvent (WorkerIdTagged worker_id (VisitorStatusUpdate α))
   | VisitorSupervisorIncomingRequestFullCheckpointEvent
@@ -692,7 +692,7 @@ main = defaultMain
                     let incoming :: [VisitorSupervisorIncomingEvent () Int]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent ()
-                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
+                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () worker_status_update)
                             ,ReadVisitorSupervisorCurrentStatus
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () Int]]
@@ -709,10 +709,10 @@ main = defaultMain
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent ()
-                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () $ Just (VisitorWorkerStatusUpdate
+                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () $ VisitorWorkerStatusUpdate
                                 (VisitorStatusUpdate status_checkpoint Seq.empty)
                                 workload
-                             ))
+                             )
                             ,VisitorSupervisorIncomingWorkerRemovedEvent ()
                             ,VisitorSupervisorIncomingWorkerAddedEvent ()
                             ]
@@ -730,7 +730,7 @@ main = defaultMain
                     let incoming :: [VisitorSupervisorIncomingEvent () Int]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent ()
-                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () (Just worker_status_update))
+                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () worker_status_update)
                             ,ReadVisitorSupervisorCurrentStatus
                             ,VisitorSupervisorIncomingWorkerRemovedEvent ()
                             ,VisitorSupervisorIncomingRequestFullCheckpointEvent
@@ -746,24 +746,25 @@ main = defaultMain
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
                 -- @+node:gcross.20120101164703.1867: *6* recruitment, full checkpoint, null, update
                 ,testProperty "recruitment, full checkpoint, null, update" $
-                  \(maybe_worker_status_update :: Maybe (VisitorWorkerStatusUpdate Int)) → unsafePerformIO $
+                  \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate Int) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () Int]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent ()
                             ,VisitorSupervisorIncomingRequestFullCheckpointEvent
                             ,VisitorSupervisorIncomingNullEvent
-                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () maybe_worker_status_update)
+                            ,VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged () worker_status_update)
                             ]
                         correct_outgoing :: [[VisitorSupervisorOutgoingEvent () Int]]
                         correct_outgoing =
                             [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                             ,[]
                             ,[]
-                            ,case maybe_worker_status_update of
-                                Nothing → [VisitorSupervisorOutgoingCheckpointCompleteEvent mempty]
-                                Just (VisitorWorkerStatusUpdate status_update _) →
-                                    VisitorSupervisorOutgoingCheckpointCompleteEvent status_update
-                                   :newSolutionsEventsFromStatusUpdate status_update
+                            ,VisitorSupervisorOutgoingCheckpointCompleteEvent status_update
+                             :newSolutionsEventsFromStatusUpdate status_update
+                            ]
+                    in correct_outgoing @=? interpretSupervisorUsingModel incoming
+                -- @-others
+                ]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
                 -- @-others
