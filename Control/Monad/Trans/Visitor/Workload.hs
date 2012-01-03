@@ -16,6 +16,7 @@ import Control.Monad (join)
 import Data.Composition ((.*))
 import Data.Function (on)
 import Data.Maybe (catMaybes)
+import Data.Monoid (Monoid(..))
 import qualified Data.Sequence as Seq
 
 import Control.Monad.Trans.Visitor
@@ -41,7 +42,7 @@ entire_workload = VisitorWorkload Seq.empty Unexplored
 -- @+node:gcross.20111029192420.1352: ** Functions
 -- @+node:gcross.20111029192420.1356: *3* runVisitorTThroughWorkload
 runVisitorTThroughWorkload ::
-    (Functor m, Monad m) ⇒
+    (Functor m, Monad m, Monoid α) ⇒
     VisitorWorkload →
     VisitorT m α →
     VisitorTResultFetcher m α
@@ -53,37 +54,35 @@ runVisitorTThroughWorkload VisitorWorkload{..} =
     fmap (
         fetchVisitorTResult
         .
-        runVisitorTThroughCheckpointWithStartingLabel
-            (labelFromPath visitorWorkloadPath)
-            visitorWorkloadCheckpoint
+        runVisitorTThroughCheckpoint visitorWorkloadCheckpoint
     )
     .
     walkVisitorTDownPath visitorWorkloadPath
 -- @+node:gcross.20111117140347.1437: *3* runVisitorTThroughWorkloadAndGatherResults
 runVisitorTThroughWorkloadAndGatherResults ::
-    (Functor m, Monad m) ⇒
+    (Functor m, Monad m, Monoid α) ⇒
     VisitorWorkload →
     VisitorT m α →
-    m [VisitorSolution α]
+    m α
 runVisitorTThroughWorkloadAndGatherResults = gatherResults .* runVisitorTThroughWorkload
 -- @+node:gcross.20111029212714.1370: *3* runVisitorThroughWorkload
 runVisitorThroughWorkload ::
+    Monoid α ⇒
     VisitorWorkload →
     Visitor α →
-    [(Maybe (VisitorSolution α),VisitorCheckpoint)]
+    [(α,VisitorCheckpoint)]
 runVisitorThroughWorkload VisitorWorkload{..} =
-    runVisitorThroughCheckpointWithStartingLabel
-        (labelFromPath visitorWorkloadPath)
-        visitorWorkloadCheckpoint
+    runVisitorThroughCheckpoint visitorWorkloadCheckpoint
     .
     walkVisitorDownPath visitorWorkloadPath
 -- @+node:gcross.20111116214909.1373: *3* runVisitorThroughWorkloadAndGatherResults
 runVisitorThroughWorkloadAndGatherResults ::
+    Monoid α ⇒
     VisitorWorkload →
     Visitor α →
-    [VisitorSolution α]
+    α
 runVisitorThroughWorkloadAndGatherResults =
-    (catMaybes . map fst)
+    (mconcat . map fst)
     .*
     runVisitorThroughWorkload
 -- @-others

@@ -24,7 +24,6 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
 import Data.Composition
-import qualified Data.DList as DList
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Maybe (mapMaybe)
 import Data.Monoid (Monoid(..))
@@ -35,7 +34,6 @@ import Data.Serialize (Serialize(),decode,encode)
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
 -- @-<< Import needed modules >>
 
@@ -58,7 +56,7 @@ data VisitorCheckpointDifferential =
 -- @+node:gcross.20111223183218.1441: *3* VisitorStatusUpdate
 data VisitorStatusUpdate α = VisitorStatusUpdate
     {   visitorStatusCheckpoint :: VisitorCheckpoint
-    ,   visitorStatusNewSolutions :: Seq (VisitorSolution α)
+    ,   visitorStatusNewResults :: α
     } deriving (Eq,Show)
 -- @+node:gcross.20110923164140.1178: *3* VisitorTContext
 type VisitorTContext m α = Seq (VisitorTContextStep m α)
@@ -83,7 +81,7 @@ type VisitorTContextUpdate m α =
 type VisitorContextUpdate α = VisitorTContextUpdate Identity α
 -- @+node:gcross.20111019113757.1408: *3* VisitorTResultFetcher
 newtype VisitorTResultFetcher m α = VisitorTResultFetcher
-    {   fetchVisitorTResult :: m (Maybe (Maybe (VisitorSolution α), VisitorCheckpoint, VisitorTResultFetcher m α))
+    {   fetchVisitorTResult :: m (Maybe (α, VisitorCheckpoint, VisitorTResultFetcher m α))
     }
 
 type VisitorResultFetcher = VisitorTResultFetcher Identity
@@ -105,29 +103,10 @@ instance Monoid VisitorCheckpoint where
       | cx == cy = mergeCheckpointRoot (CacheCheckpoint cx (x ⊕ y))
     mappend x y = throw (InconsistentCheckpoints x y)
 -- @+node:gcross.20111228145321.1838: *3* Monoid VisitorStatusUpdate
-instance Monoid (VisitorStatusUpdate α) where
+instance Monoid α ⇒ Monoid (VisitorStatusUpdate α) where
     mempty = VisitorStatusUpdate mempty mempty
     VisitorStatusUpdate a1 b1 `mappend` VisitorStatusUpdate a2 b2 = VisitorStatusUpdate (a1 `mappend` a2) (b1 `mappend` b2)
 -- @+node:gcross.20110923164140.1179: ** Functions
--- @+node:gcross.20111020151748.1288: *3* applyCheckpointCursorToLabel
-applyCheckpointCursorToLabel :: VisitorCheckpointCursor → VisitorLabel → VisitorLabel
-applyCheckpointCursorToLabel (viewl → EmptyL) = id
-applyCheckpointCursorToLabel (viewl → step :< rest) =
-    applyCheckpointCursorToLabel rest
-    .
-    case step of
-        CacheCheckpointD _ → id
-        ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
--- @+node:gcross.20111019113757.1400: *3* applyContextToLabel
-applyContextToLabel :: VisitorTContext m α → VisitorLabel → VisitorLabel
-applyContextToLabel (viewl → EmptyL) = id
-applyContextToLabel (viewl → step :< rest) =
-    applyContextToLabel rest
-    .
-    case step of
-        BranchContextStep branch_active → labelTransformerForBranch branch_active
-        CacheContextStep _ → id
-        LeftChoiceContextStep _ _ → leftChildLabel
 -- @+node:gcross.20110923164140.1182: *3* checkpointFromContext
 checkpointFromContext :: VisitorTContext m α → VisitorCheckpoint → VisitorCheckpoint
 checkpointFromContext = checkpointFromSequence $
@@ -175,20 +154,17 @@ checkpointFromUnexploredPath (viewl → step :< rest_path) =
     checkpointFromUnexploredPath rest_path
 -- @+node:gcross.20111117140347.1438: *3* gatherResults
 gatherResults ::
-    (Functor m, Monad m) ⇒
+    (Functor m, Monad m, Monoid α) ⇒
     VisitorTResultFetcher m α →
-    m [VisitorSolution α]
-gatherResults = go DList.empty
+    m α
+gatherResults = go mempty
   where
-    go solutions =
+    go result =
         fetchVisitorTResult
         >=>
         maybe
-            (return $ DList.toList solutions)
-            (\(maybe_solution,_,fetcher) → go (maybe id (flip DList.snoc) maybe_solution $ solutions) fetcher)
--- @+node:gcross.20111019113757.1412: *3* labelFromContext
-labelFromContext :: VisitorTContext m α → VisitorLabel
-labelFromContext = flip applyContextToLabel rootLabel
+            (return result)
+            (\(result,_,fetcher) → go result fetcher)
 -- @+node:gcross.20111117140347.1388: *3* mergeAllCheckpointNodes
 mergeAllCheckpointNodes :: VisitorCheckpoint → VisitorCheckpoint
 mergeAllCheckpointNodes (ChoiceCheckpoint left right) = mergeCheckpointRoot (ChoiceCheckpoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
@@ -237,94 +213,72 @@ pathStepFromContextStep (LeftChoiceContextStep _ _) = ChoiceStep LeftBranch
 pathStepFromCursorDifferential :: VisitorCheckpointDifferential → VisitorStep
 pathStepFromCursorDifferential (CacheCheckpointD cache) = CacheStep cache
 pathStepFromCursorDifferential (ChoiceCheckpointD active_branch _) = ChoiceStep active_branch
--- @+node:gcross.20110923164140.1246: *3* runVisitorThroughCheckpoint
+-- @+node:gcross.20111029212714.1368: *3* runVisitorThroughCheckpoint
 runVisitorThroughCheckpoint ::
+    Monoid α ⇒
     VisitorCheckpoint →
     Visitor α →
-    [(Maybe (VisitorSolution α),VisitorCheckpoint)]
-runVisitorThroughCheckpoint = runVisitorThroughCheckpointWithStartingLabel rootLabel
--- @+node:gcross.20111117140347.1423: *3* runVisitorThroughCheckpointAndGatherResults
-runVisitorThroughCheckpointAndGatherResults ::
-    VisitorCheckpoint →
-    Visitor α →
-    [VisitorSolution α]
-runVisitorThroughCheckpointAndGatherResults = mapMaybe fst .* runVisitorThroughCheckpoint
--- @+node:gcross.20111029212714.1368: *3* runVisitorThroughCheckpointWithStartingLabel
-runVisitorThroughCheckpointWithStartingLabel ::
-    VisitorLabel →
-    VisitorCheckpoint →
-    Visitor α →
-    [(Maybe (VisitorSolution α),VisitorCheckpoint)]
-runVisitorThroughCheckpointWithStartingLabel = go .** runVisitorTThroughCheckpointWithStartingLabel
+    [(α,VisitorCheckpoint)]
+runVisitorThroughCheckpoint = go True .* runVisitorTThroughCheckpoint
   where
-    go (runIdentity . fetchVisitorTResult → Nothing) = []
-    go (runIdentity . fetchVisitorTResult → Just (maybe_solution,checkpoint,next_result)) =
-      (maybe_solution,checkpoint)
+    go True (runIdentity . fetchVisitorTResult → Nothing) = [(mempty,Explored)]
+    go False (runIdentity . fetchVisitorTResult → Nothing) = []
+    go _ (runIdentity . fetchVisitorTResult → Just (next_accum,checkpoint,next_result)) =
+      (next_accum,checkpoint)
       :
-      go next_result
--- @+node:gcross.20111117140347.1425: *3* runVisitorThroughCheckpointWithStartingLabelAndGatherResults
-runVisitorThroughCheckpointWithStartingLabelAndGatherResults ::
-    VisitorLabel →
+      go False next_result
+-- @+node:gcross.20120102210156.1898: *3* runVisitorThroughCheckpointAndGatherResults
+runVisitorThroughCheckpointAndGatherResults ::
+    Monoid α ⇒
     VisitorCheckpoint →
     Visitor α →
-    [VisitorSolution α]
-runVisitorThroughCheckpointWithStartingLabelAndGatherResults = mapMaybe fst .** runVisitorThroughCheckpointWithStartingLabel
--- @+node:gcross.20110923164140.1244: *3* runVisitorTThroughCheckpoint
+    α
+runVisitorThroughCheckpointAndGatherResults = (fst . last) .* runVisitorThroughCheckpoint
+-- @+node:gcross.20111029212714.1366: *3* runVisitorTThroughCheckpoint
 runVisitorTThroughCheckpoint ::
-    (Functor m, Monad m) ⇒
+    (Functor m, Monad m, Monoid α) ⇒
     VisitorCheckpoint →
     VisitorT m α →
     VisitorTResultFetcher m α
-runVisitorTThroughCheckpoint = runVisitorTThroughCheckpointWithStartingLabel rootLabel
--- @+node:gcross.20111029212714.1366: *3* runVisitorTThroughCheckpointWithStartingLabel
-runVisitorTThroughCheckpointWithStartingLabel ::
-    (Functor m, Monad m) ⇒
-    VisitorLabel →
-    VisitorCheckpoint →
-    VisitorT m α →
-    VisitorTResultFetcher m α
-runVisitorTThroughCheckpointWithStartingLabel initial_label = go Seq.empty
+runVisitorTThroughCheckpoint = go mempty Seq.empty
   where
-    go context =
+    go accum context =
         (VisitorTResultFetcher
          .
          fmap (\x → case x of
-            (Nothing,Nothing) → Nothing
-            (Just solution,Nothing) → Just
-                (Just (labelSolution solution)
+            (maybe_solution,Nothing) → Just
+                (maybe id (flip mappend) maybe_solution accum
                 ,Explored
                 ,VisitorTResultFetcher (return Nothing)
                 )
-            (maybe_solution,Just (new_context, new_unexplored_checkpoint, new_visitor)) → Just
-                (fmap labelSolution maybe_solution
+            (maybe_solution,Just (new_context, new_unexplored_checkpoint, new_visitor)) → Just $
+              let new_accum = maybe id (flip mappend) maybe_solution accum in
+                (new_accum
                 ,checkpointFromContext new_context new_unexplored_checkpoint
-                ,go new_context new_unexplored_checkpoint new_visitor
+                ,go new_accum new_context new_unexplored_checkpoint new_visitor
                 )
          )
         )
         .*
         stepVisitorTThroughCheckpoint context
-      where
-        labelSolution = VisitorSolution ((initial_label ⊕) . labelFromContext $ context)
--- @+node:gcross.20111117140347.1429: *3* runVisitorTThroughCheckpointWithStartingLabelAndGatherResults
-runVisitorTThroughCheckpointWithStartingLabelAndGatherResults ::
-    (Functor m, Monad m) ⇒
-    VisitorLabel →
+-- @+node:gcross.20120102210156.1896: *3* runVisitorTThroughCheckpointAndGatherResults
+runVisitorTThroughCheckpointAndGatherResults ::
+    (Functor m, Monad m, Monoid α) ⇒
     VisitorCheckpoint →
     VisitorT m α →
-    m [VisitorSolution α]
-runVisitorTThroughCheckpointWithStartingLabelAndGatherResults =
-    gatherResults .** runVisitorTThroughCheckpointWithStartingLabel
+    m α
+runVisitorTThroughCheckpointAndGatherResults = gatherResults .* runVisitorTThroughCheckpoint
 -- @+node:gcross.20111028170027.1294: *3* runVisitorTWithCheckpoints
 runVisitorTTWithCheckpoints ::
-    (Functor m, Monad m) ⇒
+    (Functor m, Monad m, Monoid α) ⇒
     VisitorT m α →
     VisitorTResultFetcher m α
 runVisitorTTWithCheckpoints = runVisitorTThroughCheckpoint Unexplored
 -- @+node:gcross.20111028170027.1292: *3* runVisitorWithCheckpoints
 runVisitorWithCheckpoints ::
+    Monoid α ⇒
     Visitor α →
-    [(Maybe (VisitorSolution α),VisitorCheckpoint)]
+    [(α,VisitorCheckpoint)]
 runVisitorWithCheckpoints = runVisitorThroughCheckpoint Unexplored
 -- @+node:gcross.20110923164140.1242: *3* stepVisitorThroughCheckpoint
 stepVisitorThroughCheckpoint ::

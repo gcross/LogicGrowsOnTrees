@@ -4,15 +4,15 @@
 
 -- @+<< Language extensions >>
 -- @+node:gcross.20111029192420.1333: ** << Language extensions >>
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE ViewPatterns #-}
 -- @-<< Language extensions >>
 
 module Control.Monad.Trans.Visitor.Label where
 
 -- @+<< Import needed modules >>
 -- @+node:gcross.20111029192420.1334: ** << Import needed modules >>
-import Control.Exception (Exception(),throw)
+import Control.Exception (throw)
 import Control.Monad ((>=>),liftM2)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
@@ -24,19 +24,16 @@ import Data.Foldable as Fold
 import Data.Foldable (Foldable)
 import Data.Function (on)
 import Data.Functor.Identity (runIdentity)
+import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import Data.SequentialIndex (SequentialIndex,root,leftChild,rightChild)
-import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor
+import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Path
 -- @-<< Import needed modules >>
 
 -- @+others
 -- @+node:gcross.20111029192420.1335: ** Types
--- @+node:gcross.20111019113757.1405: *3* Branch
-data Branch =
-    LeftBranch
-  | RightBranch
-  deriving (Eq,Ord,Read,Show)
 -- @+node:gcross.20111019113757.1409: *3* VisitorLabel
 newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq)
 -- @+node:gcross.20111019113757.1250: *3* VisitorSolution
@@ -44,13 +41,6 @@ data VisitorSolution α = VisitorSolution
     {   visitorSolutionLabel :: VisitorLabel
     ,   visitorSolutionResult :: α
     } deriving (Eq,Ord,Show)
--- @+node:gcross.20110923120247.1209: *3* VisitorWalkError
-data VisitorWalkError =
-    VisitorTerminatedBeforeEndOfWalk
-  | PastVisitorIsInconsistentWithPresentVisitor
-  deriving (Eq,Show,Typeable)
-
-instance Exception VisitorWalkError
 -- @+node:gcross.20111028153100.1295: ** Instances
 -- @+node:gcross.20111029192420.1361: *3* Monoid VisitorLabel
 instance Monoid VisitorLabel where
@@ -74,6 +64,34 @@ instance Ord VisitorLabel where
 instance Show VisitorLabel where
     show = fmap (\branch → case branch of {LeftBranch → 'L'; RightBranch → 'R'}) . branchingFromLabel
 -- @+node:gcross.20111029192420.1336: ** Functions
+-- @+node:gcross.20111020151748.1288: *3* applyCheckpointCursorToLabel
+applyCheckpointCursorToLabel :: VisitorCheckpointCursor → VisitorLabel → VisitorLabel
+applyCheckpointCursorToLabel (viewl → EmptyL) = id
+applyCheckpointCursorToLabel (viewl → step :< rest) =
+    applyCheckpointCursorToLabel rest
+    .
+    case step of
+        CacheCheckpointD _ → id
+        ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
+-- @+node:gcross.20111019113757.1400: *3* applyContextToLabel
+applyContextToLabel :: VisitorTContext m α → VisitorLabel → VisitorLabel
+applyContextToLabel (viewl → EmptyL) = id
+applyContextToLabel (viewl → step :< rest) =
+    applyContextToLabel rest
+    .
+    case step of
+        BranchContextStep branch_active → labelTransformerForBranch branch_active
+        CacheContextStep _ → id
+        LeftChoiceContextStep _ _ → leftChildLabel
+-- @+node:gcross.20111020151748.1291: *3* applyPathToLabel
+applyPathToLabel :: VisitorPath → VisitorLabel → VisitorLabel
+applyPathToLabel (viewl → EmptyL) = id
+applyPathToLabel (viewl → step :< rest) =
+    applyPathToLabel rest
+    .
+    case step of
+        ChoiceStep active_branch → labelTransformerForBranch active_branch
+        CacheStep _ → id
 -- @+node:gcross.20111029212714.1353: *3* branchingFromLabel
 branchingFromLabel :: VisitorLabel → [Branch]
 branchingFromLabel = go root . unwrapVisitorLabel
@@ -85,6 +103,12 @@ branchingFromLabel = go root . unwrapVisitorLabel
 -- @+node:gcross.20111028153100.1294: *3* labelFromBranching
 labelFromBranching :: Foldable t ⇒ t Branch → VisitorLabel
 labelFromBranching = Fold.foldl' (flip labelTransformerForBranch) rootLabel
+-- @+node:gcross.20111019113757.1412: *3* labelFromContext
+labelFromContext :: VisitorTContext m α → VisitorLabel
+labelFromContext = flip applyContextToLabel rootLabel
+-- @+node:gcross.20111020151748.1292: *3* labelFromPath
+labelFromPath :: VisitorPath → VisitorLabel
+labelFromPath = flip applyPathToLabel rootLabel
 -- @+node:gcross.20111019113757.1407: *3* labelTransformerForBranch
 labelTransformerForBranch :: Branch → (VisitorLabel → VisitorLabel)
 labelTransformerForBranch LeftBranch = leftChildLabel
@@ -92,10 +116,6 @@ labelTransformerForBranch RightBranch = rightChildLabel
 -- @+node:gcross.20111019113757.1414: *3* leftChildLabel
 leftChildLabel :: VisitorLabel → VisitorLabel
 leftChildLabel = VisitorLabel . fromJust . leftChild . unwrapVisitorLabel
--- @+node:gcross.20111019113757.1403: *3* oppositeBranchOf
-oppositeBranchOf :: Branch → Branch
-oppositeBranchOf LeftBranch = RightBranch
-oppositeBranchOf RightBranch = LeftBranch
 -- @+node:gcross.20111019113757.1416: *3* rightChildLabel
 rightChildLabel :: VisitorLabel → VisitorLabel
 rightChildLabel = VisitorLabel . fromJust . rightChild . unwrapVisitorLabel

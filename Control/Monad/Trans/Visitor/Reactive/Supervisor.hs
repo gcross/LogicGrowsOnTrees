@@ -70,23 +70,23 @@ data VisitorSupervisorIncomingEvents ξ worker_id α = VisitorSupervisorIncoming
 -- @+node:gcross.20111219132352.1423: *3* VisitorSupervisorOutgoingEvents
 data VisitorSupervisorOutgoingEvents ξ worker_id α = VisitorSupervisorOutgoingEvents
     {   visitorSupervisorOutgoingWorkloadEvent :: Event ξ (WorkerIdTagged worker_id VisitorWorkload)
-    ,   visitorSupervisorOutgoingFinishedEvent :: Event ξ (Seq (VisitorSolution α))
+    ,   visitorSupervisorOutgoingFinishedEvent :: Event ξ VisitorCheckpoint
     ,   visitorSupervisorOutgoingBroadcastWorkerRequestEvent :: Event ξ ([worker_id],VisitorWorkerReactiveRequest)
     ,   visitorSupervisorOutgoingCheckpointCompleteEvent :: Event ξ (VisitorStatusUpdate α)
-    ,   visitorSupervisorOutgoingNewSolutionsFoundEvent :: Event ξ (Seq (VisitorSolution α))
+    ,   visitorSupervisorOutgoingNewResultsFoundEvent :: Event ξ α
     ,   visitorSupervisorCurrentStatus :: Discrete ξ (VisitorStatusUpdate α)
     }
 -- @+node:gcross.20111219132352.1424: ** Functions
 -- @+node:gcross.20111219132352.1425: *3* createVisitorSupervisorReactiveNetwork
 createVisitorSupervisorReactiveNetwork ::
-    ∀ α ξ worker_id. (FRP ξ, Ord worker_id, Show worker_id) ⇒
+    ∀ α ξ worker_id. (FRP ξ, Ord worker_id, Show worker_id, Monoid α, Eq α) ⇒
     VisitorSupervisorIncomingEvents ξ worker_id α →
     VisitorSupervisorOutgoingEvents ξ worker_id α
 createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = VisitorSupervisorOutgoingEvents{..}
   where
     -- @+others
     -- @+node:gcross.20111227142510.1840: *4* Network termination
-    network_has_finished :: Event ξ (Seq (VisitorSolution α))
+    network_has_finished :: Event ξ VisitorCheckpoint
     network_has_finished =
         filterJust
         $
@@ -94,11 +94,7 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
             if (not . Map.null . Map.delete worker_id) active_workers
             || either (const False) (not . Set.null) waiting_workers_or_available_workloads
             then Nothing
-            else Just (
-                case current_status ⊕ update of
-                    VisitorStatusUpdate Explored all_solutions → all_solutions
-                    VisitorStatusUpdate remaining_checkpoint _ → throw (IncompleteVisitError remaining_checkpoint)
-            )
+            else Just (visitorStatusCheckpoint (current_status ⊕ update))
         ) <$> current_status
           <*> active_workers
           <*> waiting_workers_or_available_workloads
@@ -126,11 +122,11 @@ createVisitorSupervisorReactiveNetwork VisitorSupervisorIncomingEvents{..} = Vis
         (modifyTaggedDataWith visitorWorkerStatusUpdate <$> worker_progress_status_updated_event)
       ⊕  visitorSupervisorIncomingWorkerFinishedEvent
 
-    visitorSupervisorOutgoingNewSolutionsFoundEvent =
-        (\(WorkerIdTagged _ VisitorStatusUpdate{visitorStatusNewSolutions}) →
-            if (not . Seq.null) visitorStatusNewSolutions
-                then Just visitorStatusNewSolutions
-                else Nothing
+    visitorSupervisorOutgoingNewResultsFoundEvent =
+        (\(WorkerIdTagged _ VisitorStatusUpdate{visitorStatusNewResults}) →
+            if visitorStatusNewResults == mempty
+                then Nothing
+                else Just visitorStatusNewResults
         ) <$?> worker_status_updated_event
 
     current_status :: Discrete ξ (VisitorStatusUpdate α)

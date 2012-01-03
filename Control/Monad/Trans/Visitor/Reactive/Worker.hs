@@ -67,13 +67,14 @@ data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
 -- @+node:gcross.20111026172030.1281: ** Functions
 -- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerReactiveNetwork
 createVisitorIOWorkerReactiveNetwork ::
+    Monoid α ⇒
     VisitorWorkerIncomingEvents →
     VisitorIO α →
     NetworkDescription (VisitorWorkerOutgoingEvents α)
 createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
 -- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerReactiveNetwork
 createVisitorTWorkerReactiveNetwork ::
-    (Functor m, MonadIO m) ⇒
+    (Functor m, MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
     VisitorWorkerIncomingEvents →
     VisitorT m α →
@@ -83,6 +84,7 @@ createVisitorTWorkerReactiveNetwork run =
         (preforkVisitorTWorkerThread run)
 -- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerReactiveNetwork
 createVisitorWorkerReactiveNetwork ::
+    Monoid α ⇒
     VisitorWorkerIncomingEvents →
     Visitor α →
     NetworkDescription (VisitorWorkerOutgoingEvents α)
@@ -91,6 +93,7 @@ createVisitorWorkerReactiveNetwork =
         preforkVisitorWorkerThread
 -- @+node:gcross.20111026172030.1277: *3* genericCreateVisitorTWorkerReactiveNetwork
 genericCreateVisitorTWorkerReactiveNetwork ::
+    Monoid α ⇒
     (
         (VisitorWorkerTerminationReason α → IO ()) →
         VisitorT m α →

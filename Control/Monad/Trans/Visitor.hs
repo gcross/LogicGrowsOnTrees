@@ -102,7 +102,7 @@ cache = VisitorT . singleton . Cache . return
 runAndCache :: Serialize x ⇒ m x → VisitorT m x
 runAndCache = VisitorT . singleton . Cache
 -- @+node:gcross.20110722110408.1170: *3* runVisitor
-runVisitor :: Visitor α → [α]
+runVisitor :: Monoid α ⇒ Visitor α → α
 runVisitor = runIdentity . runVisitorTAndGatherResults
 -- @+node:gcross.20110722110408.1182: *3* runVisitorT
 runVisitorT :: Monad m ⇒ VisitorT m α → m ()
@@ -115,15 +115,15 @@ runVisitorT = viewT . unwrapVisitorT >=> \view →
             runVisitorT $ right >>= VisitorT . k
         (Null :>>= _) → return ()
 -- @+node:gcross.20110722110408.1167: *3* runVisitorTAndGatherResults
-runVisitorTAndGatherResults :: Monad m ⇒ VisitorT m α → m [α]
+runVisitorTAndGatherResults :: (Monad m, Monoid α) ⇒ VisitorT m α → m α
 runVisitorTAndGatherResults = viewT . unwrapVisitorT >=> \view →
     case view of
-        Return x → return [x]
+        Return x → return x
         (Cache mx :>>= k) → mx >>= runVisitorTAndGatherResults . VisitorT . k
         (Choice left right :>>= k) →
-            liftM2 (++)
+            liftM2 mappend
                 (runVisitorTAndGatherResults $ left >>= VisitorT . k)
                 (runVisitorTAndGatherResults $ right >>= VisitorT . k)
-        (Null :>>= _) → return []
+        (Null :>>= _) → return mempty
 -- @-others
 -- @-leo
