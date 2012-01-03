@@ -17,7 +17,6 @@
 <v t="gcross.20111223170956.1430"><vh>@file Reactive/Supervisor.hs</vh></v>
 <v t="gcross.20111026172030.1274"><vh>@file Reactive/Worker.hs</vh></v>
 <v t="gcross.20110923164140.1252"><vh>@file Worker.hs</vh></v>
-<v t="gcross.20110923164140.1278"><vh>@file WorkerQueue.hs</vh></v>
 <v t="gcross.20111029192420.1349"><vh>@file Workload.hs</vh></v>
 </v>
 </v>

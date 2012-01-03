@@ -27,7 +27,6 @@ Library
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,
         operational == 0.2.*,
-        PSQueue == 1.1.*,
         reactive-banana >= 0.4.3 && < 0.5,
         sequential-index == 0.2.*,
         transformers == 0.2.*,
@@ -41,6 +40,5 @@ Library
         Control.Monad.Trans.Visitor.Reactive.Supervisor
         Control.Monad.Trans.Visitor.Reactive.Worker
         Control.Monad.Trans.Visitor.Worker
-        Control.Monad.Trans.Visitor.WorkerQueue
     Extensions:
 -- @-leo
