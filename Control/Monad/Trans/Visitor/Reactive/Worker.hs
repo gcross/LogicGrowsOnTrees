@@ -1,9 +1,4 @@
--- @+leo-ver=5-thin
--- @+node:gcross.20111026172030.1274: * @file Reactive/Worker.hs
--- @@language haskell
-
--- @+<< Language extensions >>
--- @+node:gcross.20111026172030.1275: ** << Language extensions >>
+-- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
@@ -11,12 +6,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- @-<< Language extensions >>
+-- }}}
 
 module Control.Monad.Trans.Visitor.Reactive.Worker where
 
--- @+<< Import needed modules >>
--- @+node:gcross.20111026172030.1276: ** << Import needed modules >>
+-- Imports {{{
 import Control.Arrow (second)
 import Control.Exception (Exception(..),SomeException)
 import Control.Concurrent (killThread)
@@ -37,43 +31,52 @@ import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Reactive
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
--- @-<< Import needed modules >>
+-- }}}
 
--- @+others
--- @+node:gcross.20111026220221.1284: ** Exceptions
--- @+node:gcross.20111026220221.1285: *3* RedundantWorkloadReceived
+-- Exceptions {{{
+
 data RedundantWorkloadReceived = RedundantWorkloadReceived deriving (Eq,Show,Typeable)
 
 instance Exception RedundantWorkloadReceived
--- @+node:gcross.20111026172030.1280: ** Types
--- @+node:gcross.20111026213013.1280: *3* VisitorWorkerReactiveRequest
-data VisitorWorkerReactiveRequest =
+
+-- }}}
+
+-- Types {{{
+
+data VisitorWorkerReactiveRequest = -- {{{
     StatusUpdateReactiveRequest
   | WorkloadStealReactiveRequest
   deriving (Eq,Show)
--- @+node:gcross.20111219115425.1411: *3* VisitorWorkerIncomingEvents
-data VisitorWorkerIncomingEvents = VisitorWorkerIncomingEvents
+-- }}}
+
+data VisitorWorkerIncomingEvents = VisitorWorkerIncomingEvents -- {{{
     {   visitorWorkerIncomingRequestEvent :: Event VisitorWorkerReactiveRequest
     ,   visitorWorkerIncomingShutdownEvent :: Event ()
     ,   visitorWorkerIncomingWorkloadReceivedEvent :: Event VisitorWorkload
     }
--- @+node:gcross.20111219115425.1412: *3* VisitorWorkerOutgoingEvents
-data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents
+-- }}}
+
+data VisitorWorkerOutgoingEvents α = VisitorWorkerOutgoingEvents -- {{{
     {   visitorWorkerOutgoingMaybeStatusUpdatedEvent :: Event (Maybe (VisitorWorkerStatusUpdate α))
     ,   visitorWorkerOutgoingMaybeWorkloadSubmittedEvent :: Event (Maybe (VisitorWorkerStolenWorkload α))
     ,   visitorWorkerOutgoingFinishedEvent :: Event (VisitorStatusUpdate α)
     ,   visitorWorkerOutgoingFailureEvent :: Event SomeException
     }
--- @+node:gcross.20111026172030.1281: ** Functions
--- @+node:gcross.20111117140347.1433: *3* createVisitorIOWorkerReactiveNetwork
-createVisitorIOWorkerReactiveNetwork ::
+-- }}}
+
+-- }}}
+
+-- Functions {{{
+
+createVisitorIOWorkerReactiveNetwork :: -- {{{
     Monoid α ⇒
     VisitorWorkerIncomingEvents →
     VisitorIO α →
     NetworkDescription (VisitorWorkerOutgoingEvents α)
 createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
--- @+node:gcross.20111026220221.1457: *3* createVisitorTWorkerReactiveNetwork
-createVisitorTWorkerReactiveNetwork ::
+-- }}}
+
+createVisitorTWorkerReactiveNetwork :: -- {{{
     (Functor m, MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
     VisitorWorkerIncomingEvents →
@@ -82,8 +85,9 @@ createVisitorTWorkerReactiveNetwork ::
 createVisitorTWorkerReactiveNetwork run =
     genericCreateVisitorTWorkerReactiveNetwork
         (preforkVisitorTWorkerThread run)
--- @+node:gcross.20111026220221.1459: *3* createVisitorWorkerReactiveNetwork
-createVisitorWorkerReactiveNetwork ::
+-- }}}
+
+createVisitorWorkerReactiveNetwork :: -- {{{
     Monoid α ⇒
     VisitorWorkerIncomingEvents →
     Visitor α →
@@ -91,8 +95,9 @@ createVisitorWorkerReactiveNetwork ::
 createVisitorWorkerReactiveNetwork =
     genericCreateVisitorTWorkerReactiveNetwork
         preforkVisitorWorkerThread
--- @+node:gcross.20111026172030.1277: *3* genericCreateVisitorTWorkerReactiveNetwork
-genericCreateVisitorTWorkerReactiveNetwork ::
+-- }}}
+
+genericCreateVisitorTWorkerReactiveNetwork :: -- {{{
     Monoid α ⇒
     (
         (VisitorWorkerTerminationReason α → IO ()) →
@@ -210,5 +215,6 @@ genericCreateVisitorTWorkerReactiveNetwork
         visitorWorkerIncomingShutdownEvent
 
     return VisitorWorkerOutgoingEvents{..}
--- @-others
--- @-leo
+-- }}}
+
+-- }}}

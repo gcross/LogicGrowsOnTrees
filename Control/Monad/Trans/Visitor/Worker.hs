@@ -1,9 +1,4 @@
--- @+leo-ver=5-thin
--- @+node:gcross.20110923164140.1252: * @file Worker.hs
--- @@language haskell
-
--- @+<< Language extensions >>
--- @+node:gcross.20110923164140.1253: ** << Language extensions >>
+-- Language extensions {{{
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
@@ -12,12 +7,11 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
--- @-<< Language extensions >>
+-- }}}
 
 module Control.Monad.Trans.Visitor.Worker where
 
--- @+<< Import needed modules >>
--- @+node:gcross.20110923164140.1254: ** << Import needed modules >>
+-- Imports {{{
 import Prelude hiding (catch)
 
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
@@ -42,41 +36,48 @@ import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
--- @-<< Import needed modules >>
+-- }}}
 
--- @+others
--- @+node:gcross.20110923164140.1255: ** Types
--- @+node:gcross.20110923164140.1257: *3* VisitorWorkerEnvironment
-data VisitorWorkerEnvironment α = VisitorWorkerEnvironment
+-- Types {{{
+
+data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
     {   workerInitialPath :: VisitorPath
     ,   workerThreadId :: ThreadId
     ,   workerPendingRequests :: IORef (VisitorWorkerRequestQueue α)
     }
--- @+node:gcross.20111004110500.1246: *3* VisitorWorkerRequest
-data VisitorWorkerRequest α =
+-- }}}
+
+data VisitorWorkerRequest α = -- {{{
     StatusUpdateRequested (Maybe (VisitorWorkerStatusUpdate α) → IO ())
   | WorkloadStealRequested (Maybe (VisitorWorkerStolenWorkload α) → IO ())
--- @+node:gcross.20111026172030.1278: *3* VisitorWorkerRequestQueue
+-- }}}
+
 type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
--- @+node:gcross.20111020182554.1275: *3* VisitorWorkerStatusUpdate
-data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate
+
+data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate -- {{{
     {   visitorWorkerStatusUpdate :: VisitorStatusUpdate α
     ,   visitorWorkerRemainingWorkload :: VisitorWorkload
     } deriving (Eq,Show)
--- @+node:gcross.20111226153030.1435: *3* VisitorWorkerStolenWorkload
-data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload
+-- }}}
+
+data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload -- {{{
     {   visitorWorkerStolenWorkerStatusUpdate :: VisitorWorkerStatusUpdate α
     ,   visitorWorkerStolenWorkload :: VisitorWorkload
     } deriving (Eq,Show)
--- @+node:gcross.20111020182554.1276: *3* VisitorWorkerTerminationReason
-data VisitorWorkerTerminationReason α =
+-- }}}
+
+data VisitorWorkerTerminationReason α = -- {{{
     VisitorWorkerFinished (VisitorStatusUpdate α)
   | VisitorWorkerFailed SomeException
   | VisitorWorkerAborted
   deriving (Show)
--- @+node:gcross.20110923164140.1259: ** Functions
--- @+node:gcross.20111117140347.1410: *3* computeStatusUpdate
-computeStatusUpdate ::
+-- }}}
+
+-- }}}
+
+-- Functions {{{
+
+computeStatusUpdate :: -- {{{
     α →
     VisitorPath →
     VisitorCheckpointCursor →
@@ -102,17 +103,18 @@ computeStatusUpdate result initial_path cursor context checkpoint =
          $
          checkpoint
         )
+-- }}}
 
--- @+node:gcross.20111117140347.1400: *3* forkVisitorIOWorkerThread
-forkVisitorIOWorkerThread ::
+forkVisitorIOWorkerThread :: -- {{{
     Monoid α ⇒
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorIO α →
     VisitorWorkload →
     IO (VisitorWorkerEnvironment α)
 forkVisitorIOWorkerThread = forkVisitorTWorkerThread id
--- @+node:gcross.20111026220221.1454: *3* forkVisitorTWorkerThread
-forkVisitorTWorkerThread ::
+-- }}}
+
+forkVisitorTWorkerThread :: -- {{{
     (Functor m, MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
@@ -123,8 +125,9 @@ forkVisitorTWorkerThread =
     genericForkVisitorTWorkerThread
         walkVisitorTDownPath
         stepVisitorTThroughCheckpoint
--- @+node:gcross.20111026220221.1456: *3* forkVisitorWorkerThread
-forkVisitorWorkerThread ::
+-- }}}
+
+forkVisitorWorkerThread :: -- {{{
     Monoid α ⇒
     (VisitorWorkerTerminationReason α → IO ()) →
     Visitor α →
@@ -135,8 +138,9 @@ forkVisitorWorkerThread =
         (return .* walkVisitorDownPath)
         (return .** stepVisitorThroughCheckpoint)
         id
--- @+node:gcross.20110923164140.1286: *3* genericForkVisitorTWorkerThread
-genericForkVisitorTWorkerThread ::
+-- }}}
+
+genericForkVisitorTWorkerThread :: -- {{{
     (MonadIO n, Monoid α) ⇒
     (
         VisitorPath → VisitorT m α → n (VisitorT m α)
@@ -162,8 +166,9 @@ genericForkVisitorTWorkerThread
   = do (start,environment) ← genericPreforkVisitorTWorkerThread walk step run finishedCallback visitor workload
        start
        return environment
--- @+node:gcross.20111117140347.1392: *3* genericPreforkVisitorTWorkerThread
-genericPreforkVisitorTWorkerThread ::
+-- }}}
+
+genericPreforkVisitorTWorkerThread :: -- {{{
     (MonadIO n, Monoid α) ⇒
     (
         VisitorPath → VisitorT m α → n (VisitorT m α)
@@ -199,8 +204,7 @@ genericPreforkVisitorTWorkerThread
             case pending_requests of
                 Nothing → return VisitorWorkerAborted
                 Just (viewl → _ :< _) → do
-                    -- @+<< Respond to request >>
-                    -- @+node:gcross.20111117140347.1393: *4* << Respond to request >>
+                    -- Respond to request {{{
                     request ← liftIO $
                         atomicModifyIORef pending_requests_ref (
                             \maybe_requests → case fmap viewl maybe_requests of
@@ -253,7 +257,7 @@ genericPreforkVisitorTWorkerThread
                                         mempty
                                         checkpoint
                                         visitor
-                    -- @-<< Respond to request >>
+                    -- }}}
                 _ → loop2
                         cursor
                         context
@@ -267,8 +271,7 @@ genericPreforkVisitorTWorkerThread
             checkpoint
             visitor
           = do
-            -- @+<< Step visitor >>
-            -- @+node:gcross.20111117140347.1394: *4* << Step visitor >>
+            -- Step visitor {{{
             (maybe_solution,maybe_next) ← step context checkpoint visitor
             new_result ← liftIO $ do
                 case maybe_solution of
@@ -294,7 +297,7 @@ genericPreforkVisitorTWorkerThread
                         new_result
                         new_checkpoint
                         new_visitor
-            -- @-<< Step visitor >>
+            -- }}}
     start_flag_ivar ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←
@@ -327,16 +330,18 @@ genericPreforkVisitorTWorkerThread
             thread_id
             pending_requests_ref
         )
--- @+node:gcross.20111028181213.1331: *3* preforkVisitorIOWorkerThread
-preforkVisitorIOWorkerThread ::
+-- }}}
+
+preforkVisitorIOWorkerThread :: -- {{{
     Monoid α ⇒
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorIO α →
     VisitorWorkload →
     IO (IO (), VisitorWorkerEnvironment α)
 preforkVisitorIOWorkerThread = preforkVisitorTWorkerThread id
--- @+node:gcross.20111117140347.1398: *3* preforkVisitorTWorkerThread
-preforkVisitorTWorkerThread ::
+-- }}}
+
+preforkVisitorTWorkerThread :: -- {{{
     (Functor m, MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
@@ -347,8 +352,9 @@ preforkVisitorTWorkerThread =
     genericPreforkVisitorTWorkerThread
         walkVisitorTDownPath
         stepVisitorTThroughCheckpoint
--- @+node:gcross.20111117140347.1396: *3* preforkVisitorWorkerThread
-preforkVisitorWorkerThread ::
+-- }}}
+
+preforkVisitorWorkerThread :: -- {{{
     Monoid α ⇒
     (VisitorWorkerTerminationReason α → IO ()) →
     Visitor α →
@@ -359,8 +365,9 @@ preforkVisitorWorkerThread =
         (return .* walkVisitorDownPath)
         (return .** stepVisitorThroughCheckpoint)
         id
--- @+node:gcross.20110923164140.1260: *3* tryStealWorkload
-tryStealWorkload ::
+-- }}}
+
+tryStealWorkload :: -- {{{
     VisitorPath →
     VisitorCheckpointCursor →
     VisitorTContext m α →
@@ -381,5 +388,6 @@ tryStealWorkload initial_path = go
                     ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
                     other_checkpoint
                 )
--- @-others
--- @-leo
+-- }}}
+
+-- }}}

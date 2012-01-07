@@ -1,9 +1,4 @@
--- @+leo-ver=5-thin
--- @+node:gcross.20101114125204.1259: * @file tests.hs
--- @@language haskell
-
--- @+<< Language extensions >>
--- @+node:gcross.20101114125204.1281: ** << Language extensions >>
+-- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -11,10 +6,9 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
--- @-<< Language extensions >>
+-- }}}
 
--- @+<< Import needed modules >>
--- @+node:gcross.20101114125204.1260: ** << Import needed modules >>
+-- Imports {{{
 import Control.Applicative (liftA2)
 import Control.Concurrent
 import Control.Concurrent.QSem
@@ -74,23 +68,26 @@ import Control.Monad.Trans.Visitor.Reactive.Supervisor
 import Control.Monad.Trans.Visitor.Reactive.Worker
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
--- @-<< Import needed modules >>
+-- }}}
 
--- @+others
--- @+node:gcross.20111028153100.1302: ** Arbitrary
--- @+node:gcross.20111028170027.1297: *3* Branch
+-- Helpers {{{
+-- Instances {{{
+-- Arbitrary {{{
 instance Arbitrary Branch where arbitrary = elements [LeftBranch,RightBranch]
--- @+node:gcross.20120103190252.1871: *3* Set
-instance (Arbitrary α, Ord α) ⇒ Arbitrary (Set α) where
+
+instance (Arbitrary α, Ord α) ⇒ Arbitrary (Set α) where -- {{{
     arbitrary = fmap Set.fromList (listOf arbitrary)
--- @+node:gcross.20120103190252.1881: *3* DList
-instance Arbitrary α ⇒ Arbitrary (DList α) where
+-- }}}
+
+instance Arbitrary α ⇒ Arbitrary (DList α) where -- {{{
     arbitrary = DList.fromList <$> listOf arbitrary
--- @+node:gcross.20120103190252.1872: *3* UUID
-instance Arbitrary UUID where
+-- }}}
+
+instance Arbitrary UUID where -- {{{
     arbitrary = MkGen (\r _ -> fst (random r))
--- @+node:gcross.20111028170027.1307: *3* Visitor
-instance (Serialize α, Arbitrary α, Monad m) ⇒ Arbitrary (VisitorT m α) where
+-- }}}
+
+instance (Serialize α, Arbitrary α, Functor m, Monad m) ⇒ Arbitrary (VisitorT m α) where -- {{{
     arbitrary = sized arb
       where
         arb :: Int → Gen (VisitorT m α)
@@ -113,8 +110,9 @@ instance (Serialize α, Arbitrary α, Monad m) ⇒ Arbitrary (VisitorT m α) whe
 
         bindToArbitrary :: Int → Gen (VisitorT m α) → Gen (VisitorT m α)
         bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
--- @+node:gcross.20111028153100.1303: *3* VisitorCheckpoint
-instance Arbitrary VisitorCheckpoint where
+-- }}}
+
+instance Arbitrary VisitorCheckpoint where -- {{{
     arbitrary = sized arb
       where
         arb 0 = elements [Explored,Unexplored]
@@ -124,74 +122,96 @@ instance Arbitrary VisitorCheckpoint where
                     ,(1,liftM2 CacheCheckpoint (fmap encode (arbitrary :: Gen Int)) (arb (n-1)))
                     ,(2,liftM2 ChoiceCheckpoint (arb (n `div` 2)) (arb (n `div` 2)))
                     ]
--- @+node:gcross.20111029212714.1360: *3* VisitorLabel
+-- }}}
+
 instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
--- @+node:gcross.20111116214909.1383: *3* VisitorPath
-instance Arbitrary VisitorPath where
+
+instance Arbitrary VisitorPath where -- {{{
     arbitrary = fmap Seq.fromList . listOf . oneof $ [fmap (CacheStep . encode) (arbitrary :: Gen Int),fmap ChoiceStep arbitrary]
--- @+node:gcross.20120101164703.1858: *3* VisitorSolution
-instance Arbitrary α ⇒ Arbitrary (VisitorSolution α) where
+-- }}}
+
+instance Arbitrary α ⇒ Arbitrary (VisitorSolution α) where -- {{{
     arbitrary = VisitorSolution <$> arbitrary <*> arbitrary
--- @+node:gcross.20120101164703.1859: *3* VisitorStatusUpdate
-instance Arbitrary α ⇒ Arbitrary (VisitorStatusUpdate α) where
+-- }}}
+
+instance Arbitrary α ⇒ Arbitrary (VisitorStatusUpdate α) where -- {{{
     arbitrary = VisitorStatusUpdate <$> arbitrary <*> arbitrary
--- @+node:gcross.20120101164703.1861: *3* VisitorWorkerStatusUpdate
-instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStatusUpdate α) where
+-- }}}
+
+instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStatusUpdate α) where -- {{{
     arbitrary = VisitorWorkerStatusUpdate <$> arbitrary <*> arbitrary
--- @+node:gcross.20120101231106.1874: *3* VisitorWorkerStolenWorkload
-instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStolenWorkload α) where
+-- }}}
+
+instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStolenWorkload α) where -- {{{
     arbitrary = VisitorWorkerStolenWorkload <$> arbitrary <*> arbitrary
--- @+node:gcross.20120101164703.1853: *3* VisitorWorkload
-instance Arbitrary VisitorWorkload where
+-- }}}
+
+instance Arbitrary VisitorWorkload where -- {{{
     arbitrary = VisitorWorkload <$> arbitrary <*> arbitrary
--- @+node:gcross.20120103190252.1873: ** Instance
--- @+node:gcross.20120103190252.1884: *3* Eq DList
-instance Eq α ⇒ Eq (DList α) where
-    (==) = (==) `on` DList.toList
--- @+node:gcross.20120103190252.1878: *3* Serialize DList
-instance Serialize α ⇒ Serialize (DList α) where
+-- }}}
+-- }}} Arbitrary
+
+-- Serialize {{{
+instance Serialize α ⇒ Serialize (DList α) where -- {{{
     put = Serialize.putListOf Serialize.put . DList.toList
     get = DList.fromList <$> Serialize.getListOf Serialize.get
--- @+node:gcross.20120103190252.1874: *3* Serialize UUID
-instance Serialize UUID where
+-- }}}
+
+instance Serialize UUID where -- {{{
     put = Serialize.putLazyByteString . UUID.toByteString
     get = fromJust . UUID.fromByteString <$> Serialize.getLazyByteString 16
--- @+node:gcross.20120103190252.1882: *3* Show DList
-instance Show α ⇒ Show (DList α) where
+-- }}}
+-- }}} Serialize
+
+instance Eq α ⇒ Eq (DList α) where -- {{{
+    (==) = (==) `on` DList.toList
+-- }}}
+
+instance Show α ⇒ Show (DList α) where -- {{{
     show = ("DList.fromList " ++) . show . DList.toList
--- @+node:gcross.20111228031800.1824: ** Values
--- @+node:gcross.20111228031800.1825: *3* empty_worker_incoming_events
-empty_worker_incoming_events =
+-- }}}
+-- }}} Instances
+
+-- Values {{{
+empty_worker_incoming_events = -- {{{
     VisitorWorkerIncomingEvents
         never
         never
         never
--- @+node:gcross.20111117140347.1401: ** Exceptions
--- @+node:gcross.20111117140347.1402: *3* TestException
-data TestException = TestException Int deriving (Eq,Show,Typeable)
+-- }}}
+-- }}} Values
 
+-- Exceptions {{{
+-- TestException {{{
+data TestException = TestException Int deriving (Eq,Show,Typeable)
 instance Exception TestException
--- @+node:gcross.20111028170027.1298: ** Functions
--- @+node:gcross.20111028170027.1299: *3* echo
-echo :: Show α ⇒ α → α
+-- }}}
+-- }}} Exceptions
+
+-- Functions {{{
+echo :: Show α ⇒ α → α -- {{{
 echo x = trace (show x) x
--- @+node:gcross.20111028170027.1301: *3* echoWithLabel
-echoWithLabel :: Show α ⇒ String → α → α
+-- }}}
+
+echoWithLabel :: Show α ⇒ String → α → α -- {{{
 echoWithLabel label x = trace (label ++ " " ++ show x) x
--- @+node:gcross.20111228145321.1852: *3* interpretSupervisorUsingModel
-interpretSupervisorUsingModel ::
+-- }}}
+
+interpretSupervisorUsingModel :: -- {{{
     ∀ α worker_id. (Ord worker_id, Show worker_id, Monoid α, Eq α) ⇒
     [VisitorSupervisorIncomingEvent worker_id α] →
     [[VisitorSupervisorOutgoingEvent worker_id α]]
 interpretSupervisorUsingModel = Model.interpret mapSupervisorEvents
--- @+node:gcross.20111228145321.1853: *3* interpretSupervisorUsingPushIO
-interpretSupervisorUsingPushIO ::
+-- }}}
+
+interpretSupervisorUsingPushIO :: -- {{{
     ∀ α worker_id. (Ord worker_id, Show worker_id, Monoid α, Eq α) ⇒
     [VisitorSupervisorIncomingEvent worker_id α] →
     IO [[VisitorSupervisorOutgoingEvent worker_id α]]
 interpretSupervisorUsingPushIO = PushIO.interpret mapSupervisorEvents
--- @+node:gcross.20111228145321.1849: *3* mapSupervisorEvents
-mapSupervisorEvents ::
+-- }}}
+
+mapSupervisorEvents :: -- {{{
     ∀ α ξ worker_id. (FRP ξ, Ord worker_id, Show worker_id, Monoid α, Eq α) ⇒
     Model.Event ξ (VisitorSupervisorIncomingEvent worker_id α) →
     Model.Event ξ (VisitorSupervisorOutgoingEvent worker_id α)
@@ -257,12 +277,14 @@ mapSupervisorEvents incoming = outgoing
         ,VisitorSupervisorOutgoingNewResultsFoundEvent <$> visitorSupervisorOutgoingNewResultsFoundEvent
         ,ResultVisitorSupervisorCurrentStatus <$> visitorSupervisorCurrentStatus <@ readVisitorSupervisorCurrentStatus
         ]
--- @+node:gcross.20120101164703.1864: *3* newSolutionsEventsFromStatusUpdate
-newSolutionsEventsFromStatusUpdate VisitorStatusUpdate{..}
+-- }}}
+
+newSolutionsEventsFromStatusUpdate VisitorStatusUpdate{..} -- {{{
   | visitorStatusNewResults == mempty = []
   | otherwise = [VisitorSupervisorOutgoingNewResultsFoundEvent visitorStatusNewResults]
--- @+node:gcross.20111029212714.1372: *3* randomCheckpointForVisitor
-randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint
+-- }}}
+
+randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint -- {{{
 randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
   where
     go1 visitor = frequency
@@ -270,18 +292,19 @@ randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
         ,(1,return Unexplored)
         ,(3,go2 visitor)
         ]
-    go2 (view → Cache c :>>= k) =
-        fmap (CacheCheckpoint (encode . runIdentity $ c)) (go1 (k (runIdentity c)))
+    go2 (view → Cache (Identity (Just x)) :>>= k) =
+        fmap (CacheCheckpoint (encode x)) (go1 (k x))
     go2 (view → Choice (VisitorT x) (VisitorT y) :>>= k) =
         liftM2 ChoiceCheckpoint (go1 (x >>= k)) (go1 (y >>= k))
     go2 _ = elements [Explored,Unexplored]
--- @+node:gcross.20111028181213.1315: *3* randomPathForVisitor
-randomPathForVisitor :: Visitor α → Gen VisitorPath
+-- }}}
+
+randomPathForVisitor :: Visitor α → Gen VisitorPath -- {{{
 randomPathForVisitor (VisitorT visitor) = go visitor
   where
-    go (view → Cache c :>>= k) = oneof
+    go (view → Cache (Identity (Just x)) :>>= k) = oneof
         [return Seq.empty
-        ,fmap (CacheStep (encode . runIdentity $ c) <|) (go (k (runIdentity c)))
+        ,fmap (CacheStep (encode x) <|) (go (k x))
         ]
     go (view → Choice (VisitorT x) (VisitorT y) :>>= k) = oneof
         [return Seq.empty
@@ -289,8 +312,9 @@ randomPathForVisitor (VisitorT visitor) = go visitor
         ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
         ]
     go _ = return Seq.empty
--- @+node:gcross.20111028181213.1318: *3* randomVisitorWithoutCache
-randomVisitorWithoutCache :: Arbitrary α ⇒ Gen (Visitor α)
+-- }}}
+
+randomVisitorWithoutCache :: Arbitrary α ⇒ Gen (Visitor α) -- {{{
 randomVisitorWithoutCache = sized arb
   where
     arb 0 = frequency
@@ -307,9 +331,11 @@ randomVisitorWithoutCache = sized arb
     result = fmap return arbitrary
 
     bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
--- @+node:gcross.20111228145321.1845: ** Types
--- @+node:gcross.20111228145321.1847: *3* VisitorSupervisorIncomingEvent
-data VisitorSupervisorIncomingEvent worker_id α =
+-- }}}
+-- }}} Functions
+
+-- Types {{{
+data VisitorSupervisorIncomingEvent worker_id α = -- {{{
     VisitorSupervisorIncomingWorkerAddedEvent worker_id
   | VisitorSupervisorIncomingWorkerRemovedEvent worker_id
   | VisitorSupervisorIncomingWorkerStatusUpdateEvent (WorkerIdTagged worker_id (VisitorWorkerStatusUpdate α))
@@ -320,8 +346,9 @@ data VisitorSupervisorIncomingEvent worker_id α =
   | ReadVisitorSupervisorCurrentStatus
   | ReadVisitorSupervisorCurrentRecruitedWorkers
   deriving (Show)
--- @+node:gcross.20111228145321.1848: *3* VisitorSupervisorOutgoingEvent
-data VisitorSupervisorOutgoingEvent worker_id α =
+-- }}}
+
+data VisitorSupervisorOutgoingEvent worker_id α = -- {{{
     VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged worker_id VisitorWorkload)
   | VisitorSupervisorOutgoingFinishedEvent VisitorCheckpoint
   | VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([worker_id],VisitorWorkerReactiveRequest)
@@ -329,94 +356,73 @@ data VisitorSupervisorOutgoingEvent worker_id α =
   | VisitorSupervisorOutgoingNewResultsFoundEvent α
   | ResultVisitorSupervisorCurrentStatus (VisitorStatusUpdate α)
   deriving (Eq,Show)
--- @-others
+-- }}}
+-- }}} Types
+-- }}} Helpers
 
-main = defaultMain
-    -- @+<< Tests >>
-    -- @+node:gcross.20101114125204.1267: ** << Tests >>
-    -- @+others
-    -- @+node:gcross.20110923164140.1187: *3* Control.Monad.Trans.Visitor
-    [testGroup "Control.Monad.Trans.Visitor"
-        -- @+others
-        -- @+node:gcross.20111028170027.1312: *4* Eq instance
-        [testGroup "Eq instance"
-            -- @+others
-            -- @+node:gcross.20111028170027.1313: *5* self
+main = defaultMain tests
+
+tests = -- {{{
+    [testGroup "Control.Monad.Trans.Visitor" -- {{{
+        [testGroup "Eq instance" -- {{{
             [testProperty "self" $ \(v :: Visitor Int) → v == v
-            -- @-others
             ]
-        -- @+node:gcross.20110722110408.1173: *4* runVisitor
-        ,testGroup "runVisitor"
-            -- @+others
-            -- @+node:gcross.20110722110408.1177: *5* return
+         -- }}}
+        ,testGroup "runVisitor" -- {{{
             [testCase "return" $ runVisitor (return [()]) @?= [()]
-            -- @+node:gcross.20110722110408.1174: *5* mzero
             ,testCase "mzero" $ runVisitor (mzero :: Visitor [()]) @?= []
-            -- @+node:gcross.20110722110408.1178: *5* mplus
             ,testCase "mplus" $ runVisitor (return [1] ⊕ return [2]) @?= [1,2]
-            -- @+node:gcross.20110722110408.1179: *5* cache
             ,testCase "cache" $ runVisitor (cache [42]) @?= [42::Int]
-            -- @-others
             ]
-        -- @+node:gcross.20110923164140.1202: *4* runVisitorT
-        ,testGroup "runVisitorT"
-            -- @+others
-            -- @+node:gcross.20110923164140.1203: *5* Writer
-            [testCase "Writer" $
+         -- }}}
+        ,testGroup "runVisitorT" -- {{{
+            [testCase "Writer" $ -- {{{
                 (runWriter . runVisitorT $ do
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return [42]
                 ) @?= ((),[1,2,3])
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20110923164140.1211: *4* runVisitorTAndGatherResults
-        ,testGroup "runVisitorTAndGatherResults"
-            -- @+others
-            -- @+node:gcross.20110923164140.1212: *5* Writer
-            [testCase "Writer" $
+         -- }}}
+        ,testGroup "runVisitorTAndGatherResults" -- {{{
+            [testCase "Writer" $ -- {{{
                 (runWriter . runVisitorTAndGatherResults $ do
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return [42]
                 ) @?= ([42,42],[1,2,3])
-            -- @-others
+             -- }}}
             ]
-        -- @-others
+         -- }}}
         ]
-    -- @+node:gcross.20111028153100.1285: *3* Control.Monad.Trans.Visitor.Checkpoint
-    ,testGroup "Control.Monad.Trans.Visitor.Checkpoint"
-        -- @+others
-        -- @+node:gcross.20111028153100.1300: *4* contextFromCheckpoint
-        [testGroup "contextFromCheckpoint"
-            -- @+others
-            -- @+node:gcross.20111028170027.1296: *5* branch
-            [testProperty "branch" $ \(checkpoint :: VisitorCheckpoint) (active_branch :: Branch) →
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Checkpoint" -- {{{
+        [testGroup "contextFromCheckpoint" -- {{{
+            [testProperty "branch" $ \(checkpoint :: VisitorCheckpoint) (active_branch :: Branch) → -- {{{
                 checkpointFromContext (Seq.singleton (BranchContextStep active_branch)) checkpoint
                 ==
                 (mergeCheckpointRoot $ case active_branch of
                     LeftBranch → ChoiceCheckpoint checkpoint Explored
                     RightBranch → ChoiceCheckpoint Explored checkpoint)
-            -- @+node:gcross.20111028170027.1303: *5* cache
-            ,testProperty "cache" $ \(checkpoint :: VisitorCheckpoint) (i :: Int) →
+             -- }}}
+            ,testProperty "cache" $ \(checkpoint :: VisitorCheckpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
                 ==
                 (mergeCheckpointRoot $ CacheCheckpoint (encode i) checkpoint)
-            -- @+node:gcross.20111028170027.1305: *5* choice
-            ,testProperty "choice" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor Int) (other_checkpoint :: VisitorCheckpoint) →
+             -- }}}
+            ,testProperty "choice" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor Int) (other_checkpoint :: VisitorCheckpoint) → -- {{{
                 (checkpointFromContext (Seq.singleton (LeftChoiceContextStep other_checkpoint other_visitor)) inner_checkpoint)
                 ==
                 (mergeCheckpointRoot $ ChoiceCheckpoint inner_checkpoint other_checkpoint)
-            -- @+node:gcross.20111028170027.1295: *5* empty
-            ,testProperty "empty" $ \(checkpoint :: VisitorCheckpoint) →
+             -- }}}
+            ,testProperty "empty" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
                 checkpointFromContext Seq.empty checkpoint == checkpoint
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20111117140347.1419: *4* Monoid instance
-        ,testGroup "Monoid instance"
-            -- @+others
-            -- @+node:gcross.20111117140347.1421: *5* product results in intersection of solutions
-            [testProperty "product results in intersection of solutions" $ \(visitor :: Visitor (Set UUID)) → do
+         -- }}}
+        ,testGroup "Monoid instance" -- {{{
+            [testProperty "product results in intersection of solutions" $ \(visitor :: Visitor (Set UUID)) → do -- {{{
                 checkpoint1 ← randomCheckpointForVisitor visitor
                 checkpoint2 ← randomCheckpointForVisitor visitor
                 let checkpoint3 = checkpoint1 ⊕ checkpoint2
@@ -424,8 +430,8 @@ main = defaultMain
                     solutions2 = runVisitorThroughCheckpointAndGatherResults checkpoint2 visitor
                     solutions3 = runVisitorThroughCheckpointAndGatherResults checkpoint3 visitor
                 return $ solutions3 == solutions1 `Set.intersection` solutions2
-            -- @+node:gcross.20111117140347.1431: *5* throws the correct exceptions
-            ,testCase "throws the correct exceptions" $
+             -- }}}
+            ,testCase "throws the correct exceptions" $ -- {{{
                 mapM_ (\(x,y) →
                     try (
                         evaluate (x ⊕ y)
@@ -438,121 +444,102 @@ main = defaultMain
                 [((CacheCheckpoint (encode (42 :: Int)) Unexplored),(CacheCheckpoint (encode (42 :: Integer)) Unexplored))
                 ,((ChoiceCheckpoint Unexplored Unexplored),CacheCheckpoint (encode (42 :: Int)) Unexplored)
                 ]
-            -- @+node:gcross.20111117140347.1420: *5* unit element laws
-            ,testProperty "unit element laws" $ \(checkpoint :: VisitorCheckpoint) →
+             -- }}}
+            ,testProperty "unit element laws" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
                 mempty ⊕ checkpoint == checkpoint && checkpoint ⊕ mempty == checkpoint
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20111029212714.1374: *4* runVisitorThroughCheckpoint
-        ,testGroup "runVisitorThroughCheckpoint"
-            -- @+others
-            -- @+node:gcross.20111029212714.1376: *5* matches walk down path
-            [testProperty "matches walk down path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return $
+         -- }}}
+        ,testGroup "runVisitorThroughCheckpoint" -- {{{
+            [testProperty "matches walk down path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
                 runVisitor (walkVisitorDownPath path visitor)
                 ==
                 (fst . last) (runVisitorThroughCheckpoint (checkpointFromUnexploredPath path) visitor)
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20111028153100.1286: *4* runVisitorWithCheckpoints
-        ,testGroup "runVisitorWithCheckpoints"
-            -- @+others
-            -- @+node:gcross.20120103190252.1869: *5* last checkpoint is correct
-            [testProperty "last checkpoint is correct" $ \(v :: Visitor ()) →
+         -- }}}
+        ,testGroup "runVisitorWithCheckpoints" -- {{{
+            [testProperty "last checkpoint is correct" $ \(v :: Visitor ()) → -- {{{
                 let checkpoints = runVisitorWithCheckpoints v
                 in unsafePerformIO $ (last checkpoints @=? (runVisitor v,Explored)) >> return True
-            -- @+node:gcross.20111028181213.1308: *5* checkpoints accurately capture remaining search space
-            ,testProperty "checkpoints accurately capture remaining search space" $ \(v :: Visitor [Int]) →
+             -- }}}
+            ,testProperty "checkpoints accurately capture remaining search space" $ \(v :: Visitor [Int]) → -- {{{
                 let results_using_progressive_checkpoints =
                         [result ⊕ runVisitorThroughCheckpointAndGatherResults checkpoint v
                         | (result,checkpoint) ← runVisitorWithCheckpoints v
                         ]
                 in all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
-            -- @+node:gcross.20111028170027.1315: *5* example instances
-            ,testGroup "example instances"
-                -- @+others
-                -- @+node:gcross.20111028153100.1291: *6* mplus
-                [testGroup "mplus"
-                    -- @+others
-                    -- @+node:gcross.20111028153100.1293: *7* mzero + mzero
-                    [testCase "mzero + mzero" $
+             -- }}}
+            ,testGroup "example instances" -- {{{
+                [testGroup "mplus" -- {{{
+                    [testCase "mzero + mzero" $ -- {{{
                         runVisitorWithCheckpoints (mzero `mplus` mzero :: Visitor (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
                         ,(Nothing,Explored)
                         ]
-                    -- @+node:gcross.20111028153100.1297: *7* mzero + return
-                    ,testCase "mzero + return" $
+                     -- }}}
+                    ,testCase "mzero + return" $ -- {{{
                         runVisitorWithCheckpoints (mzero `mplus` return (Just ()) :: Visitor (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
                         ,(Just (),Explored)
                         ]
-                    -- @+node:gcross.20111028153100.1298: *7* return + mzero
-                    ,testCase "return + mzero" $
+                     -- }}}
+                    ,testCase "return + mzero" $ -- {{{
                         runVisitorWithCheckpoints (return (Just ()) `mplus` mzero :: Visitor (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Just (),ChoiceCheckpoint Explored Unexplored)
                         ,(Just (),Explored)
                         ]
-                    -- @-others
+                     -- }}}
                     ]
-                -- @+node:gcross.20111028153100.1287: *6* mzero
+                 -- }}}
                 ,testCase "mzero" $ runVisitorWithCheckpoints (mzero :: Visitor [Int]) @?= [([],Explored)]
-                -- @+node:gcross.20111028153100.1289: *6* return
                 ,testCase "return" $ runVisitorWithCheckpoints (return [0] :: Visitor [Int]) @?= [([0],Explored)]
-                -- @-others
                 ]
-            -- @-others
+             -- }}}
             ]
-        -- @-others
+         -- }}}
         ]
-    -- @+node:gcross.20111029192420.1341: *3* Control.Monad.Trans.Visitor.Label
-    ,testGroup "Control.Monad.Trans.Visitor.Label"
-        -- @+others
-        -- @+node:gcross.20111029212714.1356: *4* branchingFromLabel . labelFromBranching = id
-        [testProperty "branchingFromLabel . labelFromBranching = id" $
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Label" -- {{{
+        [testProperty "branchingFromLabel . labelFromBranching = id" $ -- {{{
             liftA2 (==)
                 (branchingFromLabel . labelFromBranching)
                 id
-        -- @+node:gcross.20111029212714.1362: *4* labelFromBranching . branchingFromLabel = id
-        ,testProperty "labelFromBranching . branchingFromLabel = id" $
+         -- }}}
+        ,testProperty "labelFromBranching . branchingFromLabel = id" $ -- {{{
             liftA2 (==)
                 (labelFromBranching . branchingFromLabel)
                 id
-        -- @+node:gcross.20111029192420.1362: *4* Monoid instance
-        ,testGroup "Monoid instance"
-            -- @+others
-            -- @+node:gcross.20111029192420.1363: *5* equivalent to concatenation of branchings
-            [testProperty "equivalent to concatenation of branchings" $ \(parent_branching :: [Branch]) (child_branching :: [Branch]) →
+         -- }}}
+        ,testGroup "Monoid instance" -- {{{
+            [testProperty "equivalent to concatenation of branchings" $ \(parent_branching :: [Branch]) (child_branching :: [Branch]) → -- {{{
                 labelFromBranching parent_branching ⊕ labelFromBranching child_branching
                 ==
                 labelFromBranching (parent_branching ⊕ child_branching)
-            -- @+node:gcross.20111029212714.1357: *5* obeys monoid laws
-            ,testProperty "obeys monoid laws" $
+             -- }}}
+            ,testProperty "obeys monoid laws" $ -- {{{
                 liftA2 (&&)
                     (liftA2 (==) id (⊕ (mempty :: VisitorLabel)))
                     (liftA2 (==) id ((mempty :: VisitorLabel) ⊕))
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20111116214909.1379: *4* Ord instance of VisitorLabel equivalent to Ord of branching
-        ,testProperty "Ord instance of VisitorLabel equivalent to Ord of branching" $ \a b →
+         -- }}}
+        ,testProperty "Ord instance of VisitorLabel equivalent to Ord of branching" $ \a b → -- {{{
             (compare `on` branchingFromLabel) a b == compare a b
-        -- @+node:gcross.20111029192420.1342: *4* runVisitorWithLabels
-        ,testGroup "runVisitorWithLabels"
-            -- @+others
-            -- @+node:gcross.20111029192420.1344: *5* same result as runVisitor
+         -- }}}
+        ,testGroup "runVisitorWithLabels" -- {{{
             [testProperty "same result as runVisitor" $ \(visitor :: Visitor Int) →
                  runVisitor ((:[]) <$> visitor) == (visitorSolutionResult <$> runVisitorWithLabels visitor)
-            -- @-others
             ]
-        -- @+node:gcross.20111028181213.1313: *4* walkVisitorDownLabel
-        ,testGroup "walkVisitorDownLabel"
-            -- @+others
-            -- @+node:gcross.20111028181213.1316: *5* same result as walking down path
-            [testProperty "same result as walking down path" $ do
+         -- }}}
+        ,testGroup "walkVisitorDownLabel" -- {{{
+            [testProperty "same result as walking down path" $ do -- {{{
                 visitor :: Visitor Int ← randomVisitorWithoutCache
                 path ← randomPathForVisitor visitor
                 let label = labelFromPath path
@@ -560,32 +547,22 @@ main = defaultMain
                     walkVisitorDownPath path visitor
                     ==
                     walkVisitorDownLabel label visitor
-            -- @-others
+             -- }}}
             ]
-        -- @-others
+         -- }}}
         ]
-    -- @+node:gcross.20110923164140.1188: *3* Control.Monad.Trans.Visitor.Path
-    ,testGroup "Control.Monad.Trans.Visitor.Path"
-        -- @+others
-        -- @+node:gcross.20110923164140.1189: *4* walkVisitorDownPath
-        [testGroup "walkVisitorDownPath"
-            -- @+others
-            -- @+node:gcross.20110923164140.1191: *5* null path
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Path" -- {{{
+        [testGroup "walkVisitorDownPath" -- {{{
             [testCase "null path" $ (runVisitor . walkVisitorDownPath Seq.empty) (return [42]) @?= [42]
-            -- @+node:gcross.20110923164140.1200: *5* cache
             ,testCase "cache" $ do (runVisitor . walkVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
-            -- @+node:gcross.20110923164140.1199: *5* choice
-            ,testCase "choice" $ do
+            ,testCase "choice" $ do -- {{{
                 (runVisitor . walkVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
                 (runVisitor . walkVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]
-            -- @+node:gcross.20110923164140.1192: *5* errors
-            ,testGroup "errors"
-                -- @+others
-                -- @+node:gcross.20111028181213.1310: *6* PastVisitorIsInconsistentWithPresentVisitor
-                [testGroup "PastVisitorIsInconsistentWithPresentVisitor"
-                    -- @+others
-                    -- @+node:gcross.20110923164140.1198: *7* cache step with choice
-                    [testCase "cache step with choice" $
+             -- }}}
+            ,testGroup "errors" -- {{{
+                [testGroup "PastVisitorIsInconsistentWithPresentVisitor" -- {{{
+                    [testCase "cache step with choice" $ -- {{{
                         try (
                             evaluate
                             .
@@ -593,8 +570,8 @@ main = defaultMain
                             $
                             walkVisitorDownPath (Seq.singleton (CacheStep undefined :: VisitorStep)) (undefined `mplus` undefined :: Visitor [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
-                    -- @+node:gcross.20110923164140.1196: *7* choice step with cache
-                    ,testCase "choice step with cache" $
+                     -- }}}
+                    ,testCase "choice step with cache" $ -- {{{
                         try (
                             evaluate
                             .
@@ -602,13 +579,11 @@ main = defaultMain
                             $
                             walkVisitorDownPath (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
-                    -- @-others
+                     -- }}}
                     ]
-                -- @+node:gcross.20111028181213.1311: *6* VisitorTerminatedBeforeEndOfWalk
-                ,testGroup "VisitorTerminatedBeforeEndOfWalk"
-                    -- @+others
-                    -- @+node:gcross.20110923164140.1195: *7* mzero
-                    [testCase "mzero" $
+                 -- }}}
+                ,testGroup "VisitorTerminatedBeforeEndOfWalk" -- {{{
+                    [testCase "mzero" $ -- {{{
                         try (
                             evaluate
                             .
@@ -616,8 +591,8 @@ main = defaultMain
                             $
                             walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (mzero :: Visitor [Int])
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
-                    -- @+node:gcross.20110923164140.1193: *7* return
-                    ,testCase "return" $
+                     -- }}}
+                    ,testCase "return" $ -- {{{
                         try (
                             evaluate
                             .
@@ -625,24 +600,22 @@ main = defaultMain
                             $
                             walkVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (return (undefined :: [Int]))
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
-                    -- @-others
+                     -- }}}
                     ]
-                -- @-others
+                 -- }}}
                 ]
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20110923164140.1220: *4* walkVisitorTDownPath
-        ,testGroup "walkVisitorT"
-            -- @+others
-            -- @+node:gcross.20110923164140.1223: *5* cache step
-            [testCase "cache step" $ do
+         -- }}}
+        ,testGroup "walkVisitorT" -- {{{
+            [testCase "cache step" $ do -- {{{
                 let (transformed_visitor,log) =
                         runWriter . walkVisitorTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
                             runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
                 log @?= []
                 (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([24],[])
-            -- @+node:gcross.20110923164140.1221: *5* choice step
-            ,testCase "choice step" $ do
+             -- }}}
+            ,testCase "choice step" $ do -- {{{
                 let (transformed_visitor,log) =
                         runWriter . walkVisitorTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
                             lift (tell [1])
@@ -651,24 +624,18 @@ main = defaultMain
                             return [42]
                 log @?= [1]
                 (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([42],[3,4])
-            -- @-others
+             -- }}}
             ]
-        -- @-others
+         -- }}}
         ]
-    -- @+node:gcross.20111228145321.1839: *3* Control.Monad.Trans.Visitor.Reactive.Supervisor
-    ,testGroup "Control.Monad.Trans.Visitor.Reactive.Supervisor"
-        -- @+others
-        -- @+node:gcross.20111228145321.1840: *4* createVisitorSupervisorReactiveNetwork
-        [testGroup "createVisitorSupervisorReactiveNetwork"
-            -- @+others
-            -- @+node:gcross.20111228145321.1854: *5* null case
-            [testCase "current checkpoint results in mempty" $ do
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Reactive.Supervisor" -- {{{
+        [testGroup "createVisitorSupervisorReactiveNetwork" -- {{{
+            [testCase "current checkpoint results in mempty" $ do -- {{{
                 [[]] @=? interpretSupervisorUsingModel ([VisitorSupervisorIncomingNullEvent :: VisitorSupervisorIncomingEvent () ()])
-            -- @+node:gcross.20120101164703.1868: *5* basic recruitment events
-            ,testGroup "basic recruitment events"
-                -- @+others
-                -- @+node:gcross.20120101151410.1849: *6* worker recruited
-                [testCase "worker recruited" $
+             -- }}}
+            ,testGroup "basic recruitment events" -- {{{
+                [testCase "worker recruited" $ -- {{{
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent ()
@@ -678,8 +645,8 @@ main = defaultMain
                             [[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101151410.1851: *6* worker recruited, then goes missing
-                ,testCase "worker recruited, then shuts down" $
+                 -- }}}
+                ,testCase "worker recruited, then shuts down" $ -- {{{
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent ()
@@ -691,8 +658,8 @@ main = defaultMain
                             ,[]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101164703.1850: *6* worker recruited, then goes missing, then is recruited again
-                ,testCase "worker recruited, then shuts down, then is recruited again" $
+                 -- }}}
+                ,testCase "worker recruited, then shuts down, then is recruited again" $ -- {{{
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent ()
@@ -706,13 +673,11 @@ main = defaultMain
                             ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () entire_workload)]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @-others
+                 -- }}}
                 ]
-            -- @+node:gcross.20120101164703.1869: *5* basic checkpointing events
-            ,testGroup "basic checkpointing events"
-                -- @+others
-                -- @+node:gcross.20120101164703.1857: *6* recruitment, update, current checkpoint
-                [testProperty "recruitment, update, current checkpoint" $
+             -- }}}
+            ,testGroup "basic checkpointing events" -- {{{
+                [testProperty "recruitment, update, current checkpoint" $ -- {{{
                   \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate [Int]) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () [Int]]
                         incoming =
@@ -727,8 +692,8 @@ main = defaultMain
                             ,[ResultVisitorSupervisorCurrentStatus status_update]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101164703.1852: *6* recruitment, update (no new solutions), shutdown, recruitment
-                ,testProperty "recruitment, update (no new solutions), shutdown, recruitment" $
+                 -- }}}
+                ,testProperty "recruitment, update (no new solutions), shutdown, recruitment" $ -- {{{
                   \(status_checkpoint :: VisitorCheckpoint)
                    (workload :: VisitorWorkload) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () ()]
@@ -749,8 +714,8 @@ main = defaultMain
                             ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged () workload)]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101164703.1855: *6* recruitment, update, current checkpoint, shutdown, current checkpoint
-                ,testProperty "recruitment, update, current checkpoint, shutdown, full checkpoint" $
+                 -- }}}
+                ,testProperty "recruitment, update, current checkpoint, shutdown, full checkpoint" $ -- {{{
                   \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate [Int]) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () [Int]]
                         incoming =
@@ -769,8 +734,8 @@ main = defaultMain
                             ,newSolutionsEventsFromStatusUpdate status_update ++ [ResultVisitorSupervisorCurrentStatus status_update]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101164703.1867: *6* recruitment, full checkpoint, null, update
-                ,testProperty "recruitment, full checkpoint, null, update" $
+                 -- }}}
+                ,testProperty "recruitment, full checkpoint, null, update" $ -- {{{
                   \(worker_status_update@(VisitorWorkerStatusUpdate status_update workload) :: VisitorWorkerStatusUpdate [Int]) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent () [Int]]
                         incoming =
@@ -788,13 +753,11 @@ main = defaultMain
                              :newSolutionsEventsFromStatusUpdate status_update
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @-others
+                 -- }}}
                 ]
-            -- @+node:gcross.20120101231106.1865: *5* basic stealing events
-            ,testGroup "basic stealing events"
-                -- @+others
-                -- @+node:gcross.20120101231106.1866: *6* two workers
-                [testCase "two workers" $
+             -- }}}
+            ,testGroup "basic stealing events" -- {{{
+                [testCase "two workers" $ -- {{{
                     let incoming :: [VisitorSupervisorIncomingEvent Bool [Int]]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent True
@@ -806,8 +769,8 @@ main = defaultMain
                             ,[VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([True],WorkloadStealReactiveRequest)]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101231106.1872: *6* two workers, workload returned
-                ,testProperty "two workers, workload returned" $
+                 -- }}}
+                ,testProperty "two workers, workload returned" $ -- {{{
                   \(stolen_workload@(VisitorWorkerStolenWorkload update workload) :: VisitorWorkerStolenWorkload [Int]) → unsafePerformIO $
                     let incoming :: [VisitorSupervisorIncomingEvent Bool [Int]]
                         incoming =
@@ -822,8 +785,8 @@ main = defaultMain
                             ,[VisitorSupervisorOutgoingWorkloadEvent (WorkerIdTagged True workload)]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101231106.1876: *6* two workers, no workload returned
-                ,testCase "two workers, no workload returned" $
+                 -- }}}
+                ,testCase "two workers, no workload returned" $ -- {{{
                     let incoming :: [VisitorSupervisorIncomingEvent Bool [Int]]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent True
@@ -837,8 +800,8 @@ main = defaultMain
                             ,[VisitorSupervisorOutgoingBroadcastWorkerRequestEvent ([True],WorkloadStealReactiveRequest)]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @+node:gcross.20120101231106.1868: *6* three workers
-                ,testCase "three workers" $
+                 -- }}}
+                ,testCase "three workers" $ -- {{{
                     let incoming :: [VisitorSupervisorIncomingEvent Ordering [Int]]
                         incoming =
                             [VisitorSupervisorIncomingWorkerAddedEvent LT
@@ -852,20 +815,16 @@ main = defaultMain
                             ,[]
                             ]
                     in correct_outgoing @=? interpretSupervisorUsingModel incoming
-                -- @-others
                 ]
-            -- @-others
+             -- }}}
             ]
-        -- @-others
+         -- }}}
+         -- }}}
         ]
-    -- @+node:gcross.20111116214909.1384: *3* Control.Monad.Trans.Visitor.Reactive.Worker
-    ,testGroup "Control.Monad.Trans.Visitor.Reactive.Worker"
-        -- @+others
-        -- @+node:gcross.20111116214909.1388: *4* absense of workload results in
-        [testGroup "absense of workload results in"
-            -- @+others
-            -- @+node:gcross.20111117140347.1384: *5* incoming workload starts the worker
-            [testProperty "incoming workload starts the worker" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Reactive.Worker" -- {{{
+        [testGroup "absense of workload results in" -- {{{
+            [testProperty "incoming workload starts the worker" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                 (event_handler,triggerEventWith) ← newAddHandler
                 response_ivar ← IVar.new
                 event_network ← compile $ do
@@ -883,8 +842,8 @@ main = defaultMain
                 pause event_network
                 response @?= VisitorStatusUpdate Explored (runVisitor visitor)
                 return True
-            -- @+node:gcross.20111116214909.1385: *5* null status update event
-            ,testCase "null status update event" $ do
+             -- }}}
+            ,testCase "null status update event" $ do -- {{{
                 (event_handler,triggerEventWith) ← newAddHandler
                 response_ivar ← IVar.new
                 event_network ← compile $ do
@@ -901,8 +860,8 @@ main = defaultMain
                 response ← IVar.blocking $ IVar.read response_ivar
                 pause event_network
                 assertBool "is the status update Nothing?" $ isNothing response
-            -- @+node:gcross.20111116214909.1387: *5* null workload steal event
-            ,testCase "null workload steal event" $ do
+             -- }}}
+            ,testCase "null workload steal event" $ do -- {{{
                 (event_handler,triggerEventWith) ← newAddHandler
                 response_ivar ← IVar.new
                 event_network ← compile $ do
@@ -919,13 +878,11 @@ main = defaultMain
                 response ← IVar.blocking $ IVar.read response_ivar
                 pause event_network
                 assertBool "is the workload nothing?" $ isNothing response
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20111117140347.1439: *4* correct propagation of
-        ,testGroup "correct propagation of"
-            -- @+others
-            -- @+node:gcross.20111117140347.1405: *5* exception in worker
-            [testCase "exception in worker" $ do
+         -- }}}
+        ,testGroup "correct propagation of" -- {{{
+            [testCase "exception in worker" $ do -- {{{
                 (event_handler,triggerEventWith) ← newAddHandler
                 response_ivar ← IVar.new
                 let e = TestException 42
@@ -943,8 +900,8 @@ main = defaultMain
                 response ← IVar.blocking $ IVar.read response_ivar
                 pause event_network
                 fromException response @?= Just e
-            -- @+node:gcross.20111117140347.1407: *5* shutdown of worker
-            ,testCase "shutdown of worker" $ do
+             -- }}}
+            ,testCase "shutdown of worker" $ do -- {{{
                 (event_handler,triggerEventWith) ← newAddHandler
                 (shutdown_event_handler,triggerShutdownEvent) ← newAddHandler
                 response_ref ← newIORef ()
@@ -969,13 +926,11 @@ main = defaultMain
                 threadDelay 1000
                 pause event_network
                 readIORef response_ref >>= evaluate
-            -- @-others
+             -- }}}
             ]
-        -- @+node:gcross.20111117140347.1440: *4* correct response to
-        ,testGroup "correct response to"
-            -- @+others
-            -- @+node:gcross.20111117140347.1446: *5* status update request
-            [testProperty "status update request" $ flip fmap arbitrary $ \(visitor :: VisitorIO [Int]) → unsafePerformIO $ do
+         -- }}}
+        ,testGroup "correct response to" -- {{{
+            [testProperty "status update request" $ flip fmap arbitrary $ \(visitor :: VisitorIO [Int]) → unsafePerformIO $ do -- {{{
                 worker_started_qsem ← newQSem 0
                 blocking_value_mvar ← newEmptyMVar
                 let visitor_with_blocking_value =
@@ -1036,8 +991,8 @@ main = defaultMain
                 status_update_1 @?= status_update_1
                 final_status_update_1 @?= final_status_update_2
                 return True
-            -- @+node:gcross.20111117140347.1444: *5* workload steal request
-            ,testProperty "workload steal request" $ flip fmap arbitrary $ \(visitor :: VisitorIO [Int]) → unsafePerformIO $ do
+             -- }}}
+            ,testProperty "workload steal request" $ flip fmap arbitrary $ \(visitor :: VisitorIO [Int]) → unsafePerformIO $ do -- {{{
                 worker_started_qsem ← newQSem 0
                 blocking_value_mvar ← newEmptyMVar
                 let visitor_with_blocking_value =
@@ -1098,18 +1053,14 @@ main = defaultMain
                 steal_response_1 @?= steal_response_2
                 final_status_update_1 @?= final_status_update_2
                 return True
-            -- @-others
+             -- }}}
             ]
-        -- @-others
+         -- }}}
         ]
-    -- @+node:gcross.20111028181213.1319: *3* Control.Monad.Trans.Visitor.Worker
-    ,testGroup "Control.Monad.Trans.Visitor.Worker"
-        -- @+others
-        -- @+node:gcross.20111028181213.1320: *4* forkVisitor(X)WorkerThread
-        [testGroup "forkVisitor(X)WorkerThread"
-            -- @+others
-            -- @+node:gcross.20111028181213.1334: *5* abort
-            [testCase "abort" $ do
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Worker" -- {{{
+        [testGroup "forkVisitor(X)WorkerThread" -- {{{
+            [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new
                 semaphore ← newQSem 0
                 VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
@@ -1125,11 +1076,9 @@ main = defaultMain
                     VisitorWorkerAborted → return ()
                 workerInitialPath @?= Seq.empty
                 readIORef workerPendingRequests >>= assertBool "is the request queue still null?" . isNothing
-            -- @+node:gcross.20111028181213.1321: *5* obtains all solutions
-            ,testGroup "obtains all solutions"
-                -- @+others
-                -- @+node:gcross.20111028181213.1322: *6* with no initial path
-                [testProperty "with no initial path" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do
+             -- }}}
+            ,testGroup "obtains all solutions" -- {{{
+                [testProperty "with no initial path" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     worker_environment ←
                         forkVisitorWorkerThread
@@ -1145,8 +1094,8 @@ main = defaultMain
                     checkpoint @?= Explored
                     solutions @?= runVisitor visitor
                     return True
-                -- @+node:gcross.20111028181213.1327: *6* with an initial path
-                ,testProperty "with an initial path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do
+                 -- }}}
+                ,testProperty "with an initial path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     worker_environment ←
                         forkVisitorWorkerThread
@@ -1162,10 +1111,10 @@ main = defaultMain
                     checkpoint @?= checkpointFromInitialPath path Explored
                     solutions @?= (runVisitor . walkVisitorDownPath path $ visitor)
                     return True
-                -- @-others
+                 -- }}}
                 ]
-            -- @+node:gcross.20111028181213.1339: *5* status updates produce valid checkpoints
-            ,testProperty "status updates produce valid checkpoints" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do
+             -- }}}
+            ,testProperty "status updates produce valid checkpoints" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                 termination_result_ivar ← IVar.new
                 (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
                     (IVar.write termination_result_ivar)
@@ -1196,8 +1145,8 @@ main = defaultMain
                             (scanl1 mappend $ map (visitorStatusNewResults . visitorWorkerStatusUpdate) checkpoints)
                             (map (flip runVisitorThroughCheckpointAndGatherResults visitor . visitorStatusCheckpoint . visitorWorkerStatusUpdate) checkpoints)
                 return $ all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
-            -- @+node:gcross.20111028181213.1325: *5* terminates successfully with null visitor
-            ,testCase "terminates successfully with null visitor" $ do
+             -- }}}
+            ,testCase "terminates successfully with null visitor" $ do -- {{{
                 termination_result_ivar ← IVar.new
                 VisitorWorkerEnvironment{..} ←
                     forkVisitorWorkerThread
@@ -1211,11 +1160,9 @@ main = defaultMain
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
                 readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-            -- @+node:gcross.20111116214909.1369: *5* work stealing correctly preserves total workload
-            ,testGroup "work stealing correctly preserves total workload"
-                -- @+others
-                -- @+node:gcross.20111116214909.1371: *6* single steal
-                [testProperty "single steal" $ flip fmap arbitrary $ \(visitor :: VisitorIO (Set Int)) → unsafePerformIO $ do
+             -- }}}
+            ,testGroup "work stealing correctly preserves total workload" -- {{{
+                [testProperty "single steal" $ flip fmap arbitrary $ \(visitor :: VisitorIO (Set Int)) → unsafePerformIO $ do -- {{{
                     worker_started_qsem ← newQSem 0
                     blocking_value_ivar ← IVar.new
                     let visitor_with_blocking_value =
@@ -1257,8 +1204,8 @@ main = defaultMain
                     correct_solutions ← runVisitorTAndGatherResults visitor_with_blocking_value
                     solutions @?= correct_solutions
                     return True
-                -- @+node:gcross.20111116214909.1375: *6* continuous stealing
-                ,testProperty "continuous stealing" $ \(visitor :: Visitor (Set Int)) → unsafePerformIO $ do
+                 -- }}}
+                ,testProperty "continuous stealing" $ \(visitor :: Visitor (Set Int)) → unsafePerformIO $ do -- {{{
                     termination_result_ivar ← IVar.new
                     (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
                         (IVar.write termination_result_ivar)
@@ -1286,13 +1233,12 @@ main = defaultMain
                         correct_solutions = runVisitor visitor
                     solutions @?= correct_solutions
                     return True
-                -- @-others
+                 -- }}}
                 ]
-            -- @-others
+             -- }}}
             ]
-        -- @-others
+         -- }}}
         ]
-    -- @-others
-    -- @-<< Tests >>
+     -- }}}
     ]
--- @-leo
+-- }}}
