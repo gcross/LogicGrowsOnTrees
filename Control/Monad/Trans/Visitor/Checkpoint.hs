@@ -342,11 +342,14 @@ stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \v
         $
         cache
     (Cache mx :>>= k,Unexplored) →
-        mx >>= \x → return . (Nothing,) $
-        moveDownMyContext
-            (CacheContextStep (encode x))
-            Unexplored
-            (VisitorT . k $ x)
+        mx >>= return . maybe
+            (Nothing, moveUpMyContext)
+            (\x → (Nothing,) $
+                moveDownMyContext
+                    (CacheContextStep (encode x))
+                    Unexplored
+                    (VisitorT . k $ x)
+            )
     (Choice left right :>>= k, ChoiceCheckpoint left_checkpoint right_checkpoint) → return
         (Nothing
         ,moveDownMyContext

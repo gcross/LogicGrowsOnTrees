@@ -373,6 +373,16 @@ tests = -- {{{
             ,testCase "mzero" $ runVisitor (mzero :: Visitor [()]) @?= []
             ,testCase "mplus" $ runVisitor (return [1] ⊕ return [2]) @?= [1,2]
             ,testCase "cache" $ runVisitor (cache [42]) @?= [42::Int]
+            ,testGroup "cacheMaybe" -- {{{
+                [testCase "Nothing" $ runVisitor (cacheMaybe (Nothing :: Maybe [()])) @?= []
+                ,testCase "Just" $ runVisitor (cacheMaybe (Just [42])) @?= [42::Int]
+                ]
+             -- }}}
+            ,testGroup "cacheGuard" -- {{{
+                [testCase "True" $ runVisitor (cacheGuard False >> return [()]) @?= []
+                ,testCase "False" $ runVisitor (cacheGuard True >> return [()]) @?= [()]
+                ]
+             -- }}}
             ]
          -- }}}
         ,testGroup "runVisitorT" -- {{{
@@ -556,6 +566,7 @@ tests = -- {{{
         [testGroup "walkVisitorDownPath" -- {{{
             [testCase "null path" $ (runVisitor . walkVisitorDownPath Seq.empty) (return [42]) @?= [42]
             ,testCase "cache" $ do (runVisitor . walkVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
+            ,testCase "cacheGuard" $ do (runVisitor . walkVisitorDownPath (Seq.singleton (CacheStep (encode ())))) (cacheGuard False >> return [42::Int]) @?= [42]
             ,testCase "choice" $ do -- {{{
                 (runVisitor . walkVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
                 (runVisitor . walkVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]

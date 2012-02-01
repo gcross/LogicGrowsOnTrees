@@ -23,7 +23,7 @@ import Data.Serialize (Serialize(),encode)
 -- Types {{{
 
 data VisitorTInstruction m α where -- # {{{
-    Cache :: Serialize α ⇒ m α → VisitorTInstruction m α
+    Cache :: Serialize α ⇒ m (Maybe α) → VisitorTInstruction m α
     Choice :: VisitorT m α → VisitorT m α → VisitorTInstruction m α
     Null :: VisitorTInstruction m α
 -- }}}
@@ -56,8 +56,9 @@ instance Eq α ⇒ Eq (Visitor α) where -- {{{
             (Return x, Return y) → x == y
             (Null :>>= _, Null :>>= _) → True
             (Cache cx :>>= kx, Cache cy :>>= ky) →
-                (encode . runIdentity $ cx) == (encode . runIdentity $ cx) &&
-                e (kx (runIdentity cx)) (ky (runIdentity cy))
+                case (runIdentity cx, runIdentity cy) of
+                    (Nothing, Nothing) → True
+                    (Just x, Just y) → e (kx x) (ky y)
             (Choice (VisitorT ax) (VisitorT bx) :>>= kx, Choice (VisitorT ay) (VisitorT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
 -- }}}
@@ -95,7 +96,10 @@ instance Show α ⇒ Show (Visitor α) where -- {{{
         s x = case view x of
             Return x → show x
             Null :>>= _ → "<NULL> >>= (...)"
-            Cache c :>>= k → "Cache[" ++ (show . encode . runIdentity $ c) ++ "] >>= " ++ (s (k (runIdentity c)))
+            Cache c :>>= k →
+                case runIdentity c of
+                    Nothing → "NullCache"
+                    Just x → "Cache[" ++ (show . encode $ x) ++ "] >>= " ++ (s (k x))
             Choice (VisitorT a) (VisitorT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
 -- }}}
 
@@ -103,12 +107,28 @@ instance Show α ⇒ Show (Visitor α) where -- {{{
 
 -- Functions {{{
 
-cache :: (Monad m, Serialize x) ⇒ x → VisitorT m x -- {{{
-cache = VisitorT . singleton . Cache . return
+cache :: (Functor m, Monad m, Serialize x) ⇒ x → VisitorT m x -- {{{
+cache = runAndCache . return
 -- }}}
 
-runAndCache :: Serialize x ⇒ m x → VisitorT m x -- {{{
-runAndCache = VisitorT . singleton . Cache
+cacheGuard :: (Functor m, Monad m) ⇒ Bool → VisitorT m () -- {{{
+cacheGuard = runAndCacheGuard . return
+-- }}}
+
+cacheMaybe :: (Monad m, Serialize x) ⇒ Maybe x → VisitorT m x -- {{{
+cacheMaybe = runAndCacheMaybe . return
+-- }}}
+
+runAndCache :: (Functor m, Serialize x) ⇒ m x → VisitorT m x -- {{{
+runAndCache = runAndCacheMaybe . fmap Just
+-- }}}
+
+runAndCacheGuard :: Functor m ⇒ m Bool → VisitorT m () -- {{{
+runAndCacheGuard = runAndCacheMaybe . fmap (\x → if x then Just () else Nothing)
+-- }}}
+
+runAndCacheMaybe :: Serialize x ⇒ m (Maybe x) → VisitorT m x -- {{{
+runAndCacheMaybe = VisitorT . singleton . Cache
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
@@ -119,7 +139,7 @@ runVisitorT :: Monad m ⇒ VisitorT m α → m () -- {{{
 runVisitorT = viewT . unwrapVisitorT >=> \view →
     case view of
         Return x → return ()
-        (Cache mx :>>= k) → mx >>= runVisitorT . VisitorT . k
+        (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorT . VisitorT . k)
         (Choice left right :>>= k) → do
             runVisitorT $ left >>= VisitorT . k
             runVisitorT $ right >>= VisitorT . k
@@ -130,7 +150,7 @@ runVisitorTAndGatherResults :: (Monad m, Monoid α) ⇒ VisitorT m α → m α -
 runVisitorTAndGatherResults = viewT . unwrapVisitorT >=> \view →
     case view of
         Return x → return x
-        (Cache mx :>>= k) → mx >>= runVisitorTAndGatherResults . VisitorT . k
+        (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorTAndGatherResults . VisitorT . k)
         (Choice left right :>>= k) →
             liftM2 mappend
                 (runVisitorTAndGatherResults $ left >>= VisitorT . k)

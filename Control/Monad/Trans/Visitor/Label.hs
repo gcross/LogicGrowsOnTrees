@@ -146,7 +146,7 @@ runVisitorTWithStartingLabel label =
     viewT . unwrapVisitorT >=> \view →
     case view of
         Return x → return [VisitorSolution label x]
-        (Cache mx :>>= k) → mx >>= runVisitorTWithStartingLabel label . VisitorT . k
+        (Cache mx :>>= k) → mx >>= maybe (return []) (runVisitorTWithStartingLabel label . VisitorT . k)
         (Choice left right :>>= k) →
             liftM2 (++)
                 (runVisitorTWithStartingLabel (leftChildLabel label) $ left >>= VisitorT . k)
@@ -179,7 +179,7 @@ walkVisitorTDownLabel (VisitorLabel label) = go root
           (viewT . unwrapVisitorT) visitor >>= \view → case view of
             Return x → throw VisitorTerminatedBeforeEndOfWalk
             Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
-            Cache mx :>>= k → mx >>= go parent . VisitorT . k
+            Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . VisitorT . k)
             Choice left right :>>= k →
                 if parent > label
                 then
