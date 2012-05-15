@@ -24,7 +24,6 @@ Library
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,
         operational == 0.2.*,
-        reactive-banana >= 0.4.3 && < 0.5,
         sequential-index == 0.2.*,
         transformers == 0.2.*,
         yjtools >= 0.9.7 && < 0.10
@@ -33,8 +32,5 @@ Library
         Control.Monad.Trans.Visitor.Checkpoint
         Control.Monad.Trans.Visitor.Label
         Control.Monad.Trans.Visitor.Path
-        Control.Monad.Trans.Visitor.Reactive
-        Control.Monad.Trans.Visitor.Reactive.Supervisor
-        Control.Monad.Trans.Visitor.Reactive.Worker
         Control.Monad.Trans.Visitor.Worker
     Extensions:
