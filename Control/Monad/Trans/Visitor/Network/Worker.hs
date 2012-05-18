@@ -11,7 +11,7 @@ module Control.Monad.Trans.Visitor.Network.Worker where
 import Control.Concurrent (forkIO,killThread)
 import Control.Concurrent.Chan (Chan,newChan,readChan,writeChan)
 import Control.Concurrent.MVar (MVar,newEmptyMVar,putMVar,takeMVar)
-import Control.Exception (Exception,SomeException,toException)
+import Control.Exception (Exception,finally)
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO)
 
@@ -24,72 +24,61 @@ import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
 -- }}}
 
--- Exceptions {{{
-
-data RedundantWorkloadReceived = RedundantWorkloadReceived deriving (Eq,Show,Typeable)
-
-instance Exception RedundantWorkloadReceived
-
--- }}}
-
 -- Types {{{
-
-data VisitorWorkerReactiveRequest = -- {{{
-    StatusUpdateReactiveRequest
-  | WorkloadStealReactiveRequest
-  deriving (Eq,Show)
--- }}}
 
 data VisitorWorkerIncomingMessage = -- {{{
     VisitorWorkerIncomingStatusUpdateRequestMessage
   | VisitorWorkerIncomingWorkloadStealRequestMessage
   | VisitorWorkerIncomingShutdownMessage
   | VisitorWorkerIncomingWorkloadMessage VisitorWorkload
+  deriving (Eq,Show)
 -- }}}
 
 data VisitorWorkerInternalMessage α = -- {{{
-    FailureMessage SomeException
+    FailureMessage String
   | FinishedMessage (VisitorStatusUpdate α)
+  deriving (Eq,Show)
 -- }}}
 
 data VisitorWorkerOutgoingMessage α = -- {{{
     VisitorWorkerOutgoingMaybeStatusUpdatedMessage (Maybe (VisitorWorkerStatusUpdate α))
   | VisitorWorkerOutgoingMaybeWorkloadSubmittedMessage (Maybe (VisitorWorkerStolenWorkload α))
   | VisitorWorkerOutgoingFinishedMessage (VisitorStatusUpdate α)
-  | VisitorWorkerOutgoingFailureMessage SomeException
+  | VisitorWorkerOutgoingFailureMessage String
+  deriving (Eq,Show)
 -- }}}
 
 -- }}}
 
 -- Functions {{{ 
 
-createVisitorIOWorkerReactiveNetwork :: -- {{{
+createVisitorIONetworkWorker :: -- {{{
     Monoid α ⇒
     VisitorIO α →
     IO (Chan VisitorWorkerIncomingMessage, Chan (VisitorWorkerOutgoingMessage α))
-createVisitorIOWorkerReactiveNetwork = createVisitorTWorkerReactiveNetwork id
+createVisitorIONetworkWorker = createVisitorTNetworkWorker id
 -- }}}
 
-createVisitorTWorkerReactiveNetwork :: -- {{{
+createVisitorTNetworkWorker :: -- {{{
     (Functor m, MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
     VisitorT m α →
     IO (Chan VisitorWorkerIncomingMessage, Chan (VisitorWorkerOutgoingMessage α))
-createVisitorTWorkerReactiveNetwork run =
-    genericCreateVisitorTWorkerReactiveNetwork
+createVisitorTNetworkWorker run =
+    genericCreateVisitorTNetworkWorker
         (preforkVisitorTWorkerThread run)
 -- }}}
 
-createVisitorWorkerReactiveNetwork :: -- {{{
+createVisitorNetworkWorker :: -- {{{
     Monoid α ⇒
     Visitor α →
     IO (Chan VisitorWorkerIncomingMessage, Chan (VisitorWorkerOutgoingMessage α))
-createVisitorWorkerReactiveNetwork =
-    genericCreateVisitorTWorkerReactiveNetwork
+createVisitorNetworkWorker =
+    genericCreateVisitorTNetworkWorker
         preforkVisitorWorkerThread
 -- }}}
 
-genericCreateVisitorTWorkerReactiveNetwork :: -- {{{
+genericCreateVisitorTNetworkWorker :: -- {{{
     Monoid α ⇒
     (
         (VisitorWorkerTerminationReason α → IO ()) →
@@ -100,14 +89,14 @@ genericCreateVisitorTWorkerReactiveNetwork :: -- {{{
     VisitorT m α →
     IO (Chan VisitorWorkerIncomingMessage, Chan (VisitorWorkerOutgoingMessage α))
 
-genericCreateVisitorTWorkerReactiveNetwork prefork visitor = do
+genericCreateVisitorTNetworkWorker prefork visitor = do
     incoming_internal_messages ← newChan
     incoming_external_messages ← newChan
 
     incoming_messages ← newChan
     outgoing_messages ← newChan
 
-    forkIO $
+    reader_thread_id_1 ← forkIO $
         forever $
             readChan incoming_external_messages
             >>=
@@ -115,7 +104,7 @@ genericCreateVisitorTWorkerReactiveNetwork prefork visitor = do
             >>=
             writeChan incoming_messages
 
-    forkIO $
+    reader_thread_id_2 ← forkIO $
         forever $
             readChan incoming_internal_messages
             >>=
@@ -148,7 +137,7 @@ genericCreateVisitorTWorkerReactiveNetwork prefork visitor = do
                                     VisitorWorkerFinished status_update →
                                         writeChan incoming_internal_messages (FinishedMessage status_update)
                                     VisitorWorkerFailed exception →
-                                        writeChan incoming_internal_messages (FailureMessage exception)
+                                        writeChan incoming_internal_messages (FailureMessage . show $ exception)
                                     VisitorWorkerAborted → return ()
                                 )
                                 visitor
@@ -171,7 +160,7 @@ genericCreateVisitorTWorkerReactiveNetwork prefork visitor = do
                     VisitorWorkerIncomingShutdownMessage → abortWorker
                     VisitorWorkerIncomingWorkloadMessage _ → do
                         abortWorker
-                        sendMessage $ VisitorWorkerOutgoingFailureMessage (toException RedundantWorkloadReceived)
+                        sendMessage $ VisitorWorkerOutgoingFailureMessage "Redundant workload received."
               where
                 abortWorker = killThread thread_id
     
@@ -213,7 +202,9 @@ genericCreateVisitorTWorkerReactiveNetwork prefork visitor = do
                     handleInternalMessage
                     (handleExternalMessageWithEnvironment thread_id request_queue)
 
-        in loopWithoutEnvironment
+        in finally
+            loopWithoutEnvironment
+            (killThread reader_thread_id_1 >> killThread reader_thread_id_2)
 
     return (incoming_external_messages,outgoing_messages)
 -- }}}
