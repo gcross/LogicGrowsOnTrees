@@ -77,6 +77,20 @@ data VisitorWorkerTerminationReason α = -- {{{
 
 -- Functions {{{
 
+attemptAddToWorkerRequestQueue :: -- {{{
+    IORef (VisitorWorkerRequestQueue α) →
+    VisitorWorkerRequest α →
+    IO Bool
+
+attemptAddToWorkerRequestQueue request_queue element =
+    atomicModifyIORef
+        request_queue
+        (maybe
+            (Nothing,False)
+            ((,True) . Just . (|> element))
+        )
+--}}}
+
 computeStatusUpdate :: -- {{{
     α →
     VisitorPath →
