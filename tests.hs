@@ -30,6 +30,7 @@ import Data.Function
 import Data.Functor
 import Data.Functor.Identity
 import Data.IORef
+import Data.IVar (IVar)
 import qualified Data.IVar as IVar
 import Data.List (mapAccumL,sort)
 import Data.Maybe
@@ -61,6 +62,7 @@ import Test.QuickCheck.Property
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
+import Control.Monad.Trans.Visitor.Network.Worker
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
@@ -434,6 +436,65 @@ tests = -- {{{
                     walkVisitorDownPath path visitor
                     ==
                     walkVisitorDownLabel label visitor
+             -- }}}
+            ]
+         -- }}}
+        ]
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Network.Worker" -- {{{
+        [testGroup "absense of workload results in" -- {{{
+            [testProperty "incoming workload starts the worker" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
+                (worker_incoming_messages,worker_outgoing_messages) ← createVisitorNetworkWorker visitor
+                flip finally (writeChan worker_incoming_messages VisitorWorkerIncomingShutdownMessage) $ do
+                    writeChan worker_incoming_messages $ VisitorWorkerIncomingWorkloadMessage entire_workload
+                    response ← readChan worker_outgoing_messages
+                    response @?=
+                        VisitorWorkerOutgoingFinishedMessage (
+                            VisitorStatusUpdate
+                                Explored
+                                (runVisitor visitor)
+                        )
+                return True
+             -- }}}
+            ,testCase "null status update event" $ do -- {{{
+                (worker_incoming_messages,worker_outgoing_messages) ← createVisitorNetworkWorker (undefined :: Visitor ())
+                flip finally (writeChan worker_incoming_messages VisitorWorkerIncomingShutdownMessage) $ do
+                    writeChan worker_incoming_messages VisitorWorkerIncomingWorkloadStealRequestMessage
+                    response ← readChan worker_outgoing_messages
+                    response @?= VisitorWorkerOutgoingMaybeWorkloadSubmittedMessage Nothing
+             -- }}}
+            ,testCase "null workload steal event" $ do -- {{{
+                (worker_incoming_messages,worker_outgoing_messages) ← createVisitorNetworkWorker (undefined :: Visitor ())
+                flip finally (writeChan worker_incoming_messages VisitorWorkerIncomingShutdownMessage) $ do
+                    writeChan worker_incoming_messages VisitorWorkerIncomingStatusUpdateRequestMessage
+                    response ← readChan worker_outgoing_messages
+                    response @?= VisitorWorkerOutgoingMaybeStatusUpdatedMessage Nothing
+             -- }}}
+             ]
+         -- }}}
+        ,testGroup "correct propagation of" -- {{{
+            [testCase "exception in worker" $ do -- {{{
+                let exception = TestException 42
+                (worker_incoming_messages,worker_outgoing_messages) ← createVisitorNetworkWorker (throw exception :: Visitor ())
+                flip finally (writeChan worker_incoming_messages VisitorWorkerIncomingShutdownMessage) $ do
+                    writeChan worker_incoming_messages $ VisitorWorkerIncomingWorkloadMessage entire_workload
+                    response ← readChan worker_outgoing_messages
+                    response @?= VisitorWorkerOutgoingFailureMessage (show exception)
+             -- }}}
+            ,testCase "shutdown of worker" $ do -- {{{
+                eternally_empty :: IVar () ← IVar.new
+                starting_flag :: IVar () ← IVar.new
+                ending_flag :: IVar () ← IVar.new
+                (worker_incoming_messages,worker_outgoing_messages) ← createVisitorIONetworkWorker . liftIO $ do
+                    IVar.write starting_flag ()
+                    catchJust
+                        (\e → case e of ThreadKilled → Just (); _ → Nothing)
+                        (IVar.blocking $ IVar.read eternally_empty)
+                        (\() → IVar.write ending_flag ())
+                flip finally (writeChan worker_incoming_messages VisitorWorkerIncomingShutdownMessage) $ do
+                    writeChan worker_incoming_messages $ VisitorWorkerIncomingWorkloadMessage entire_workload
+                    IVar.blocking $ IVar.read starting_flag
+                IVar.blocking $ IVar.read ending_flag
              -- }}}
             ]
          -- }}}
