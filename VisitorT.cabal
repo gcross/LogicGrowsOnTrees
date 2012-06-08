@@ -17,7 +17,7 @@ Library
         base-unicode-symbols >= 0.2.2 && < 0.3,
         bytestring == 0.9.*,
         cereal == 0.3.*,
-        composition == 0.2.*,
+        composition >= 0.2 && < 1.1,
         containers == 0.4.*,
         data-ivar == 0.30.*,
         dlist == 0.5.*,
@@ -25,7 +25,7 @@ Library
         higherorder == 0.0.*,
         operational == 0.2.*,
         sequential-index == 0.2.*,
-        transformers == 0.2.*,
+        transformers >= 0.2 && < 0.4,
         yjtools >= 0.9.7 && < 0.10
     Exposed-modules:
         Control.Monad.Trans.Visitor
