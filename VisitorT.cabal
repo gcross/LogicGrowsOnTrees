@@ -33,5 +33,6 @@ Library
         Control.Monad.Trans.Visitor.Label
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Worker
+        Control.Monad.Trans.Visitor.Network.Supervisor
         Control.Monad.Trans.Visitor.Network.Worker
     Extensions:
