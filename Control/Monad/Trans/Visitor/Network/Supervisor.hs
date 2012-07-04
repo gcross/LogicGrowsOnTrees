@@ -126,24 +126,21 @@ tryToObtainWorkloadFor
     old_state@VisitorNetworkSupervisorState{..}
     =
     case waiting_workers_or_available_workloads of
-        Left waiting_workers → assert (not . Seq.null $ waiting_workers) $ 
+        Left waiting_workers → assert (not . Seq.null $ waiting_workers) $
             return old_state
-                {   waiting_workers_or_available_workloads =
-                        Left (waiting_workers |> worker_id)
+                {   waiting_workers_or_available_workloads = Left (waiting_workers |> worker_id)
                 }
         Right (Set.minView → Nothing) → do
             let broadcast_worker_ids = Map.keys active_workers
             broadcastWorkloadStealToWorkers broadcast_worker_ids
             return old_state
-                {   waiting_workers_or_available_workloads =
-                        Left (Seq.singleton worker_id)
+                {   waiting_workers_or_available_workloads = Left (Seq.singleton worker_id)
                 ,   workers_pending_workload_steal = Set.fromList broadcast_worker_ids
                 }
         Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadToWorker workload worker_id
             return old_state
-                {   waiting_workers_or_available_workloads =
-                        Right remaining_workloads
+                {   waiting_workers_or_available_workloads = Right remaining_workloads
                 ,   active_workers = Map.insert worker_id workload active_workers
                 }
 -- }}}
