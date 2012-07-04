@@ -132,10 +132,12 @@ tryToObtainWorkloadFor
                         Left (waiting_workers |> worker_id)
                 }
         Right (Set.minView → Nothing) → do
-            broadcastWorkloadStealToWorkers . Map.keys $ active_workers
+            let broadcast_worker_ids = Map.keys active_workers
+            broadcastWorkloadStealToWorkers broadcast_worker_ids
             return old_state
                 {   waiting_workers_or_available_workloads =
                         Left (Seq.singleton worker_id)
+                ,   workers_pending_workload_steal = Set.fromList broadcast_worker_ids
                 }
         Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadToWorker workload worker_id
