@@ -1,6 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -8,6 +8,8 @@
 module Control.Monad.Trans.Visitor.Network.Supervisor where
 
 -- Imports {{{
+import Data.Accessor ((^.),(^=),(^:))
+import Data.Accessor.Template (deriveAccessors)
 import Control.Exception (Exception,assert,throwIO)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO,liftIO)
@@ -54,13 +56,14 @@ type SnapshotNetworkStatusAction α m = VisitorStatusUpdate α → m ()
 
 data VisitorNetworkSupervisorState α worker_id = -- {{{
     VisitorNetworkSupervisorState
-    {   waiting_workers_or_available_workloads :: !(Either (Seq worker_id) (Set VisitorWorkload))
-    ,   known_workers :: !(Set worker_id)
-    ,   active_workers :: !(Map worker_id VisitorWorkload)
-    ,   workers_pending_workload_steal :: !(Set worker_id)
-    ,   workers_pending_status_update :: !(Set worker_id)
-    ,   current_status :: !(VisitorStatusUpdate α)
+    {   waiting_workers_or_available_workloads_ :: !(Either (Seq worker_id) (Set VisitorWorkload))
+    ,   known_workers_ :: !(Set worker_id)
+    ,   active_workers_ :: !(Map worker_id VisitorWorkload)
+    ,   workers_pending_workload_steal_ :: !(Set worker_id)
+    ,   workers_pending_status_update_ :: !(Set worker_id)
+    ,   current_status_ :: !(VisitorStatusUpdate α)
     }
+$( deriveAccessors ''VisitorNetworkSupervisorState )
 -- }}}
 
 -- }}}
@@ -69,12 +72,12 @@ data VisitorNetworkSupervisorState α worker_id = -- {{{
 
 initial_supervisor_state :: (Monoid α, Ord worker_id) ⇒ VisitorNetworkSupervisorState α worker_id
 initial_supervisor_state = VisitorNetworkSupervisorState -- {{{
-    {   waiting_workers_or_available_workloads = Right (Set.singleton entire_workload)
-    ,   known_workers = mempty
-    ,   active_workers = mempty
-    ,   workers_pending_workload_steal = mempty
-    ,   workers_pending_status_update = mempty
-    ,   current_status = mempty
+    {   waiting_workers_or_available_workloads_ = Right (Set.singleton entire_workload)
+    ,   known_workers_ = mempty
+    ,   active_workers_ = mempty
+    ,   workers_pending_workload_steal_ = mempty
+    ,   workers_pending_status_update_ = mempty
+    ,   current_status_ = mempty
     }
 -- }}}
 
@@ -92,23 +95,26 @@ enqueueWorkload :: -- {{{
 enqueueWorkload
     sendWorkloadToWorker
     workload
-    (old_state@VisitorNetworkSupervisorState{..})
+    old_state
     =
-    case waiting_workers_or_available_workloads of
+    case old_state ^. waiting_workers_or_available_workloads of
         Left (viewl → (free_worker_id :< remaining_workers)) → do
             sendWorkloadToWorker workload free_worker_id
-            return old_state
-                {   waiting_workers_or_available_workloads = Left remaining_workers
-                ,   active_workers = Map.insert free_worker_id workload active_workers
-                }
+            return
+                .(waiting_workers_or_available_workloads ^= Left remaining_workers)
+                .(active_workers ^: Map.insert free_worker_id workload)
+                $
+                old_state
         Left (viewl → EmptyL) →
-            return old_state
-                {   waiting_workers_or_available_workloads = Right (Set.singleton workload)
-                }
+            return
+                .(waiting_workers_or_available_workloads ^= Right (Set.singleton workload))
+                $
+                old_state
         Right available_workloads →
-            return old_state
-                {   waiting_workers_or_available_workloads = Right (Set.insert workload available_workloads)
-                }
+            return
+                .(waiting_workers_or_available_workloads ^= Right (Set.insert workload available_workloads))
+                $
+                old_state
 -- }}}
 
 tryToObtainWorkloadFor :: -- {{{
@@ -123,26 +129,29 @@ tryToObtainWorkloadFor
     broadcastWorkloadStealToWorkers
     sendWorkloadToWorker
     worker_id
-    old_state@VisitorNetworkSupervisorState{..}
+    old_state
     =
-    case waiting_workers_or_available_workloads of
+    case (old_state ^. waiting_workers_or_available_workloads) of
         Left waiting_workers → assert (not . Seq.null $ waiting_workers) $
-            return old_state
-                {   waiting_workers_or_available_workloads = Left (waiting_workers |> worker_id)
-                }
+            return
+                .(waiting_workers_or_available_workloads ^= Left (waiting_workers |> worker_id))
+                $
+                old_state
         Right (Set.minView → Nothing) → do
-            let broadcast_worker_ids = Map.keys active_workers
+            let broadcast_worker_ids = Map.keys (old_state ^. active_workers)
             broadcastWorkloadStealToWorkers broadcast_worker_ids
-            return old_state
-                {   waiting_workers_or_available_workloads = Left (Seq.singleton worker_id)
-                ,   workers_pending_workload_steal = Set.fromList broadcast_worker_ids
-                }
+            return
+                .(waiting_workers_or_available_workloads ^= Left (Seq.singleton worker_id))
+                .(workers_pending_workload_steal ^= Set.fromList broadcast_worker_ids)
+                $
+                old_state
         Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadToWorker workload worker_id
-            return old_state
-                {   waiting_workers_or_available_workloads = Right remaining_workloads
-                ,   active_workers = Map.insert worker_id workload active_workers
-                }
+            return
+                .(waiting_workers_or_available_workloads ^= Right remaining_workloads)
+                .(active_workers ^: Map.insert worker_id workload)
+                $
+                old_state
 -- }}}
 
 updateStatusUpdated :: -- {{{
@@ -156,15 +165,14 @@ updateStatusUpdated
     snapshotNetworkStatus
     status_update
     worker_id
-    old_state@VisitorNetworkSupervisorState{..}
+    old_state
     = do
     validateWorkerKnown worker_id old_state
-    let new_state =
-            old_state 
-            {   workers_pending_status_update = Set.delete worker_id workers_pending_status_update
-            ,   current_status = current_status `mappend` status_update
-            }
-    return new_state
+    return
+        .(workers_pending_status_update ^: Set.delete worker_id)
+        .(current_status ^: mappend status_update)
+        $
+        old_state
     -- NOTE:  CODE IS ***NOT*** COMPLETE
 -- }}}
 
@@ -179,15 +187,15 @@ updateWorkerAdded
     broadcastWorkloadStealToWorkers
     sendWorkloadToWorker
     worker_id
-    (old_state@VisitorNetworkSupervisorState{..})
- | Set.member worker_id known_workers =
+    old_state
+ | Set.member worker_id (old_state ^. known_workers) =
     liftIO . throwIO $ WorkerAlreadyKnown worker_id
  | otherwise =
     tryToObtainWorkloadFor
         broadcastWorkloadStealToWorkers
         sendWorkloadToWorker
         worker_id
-        (old_state { known_workers = Set.insert worker_id known_workers })
+        ((known_workers ^: Set.insert worker_id) old_state)
 -- }}}
 
 updateWorkerFinished ::  -- {{{
@@ -204,18 +212,17 @@ updateWorkerFinished
     sendWorkloadToWorker
     status_update
     worker_id
-    old_state@VisitorNetworkSupervisorState{..}
+    old_state
     = do
     validateWorkerKnown worker_id old_state
-    let new_status@(VisitorStatusUpdate new_checkpoint new_results) = current_status `mappend` status_update
+    let new_status@(VisitorStatusUpdate new_checkpoint new_results) = (old_state ^. current_status) `mappend` status_update
         new_state =
-            (old_state
-             {   current_status = new_status
-             ,   active_workers = Map.delete worker_id active_workers
-             ,   workers_pending_workload_steal = Set.delete worker_id workers_pending_workload_steal
-             ,   workers_pending_status_update = Set.delete worker_id workers_pending_status_update
-             }
-            )
+             (current_status ^= new_status)
+            .(active_workers ^: Map.delete worker_id)
+            .(workers_pending_workload_steal ^: Set.delete worker_id)
+            .(workers_pending_status_update ^: Set.delete worker_id)
+            $
+            old_state
     case new_checkpoint of
         Explored → return $ Left new_results
         _ → tryToObtainWorkloadFor
@@ -232,15 +239,16 @@ updateWorkerRemoved :: -- {{{
     worker_id →
     VisitorNetworkSupervisorState α worker_id →
     m (VisitorNetworkSupervisorState α worker_id)
-updateWorkerRemoved sendWorkloadToWorker worker_id old_state@VisitorNetworkSupervisorState{..} = do
+updateWorkerRemoved sendWorkloadToWorker worker_id old_state = do
     validateWorkerKnown worker_id old_state
-    let new_state = old_state
-            {   known_workers = Set.delete worker_id known_workers
-            ,   active_workers = Map.delete worker_id active_workers
-            ,   workers_pending_workload_steal = Set.delete worker_id workers_pending_workload_steal
-            ,   workers_pending_status_update = Set.delete worker_id workers_pending_status_update
-            }
-    case Map.lookup worker_id active_workers of
+    let new_state =
+             (known_workers ^: Set.delete worker_id)
+            .(active_workers ^: Map.delete worker_id)
+            .(workers_pending_workload_steal ^: Set.delete worker_id)
+            .(workers_pending_status_update ^: Set.delete worker_id)
+            $
+            old_state
+    case Map.lookup worker_id (new_state ^. active_workers) of
         Nothing → return new_state
         Just workload →
             enqueueWorkload
@@ -260,10 +268,10 @@ updateWorkloadStolen
     sendWorkloadToWorker
     workload
     worker_id
-    old_state@VisitorNetworkSupervisorState{..}
+    old_state
     = do
     validateWorkerKnown worker_id old_state
-    let new_state = old_state { workers_pending_workload_steal = Set.delete worker_id workers_pending_workload_steal }
+    let new_state = (workers_pending_workload_steal ^: Set.delete worker_id) old_state
     enqueueWorkload
         sendWorkloadToWorker
         workload
@@ -275,8 +283,8 @@ validateWorkerKnown :: -- {{{
     worker_id →
     VisitorNetworkSupervisorState α worker_id →
     m ()
-validateWorkerKnown worker_id  VisitorNetworkSupervisorState{..} =
-    when (Set.notMember worker_id known_workers)
+validateWorkerKnown worker_id state =
+    when (Set.notMember worker_id (state ^. known_workers))
     .
     (liftIO . throwIO)
     $
