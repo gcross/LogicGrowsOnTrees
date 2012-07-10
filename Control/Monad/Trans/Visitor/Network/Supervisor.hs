@@ -142,10 +142,10 @@ broadcastWorkloadStealToActiveWorkers :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorContext result worker_id m ()
 broadcastWorkloadStealToActiveWorkers = do
-    active_worker_ids ← Map.keys <$> get active_workers
-    when (null active_worker_ids) $ error "no workers to broadcast!"
-    asks broadcast_workload_steal_to_workers_action >>= lift . ($ active_worker_ids)
-    workers_pending_workload_steal %= Set.fromList active_worker_ids
+    active_worker_ids ← Map.keysSet <$> get active_workers
+    when (Set.null active_worker_ids) $ error "no workers to broadcast!"
+    asks broadcast_workload_steal_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
+    workers_pending_workload_steal %= active_worker_ids
 -- }}}
 
 removePendingWorkloadSteal :: -- {{{
