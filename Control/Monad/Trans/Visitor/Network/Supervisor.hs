@@ -119,8 +119,8 @@ updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
     maybe_workload ← Map.lookup worker_id <$> get active_workers
     known_workers %: Set.delete worker_id
     active_workers %: Map.delete worker_id
-    removePendingWorkloadSteal worker_id
-    removePendingStatusUpdate worker_id
+    clearPendingWorkloadSteal worker_id
+    clearPendingStatusUpdate worker_id
     maybe (return ()) enqueueWorkload maybe_workload
 -- }}}
 
@@ -132,7 +132,7 @@ updateWorkloadStolen :: -- {{{
 updateWorkloadStolen workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
     validateWorkerKnown worker_id
     enqueueWorkload workload
-    removePendingWorkloadSteal worker_id
+    clearPendingWorkloadSteal worker_id
 -- }}}
 
 -- }}}
@@ -149,21 +149,21 @@ broadcastWorkloadStealToActiveWorkers = do
     workers_pending_workload_steal %= active_worker_ids
 -- }}}
 
-removePendingStatusUpdate :: -- {{{
+clearPendingStatusUpdate :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
-removePendingStatusUpdate worker_id = do
+clearPendingStatusUpdate worker_id = do
     workers_pending_status_update %: Set.delete worker_id
     no_status_updates_are_pending ← Set.null <$> get workers_pending_status_update
     when no_status_updates_are_pending receiveCurrentStatus 
 -- }}}
 
-removePendingWorkloadSteal :: -- {{{
+clearPendingWorkloadSteal :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
-removePendingWorkloadSteal worker_id = do
+clearPendingWorkloadSteal worker_id = do
     workers_pending_workload_steal %: Set.delete worker_id
     no_workload_steals_remain ← Set.null <$> get workers_pending_workload_steal
     workers_are_waiting_for_workloads ← either (not . Seq.null) (const False) <$> get waiting_workers_or_available_workloads
