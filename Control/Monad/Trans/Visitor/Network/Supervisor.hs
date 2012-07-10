@@ -9,7 +9,7 @@ module Control.Monad.Trans.Visitor.Network.Supervisor where
 
 -- Imports {{{
 import Data.Accessor ((^.),(^=),(^:))
-import Data.Accessor.Monad.MTL.State (get)
+import Data.Accessor.Monad.MTL.State ((%=),(%:),get)
 import Data.Accessor.Template (deriveAccessors)
 import Control.Applicative ((<$>))
 import Control.Exception (Exception,assert)
@@ -55,11 +55,9 @@ class (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id) ⇒ Work
 
 data VisitorNetworkSupervisorActions result worker_id m = -- {{{
     VisitorNetworkSupervisorActions
-    {   broadcast_workload_steal_action :: [worker_id] → m ()
-    ,   send_workload_action :: VisitorWorkload → worker_id → m ()
-    ,   shutdown_action :: worker_id → m ()
-    ,   snapshot_network_status_action :: VisitorStatusUpdate result → m ()
-    ,   respond_to_worker_already_added_action :: worker_id → m ()
+    {   broadcast_workload_steal_to_workers_action :: [worker_id] → m ()
+    ,   receive_current_status_action :: VisitorStatusUpdate result → m ()
+    ,   send_workload_to_worker_action :: VisitorWorkload → worker_id → m ()
     }
 -- }}}
 
@@ -76,17 +74,21 @@ $( deriveAccessors ''VisitorNetworkSupervisorState )
 
 data VisitorNetworkResult result worker_id = VisitorNetworkResult result [worker_id]
 
+
+type VisitorNetworkSupervisorContext result worker_id m = -- {{{
+    RWST
+        (VisitorNetworkSupervisorActions result worker_id m)
+        (VisitorStatusUpdate result)
+        (VisitorNetworkSupervisorState worker_id)
+        m
+-- }}}
+
 newtype VisitorNetworkSupervisorMonad result worker_id m a = -- {{{
     VisitorNetworkSupervisorMonad {
       unwrapVisitorNetworkSupervisorMonad ::
         (ContT
             (VisitorNetworkResult result worker_id)
-            (RWST
-                (VisitorNetworkSupervisorActions result worker_id m)
-                (VisitorStatusUpdate result)
-                (VisitorNetworkSupervisorState worker_id)
-                m
-            )
+            (VisitorNetworkSupervisorContext result worker_id m)
             a
         )
     }
@@ -94,16 +96,132 @@ newtype VisitorNetworkSupervisorMonad result worker_id m a = -- {{{
 
 -- }}}
 
--- Functions {{{
+-- Exposed functions {{{
+
+updateWorkerAdded :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+updateWorkerAdded worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerNotKnown worker_id
+    known_workers %: Set.insert worker_id
+    tryToObtainWorkloadFor worker_id
+-- }}}
+
+updateWorkerRemoved :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerKnown worker_id
+    maybe_workload ← Map.lookup worker_id <$> get active_workers
+    known_workers %: Set.delete worker_id
+    active_workers %: Map.delete worker_id
+    workers_pending_workload_steal %: Set.delete worker_id
+    workers_pending_status_update %: Set.delete worker_id
+    maybe (return ()) enqueueWorkload maybe_workload
+-- }}}
+
+updateWorkloadStolen :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorWorkload →
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+updateWorkloadStolen workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerKnown worker_id
+    workers_pending_workload_steal %: Set.delete worker_id
+    enqueueWorkload workload
+-- }}}
+
+-- }}}
+
+-- Internal Functions {{{
+
+broadcastWorkloadStealToActiveWorkers :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorNetworkSupervisorContext result worker_id m ()
+broadcastWorkloadStealToActiveWorkers = do
+    active_worker_ids ← Map.keys <$> get active_workers
+    when (null active_worker_ids) $ error "no workers to broadcast!"
+    asks broadcast_workload_steal_to_workers_action >>= lift . ($ active_worker_ids)
+    workers_pending_workload_steal %= Set.fromList active_worker_ids
+-- }}}
+
+enqueueWorkload :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorWorkload →
+    VisitorNetworkSupervisorContext result worker_id m ()
+enqueueWorkload workload =
+    get waiting_workers_or_available_workloads
+    >>=
+    \x → case x of
+        Left (viewl → (free_worker_id :< remaining_workers)) → do
+            sendWorkloadToWorker workload free_worker_id
+            waiting_workers_or_available_workloads %= Left remaining_workers
+            (Set.null <$> get workers_pending_workload_steal)
+                >>= flip when broadcastWorkloadStealToActiveWorkers 
+        Left (viewl → EmptyL) →
+            waiting_workers_or_available_workloads %= Right (Set.singleton workload)
+        Right available_workloads →
+            waiting_workers_or_available_workloads %= Right (Set.insert workload available_workloads)
+-- }}}
+
+receiveCurrentStatus :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorStatusUpdate result →
+    VisitorNetworkSupervisorContext result worker_id m ()
+receiveCurrentStatus status_update =
+    asks receive_current_status_action
+    >>=
+    lift . ($ status_update)
+-- }}}
+
+sendWorkloadToWorker :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorWorkload →
+    worker_id →
+    VisitorNetworkSupervisorContext result worker_id m ()
+sendWorkloadToWorker workload worker_id = do
+    asks send_workload_to_worker_action >>= lift . (\f → f workload worker_id)
+    active_workers %: Map.insert worker_id workload
+-- }}}
+
+tryToObtainWorkloadFor :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorContext result worker_id m ()
+tryToObtainWorkloadFor worker_id =
+    get waiting_workers_or_available_workloads
+    >>=
+    \x → case x of
+        Left waiting_workers → assert (not . Seq.null $ waiting_workers) $
+            waiting_workers_or_available_workloads %= Left (waiting_workers |> worker_id)
+        Right (Set.minView → Nothing) → do
+            broadcastWorkloadStealToActiveWorkers
+            waiting_workers_or_available_workloads %= Left (Seq.singleton worker_id)
+        Right (Set.minView → Just (workload,remaining_workloads)) → do
+            sendWorkloadToWorker workload worker_id
+            waiting_workers_or_available_workloads %= Right remaining_workloads
+-- }}}
 
 validateWorkerKnown :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
-    VisitorNetworkSupervisorMonad result worker_id m ()
-validateWorkerKnown worker_id = VisitorNetworkSupervisorMonad . lift $
+    VisitorNetworkSupervisorContext result worker_id m ()
+validateWorkerKnown worker_id =
     Set.notMember worker_id <$> (get known_workers)
     >>=
     flip when (throw $ WorkerNotKnown worker_id)
+-- }}}
+
+validateWorkerNotKnown :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorContext result worker_id m ()
+validateWorkerNotKnown worker_id =
+    Set.member worker_id <$> (get known_workers)
+    >>=
+    flip when (throw $ WorkerAlreadyKnown worker_id)
 -- }}}
 
 -- }}}
