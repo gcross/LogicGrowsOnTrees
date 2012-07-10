@@ -20,6 +20,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.Trans.RWS.Strict (RWST,asks)
 
+import Data.Either.Unwrap (whenLeft)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Monoid (Monoid(..))
@@ -117,8 +118,8 @@ updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
     maybe_workload ← Map.lookup worker_id <$> get active_workers
     known_workers %: Set.delete worker_id
     active_workers %: Map.delete worker_id
-    workers_pending_workload_steal %: Set.delete worker_id
     workers_pending_status_update %: Set.delete worker_id
+    removePendingWorkloadSteal worker_id
     maybe (return ()) enqueueWorkload maybe_workload
 -- }}}
 
@@ -129,8 +130,8 @@ updateWorkloadStolen :: -- {{{
     VisitorNetworkSupervisorMonad result worker_id m ()
 updateWorkloadStolen workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
     validateWorkerKnown worker_id
-    workers_pending_workload_steal %: Set.delete worker_id
     enqueueWorkload workload
+    removePendingWorkloadSteal worker_id
 -- }}}
 
 -- }}}
@@ -147,6 +148,16 @@ broadcastWorkloadStealToActiveWorkers = do
     workers_pending_workload_steal %= Set.fromList active_worker_ids
 -- }}}
 
+removePendingWorkloadSteal :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorContext result worker_id m ()
+removePendingWorkloadSteal worker_id = do
+    workers_pending_workload_steal %: Set.delete worker_id
+    get waiting_workers_or_available_workloads
+        >>= flip whenLeft (flip when broadcastWorkloadStealToActiveWorkers . not . Seq.null)
+-- }}}
+
 enqueueWorkload :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorWorkload →
@@ -158,8 +169,6 @@ enqueueWorkload workload =
         Left (viewl → (free_worker_id :< remaining_workers)) → do
             sendWorkloadToWorker workload free_worker_id
             waiting_workers_or_available_workloads %= Left remaining_workers
-            (Set.null <$> get workers_pending_workload_steal)
-                >>= flip when broadcastWorkloadStealToActiveWorkers 
         Left (viewl → EmptyL) →
             waiting_workers_or_available_workloads %= Right (Set.singleton workload)
         Right available_workloads →
