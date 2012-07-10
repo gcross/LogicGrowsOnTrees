@@ -62,13 +62,14 @@ data VisitorNetworkSupervisorActions result worker_id m = -- {{{
     }
 -- }}}
 
-data VisitorNetworkSupervisorState worker_id = -- {{{
+data VisitorNetworkSupervisorState result worker_id = -- {{{
     VisitorNetworkSupervisorState
     {   waiting_workers_or_available_workloads_ :: !(Either (Seq worker_id) (Set VisitorWorkload))
     ,   known_workers_ :: !(Set worker_id)
     ,   active_workers_ :: !(Map worker_id VisitorWorkload)
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
     ,   workers_pending_status_update_ :: !(Set worker_id)
+    ,   current_status_ :: !(VisitorStatusUpdate result)
     }
 $( deriveAccessors ''VisitorNetworkSupervisorState )
 -- }}}
@@ -79,8 +80,8 @@ data VisitorNetworkResult result worker_id = VisitorNetworkResult result [worker
 type VisitorNetworkSupervisorContext result worker_id m = -- {{{
     RWST
         (VisitorNetworkSupervisorActions result worker_id m)
-        (VisitorStatusUpdate result)
-        (VisitorNetworkSupervisorState worker_id)
+        ()
+        (VisitorNetworkSupervisorState result worker_id)
         m
 -- }}}
 
@@ -118,8 +119,8 @@ updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
     maybe_workload ← Map.lookup worker_id <$> get active_workers
     known_workers %: Set.delete worker_id
     active_workers %: Map.delete worker_id
-    workers_pending_status_update %: Set.delete worker_id
     removePendingWorkloadSteal worker_id
+    removePendingStatusUpdate worker_id
     maybe (return ()) enqueueWorkload maybe_workload
 -- }}}
 
@@ -146,6 +147,16 @@ broadcastWorkloadStealToActiveWorkers = do
     when (Set.null active_worker_ids) $ error "no workers to broadcast!"
     asks broadcast_workload_steal_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
     workers_pending_workload_steal %= active_worker_ids
+-- }}}
+
+removePendingStatusUpdate :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorContext result worker_id m ()
+removePendingStatusUpdate worker_id = do
+    workers_pending_status_update %: Set.delete worker_id
+    no_status_updates_are_pending ← Set.null <$> get workers_pending_status_update
+    when no_status_updates_are_pending receiveCurrentStatus 
 -- }}}
 
 removePendingWorkloadSteal :: -- {{{
@@ -178,12 +189,11 @@ enqueueWorkload workload =
 
 receiveCurrentStatus :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorStatusUpdate result →
     VisitorNetworkSupervisorContext result worker_id m ()
-receiveCurrentStatus status_update =
-    asks receive_current_status_action
-    >>=
-    lift . ($ status_update)
+receiveCurrentStatus = do
+    callback ← asks receive_current_status_action
+    current_status ← get current_status
+    lift (callback current_status)
 -- }}}
 
 sendWorkloadToWorker :: -- {{{
