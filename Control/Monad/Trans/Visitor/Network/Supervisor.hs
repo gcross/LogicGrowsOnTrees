@@ -154,8 +154,9 @@ removePendingWorkloadSteal :: -- {{{
     VisitorNetworkSupervisorContext result worker_id m ()
 removePendingWorkloadSteal worker_id = do
     workers_pending_workload_steal %: Set.delete worker_id
-    get waiting_workers_or_available_workloads
-        >>= flip whenLeft (flip when broadcastWorkloadStealToActiveWorkers . not . Seq.null)
+    no_workload_steals_remain ← Set.null <$> get workers_pending_workload_steal
+    workers_are_waiting_for_workloads ← either (not . Seq.null) (const False) <$> get waiting_workers_or_available_workloads
+    when (no_workload_steals_remain && workers_are_waiting_for_workloads) broadcastWorkloadStealToActiveWorkers
 -- }}}
 
 enqueueWorkload :: -- {{{
