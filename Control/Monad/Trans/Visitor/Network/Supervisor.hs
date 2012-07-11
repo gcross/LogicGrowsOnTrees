@@ -153,12 +153,12 @@ updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
 
 updateWorkloadStolen :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorWorkload →
+    Maybe VisitorWorkload →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
-updateWorkloadStolen workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
+updateWorkloadStolen maybe_workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
     validateWorkerKnown worker_id
-    enqueueWorkload workload
+    maybe (return ()) enqueueWorkload maybe_workload
     clearPendingWorkloadSteal worker_id
 -- }}}
 
