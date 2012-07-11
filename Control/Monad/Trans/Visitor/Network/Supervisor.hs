@@ -109,6 +109,19 @@ getCurrentStatus :: -- {{{
 getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
 -- }}}
 
+updateStatusUpdateReceived :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    Maybe (VisitorStatusUpdate result) →
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+updateStatusUpdateReceived maybe_status_update worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerKnownAndActive worker_id
+    case maybe_status_update of
+        Nothing → return ()
+        Just status_update → current_status %: (`mappend` status_update)
+    clearPendingStatusUpdate worker_id
+-- }}}
+
 updateStolenWorkloadReceived :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     Maybe VisitorWorkload →
