@@ -115,7 +115,7 @@ updateStolenWorkloadReceived :: -- {{{
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
 updateStolenWorkloadReceived maybe_workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
-    validateWorkerKnown worker_id
+    validateWorkerKnownAndActive worker_id
     maybe (return ()) enqueueWorkload maybe_workload
     clearPendingWorkloadSteal worker_id
 -- }}}
