@@ -13,16 +13,17 @@ import Data.Accessor.Monad.MTL.State ((%=),(%:),get)
 import Data.Accessor.Template (deriveAccessors)
 import Control.Applicative ((<$>))
 import Control.Exception (Exception,assert)
-import Control.Monad (when)
+import Control.Monad (unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Cont (ContT)
+import Control.Monad.Trans.Abort (AbortT,abort)
 import Control.Monad.Trans.RWS.Strict (RWST,asks)
 
 import Data.Either.Unwrap (whenLeft)
 import qualified Data.Map as Map
 import Data.Map (Map)
+import Data.Maybe (isNothing)
 import Data.Monoid (Monoid(..))
 import qualified Data.Sequence as Seq
 import Data.Sequence (Seq,ViewL(..),(|>),viewl)
@@ -39,6 +40,8 @@ import Control.Monad.Trans.Visitor.Workload
 data SupervisorError worker_id = -- {{{
     WorkerAlreadyKnown worker_id
   | WorkerNotKnown worker_id
+  | WorkerNotActive worker_id
+  | ActiveWorkersRemainedAfterSpaceFullyExplored [worker_id]
   deriving (Eq,Show,Typeable)
 
 instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (SupervisorError worker_id)
@@ -88,7 +91,7 @@ type VisitorNetworkSupervisorContext result worker_id m = -- {{{
 newtype VisitorNetworkSupervisorMonad result worker_id m a = -- {{{
     VisitorNetworkSupervisorMonad {
       unwrapVisitorNetworkSupervisorMonad ::
-        (ContT
+        (AbortT
             (VisitorNetworkResult result worker_id)
             (VisitorNetworkSupervisorContext result worker_id m)
             a
@@ -108,6 +111,30 @@ updateWorkerAdded worker_id = VisitorNetworkSupervisorMonad . lift $ do
     validateWorkerNotKnown worker_id
     known_workers %: Set.insert worker_id
     tryToObtainWorkloadFor worker_id
+-- }}}
+
+updateWorkerFinished :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorStatusUpdate result →
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+updateWorkerFinished status_update worker_id = VisitorNetworkSupervisorMonad $
+    (lift $ do
+        validateWorkerKnownAndActive worker_id
+        active_workers %: Map.delete worker_id
+        current_status %: (`mappend` status_update)
+        VisitorStatusUpdate checkpoint new_results ← get current_status
+        case checkpoint of
+            Explored → do
+                active_worker_ids ← Map.keys <$> get active_workers
+                unless (null active_worker_ids) $
+                    throw $ ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
+                known_worker_ids ← Set.toList <$> get known_workers
+                return . Just $ VisitorNetworkResult new_results known_worker_ids
+            _ → do
+                tryToObtainWorkloadFor worker_id
+                return Nothing
+    ) >>= maybe (return ()) abort
 -- }}}
 
 updateWorkerRemoved :: -- {{{
@@ -203,6 +230,8 @@ sendWorkloadToWorker :: -- {{{
     VisitorNetworkSupervisorContext result worker_id m ()
 sendWorkloadToWorker workload worker_id = do
     asks send_workload_to_worker_action >>= lift . (\f → f workload worker_id)
+    isNothing . Map.lookup worker_id <$> get active_workers
+        >>= flip unless (error "sending a workload to a worker already active!")
     active_workers %: Map.insert worker_id workload
 -- }}}
 
@@ -230,18 +259,26 @@ validateWorkerKnown :: -- {{{
     VisitorNetworkSupervisorContext result worker_id m ()
 validateWorkerKnown worker_id =
     Set.notMember worker_id <$> (get known_workers)
-    >>=
-    flip when (throw $ WorkerNotKnown worker_id)
+        >>= flip when (throw $ WorkerNotKnown worker_id)
+-- }}}
+
+validateWorkerKnownAndActive :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorContext result worker_id m ()
+validateWorkerKnownAndActive worker_id = do
+    validateWorkerKnown worker_id
+    Set.notMember worker_id <$> (get known_workers)
+        >>= flip when (throw $ WorkerNotActive worker_id)
 -- }}}
 
 validateWorkerNotKnown :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
-validateWorkerNotKnown worker_id =
+validateWorkerNotKnown worker_id = do
     Set.member worker_id <$> (get known_workers)
-    >>=
-    flip when (throw $ WorkerAlreadyKnown worker_id)
+        >>= flip when (throw $ WorkerAlreadyKnown worker_id)
 -- }}}
 
 -- }}}
