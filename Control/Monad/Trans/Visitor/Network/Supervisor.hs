@@ -109,6 +109,17 @@ getCurrentStatus :: -- {{{
 getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
 -- }}}
 
+updateStolenWorkloadReceived :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    Maybe VisitorWorkload →
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+updateStolenWorkloadReceived maybe_workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerKnown worker_id
+    maybe (return ()) enqueueWorkload maybe_workload
+    clearPendingWorkloadSteal worker_id
+-- }}}
+
 updateWorkerAdded :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
@@ -155,17 +166,6 @@ updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
     clearPendingWorkloadSteal worker_id
     clearPendingStatusUpdate worker_id
     maybe (return ()) enqueueWorkload maybe_workload
--- }}}
-
-updateWorkloadStolen :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe VisitorWorkload →
-    worker_id →
-    VisitorNetworkSupervisorMonad result worker_id m ()
-updateWorkloadStolen maybe_workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
-    validateWorkerKnown worker_id
-    maybe (return ()) enqueueWorkload maybe_workload
-    clearPendingWorkloadSteal worker_id
 -- }}}
 
 -- }}}
