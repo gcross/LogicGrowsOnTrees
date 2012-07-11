@@ -103,6 +103,12 @@ newtype VisitorNetworkSupervisorMonad result worker_id m a = -- {{{
 
 -- Exposed functions {{{
 
+getCurrentStatus :: -- {{{
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorNetworkSupervisorMonad result worker_id m (VisitorStatusUpdate result)
+getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
+-- }}}
+
 updateWorkerAdded :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
