@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -17,8 +18,8 @@ import Control.Monad (unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Abort (AbortT,abort)
-import Control.Monad.Trans.RWS.Strict (RWST,asks)
+import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
+import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
 
 import Data.Either.Unwrap (whenLeft)
 import qualified Data.Map as Map
@@ -79,7 +80,6 @@ $( deriveAccessors ''VisitorNetworkSupervisorState )
 
 data VisitorNetworkResult result worker_id = VisitorNetworkResult result [worker_id]
 
-
 type VisitorNetworkSupervisorContext result worker_id m = -- {{{
     RWST
         (VisitorNetworkSupervisorActions result worker_id m)
@@ -108,6 +108,37 @@ getCurrentStatus :: -- {{{
     VisitorNetworkSupervisorMonad result worker_id m (VisitorStatusUpdate result)
 getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
 -- }}}
+
+runVisitorNetworkSupervisor ::
+    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorNetworkSupervisorActions result worker_id m →
+    (∀ a. VisitorNetworkSupervisorMonad result worker_id m a) →
+    m (VisitorNetworkResult result worker_id)
+runVisitorNetworkSupervisor actions loop =
+    (fst <$>)
+    .
+    (\x ->
+     evalRWST
+        x
+        actions
+        (VisitorNetworkSupervisorState
+            {   waiting_workers_or_available_workloads_ = Right (Set.singleton entire_workload)
+            ,   known_workers_ = mempty
+            ,   active_workers_ = mempty
+            ,   workers_pending_workload_steal_ = mempty
+            ,   workers_pending_status_update_ = mempty
+            ,   current_status_ = mempty
+            }
+        )
+    )
+    .
+    runAbortT
+    .
+    unwrapVisitorNetworkSupervisorMonad
+    $
+    loop'
+  where
+    loop' = loop
 
 updateStatusUpdateReceived :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
