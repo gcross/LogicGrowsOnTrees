@@ -532,7 +532,7 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Supervisor" -- {{{
-        [testCase "immediately abort" $ do -- {{{
+        [testCase "immediately abort" $ -- {{{
             runVisitorNetworkSupervisor bad_test_supervisor_actions abortNetwork
             >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([] :: [Int])))
          -- }}}
