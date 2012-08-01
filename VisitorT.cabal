@@ -40,3 +40,15 @@ Library
         Control.Monad.Trans.Visitor.Supervisor
         Control.Monad.Trans.Visitor.Worker
     Extensions:
+
+Test-Suite tests
+    Type:       exitcode-stdio-1.0
+    Main-is:    tests.hs
+    Build-depends:
+        HUnit == 1.2.*,
+        random == 1.0.*,
+        QuickCheck == 2.4.*,
+        test-framework == 0.6.*,
+        test-framework-hunit == 0.2.*,
+        test-framework-quickcheck2 == 0.2.*,
+        uuid == 1.2.*
