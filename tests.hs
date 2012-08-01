@@ -183,7 +183,6 @@ echo x = trace (show x) x
 
 echoWithLabel :: Show α ⇒ String → α → α -- {{{
 echoWithLabel label x = trace (label ++ " " ++ show x) x
--- }}} 
 -- }}}
 
 randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint -- {{{
