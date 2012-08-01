@@ -32,7 +32,7 @@ import Data.Functor.Identity
 import Data.IORef
 import Data.IVar (IVar)
 import qualified Data.IVar as IVar
-import Data.List (mapAccumL,sort)
+import Data.List (inits,mapAccumL,sort)
 import Data.Maybe
 import Data.Monoid
 import Data.Monoid.Unicode
@@ -57,6 +57,7 @@ import Test.Framework.Providers.QuickCheck2
 import Test.HUnit
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen
+import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Property
 
 import Control.Monad.Trans.Visitor
@@ -184,6 +185,32 @@ echo x = trace (show x) x
 
 echoWithLabel :: Show α ⇒ String → α → α -- {{{
 echoWithLabel label x = trace (label ++ " " ++ show x) x
+-- }}}
+
+addAcceptOneWorkloadAction :: -- {{{
+    VisitorNetworkSupervisorActions result worker_id IO →
+    IO (IORef (Maybe (worker_id,VisitorWorkload)),VisitorNetworkSupervisorActions result worker_id IO)
+addAcceptOneWorkloadAction actions = do
+    maybe_worker_and_workload_ref ← newIORef (Nothing :: Maybe (worker_id,VisitorWorkload))
+    return (maybe_worker_and_workload_ref, actions {
+        send_workload_to_worker_action = \workload worker_id → do
+            maybe_old_workload ← readIORef maybe_worker_and_workload_ref
+            case maybe_old_workload of
+                Nothing → return ()
+                Just _ → error "workload has been submitted already!"
+            writeIORef maybe_worker_and_workload_ref $ Just (worker_id,workload)
+    })
+-- }}}
+
+addAppendBroadcastIdsAction :: -- {{{
+    VisitorNetworkSupervisorActions result worker_id IO →
+    IO (IORef [[worker_id]],VisitorNetworkSupervisorActions result worker_id IO)
+addAppendBroadcastIdsAction actions = do
+    broadcasts_ref ← newIORef ([] :: [[worker_id]])
+    return (broadcasts_ref, actions {
+        broadcast_workload_steal_to_workers_action = \worker_ids →
+            modifyIORef broadcasts_ref (++ [worker_ids])
+    })
 -- }}}
 
 randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint -- {{{
@@ -537,21 +564,24 @@ tests = -- {{{
             >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([] :: [Int])))
          -- }}}
         ,testCase "add one worker then abort" $ do -- {{{
-            maybe_workload_ref ← newIORef (Nothing :: Maybe VisitorWorkload)
-            let actions =
-                    bad_test_supervisor_actions {
-                        send_workload_to_worker_action = \workload () → do
-                            maybe_old_workload ← readIORef maybe_workload_ref
-                            case maybe_old_workload of
-                                Nothing → return ()
-                                Just _ → error "workload has been submitted already!"
-                            writeIORef maybe_workload_ref (Just workload)
-                    }
+            (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
             (runVisitorNetworkSupervisor actions $ do
                 updateWorkerAdded ()
                 abortNetwork
              ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
-            readIORef maybe_workload_ref >>= (@?= Just entire_workload) 
+            readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+         -- }}}
+        ,testProperty "add many workers then abort" $ \(NonEmpty worker_ids :: NonEmptyList UUID) → morallyDubiousIOProperty $ do -- {{{
+            (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+            (broadcast_ids_list_ref,actions_2) ← addAppendBroadcastIdsAction actions_1
+            VisitorNetworkResult progress remaining_worker_ids ← runVisitorNetworkSupervisor actions_2 $ do
+                mapM_ updateWorkerAdded worker_ids
+                abortNetwork
+            progress @?= Left (VisitorStatusUpdate Unexplored ())
+            sort worker_ids @?= sort remaining_worker_ids
+            readIORef maybe_workload_ref >>= (@?= Just (head worker_ids,entire_workload))
+            readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids then [] else [[head worker_ids]])
+            return True
          -- }}}
         ]
      -- }}}
