@@ -65,6 +65,7 @@ import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
+import Control.Monad.Trans.Visitor.Supervisor
 -- }}}
 
 -- Helpers {{{
@@ -235,6 +236,19 @@ randomVisitorWithoutCache = sized arb
 -- }}}
 -- }}} Functions
 
+-- Values {{{
+bad_test_supervisor_actions :: VisitorNetworkSupervisorActions result worker_id m -- {{{
+bad_test_supervisor_actions =
+    VisitorNetworkSupervisorActions
+    {   broadcast_workload_steal_to_workers_action =
+            error "broadcast_workload_steal_to_workers_action called! :-/"
+    ,   receive_current_status_action =
+            error "receive_current_status_action called! :-/"
+    ,   send_workload_to_worker_action =
+            error "send_workload_to_worker_action called! :-/"
+    }
+-- }}}
+-- }}}
 -- }}} Helpers
 
 main = defaultMain tests
@@ -514,6 +528,13 @@ tests = -- {{{
                 (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([42],[3,4])
              -- }}}
             ]
+         -- }}}
+        ]
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Supervosr" -- {{{
+        [testCase "immediately abort" $ do -- {{{
+            runVisitorNetworkSupervisor bad_test_supervisor_actions abortNetwork
+            >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([] :: [Int])))
          -- }}}
         ]
      -- }}}
