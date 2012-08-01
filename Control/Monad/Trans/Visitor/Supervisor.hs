@@ -12,7 +12,7 @@ module Control.Monad.Trans.Visitor.Supervisor where
 import Data.Accessor ((^.),(^=),(^:))
 import Data.Accessor.Monad.MTL.State ((%=),(%:),get)
 import Data.Accessor.Template (deriveAccessors)
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>),(<*>))
 import Control.Exception (Exception,assert)
 import Control.Monad (unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
@@ -78,7 +78,7 @@ data VisitorNetworkSupervisorState result worker_id = -- {{{
 $( deriveAccessors ''VisitorNetworkSupervisorState )
 -- }}}
 
-data VisitorNetworkResult result worker_id = VisitorNetworkResult result [worker_id]
+data VisitorNetworkResult result worker_id = VisitorNetworkResult (Either (VisitorStatusUpdate result) result) [worker_id] deriving (Eq,Show)
 
 type VisitorNetworkSupervisorContext result worker_id m = -- {{{
     RWST
@@ -102,6 +102,17 @@ newtype VisitorNetworkSupervisorMonad result worker_id m a = -- {{{
 -- }}}
 
 -- Exposed functions {{{
+
+abortNetwork :: (Functor m, Monad m) ⇒ VisitorNetworkSupervisorMonad result worker_id m α -- {{{
+abortNetwork = VisitorNetworkSupervisorMonad $
+    (lift
+     $
+     VisitorNetworkResult
+        <$> (Left <$> get current_status)
+        <*> (Set.toList <$> get known_workers)
+    )
+    >>= abort
+-- }}}
 
 getCurrentStatus :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
@@ -192,7 +203,7 @@ updateWorkerFinished status_update worker_id = VisitorNetworkSupervisorMonad $
                 unless (null active_worker_ids) $
                     throw $ ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
                 known_worker_ids ← Set.toList <$> get known_workers
-                return . Just $ VisitorNetworkResult new_results known_worker_ids
+                return . Just $ VisitorNetworkResult (Right new_results) known_worker_ids
             _ → do
                 tryToObtainWorkloadFor worker_id
                 return Nothing
