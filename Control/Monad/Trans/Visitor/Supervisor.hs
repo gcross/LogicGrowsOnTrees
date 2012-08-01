@@ -50,12 +50,6 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Super
 
 -- }}}
 
--- Classes {{{
-
-class (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id) ⇒ WorkerId worker_id where {}
-
--- }}}
-
 -- Types {{{
 
 data VisitorNetworkSupervisorActions result worker_id m = -- {{{
@@ -115,13 +109,13 @@ abortNetwork = VisitorNetworkSupervisorMonad $
 -- }}}
 
 getCurrentStatus :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorMonad result worker_id m (VisitorStatusUpdate result)
 getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
 -- }}}
 
 runVisitorNetworkSupervisor :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorActions result worker_id m →
     (∀ a. VisitorNetworkSupervisorMonad result worker_id m a) →
     m (VisitorNetworkResult result worker_id)
@@ -153,7 +147,7 @@ runVisitorNetworkSupervisor actions loop =
 -- }}}
 
 updateStatusUpdateReceived :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     Maybe (VisitorStatusUpdate result) →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
@@ -166,7 +160,7 @@ updateStatusUpdateReceived maybe_status_update worker_id = VisitorNetworkSupervi
 -- }}}
 
 updateStolenWorkloadReceived :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     Maybe VisitorWorkload →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
@@ -177,7 +171,7 @@ updateStolenWorkloadReceived maybe_workload worker_id = VisitorNetworkSupervisor
 -- }}}
 
 updateWorkerAdded :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
 updateWorkerAdded worker_id = VisitorNetworkSupervisorMonad . lift $ do
@@ -187,7 +181,7 @@ updateWorkerAdded worker_id = VisitorNetworkSupervisorMonad . lift $ do
 -- }}}
 
 updateWorkerFinished :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorStatusUpdate result →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
@@ -211,7 +205,7 @@ updateWorkerFinished status_update worker_id = VisitorNetworkSupervisorMonad $
 -- }}}
 
 updateWorkerRemoved :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
 updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
@@ -229,7 +223,7 @@ updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
 -- Internal Functions {{{
 
 broadcastWorkloadStealToActiveWorkers :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorContext result worker_id m ()
 broadcastWorkloadStealToActiveWorkers = do
     active_worker_ids ← Map.keysSet <$> get active_workers
@@ -239,7 +233,7 @@ broadcastWorkloadStealToActiveWorkers = do
 -- }}}
 
 clearPendingStatusUpdate :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
 clearPendingStatusUpdate worker_id = do
@@ -249,7 +243,7 @@ clearPendingStatusUpdate worker_id = do
 -- }}}
 
 clearPendingWorkloadSteal :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
 clearPendingWorkloadSteal worker_id = do
@@ -260,7 +254,7 @@ clearPendingWorkloadSteal worker_id = do
 -- }}}
 
 enqueueWorkload :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorWorkload →
     VisitorNetworkSupervisorContext result worker_id m ()
 enqueueWorkload workload =
@@ -277,7 +271,7 @@ enqueueWorkload workload =
 -- }}}
 
 receiveCurrentStatus :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorContext result worker_id m ()
 receiveCurrentStatus = do
     callback ← asks receive_current_status_action
@@ -286,7 +280,7 @@ receiveCurrentStatus = do
 -- }}}
 
 sendWorkloadToWorker :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorWorkload →
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
@@ -298,7 +292,7 @@ sendWorkloadToWorker workload worker_id = do
 -- }}}
 
 tryToObtainWorkloadFor :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
 tryToObtainWorkloadFor worker_id =
@@ -316,7 +310,7 @@ tryToObtainWorkloadFor worker_id =
 -- }}}
 
 validateWorkerKnown :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
 validateWorkerKnown worker_id =
@@ -325,7 +319,7 @@ validateWorkerKnown worker_id =
 -- }}}
 
 validateWorkerKnownAndActive :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
 validateWorkerKnownAndActive worker_id = do
@@ -335,7 +329,7 @@ validateWorkerKnownAndActive worker_id = do
 -- }}}
 
 validateWorkerNotKnown :: -- {{{
-    (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
 validateWorkerNotKnown worker_id = do
