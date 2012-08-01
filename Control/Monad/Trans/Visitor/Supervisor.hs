@@ -6,7 +6,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Network.Supervisor where
+module Control.Monad.Trans.Visitor.Supervisor where
 
 -- Imports {{{
 import Data.Accessor ((^.),(^=),(^:))

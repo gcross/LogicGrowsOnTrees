@@ -62,7 +62,6 @@ import Test.QuickCheck.Property
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
-import Control.Monad.Trans.Visitor.Network.Worker
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
@@ -436,64 +435,6 @@ tests = -- {{{
                     walkVisitorDownPath path visitor
                     ==
                     walkVisitorDownLabel label visitor
-             -- }}}
-            ]
-         -- }}}
-        ]
-     -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Network.Worker" -- {{{
-        [testGroup "absense of workload results in" -- {{{
-            [testProperty "incoming workload starts the worker" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
-                withVisitorNetworkWorker visitor $ \worker_inbox worker_outbox → do
-                    sendWorkloadTo entire_workload worker_inbox
-                    response ← receiveMessageFrom worker_outbox
-                    response @?=
-                        VisitorWorkerOutgoingFinishedMessage (
-                            VisitorStatusUpdate
-                                Explored
-                                (runVisitor visitor)
-                        )
-                return True
-             -- }}}
-            ,testCase "null status update event" $ do -- {{{
-                withVisitorNetworkWorker (undefined :: Visitor ()) $ \worker_inbox worker_outbox → do
-                    sendStatusUpdateRequestTo worker_inbox
-                    response ← receiveMessageFrom worker_outbox
-                    response @?= VisitorWorkerOutgoingMaybeStatusUpdatedMessage Nothing
-             -- }}}
-            ,testCase "null workload steal event" $ do -- {{{
-                withVisitorNetworkWorker (undefined :: Visitor ()) $ \worker_inbox worker_outbox → do
-                    sendWorkloadStealRequestTo worker_inbox
-                    response ← receiveMessageFrom worker_outbox
-                    response @?= VisitorWorkerOutgoingMaybeWorkloadSubmittedMessage Nothing
-             -- }}}
-             ]
-         -- }}}
-        ,testGroup "correct propagation of" -- {{{
-            [testCase "exception in worker" $ do -- {{{
-                let exception = TestException 42
-                withVisitorNetworkWorker (throw exception :: Visitor ()) $ \worker_inbox worker_outbox → do
-                    sendWorkloadTo entire_workload worker_inbox
-                    response ← receiveMessageFrom worker_outbox
-                    response @?= VisitorWorkerOutgoingFailureMessage (show exception)
-             -- }}}
-            ,testCase "shutdown of worker" $ do -- {{{
-                eternally_empty :: IVar () ← IVar.new
-                starting_flag :: IVar () ← IVar.new
-                ending_flag :: IVar () ← IVar.new
-                withVisitorIONetworkWorker
-                   (liftIO $ do
-                       IVar.write starting_flag ()
-                       catchJust
-                          (\e → case e of ThreadKilled → Just (); _ → Nothing)
-                          (IVar.blocking $ IVar.read eternally_empty)
-                          (\() → IVar.write ending_flag ())
-                   )
-                   (\worker_inbox worker_outbox → do
-                        sendWorkloadTo entire_workload worker_inbox
-                        IVar.blocking $ IVar.read starting_flag
-                   )
-                IVar.blocking $ IVar.read ending_flag
              -- }}}
             ]
          -- }}}
