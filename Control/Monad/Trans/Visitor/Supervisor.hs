@@ -109,7 +109,7 @@ getCurrentStatus :: -- {{{
 getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
 -- }}}
 
-runVisitorNetworkSupervisor ::
+runVisitorNetworkSupervisor :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorActions result worker_id m →
     (∀ a. VisitorNetworkSupervisorMonad result worker_id m a) →
@@ -139,6 +139,7 @@ runVisitorNetworkSupervisor actions loop =
     loop'
   where
     loop' = loop
+-- }}}
 
 updateStatusUpdateReceived :: -- {{{
     (Monoid result, WorkerId worker_id, Functor m, MonadCatchIO m) ⇒
