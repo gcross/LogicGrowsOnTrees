@@ -536,6 +536,23 @@ tests = -- {{{
             runVisitorNetworkSupervisor bad_test_supervisor_actions abortNetwork
             >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([] :: [Int])))
          -- }}}
+        ,testCase "add one worker then abort" $ do -- {{{
+            maybe_workload_ref ← newIORef (Nothing :: Maybe VisitorWorkload)
+            let actions =
+                    bad_test_supervisor_actions {
+                        send_workload_to_worker_action = \workload () → do
+                            maybe_old_workload ← readIORef maybe_workload_ref
+                            case maybe_old_workload of
+                                Nothing → return ()
+                                Just _ → error "workload has been submitted already!"
+                            writeIORef maybe_workload_ref (Just workload)
+                    }
+            (runVisitorNetworkSupervisor actions $ do
+                updateWorkerAdded ()
+                abortNetwork
+             ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
+            readIORef maybe_workload_ref >>= (@?= Just entire_workload) 
+         -- }}}
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Worker" -- {{{
