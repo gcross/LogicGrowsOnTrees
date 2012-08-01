@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -9,18 +10,18 @@
 module Control.Monad.Trans.Visitor.Supervisor where
 
 -- Imports {{{
-import Data.Accessor ((^.),(^=),(^:))
-import Data.Accessor.Monad.MTL.State ((%=),(%:),get)
-import Data.Accessor.Template (deriveAccessors)
-import Control.Applicative ((<$>),(<*>))
+import Control.Applicative ((<$>),(<*>),Applicative)
 import Control.Exception (Exception,assert)
 import Control.Monad (unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
 import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
 
+import Data.Accessor ((^.),(^=),(^:))
+import Data.Accessor.Monad.MTL.State ((%=),(%:),get)
+import Data.Accessor.Template (deriveAccessors)
 import Data.Either.Unwrap (whenLeft)
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -90,7 +91,7 @@ newtype VisitorNetworkSupervisorMonad result worker_id m a = -- {{{
             (VisitorNetworkSupervisorContext result worker_id m)
             a
         )
-    }
+    } deriving (Applicative,Functor,Monad,MonadIO)
 -- }}}
 
 -- }}}
