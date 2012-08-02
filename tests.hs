@@ -194,6 +194,19 @@ addAcceptOneWorkloadAction actions = do
     })
 -- }}}
 
+addAcceptMultipleWorkloadsAction :: -- {{{
+    VisitorNetworkSupervisorActions result worker_id IO →
+    IO (IORef [(worker_id,VisitorWorkload)],VisitorNetworkSupervisorActions result worker_id IO)
+addAcceptMultipleWorkloadsAction actions = do
+    workers_and_workloads_ref ← newIORef []
+    return (workers_and_workloads_ref, actions {
+        send_workload_to_worker_action = \workload worker_id →
+            readIORef workers_and_workloads_ref
+            >>=
+            writeIORef workers_and_workloads_ref . (++ [(worker_id,workload)])
+    })
+-- }}}
+
 addAppendBroadcastIdsAction :: -- {{{
     VisitorNetworkSupervisorActions result worker_id IO →
     IO (IORef [[worker_id]],VisitorNetworkSupervisorActions result worker_id IO)
@@ -580,6 +593,25 @@ tests = -- {{{
                 abortNetwork
              ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
             readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+         -- }}}
+        ,testCase "add then remove one worker then abort" $ do -- {{{
+            (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+            (runVisitorNetworkSupervisor actions $ do
+                updateWorkerAdded ()
+                updateWorkerRemoved ()
+                abortNetwork
+             ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) []))
+            readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+         -- }}}
+        ,testCase "add then remove then add one worker then abort" $ do -- {{{
+            (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
+            (runVisitorNetworkSupervisor actions $ do
+                updateWorkerAdded 1
+                updateWorkerRemoved 1
+                updateWorkerAdded 2
+                abortNetwork
+             ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([2::Int])))
+            readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
          -- }}}
         ,testProperty "add then remove many workers then abort" $ do -- {{{
             (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
