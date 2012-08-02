@@ -213,6 +213,16 @@ addAppendBroadcastIdsAction actions = do
     })
 -- }}}
 
+shuffle :: [α] → Gen [α] -- {{{
+shuffle [] = return []
+shuffle items = do
+    index ← choose (0,length items-1)
+    let hd = items !! index
+        rest = take index items ++ drop (index+1) items
+    tl ← shuffle rest
+    return (hd:tl)
+-- }}}
+
 randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint -- {{{
 randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
   where
@@ -571,17 +581,32 @@ tests = -- {{{
              ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
             readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
          -- }}}
-        ,testProperty "add many workers then abort" $ \(NonEmpty worker_ids :: NonEmptyList UUID) → morallyDubiousIOProperty $ do -- {{{
-            (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-            (broadcast_ids_list_ref,actions_2) ← addAppendBroadcastIdsAction actions_1
-            VisitorNetworkResult progress remaining_worker_ids ← runVisitorNetworkSupervisor actions_2 $ do
-                mapM_ updateWorkerAdded worker_ids
-                abortNetwork
-            progress @?= Left (VisitorStatusUpdate Unexplored ())
-            sort worker_ids @?= sort remaining_worker_ids
-            readIORef maybe_workload_ref >>= (@?= Just (head worker_ids,entire_workload))
-            readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids then [] else [[head worker_ids]])
-            return True
+        ,testProperty "add many workers then abort" $ do -- {{{
+            (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
+            worker_ids_to_remove ←
+               (fmap concat
+                $
+                forM (tail worker_ids_to_add)
+                $
+                \worker_id → do
+                    should_remove ← arbitrary
+                    if should_remove
+                        then return [worker_id]
+                        else return []
+                ) >>= shuffle
+            let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
+            morallyDubiousIOProperty $ do
+                (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions_2) ← addAppendBroadcastIdsAction actions_1
+                VisitorNetworkResult progress remaining_worker_ids ← runVisitorNetworkSupervisor actions_2 $ do
+                    mapM_ updateWorkerAdded worker_ids_to_add
+                    mapM_ updateWorkerRemoved worker_ids_to_remove
+                    abortNetwork
+                progress @?= Left (VisitorStatusUpdate Unexplored ())
+                worker_ids_left @?= sort remaining_worker_ids
+                readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
+                readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
+                return True
          -- }}}
         ]
      -- }}}

@@ -237,21 +237,31 @@ clearPendingStatusUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
-clearPendingStatusUpdate worker_id = do
-    workers_pending_status_update %: Set.delete worker_id
-    no_status_updates_are_pending ← Set.null <$> get workers_pending_status_update
-    when no_status_updates_are_pending receiveCurrentStatus 
+clearPendingStatusUpdate worker_id =
+    Set.member worker_id <$> get workers_pending_status_update >>= flip when
+    -- Note, the conditional above is needed to prevent a "misfire" where
+    -- we think that we have just completed a status update even though
+    -- none was started.
+    (do workers_pending_status_update %: Set.delete worker_id
+        no_status_updates_are_pending ← Set.null <$> get workers_pending_status_update
+        when no_status_updates_are_pending receiveCurrentStatus
+    )
 -- }}}
 
 clearPendingWorkloadSteal :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
-clearPendingWorkloadSteal worker_id = do
-    workers_pending_workload_steal %: Set.delete worker_id
-    no_workload_steals_remain ← Set.null <$> get workers_pending_workload_steal
-    workers_are_waiting_for_workloads ← either (not . Seq.null) (const False) <$> get waiting_workers_or_available_workloads
-    when (no_workload_steals_remain && workers_are_waiting_for_workloads) broadcastWorkloadStealToActiveWorkers
+clearPendingWorkloadSteal worker_id =
+    Set.member worker_id <$> get workers_pending_workload_steal >>= flip when
+    -- Note, the conditional above is needed to prevent a "misfire" where
+    -- we think that we have just completed a status update even though
+    -- none was started.
+    (do workers_pending_workload_steal %: Set.delete worker_id
+        no_workload_steals_remain ← Set.null <$> get workers_pending_workload_steal
+        workers_are_waiting_for_workloads ← either (not . Seq.null) (const False) <$> get waiting_workers_or_available_workloads
+        when (no_workload_steals_remain && workers_are_waiting_for_workloads) broadcastWorkloadStealToActiveWorkers
+    )
 -- }}}
 
 enqueueWorkload :: -- {{{
