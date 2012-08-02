@@ -581,7 +581,7 @@ tests = -- {{{
              ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
             readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
          -- }}}
-        ,testProperty "add many workers then abort" $ do -- {{{
+        ,testProperty "add then remove many workers then abort" $ do -- {{{
             (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
             worker_ids_to_remove ←
                (fmap concat
