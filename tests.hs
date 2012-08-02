@@ -179,14 +179,6 @@ instance Exception TestException
 -- }}} Exceptions
 
 -- Functions {{{
-echo :: Show α ⇒ α → α -- {{{
-echo x = trace (show x) x
--- }}}
-
-echoWithLabel :: Show α ⇒ String → α → α -- {{{
-echoWithLabel label x = trace (label ++ " " ++ show x) x
--- }}}
-
 addAcceptOneWorkloadAction :: -- {{{
     VisitorNetworkSupervisorActions result worker_id IO →
     IO (IORef (Maybe (worker_id,VisitorWorkload)),VisitorNetworkSupervisorActions result worker_id IO)
@@ -211,6 +203,14 @@ addAppendBroadcastIdsAction actions = do
         broadcast_workload_steal_to_workers_action = \worker_ids →
             modifyIORef broadcasts_ref (++ [worker_ids])
     })
+-- }}}
+
+echo :: Show α ⇒ α → α -- {{{
+echo x = trace (show x) x
+-- }}}
+
+echoWithLabel :: Show α ⇒ String → α → α -- {{{
+echoWithLabel label x = trace (label ++ " " ++ show x) x
 -- }}}
 
 shuffle :: [α] → Gen [α] -- {{{
