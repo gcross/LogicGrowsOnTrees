@@ -586,60 +586,62 @@ tests = -- {{{
             runVisitorNetworkSupervisor bad_test_supervisor_actions abortNetwork
             >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([] :: [Int])))
          -- }}}
-        ,testCase "add one worker then abort" $ do -- {{{
-            (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-            (runVisitorNetworkSupervisor actions $ do
-                updateWorkerAdded ()
-                abortNetwork
-             ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
-            readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
-         -- }}}
-        ,testCase "add then remove one worker then abort" $ do -- {{{
-            (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-            (runVisitorNetworkSupervisor actions $ do
-                updateWorkerAdded ()
-                updateWorkerRemoved ()
-                abortNetwork
-             ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) []))
-            readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
-         -- }}}
-        ,testCase "add then remove then add one worker then abort" $ do -- {{{
-            (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
-            (runVisitorNetworkSupervisor actions $ do
-                updateWorkerAdded 1
-                updateWorkerRemoved 1
-                updateWorkerAdded 2
-                abortNetwork
-             ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([2::Int])))
-            readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
-         -- }}}
-        ,testProperty "add then remove many workers then abort" $ do -- {{{
-            (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
-            worker_ids_to_remove ←
-               (fmap concat
-                $
-                forM (tail worker_ids_to_add)
-                $
-                \worker_id → do
-                    should_remove ← arbitrary
-                    if should_remove
-                        then return [worker_id]
-                        else return []
-                ) >>= shuffle
-            let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
-            morallyDubiousIOProperty $ do
-                (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions_2) ← addAppendBroadcastIdsAction actions_1
-                VisitorNetworkResult progress remaining_worker_ids ← runVisitorNetworkSupervisor actions_2 $ do
-                    mapM_ updateWorkerAdded worker_ids_to_add
-                    mapM_ updateWorkerRemoved worker_ids_to_remove
+        ,testGroup "adding and removing workers"
+            [testCase "add one worker then abort" $ do -- {{{
+                (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                (runVisitorNetworkSupervisor actions $ do
+                    updateWorkerAdded ()
                     abortNetwork
-                progress @?= Left (VisitorStatusUpdate Unexplored ())
-                worker_ids_left @?= sort remaining_worker_ids
-                readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
-                readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
-                return True
-         -- }}}
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
+                readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+             -- }}}
+            ,testCase "add then remove one worker then abort" $ do -- {{{
+                (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                (runVisitorNetworkSupervisor actions $ do
+                    updateWorkerAdded ()
+                    updateWorkerRemoved ()
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) []))
+                readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+             -- }}}
+            ,testCase "add then remove then add one worker then abort" $ do -- {{{
+                (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
+                (runVisitorNetworkSupervisor actions $ do
+                    updateWorkerAdded 1
+                    updateWorkerRemoved 1
+                    updateWorkerAdded 2
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([2::Int])))
+                readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
+             -- }}}
+            ,testProperty "add then remove many workers then abort" $ do -- {{{
+                (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
+                worker_ids_to_remove ←
+                   (fmap concat
+                    $
+                    forM (tail worker_ids_to_add)
+                    $
+                    \worker_id → do
+                        should_remove ← arbitrary
+                        if should_remove
+                            then return [worker_id]
+                            else return []
+                    ) >>= shuffle
+                let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
+                morallyDubiousIOProperty $ do
+                    (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                    (broadcast_ids_list_ref,actions_2) ← addAppendBroadcastIdsAction actions_1
+                    VisitorNetworkResult progress remaining_worker_ids ← runVisitorNetworkSupervisor actions_2 $ do
+                        mapM_ updateWorkerAdded worker_ids_to_add
+                        mapM_ updateWorkerRemoved worker_ids_to_remove
+                        abortNetwork
+                    progress @?= Left (VisitorStatusUpdate Unexplored ())
+                    worker_ids_left @?= sort remaining_worker_ids
+                    readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
+                    readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
+                    return True
+             -- }}}
+            ]
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Worker" -- {{{
