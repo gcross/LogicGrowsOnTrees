@@ -207,13 +207,24 @@ addAcceptMultipleWorkloadsAction actions = do
     })
 -- }}}
 
-addAppendBroadcastIdsAction :: -- {{{
+addAppendWorkloadStealBroadcastIdsAction :: -- {{{
     VisitorNetworkSupervisorActions result worker_id IO →
     IO (IORef [[worker_id]],VisitorNetworkSupervisorActions result worker_id IO)
-addAppendBroadcastIdsAction actions = do
+addAppendWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
         broadcast_workload_steal_to_workers_action = \worker_ids →
+            modifyIORef broadcasts_ref (++ [worker_ids])
+    })
+-- }}}
+
+addAppendStatusUpdateBroadcastIdsAction :: -- {{{
+    VisitorNetworkSupervisorActions result worker_id IO →
+    IO (IORef [[worker_id]],VisitorNetworkSupervisorActions result worker_id IO)
+addAppendStatusUpdateBroadcastIdsAction actions = do
+    broadcasts_ref ← newIORef ([] :: [[worker_id]])
+    return (broadcasts_ref, actions {
+        broadcast_status_update_request_to_workers_action = \worker_ids →
             modifyIORef broadcasts_ref (++ [worker_ids])
     })
 -- }}}
@@ -239,6 +250,12 @@ echo x = trace (show x) x
 
 echoWithLabel :: Show α ⇒ String → α → α -- {{{
 echoWithLabel label x = trace (label ++ " " ++ show x) x
+-- }}}
+
+ignoreAcceptWorkloadAction :: -- {{{
+    VisitorNetworkSupervisorActions result worker_id IO →
+    VisitorNetworkSupervisorActions result worker_id IO
+ignoreAcceptWorkloadAction actions = actions { send_workload_to_worker_action = \_ _ → return () }
 -- }}}
 
 shuffle :: [α] → Gen [α] -- {{{
@@ -647,7 +664,7 @@ tests = -- {{{
                 let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
                 morallyDubiousIOProperty $ do
                     (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-                    (broadcast_ids_list_ref,actions_2) ← addAppendBroadcastIdsAction actions_1
+                    (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
                     VisitorNetworkResult progress remaining_worker_ids ← runVisitorNetworkSupervisor actions_2 $ do
                         mapM_ updateWorkerAdded worker_ids_to_add
                         mapM_ updateWorkerRemoved worker_ids_to_remove
@@ -668,6 +685,33 @@ tests = -- {{{
                     abortNetwork
                  ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([]::[()])))
                 readIORef maybe_status_update_ref >>= (@?= Just (VisitorStatusUpdate Unexplored ()))
+             -- }}}
+            ,testCase "request and receive Nothing status update when one worker present" $ do -- {{{
+                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+                let actions3 = ignoreAcceptWorkloadAction actions2
+                let status_update = VisitorStatusUpdate Unexplored (Sum 0)
+                (runVisitorNetworkSupervisor actions3 $ do
+                    updateWorkerAdded ()
+                    requestStatusUpdate
+                    updateStatusUpdateReceived Nothing ()
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [()])
+                readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                readIORef broadcast_ids_list_ref >>= (@?= [[()]])
+            ,testCase "request and receive Just status update when one worker present" $ do -- {{{
+                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+                let actions3 = ignoreAcceptWorkloadAction actions2
+                let status_update = VisitorStatusUpdate (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                (runVisitorNetworkSupervisor actions3 $ do
+                    updateWorkerAdded ()
+                    requestStatusUpdate
+                    updateStatusUpdateReceived (Just status_update) ()
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [()])
+                readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                readIORef broadcast_ids_list_ref >>= (@?= [[()]])
              -- }}}
             ]
          -- }}}
