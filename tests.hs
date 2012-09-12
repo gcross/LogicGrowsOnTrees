@@ -586,7 +586,7 @@ tests = -- {{{
             runVisitorNetworkSupervisor bad_test_supervisor_actions abortNetwork
             >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([] :: [Int])))
          -- }}}
-        ,testGroup "adding and removing workers"
+        ,testGroup "adding and removing workers" -- {{{
             [testCase "add one worker then abort" $ do -- {{{
                 (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                 (runVisitorNetworkSupervisor actions $ do
@@ -642,6 +642,7 @@ tests = -- {{{
                     return True
              -- }}}
             ]
+         -- }}}
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Worker" -- {{{
