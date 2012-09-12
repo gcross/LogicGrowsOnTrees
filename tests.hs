@@ -258,6 +258,12 @@ ignoreAcceptWorkloadAction :: -- {{{
 ignoreAcceptWorkloadAction actions = actions { send_workload_to_worker_action = \_ _ → return () }
 -- }}}
 
+ignoreWorkloadStealAction :: -- {{{
+    VisitorNetworkSupervisorActions result worker_id IO →
+    VisitorNetworkSupervisorActions result worker_id IO
+ignoreWorkloadStealAction actions = actions { broadcast_workload_steal_to_workers_action = \_ → return () }
+-- }}}
+
 shuffle :: [α] → Gen [α] -- {{{
 shuffle [] = return []
 shuffle items = do
@@ -712,6 +718,21 @@ tests = -- {{{
                  ) >>= (@?= (VisitorNetworkResult (Left status_update)) [()])
                 readIORef maybe_status_update_ref >>= (@?= Just status_update)
                 readIORef broadcast_ids_list_ref >>= (@?= [[()]])
+             -- }}}
+            ,testCase "request and receive status update when active and inactive workers present" $ do -- {{{
+                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+                let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
+                let status_update = VisitorStatusUpdate (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                (runVisitorNetworkSupervisor actions3 $ do
+                    updateWorkerAdded (1 :: Int)
+                    updateWorkerAdded (2 :: Int)
+                    requestStatusUpdate
+                    updateStatusUpdateReceived (Just status_update) 1
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [1,2])
+                readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
             ]
          -- }}}
