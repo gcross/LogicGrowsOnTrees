@@ -593,7 +593,7 @@ tests = -- {{{
                     updateWorkerAdded ()
                     abortNetwork
                  ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
-                readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+                readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
              -- }}}
             ,testCase "add then remove one worker then abort" $ do -- {{{
                 (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
