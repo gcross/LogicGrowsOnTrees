@@ -55,7 +55,8 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Super
 
 data VisitorNetworkSupervisorActions result worker_id m = -- {{{
     VisitorNetworkSupervisorActions
-    {   broadcast_workload_steal_to_workers_action :: [worker_id] → m ()
+    {   broadcast_status_update_request_to_workers_action :: [worker_id] → m ()
+    ,   broadcast_workload_steal_to_workers_action :: [worker_id] → m ()
     ,   receive_current_status_action :: VisitorStatusUpdate result → m ()
     ,   send_workload_to_worker_action :: VisitorWorkload → worker_id → m ()
     }
@@ -113,6 +114,18 @@ getCurrentStatus :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorMonad result worker_id m (VisitorStatusUpdate result)
 getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
+-- }}}
+
+requestStatusUpdate :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorNetworkSupervisorMonad result worker_id m ()
+requestStatusUpdate = VisitorNetworkSupervisorMonad . lift $ do
+    active_worker_ids ← Map.keysSet <$> get active_workers
+    if (Set.null active_worker_ids)
+        then receiveCurrentStatus
+        else do
+            workers_pending_status_update %= active_worker_ids
+            asks broadcast_status_update_request_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
 -- }}}
 
 runVisitorNetworkSupervisor :: -- {{{

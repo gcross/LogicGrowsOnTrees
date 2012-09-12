@@ -218,6 +218,21 @@ addAppendBroadcastIdsAction actions = do
     })
 -- }}}
 
+addReceiveCurrentStatusAction :: -- {{{
+    VisitorNetworkSupervisorActions result worker_id IO →
+    IO (IORef (Maybe (VisitorStatusUpdate result)),VisitorNetworkSupervisorActions result worker_id IO)
+addReceiveCurrentStatusAction actions = do
+    maybe_status_update_ref ← newIORef (Nothing :: Maybe (VisitorStatusUpdate result))
+    return (maybe_status_update_ref, actions {
+        receive_current_status_action = \status_update → do
+            maybe_old_status_update ← readIORef maybe_status_update_ref
+            case maybe_old_status_update of
+                Nothing → return ()
+                Just _ → error "status update has been received already!"
+            writeIORef maybe_status_update_ref $ Just status_update
+    })
+-- }}}
+
 echo :: Show α ⇒ α → α -- {{{
 echo x = trace (show x) x
 -- }}}
@@ -290,7 +305,9 @@ randomVisitorWithoutCache = sized arb
 bad_test_supervisor_actions :: VisitorNetworkSupervisorActions result worker_id m -- {{{
 bad_test_supervisor_actions =
     VisitorNetworkSupervisorActions
-    {   broadcast_workload_steal_to_workers_action =
+    {   broadcast_status_update_request_to_workers_action =
+            error "broadcast_status_update_request_to_workers_action called! :-/"
+    ,   broadcast_workload_steal_to_workers_action =
             error "broadcast_workload_steal_to_workers_action called! :-/"
     ,   receive_current_status_action =
             error "receive_current_status_action called! :-/"
@@ -640,6 +657,17 @@ tests = -- {{{
                     readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
                     readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
                     return True
+             -- }}}
+            ]
+         -- }}}
+        ,testGroup "status updates" -- {{{
+            [testCase "request status update when no workers present" $ do -- {{{
+                (maybe_status_update_ref,actions) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
+                (runVisitorNetworkSupervisor actions $ do
+                    requestStatusUpdate
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([]::[()])))
+                readIORef maybe_status_update_ref >>= (@?= Just (VisitorStatusUpdate Unexplored ()))
              -- }}}
             ]
          -- }}}
