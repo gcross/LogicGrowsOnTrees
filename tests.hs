@@ -751,6 +751,20 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testGroup "workload steals" -- {{{
+            [testCase "failure to steal from a worker leads to second attempt" $ do -- {{{ 
+                (broadcast_ids_list_ref,actions1) ← addAppendWorkloadStealBroadcastIdsAction bad_test_supervisor_actions
+                let actions2 = ignoreAcceptWorkloadAction actions1
+                (runVisitorNetworkSupervisor actions2 $ do
+                    updateWorkerAdded (1::Int)
+                    updateWorkerAdded 2
+                    updateStolenWorkloadReceived Nothing 1
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [1,2]))
+                readIORef broadcast_ids_list_ref >>= (@?= [[1],[1]])
+             -- }}}
+            ]
+         -- }}}
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Worker" -- {{{
