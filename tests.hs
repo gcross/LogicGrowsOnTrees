@@ -705,6 +705,7 @@ tests = -- {{{
                  ) >>= (@?= (VisitorNetworkResult (Left status_update)) [()])
                 readIORef maybe_status_update_ref >>= (@?= Just status_update)
                 readIORef broadcast_ids_list_ref >>= (@?= [[()]])
+             -- }}}
             ,testCase "request and receive Just status update when one worker present" $ do -- {{{
                 (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
