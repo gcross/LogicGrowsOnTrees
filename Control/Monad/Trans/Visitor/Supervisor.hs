@@ -34,6 +34,7 @@ import Data.Set (Set)
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
 
@@ -162,7 +163,7 @@ runVisitorNetworkSupervisor actions loop =
 
 updateStatusUpdateReceived :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe (VisitorStatusUpdate result) →
+    Maybe (VisitorWorkerStatusUpdate result) →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
 updateStatusUpdateReceived maybe_status_update worker_id = VisitorNetworkSupervisorMonad $ do
@@ -170,7 +171,9 @@ updateStatusUpdateReceived maybe_status_update worker_id = VisitorNetworkSupervi
         validateWorkerKnownAndActive worker_id
         case maybe_status_update of
             Nothing → return ()
-            Just status_update → current_status %: (`mappend` status_update)
+            Just (VisitorWorkerStatusUpdate status_update new_workload) → do
+                current_status %: (`mappend` status_update)
+                active_workers %: (Map.insert worker_id new_workload)
         clearPendingStatusUpdate worker_id
         get current_status
     when (checkpoint == Explored) $

@@ -750,7 +750,7 @@ tests = -- {{{
                 (runVisitorNetworkSupervisor actions3 $ do
                     updateWorkerAdded ()
                     requestStatusUpdate
-                    updateStatusUpdateReceived (Just status_update) ()
+                    updateStatusUpdateReceived (Just (VisitorWorkerStatusUpdate status_update undefined)) ()
                     abortNetwork
                  ) >>= (@?= (VisitorNetworkResult (Left status_update)) [()])
                 readIORef maybe_status_update_ref >>= (@?= Just status_update)
@@ -782,7 +782,7 @@ tests = -- {{{
                     updateWorkerAdded (1 :: Int)
                     updateWorkerAdded (2 :: Int)
                     requestStatusUpdate
-                    updateStatusUpdateReceived (Just status_update) 1
+                    updateStatusUpdateReceived (Just (VisitorWorkerStatusUpdate status_update undefined)) 1
                     abortNetwork
                  ) >>= (@?= (VisitorNetworkResult (Left status_update)) [1,2])
                 readIORef maybe_status_update_ref >>= (@?= Just status_update)
@@ -793,7 +793,7 @@ tests = -- {{{
                 let status_update = VisitorStatusUpdate Explored (Sum 1)
                 (runVisitorNetworkSupervisor actions $ do
                     updateWorkerAdded ()
-                    updateStatusUpdateReceived (Just status_update) ()
+                    updateStatusUpdateReceived (Just (VisitorWorkerStatusUpdate status_update undefined)) ()
                     forever $
                         liftIO $
                             assertFailure "loop continued past final status update"
