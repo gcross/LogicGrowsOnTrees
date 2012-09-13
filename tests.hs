@@ -704,20 +704,29 @@ tests = -- {{{
                  ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([]::[()])))
                 readIORef maybe_status_update_ref >>= (@?= Just (VisitorStatusUpdate Unexplored ()))
              -- }}}
-            ,testCase "request status update when active worker present leaves" $ do -- {{{
-                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
-                let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                let status_update = VisitorStatusUpdate Unexplored (Sum 0)
-                (runVisitorNetworkSupervisor actions3 $ do
-                    updateWorkerAdded True
-                    updateWorkerAdded False
-                    requestStatusUpdate
-                    updateWorkerRemoved True
-                    abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [False])
-                readIORef maybe_status_update_ref >>= (@?= Just status_update)
-                readIORef broadcast_ids_list_ref >>= (@?= [[True]])
+            ,testProperty "request status update when all active workers present leave" $ do -- {{{
+                number_of_active_workers ← choose (1,10 :: Int)
+                number_of_inactive_workers ← choose (0,10)
+                let active_workers = [0..number_of_active_workers-1]
+                    inactive_workers = [101..101+number_of_inactive_workers-1]
+                morallyDubiousIOProperty $ do
+                    (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
+                    (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+                    let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
+                    let status_update = VisitorStatusUpdate Unexplored (Sum 0)
+                    (runVisitorNetworkSupervisor actions3 $ do
+                        updateWorkerAdded 0
+                        forM_ (tail active_workers) $ \worker_id → do
+                            updateWorkerAdded worker_id
+                            updateStolenWorkloadReceived (Just undefined) 0
+                        mapM_ updateWorkerAdded inactive_workers
+                        requestStatusUpdate
+                        mapM_ updateWorkerRemoved active_workers
+                        abortNetwork
+                     ) >>= (@?= (VisitorNetworkResult (Left status_update)) inactive_workers)
+                    readIORef broadcast_ids_list_ref >>= (@?= [active_workers])
+                    readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                    return True
              -- }}}
             ,testCase "request and receive Nothing status update when one worker present" $ do -- {{{
                 (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
