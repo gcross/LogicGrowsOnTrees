@@ -788,6 +788,17 @@ tests = -- {{{
                 readIORef maybe_status_update_ref >>= (@?= Just status_update)
                 readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
+            ,testCase "final status update ends the server monad" $ do -- {{{
+                let actions = ignoreAcceptWorkloadAction bad_test_supervisor_actions
+                let status_update = VisitorStatusUpdate Explored (Sum 1)
+                (runVisitorNetworkSupervisor actions $ do
+                    updateWorkerAdded ()
+                    updateStatusUpdateReceived (Just status_update) ()
+                    forever $
+                        liftIO $
+                            assertFailure "loop continued past final status update"
+                 ) >>= (@?= (VisitorNetworkResult (Right (Sum 1)) [()]))
+             -- }}}
             ]
          -- }}}
         ,testGroup "workload steals" -- {{{

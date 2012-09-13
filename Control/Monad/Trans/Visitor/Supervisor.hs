@@ -165,12 +165,17 @@ updateStatusUpdateReceived :: -- {{{
     Maybe (VisitorStatusUpdate result) →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
-updateStatusUpdateReceived maybe_status_update worker_id = VisitorNetworkSupervisorMonad . lift $ do
-    validateWorkerKnownAndActive worker_id
-    case maybe_status_update of
-        Nothing → return ()
-        Just status_update → current_status %: (`mappend` status_update)
-    clearPendingStatusUpdate worker_id
+updateStatusUpdateReceived maybe_status_update worker_id = VisitorNetworkSupervisorMonad $ do
+    (VisitorStatusUpdate checkpoint result) ← lift $ do
+        validateWorkerKnownAndActive worker_id
+        case maybe_status_update of
+            Nothing → return ()
+            Just status_update → current_status %: (`mappend` status_update)
+        clearPendingStatusUpdate worker_id
+        get current_status
+    when (checkpoint == Explored) $
+        lift (Set.toList <$> get known_workers)
+            >>= abort . VisitorNetworkResult (Right result) 
 -- }}}
 
 updateStolenWorkloadReceived :: -- {{{
