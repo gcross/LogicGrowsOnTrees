@@ -654,6 +654,18 @@ tests = -- {{{
                  ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([2::Int])))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
              -- }}}
+            ,testCase "add two workers then remove first worker then abort" $ do -- {{{
+                (maybe_workload_ref,actions1) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
+                (runVisitorNetworkSupervisor actions2 $ do
+                    updateWorkerAdded 1
+                    updateWorkerAdded 2
+                    updateWorkerRemoved 1
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([2::Int])))
+                readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
+                readIORef broadcast_ids_list_ref >>= (@?= [[1]])
+             -- }}}
             ,testProperty "add then remove many workers then abort" $ do -- {{{
                 (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
                 worker_ids_to_remove ←

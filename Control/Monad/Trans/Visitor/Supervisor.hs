@@ -223,13 +223,12 @@ updateWorkerRemoved :: -- {{{
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
 updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
-    validateWorkerKnown worker_id
-    maybe_workload ← Map.lookup worker_id <$> get active_workers
+    validateWorkerKnown worker_id 
+    Map.lookup worker_id <$> get active_workers >>= maybe (return ()) enqueueWorkload
     known_workers %: Set.delete worker_id
     active_workers %: Map.delete worker_id
     clearPendingWorkloadSteal worker_id
     clearPendingStatusUpdate worker_id
-    maybe (return ()) enqueueWorkload maybe_workload
 -- }}}
 
 -- }}}
