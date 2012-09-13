@@ -756,6 +756,23 @@ tests = -- {{{
                 readIORef maybe_status_update_ref >>= (@?= Just status_update)
                 readIORef broadcast_ids_list_ref >>= (@?= [[()]])
              -- }}}
+            ,testCase "request and receive Nothing status update when three workers present" $ do -- {{{
+                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+                let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
+                let status_update = VisitorStatusUpdate Unexplored (Sum 0)
+                (runVisitorNetworkSupervisor actions3 $ do
+                    updateWorkerAdded (1 :: Int)
+                    updateWorkerAdded (2 :: Int)
+                    updateStolenWorkloadReceived (Just undefined) 1
+                    requestStatusUpdate
+                    updateWorkerAdded (3 :: Int)
+                    updateStatusUpdateReceived Nothing 1
+                    abortNetwork
+                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [1,2,3])
+                readIORef broadcast_ids_list_ref >>= (@?= [[1,2]])
+                readIORef maybe_status_update_ref >>= (@?= Nothing)
+             -- }}}
             ,testCase "request and receive status update when active and inactive workers present" $ do -- {{{
                 (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
