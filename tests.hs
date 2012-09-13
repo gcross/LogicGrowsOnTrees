@@ -815,6 +815,16 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testCase "starting from previous checkpoint" $ do -- {{{
+            (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+            let checkpoint = ChoiceCheckpoint Unexplored Unexplored
+                status_update = VisitorStatusUpdate checkpoint (Sum 1)
+            (runVisitorNetworkSupervisorStartingFrom status_update actions $ do
+                updateWorkerAdded ()
+                abortNetwork
+             ) >>= (@?= (VisitorNetworkResult (Left status_update) [()]))
+            readIORef maybe_workload_ref >>= (@?= Just ((),(VisitorWorkload Seq.empty checkpoint)))
+         -- }}}
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Worker" -- {{{

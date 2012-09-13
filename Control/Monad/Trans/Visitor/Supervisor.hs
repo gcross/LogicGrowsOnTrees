@@ -134,7 +134,16 @@ runVisitorNetworkSupervisor :: -- {{{
     VisitorNetworkSupervisorActions result worker_id m →
     (∀ a. VisitorNetworkSupervisorMonad result worker_id m a) →
     m (VisitorNetworkResult result worker_id)
-runVisitorNetworkSupervisor actions loop =
+runVisitorNetworkSupervisor = runVisitorNetworkSupervisorStartingFrom mempty
+-- }}}
+
+runVisitorNetworkSupervisorStartingFrom :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorStatusUpdate result →
+    VisitorNetworkSupervisorActions result worker_id m →
+    (∀ a. VisitorNetworkSupervisorMonad result worker_id m a) →
+    m (VisitorNetworkResult result worker_id)
+runVisitorNetworkSupervisorStartingFrom starting_status actions loop =
     (fst <$>)
     .
     (\x ->
@@ -142,12 +151,13 @@ runVisitorNetworkSupervisor actions loop =
         x
         actions
         (VisitorNetworkSupervisorState
-            {   waiting_workers_or_available_workloads_ = Right (Set.singleton entire_workload)
+            {   waiting_workers_or_available_workloads_ =
+                    Right (Set.singleton (VisitorWorkload Seq.empty (visitorStatusCheckpoint starting_status)))
             ,   known_workers_ = mempty
             ,   active_workers_ = mempty
             ,   workers_pending_workload_steal_ = mempty
             ,   workers_pending_status_update_ = mempty
-            ,   current_status_ = mempty
+            ,   current_status_ = starting_status
             }
         )
     )
