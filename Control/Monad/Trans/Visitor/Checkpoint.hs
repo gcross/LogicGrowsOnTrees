@@ -49,12 +49,6 @@ data VisitorCheckpointDifferential = -- {{{
   deriving (Eq,Read,Show)
 -- }}}
 
-data VisitorStatusUpdate α = VisitorStatusUpdate -- {{{
-    {   visitorStatusCheckpoint :: VisitorCheckpoint
-    ,   visitorStatusNewResults :: α
-    } deriving (Eq,Show)
--- }}}
-
 type VisitorTContext m α = Seq (VisitorTContextStep m α)
 type VisitorContext α = VisitorTContext Identity α
 
@@ -72,11 +66,16 @@ type VisitorTContextUpdate m α = -- {{{
 
 type VisitorContextUpdate α = VisitorTContextUpdate Identity α
 
+data VisitorProgress α = VisitorProgress -- {{{
+    {   visitorCheckpoint :: VisitorCheckpoint
+    ,   visitorResult :: α
+    } deriving (Eq,Show)
+-- }}}
+
 newtype VisitorTResultFetcher m α = VisitorTResultFetcher -- {{{
     {   fetchVisitorTResult :: m (Maybe (α, VisitorCheckpoint, VisitorTResultFetcher m α))
     }
 -- }}}
-
 type VisitorResultFetcher = VisitorTResultFetcher Identity
 
 -- }}}
@@ -103,9 +102,9 @@ instance Monoid VisitorCheckpoint where -- {{{
     mappend x y = throw (InconsistentCheckpoints x y)
 -- }}}
 
-instance Monoid α ⇒ Monoid (VisitorStatusUpdate α) where -- {{{
-    mempty = VisitorStatusUpdate mempty mempty
-    VisitorStatusUpdate a1 b1 `mappend` VisitorStatusUpdate a2 b2 = VisitorStatusUpdate (a1 `mappend` a2) (b1 `mappend` b2)
+instance Monoid α ⇒ Monoid (VisitorProgress α) where -- {{{
+    mempty = VisitorProgress mempty mempty
+    VisitorProgress a1 b1 `mappend` VisitorProgress a2 b2 = VisitorProgress (a1 `mappend` a2) (b1 `mappend` b2)
 -- }}}
 
 instance Show (VisitorTContextStep m α) where -- {{{

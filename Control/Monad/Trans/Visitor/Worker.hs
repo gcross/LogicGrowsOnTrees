@@ -48,26 +48,26 @@ data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
 -- }}}
 
 data VisitorWorkerRequest α = -- {{{
-    StatusUpdateRequested (Maybe (VisitorWorkerStatusUpdate α) → IO ())
+    ProgressUpdateRequested (Maybe (VisitorWorkerProgressUpdate α) → IO ())
   | WorkloadStealRequested (Maybe (VisitorWorkerStolenWorkload α) → IO ())
 -- }}}
 
 type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
 
-data VisitorWorkerStatusUpdate α = VisitorWorkerStatusUpdate -- {{{
-    {   visitorWorkerStatusUpdate :: VisitorStatusUpdate α
+data VisitorWorkerProgressUpdate α = VisitorWorkerProgressUpdate -- {{{
+    {   visitorWorkerProgressUpdate :: VisitorProgress α
     ,   visitorWorkerRemainingWorkload :: VisitorWorkload
     } deriving (Eq,Show)
 -- }}}
 
 data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload -- {{{
-    {   visitorWorkerStolenWorkerStatusUpdate :: VisitorWorkerStatusUpdate α
+    {   visitorWorkerStolenWorkerProgressUpdate :: VisitorWorkerProgressUpdate α
     ,   visitorWorkerStolenWorkload :: VisitorWorkload
     } deriving (Eq,Show)
 -- }}}
 
 data VisitorWorkerTerminationReason α = -- {{{
-    VisitorWorkerFinished (VisitorStatusUpdate α)
+    VisitorWorkerFinished (VisitorProgress α)
   | VisitorWorkerFailed SomeException
   | VisitorWorkerAborted
   deriving (Show)
@@ -91,16 +91,16 @@ attemptAddToWorkerRequestQueue request_queue element =
         )
 --}}}
 
-computeStatusUpdate :: -- {{{
+computeProgressUpdate :: -- {{{
     α →
     VisitorPath →
     VisitorCheckpointCursor →
     VisitorTContext m α →
     VisitorCheckpoint →
-    VisitorWorkerStatusUpdate α
-computeStatusUpdate result initial_path cursor context checkpoint =
-    VisitorWorkerStatusUpdate
-        (VisitorStatusUpdate
+    VisitorWorkerProgressUpdate α
+computeProgressUpdate result initial_path cursor context checkpoint =
+    VisitorWorkerProgressUpdate
+        (VisitorProgress
             (checkpointFromInitialPath initial_path
              .
              checkpointFromCursor cursor
@@ -235,9 +235,9 @@ genericPreforkVisitorTWorkerThread
                                 result
                                 checkpoint
                                 visitor
-                        Just (StatusUpdateRequested submitMaybeStatusUpdate) → do
+                        Just (ProgressUpdateRequested submitMaybeProgress) → do
                             liftIO $ do
-                                submitMaybeStatusUpdate . Just $ computeStatusUpdate result initial_path cursor context checkpoint
+                                submitMaybeProgress . Just $ computeProgressUpdate result initial_path cursor context checkpoint
                                 yield
                             loop2
                                 cursor
@@ -261,7 +261,7 @@ genericPreforkVisitorTWorkerThread
                                     liftIO $ do
                                         submitMaybeWorkload (Just (
                                             VisitorWorkerStolenWorkload
-                                                (computeStatusUpdate result initial_path new_cursor new_context checkpoint)
+                                                (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
                                                 workload
                                          ))
                                         yield
@@ -297,7 +297,7 @@ genericPreforkVisitorTWorkerThread
                     .
                     VisitorWorkerFinished
                     .
-                    flip VisitorStatusUpdate new_result
+                    flip VisitorProgress new_result
                     .
                     checkpointFromInitialPath initial_path
                     .
@@ -333,7 +333,7 @@ genericPreforkVisitorTWorkerThread
             maybe
                 (return ())
                 (Fold.mapM_ $ \request → case request of
-                    StatusUpdateRequested submitMaybeStatusUpdate → submitMaybeStatusUpdate Nothing
+                    ProgressUpdateRequested submitMaybeProgress → submitMaybeProgress Nothing
                     WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
                 )
         finishedCallback termination_reason

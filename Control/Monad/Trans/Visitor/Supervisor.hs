@@ -56,9 +56,9 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Super
 
 data VisitorNetworkSupervisorActions result worker_id m = -- {{{
     VisitorNetworkSupervisorActions
-    {   broadcast_status_update_request_to_workers_action :: [worker_id] → m ()
+    {   broadcast_progress_update_to_workers_action :: [worker_id] → m ()
     ,   broadcast_workload_steal_to_workers_action :: [worker_id] → m ()
-    ,   receive_current_status_action :: VisitorStatusUpdate result → m ()
+    ,   receive_current_progress_action :: VisitorProgress result → m ()
     ,   send_workload_to_worker_action :: VisitorWorkload → worker_id → m ()
     }
 -- }}}
@@ -69,13 +69,13 @@ data VisitorNetworkSupervisorState result worker_id = -- {{{
     ,   known_workers_ :: !(Set worker_id)
     ,   active_workers_ :: !(Map worker_id VisitorWorkload)
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
-    ,   workers_pending_status_update_ :: !(Set worker_id)
-    ,   current_status_ :: !(VisitorStatusUpdate result)
+    ,   workers_pending_progress_update_ :: !(Set worker_id)
+    ,   current_progress_ :: !(VisitorProgress result)
     }
 $( deriveAccessors ''VisitorNetworkSupervisorState )
 -- }}}
 
-data VisitorNetworkResult result worker_id = VisitorNetworkResult (Either (VisitorStatusUpdate result) result) [worker_id] deriving (Eq,Show)
+data VisitorNetworkResult result worker_id = VisitorNetworkResult (Either (VisitorProgress result) result) [worker_id] deriving (Eq,Show)
 
 type VisitorNetworkSupervisorContext result worker_id m = -- {{{
     RWST
@@ -105,28 +105,28 @@ abortNetwork = VisitorNetworkSupervisorMonad $
     (lift
      $
      VisitorNetworkResult
-        <$> (Left <$> get current_status)
+        <$> (Left <$> get current_progress)
         <*> (Set.toList <$> get known_workers)
     )
     >>= abort
 -- }}}
 
-getCurrentStatus :: -- {{{
+getCurrentProgress :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorNetworkSupervisorMonad result worker_id m (VisitorStatusUpdate result)
-getCurrentStatus = VisitorNetworkSupervisorMonad . lift . get $ current_status
+    VisitorNetworkSupervisorMonad result worker_id m (VisitorProgress result)
+getCurrentProgress = VisitorNetworkSupervisorMonad . lift . get $ current_progress
 -- }}}
 
-requestStatusUpdate :: -- {{{
+requestProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorMonad result worker_id m ()
-requestStatusUpdate = VisitorNetworkSupervisorMonad . lift $ do
+requestProgressUpdate = VisitorNetworkSupervisorMonad . lift $ do
     active_worker_ids ← Map.keysSet <$> get active_workers
     if (Set.null active_worker_ids)
-        then receiveCurrentStatus
+        then receiveCurrentProgress
         else do
-            workers_pending_status_update %= active_worker_ids
-            asks broadcast_status_update_request_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
+            workers_pending_progress_update %= active_worker_ids
+            asks broadcast_progress_update_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
 -- }}}
 
 runVisitorNetworkSupervisor :: -- {{{
@@ -139,11 +139,11 @@ runVisitorNetworkSupervisor = runVisitorNetworkSupervisorStartingFrom mempty
 
 runVisitorNetworkSupervisorStartingFrom :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorStatusUpdate result →
+    VisitorProgress result →
     VisitorNetworkSupervisorActions result worker_id m →
     (∀ a. VisitorNetworkSupervisorMonad result worker_id m a) →
     m (VisitorNetworkResult result worker_id)
-runVisitorNetworkSupervisorStartingFrom starting_status actions loop =
+runVisitorNetworkSupervisorStartingFrom starting_progress actions loop =
     (fst <$>)
     .
     (\x ->
@@ -152,12 +152,12 @@ runVisitorNetworkSupervisorStartingFrom starting_status actions loop =
         actions
         (VisitorNetworkSupervisorState
             {   waiting_workers_or_available_workloads_ =
-                    Right (Set.singleton (VisitorWorkload Seq.empty (visitorStatusCheckpoint starting_status)))
+                    Right (Set.singleton (VisitorWorkload Seq.empty (visitorCheckpoint starting_progress)))
             ,   known_workers_ = mempty
             ,   active_workers_ = mempty
             ,   workers_pending_workload_steal_ = mempty
-            ,   workers_pending_status_update_ = mempty
-            ,   current_status_ = starting_status
+            ,   workers_pending_progress_update_ = mempty
+            ,   current_progress_ = starting_progress
             }
         )
     )
@@ -171,21 +171,21 @@ runVisitorNetworkSupervisorStartingFrom starting_status actions loop =
     loop' = loop
 -- }}}
 
-updateStatusUpdateReceived :: -- {{{
+updateProgressUpdateReceived :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe (VisitorWorkerStatusUpdate result) →
+    Maybe (VisitorWorkerProgressUpdate result) →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
-updateStatusUpdateReceived maybe_status_update worker_id = VisitorNetworkSupervisorMonad $ do
-    (VisitorStatusUpdate checkpoint result) ← lift $ do
+updateProgressUpdateReceived maybe_update worker_id = VisitorNetworkSupervisorMonad $ do
+    (VisitorProgress checkpoint result) ← lift $ do
         validateWorkerKnownAndActive worker_id
-        case maybe_status_update of
+        case maybe_update of
             Nothing → return ()
-            Just (VisitorWorkerStatusUpdate status_update new_workload) → do
-                current_status %: (`mappend` status_update)
-                active_workers %: (Map.insert worker_id new_workload)
-        clearPendingStatusUpdate worker_id
-        get current_status
+            Just (VisitorWorkerProgressUpdate progress_update remaining_workload) → do
+                current_progress %: (`mappend` progress_update)
+                active_workers %: (Map.insert worker_id remaining_workload)
+        clearPendingProgressUpdate worker_id
+        get current_progress
     when (checkpoint == Explored) $
         lift (Set.toList <$> get known_workers)
             >>= abort . VisitorNetworkResult (Right result) 
@@ -214,15 +214,15 @@ updateWorkerAdded worker_id = VisitorNetworkSupervisorMonad . lift $ do
 
 updateWorkerFinished :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorStatusUpdate result →
+    VisitorProgress result →
     worker_id →
     VisitorNetworkSupervisorMonad result worker_id m ()
-updateWorkerFinished status_update worker_id = VisitorNetworkSupervisorMonad $
+updateWorkerFinished final_progress worker_id = VisitorNetworkSupervisorMonad $
     (lift $ do
         validateWorkerKnownAndActive worker_id
         active_workers %: Map.delete worker_id
-        current_status %: (`mappend` status_update)
-        VisitorStatusUpdate checkpoint new_results ← get current_status
+        current_progress %: (`mappend` final_progress)
+        VisitorProgress checkpoint new_results ← get current_progress
         case checkpoint of
             Explored → do
                 active_worker_ids ← Map.keys <$> get active_workers
@@ -246,7 +246,7 @@ updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
     known_workers %: Set.delete worker_id
     active_workers %: Map.delete worker_id
     clearPendingWorkloadSteal worker_id
-    clearPendingStatusUpdate worker_id
+    clearPendingProgressUpdate worker_id
 -- }}}
 
 -- }}}
@@ -263,18 +263,18 @@ broadcastWorkloadStealToActiveWorkers = do
     workers_pending_workload_steal %= active_worker_ids
 -- }}}
 
-clearPendingStatusUpdate :: -- {{{
+clearPendingProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorNetworkSupervisorContext result worker_id m ()
-clearPendingStatusUpdate worker_id =
-    Set.member worker_id <$> get workers_pending_status_update >>= flip when
+clearPendingProgressUpdate worker_id =
+    Set.member worker_id <$> get workers_pending_progress_update >>= flip when
     -- Note, the conditional above is needed to prevent a "misfire" where
-    -- we think that we have just completed a status update even though
+    -- we think that we have just completed a progress update even though
     -- none was started.
-    (do workers_pending_status_update %: Set.delete worker_id
-        no_status_updates_are_pending ← Set.null <$> get workers_pending_status_update
-        when no_status_updates_are_pending receiveCurrentStatus
+    (do workers_pending_progress_update %: Set.delete worker_id
+        no_progress_updates_are_pending ← Set.null <$> get workers_pending_progress_update
+        when no_progress_updates_are_pending receiveCurrentProgress
     )
 -- }}}
 
@@ -285,7 +285,7 @@ clearPendingWorkloadSteal :: -- {{{
 clearPendingWorkloadSteal worker_id =
     Set.member worker_id <$> get workers_pending_workload_steal >>= flip when
     -- Note, the conditional above is needed to prevent a "misfire" where
-    -- we think that we have just completed a status update even though
+    -- we think that we have just completed a workload steal even though
     -- none was started.
     (do workers_pending_workload_steal %: Set.delete worker_id
         no_workload_steals_remain ← Set.null <$> get workers_pending_workload_steal
@@ -311,13 +311,13 @@ enqueueWorkload workload =
             waiting_workers_or_available_workloads %= Right (Set.insert workload available_workloads)
 -- }}}
 
-receiveCurrentStatus :: -- {{{
+receiveCurrentProgress :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorContext result worker_id m ()
-receiveCurrentStatus = do
-    callback ← asks receive_current_status_action
-    current_status ← get current_status
-    lift (callback current_status)
+receiveCurrentProgress = do
+    callback ← asks receive_current_progress_action
+    current_progress ← get current_progress
+    lift (callback current_progress)
 -- }}}
 
 sendWorkloadToWorker :: -- {{{

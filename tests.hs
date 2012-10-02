@@ -133,12 +133,12 @@ instance Arbitrary α ⇒ Arbitrary (VisitorSolution α) where -- {{{
     arbitrary = VisitorSolution <$> arbitrary <*> arbitrary
 -- }}}
 
-instance Arbitrary α ⇒ Arbitrary (VisitorStatusUpdate α) where -- {{{
-    arbitrary = VisitorStatusUpdate <$> arbitrary <*> arbitrary
+instance Arbitrary α ⇒ Arbitrary (VisitorProgress α) where -- {{{
+    arbitrary = VisitorProgress <$> arbitrary <*> arbitrary
 -- }}}
 
-instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStatusUpdate α) where -- {{{
-    arbitrary = VisitorWorkerStatusUpdate <$> arbitrary <*> arbitrary
+instance Arbitrary α ⇒ Arbitrary (VisitorWorkerProgressUpdate α) where -- {{{
+    arbitrary = VisitorWorkerProgressUpdate <$> arbitrary <*> arbitrary
 -- }}}
 
 instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStolenWorkload α) where -- {{{
@@ -218,29 +218,29 @@ addAppendWorkloadStealBroadcastIdsAction actions = do
     })
 -- }}}
 
-addAppendStatusUpdateBroadcastIdsAction :: -- {{{
+addAppendProgressBroadcastIdsAction :: -- {{{
     VisitorNetworkSupervisorActions result worker_id IO →
     IO (IORef [[worker_id]],VisitorNetworkSupervisorActions result worker_id IO)
-addAppendStatusUpdateBroadcastIdsAction actions = do
+addAppendProgressBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
-        broadcast_status_update_request_to_workers_action = \worker_ids →
+        broadcast_progress_update_to_workers_action = \worker_ids →
             modifyIORef broadcasts_ref (++ [worker_ids])
     })
 -- }}}
 
-addReceiveCurrentStatusAction :: -- {{{
+addReceiveCurrentProgressAction :: -- {{{
     VisitorNetworkSupervisorActions result worker_id IO →
-    IO (IORef (Maybe (VisitorStatusUpdate result)),VisitorNetworkSupervisorActions result worker_id IO)
-addReceiveCurrentStatusAction actions = do
-    maybe_status_update_ref ← newIORef (Nothing :: Maybe (VisitorStatusUpdate result))
-    return (maybe_status_update_ref, actions {
-        receive_current_status_action = \status_update → do
-            maybe_old_status_update ← readIORef maybe_status_update_ref
-            case maybe_old_status_update of
+    IO (IORef (Maybe (VisitorProgress result)),VisitorNetworkSupervisorActions result worker_id IO)
+addReceiveCurrentProgressAction actions = do
+    maybe_progress_ref ← newIORef (Nothing :: Maybe (VisitorProgress result))
+    return (maybe_progress_ref, actions {
+        receive_current_progress_action = \progress → do
+            maybe_old_progress ← readIORef maybe_progress_ref
+            case maybe_old_progress of
                 Nothing → return ()
-                Just _ → error "status update has been received already!"
-            writeIORef maybe_status_update_ref $ Just status_update
+                Just _ → error "progress update has been received already!"
+            writeIORef maybe_progress_ref $ Just progress
     })
 -- }}}
 
@@ -328,12 +328,12 @@ randomVisitorWithoutCache = sized arb
 bad_test_supervisor_actions :: VisitorNetworkSupervisorActions result worker_id m -- {{{
 bad_test_supervisor_actions =
     VisitorNetworkSupervisorActions
-    {   broadcast_status_update_request_to_workers_action =
-            error "broadcast_status_update_request_to_workers_action called! :-/"
+    {   broadcast_progress_update_to_workers_action =
+            error "broadcast_progress_update_to_workers_action called! :-/"
     ,   broadcast_workload_steal_to_workers_action =
             error "broadcast_workload_steal_to_workers_action called! :-/"
-    ,   receive_current_status_action =
-            error "receive_current_status_action called! :-/"
+    ,   receive_current_progress_action =
+            error "receive_current_progress_action called! :-/"
     ,   send_workload_to_worker_action =
             error "send_workload_to_worker_action called! :-/"
     }
@@ -624,7 +624,7 @@ tests = -- {{{
     ,testGroup "Control.Monad.Trans.Visitor.Supervisor" -- {{{
         [testCase "immediately abort" $ -- {{{
             runVisitorNetworkSupervisor bad_test_supervisor_actions abortNetwork
-            >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([] :: [Int])))
+            >>= (@?= (VisitorNetworkResult (Left (VisitorProgress Unexplored ())) ([] :: [Int])))
          -- }}}
         ,testGroup "adding and removing workers" -- {{{
             [testCase "add one worker then abort" $ do -- {{{
@@ -632,7 +632,7 @@ tests = -- {{{
                 (runVisitorNetworkSupervisor actions $ do
                     updateWorkerAdded ()
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [()]))
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorProgress Unexplored ())) [()]))
                 readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
              -- }}}
             ,testCase "add then remove one worker then abort" $ do -- {{{
@@ -641,7 +641,7 @@ tests = -- {{{
                     updateWorkerAdded ()
                     updateWorkerRemoved ()
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) []))
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorProgress Unexplored ())) []))
                 readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
              -- }}}
             ,testCase "add then remove then add one worker then abort" $ do -- {{{
@@ -651,7 +651,7 @@ tests = -- {{{
                     updateWorkerRemoved 1
                     updateWorkerAdded 2
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([2::Int])))
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorProgress Unexplored ())) ([2::Int])))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
              -- }}}
             ,testCase "add two workers then remove first worker then abort" $ do -- {{{
@@ -662,7 +662,7 @@ tests = -- {{{
                     updateWorkerAdded 2
                     updateWorkerRemoved 1
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([2::Int])))
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorProgress Unexplored ())) ([2::Int])))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
                 readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
@@ -687,7 +687,7 @@ tests = -- {{{
                         mapM_ updateWorkerAdded worker_ids_to_add
                         mapM_ updateWorkerRemoved worker_ids_to_remove
                         abortNetwork
-                    progress @?= Left (VisitorStatusUpdate Unexplored ())
+                    progress @?= Left (VisitorProgress Unexplored ())
                     worker_ids_left @?= sort remaining_worker_ids
                     readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
                     readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
@@ -695,108 +695,108 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "status updates" -- {{{
-            [testCase "request status update when no workers present" $ do -- {{{
-                (maybe_status_update_ref,actions) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
+        ,testGroup "progress updates" -- {{{
+            [testCase "request progress update when no workers present" $ do -- {{{
+                (maybe_progress_ref,actions) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (runVisitorNetworkSupervisor actions $ do
-                    requestStatusUpdate
+                    requestProgressUpdate
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) ([]::[()])))
-                readIORef maybe_status_update_ref >>= (@?= Just (VisitorStatusUpdate Unexplored ()))
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorProgress Unexplored ())) ([]::[()])))
+                readIORef maybe_progress_ref >>= (@?= Just (VisitorProgress Unexplored ()))
              -- }}}
-            ,testProperty "request status update when all active workers present leave" $ do -- {{{
+            ,testProperty "request progress update when all active workers present leave" $ do -- {{{
                 number_of_active_workers ← choose (1,10 :: Int)
                 number_of_inactive_workers ← choose (0,10)
                 let active_workers = [0..number_of_active_workers-1]
                     inactive_workers = [101..101+number_of_inactive_workers-1]
                 morallyDubiousIOProperty $ do
-                    (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
-                    (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+                    (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
+                    (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                     let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                    let status_update = VisitorStatusUpdate Unexplored (Sum 0)
+                    let progress = VisitorProgress Unexplored (Sum 0)
                     (runVisitorNetworkSupervisor actions3 $ do
                         updateWorkerAdded 0
                         forM_ (tail active_workers) $ \worker_id → do
                             updateWorkerAdded worker_id
                             updateStolenWorkloadReceived (Just undefined) 0
                         mapM_ updateWorkerAdded inactive_workers
-                        requestStatusUpdate
+                        requestProgressUpdate
                         mapM_ updateWorkerRemoved active_workers
                         abortNetwork
-                     ) >>= (@?= (VisitorNetworkResult (Left status_update)) inactive_workers)
+                     ) >>= (@?= (VisitorNetworkResult (Left progress)) inactive_workers)
                     readIORef broadcast_ids_list_ref >>= (@?= [active_workers])
-                    readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                    readIORef maybe_progress_ref >>= (@?= Just progress)
                     return True
              -- }}}
-            ,testCase "request and receive Nothing status update when one worker present" $ do -- {{{
-                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+            ,testCase "request and receive Nothing progress update when one worker present" $ do -- {{{
+                (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction actions2
-                let status_update = VisitorStatusUpdate Unexplored (Sum 0)
+                let progress = VisitorProgress Unexplored (Sum 0)
                 (runVisitorNetworkSupervisor actions3 $ do
                     updateWorkerAdded ()
-                    requestStatusUpdate
-                    updateStatusUpdateReceived Nothing ()
+                    requestProgressUpdate
+                    updateProgressUpdateReceived Nothing ()
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [()])
-                readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                 ) >>= (@?= (VisitorNetworkResult (Left progress)) [()])
+                readIORef maybe_progress_ref >>= (@?= Just progress)
                 readIORef broadcast_ids_list_ref >>= (@?= [[()]])
              -- }}}
-            ,testCase "request and receive Just status update when one worker present" $ do -- {{{
-                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+            ,testCase "request and receive Just progress update when one worker present" $ do -- {{{
+                (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction actions2
-                let status_update = VisitorStatusUpdate (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = VisitorProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 (runVisitorNetworkSupervisor actions3 $ do
                     updateWorkerAdded ()
-                    requestStatusUpdate
-                    updateStatusUpdateReceived (Just (VisitorWorkerStatusUpdate status_update undefined)) ()
+                    requestProgressUpdate
+                    updateProgressUpdateReceived (Just (VisitorWorkerProgressUpdate progress undefined)) ()
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [()])
-                readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                 ) >>= (@?= (VisitorNetworkResult (Left progress)) [()])
+                readIORef maybe_progress_ref >>= (@?= Just progress)
                 readIORef broadcast_ids_list_ref >>= (@?= [[()]])
              -- }}}
-            ,testCase "request and receive Nothing status update when three workers present" $ do -- {{{
-                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+            ,testCase "request and receive Nothing progress update when three workers present" $ do -- {{{
+                (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                let status_update = VisitorStatusUpdate Unexplored (Sum 0)
+                let progress = VisitorProgress Unexplored (Sum 0)
                 (runVisitorNetworkSupervisor actions3 $ do
                     updateWorkerAdded (1 :: Int)
                     updateWorkerAdded (2 :: Int)
                     updateStolenWorkloadReceived (Just undefined) 1
-                    requestStatusUpdate
+                    requestProgressUpdate
                     updateWorkerAdded (3 :: Int)
-                    updateStatusUpdateReceived Nothing 1
+                    updateProgressUpdateReceived Nothing 1
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [1,2,3])
+                 ) >>= (@?= (VisitorNetworkResult (Left progress)) [1,2,3])
                 readIORef broadcast_ids_list_ref >>= (@?= [[1,2]])
-                readIORef maybe_status_update_ref >>= (@?= Nothing)
+                readIORef maybe_progress_ref >>= (@?= Nothing)
              -- }}}
-            ,testCase "request and receive status update when active and inactive workers present" $ do -- {{{
-                (maybe_status_update_ref,actions1) ← addReceiveCurrentStatusAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendStatusUpdateBroadcastIdsAction actions1
+            ,testCase "request and receive progress update when active and inactive workers present" $ do -- {{{
+                (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
+                (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                let status_update = VisitorStatusUpdate (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = VisitorProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 (runVisitorNetworkSupervisor actions3 $ do
                     updateWorkerAdded (1 :: Int)
                     updateWorkerAdded (2 :: Int)
-                    requestStatusUpdate
-                    updateStatusUpdateReceived (Just (VisitorWorkerStatusUpdate status_update undefined)) 1
+                    requestProgressUpdate
+                    updateProgressUpdateReceived (Just (VisitorWorkerProgressUpdate progress undefined)) 1
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left status_update)) [1,2])
-                readIORef maybe_status_update_ref >>= (@?= Just status_update)
+                 ) >>= (@?= (VisitorNetworkResult (Left progress)) [1,2])
+                readIORef maybe_progress_ref >>= (@?= Just progress)
                 readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
-            ,testCase "final status update ends the server monad" $ do -- {{{
+            ,testCase "final progress update ends the server monad" $ do -- {{{
                 let actions = ignoreAcceptWorkloadAction bad_test_supervisor_actions
-                let status_update = VisitorStatusUpdate Explored (Sum 1)
+                let progress = VisitorProgress Explored (Sum 1)
                 (runVisitorNetworkSupervisor actions $ do
                     updateWorkerAdded ()
-                    updateStatusUpdateReceived (Just (VisitorWorkerStatusUpdate status_update undefined)) ()
+                    updateProgressUpdateReceived (Just (VisitorWorkerProgressUpdate progress undefined)) ()
                     forever $
                         liftIO $
-                            assertFailure "loop continued past final status update"
+                            assertFailure "loop continued past final progress update"
                  ) >>= (@?= (VisitorNetworkResult (Right (Sum 1)) [()]))
              -- }}}
             ]
@@ -810,7 +810,7 @@ tests = -- {{{
                     updateWorkerAdded 2
                     updateStolenWorkloadReceived Nothing 1
                     abortNetwork
-                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorStatusUpdate Unexplored ())) [1,2]))
+                 ) >>= (@?= (VisitorNetworkResult (Left (VisitorProgress Unexplored ())) [1,2]))
                 readIORef broadcast_ids_list_ref >>= (@?= [[1],[1]])
              -- }}}
             ]
@@ -818,11 +818,11 @@ tests = -- {{{
         ,testCase "starting from previous checkpoint" $ do -- {{{
             (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
             let checkpoint = ChoiceCheckpoint Unexplored Unexplored
-                status_update = VisitorStatusUpdate checkpoint (Sum 1)
-            (runVisitorNetworkSupervisorStartingFrom status_update actions $ do
+                progress = VisitorProgress checkpoint (Sum 1)
+            (runVisitorNetworkSupervisorStartingFrom progress actions $ do
                 updateWorkerAdded ()
                 abortNetwork
-             ) >>= (@?= (VisitorNetworkResult (Left status_update) [()]))
+             ) >>= (@?= (VisitorNetworkResult (Left progress) [()]))
             readIORef maybe_workload_ref >>= (@?= Just ((),(VisitorWorkload Seq.empty checkpoint)))
          -- }}}
         ]
@@ -854,11 +854,11 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
-                    VisitorStatusUpdate checkpoint solutions ←
+                    VisitorProgress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
-                            VisitorWorkerFinished final_status_update → return final_status_update
+                            VisitorWorkerFinished final_progress → return final_progress
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= Explored
                     solutions @?= runVisitor visitor
@@ -871,11 +871,11 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             (VisitorWorkload path Unexplored)
-                    VisitorStatusUpdate checkpoint solutions ←
+                    VisitorProgress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
-                            VisitorWorkerFinished final_status_update → return final_status_update
+                            VisitorWorkerFinished final_progress → return final_progress
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= checkpointFromInitialPath path Explored
                     solutions @?= (runVisitor . walkVisitorDownPath path $ visitor)
@@ -883,36 +883,36 @@ tests = -- {{{
                  -- }}}
                 ]
              -- }}}
-            ,testProperty "status updates produce valid checkpoints" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
+            ,testProperty "progress updates produce valid checkpoints" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                 termination_result_ivar ← IVar.new
                 (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
                     (IVar.write termination_result_ivar)
                     visitor
                     entire_workload
                 checkpoints_ref ← newIORef DList.empty
-                let status_update_requests = Seq.singleton . StatusUpdateRequested $
+                let progress_updates = Seq.singleton . ProgressUpdateRequested $
                         maybe
                             (atomicModifyIORef workerPendingRequests $ (,()) . fmap (const Seq.empty))
                             (\checkpoint → do
                                 atomicModifyIORef checkpoints_ref $ (,()) . flip DList.snoc checkpoint
-                                atomicModifyIORef workerPendingRequests $ (,()) . fmap (const status_update_requests)
+                                atomicModifyIORef workerPendingRequests $ (,()) . fmap (const progress_updates)
                             )
-                writeIORef workerPendingRequests . Just $ status_update_requests
+                writeIORef workerPendingRequests . Just $ progress_updates
                 startWorker
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 remaining_solutions ← case termination_result of
-                    VisitorWorkerFinished (visitorStatusNewResults → solutions) → return solutions
+                    VisitorWorkerFinished (visitorResult → solutions) → return solutions
                     VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → error "worker aborted prematurely"
                 readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
                 checkpoints ← fmap DList.toList (readIORef checkpoints_ref)
                 let correct_solutions = runVisitor visitor
-                correct_solutions @=? ((⊕ remaining_solutions) . mconcat . fmap (visitorStatusNewResults . visitorWorkerStatusUpdate) $ checkpoints)
+                correct_solutions @=? ((⊕ remaining_solutions) . mconcat . fmap (visitorResult . visitorWorkerProgressUpdate) $ checkpoints)
                 let results_using_progressive_checkpoints =
                         zipWith
                             mappend
-                            (scanl1 mappend $ map (visitorStatusNewResults . visitorWorkerStatusUpdate) checkpoints)
-                            (map (flip runVisitorThroughCheckpointAndGatherResults visitor . visitorStatusCheckpoint . visitorWorkerStatusUpdate) checkpoints)
+                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate) checkpoints)
+                            (map (flip runVisitorThroughCheckpointAndGatherResults visitor . visitorCheckpoint . visitorWorkerProgressUpdate) checkpoints)
                 return $ all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
              -- }}}
             ,testCase "terminates successfully with null visitor" $ do -- {{{
@@ -924,7 +924,7 @@ tests = -- {{{
                         entire_workload
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
-                    VisitorWorkerFinished (visitorStatusNewResults → solutions) → solutions @?= mempty
+                    VisitorWorkerFinished (visitorResult → solutions) → solutions @?= mempty
                     VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
@@ -950,15 +950,15 @@ tests = -- {{{
                     waitQSem worker_started_qsem
                     writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
                     IVar.write blocking_value_ivar (Set.singleton 42)
-                    VisitorStatusUpdate checkpoint remaining_solutions ←
+                    VisitorProgress checkpoint remaining_solutions ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of
-                            VisitorWorkerFinished final_status_update → return final_status_update
+                            VisitorWorkerFinished final_progress → return final_progress
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                     readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                    VisitorWorkerStolenWorkload (VisitorWorkerStatusUpdate (VisitorStatusUpdate checkpoint prestolen_solutions) remaining_workload) workload ←
+                    VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint prestolen_solutions) remaining_workload) workload ←
                         fmap (
                             fromMaybe (error "stolen workload not available")
                             .
@@ -993,7 +993,7 @@ tests = -- {{{
                     startWorker
                     termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                     remaining_solutions ← case termination_result of
-                        VisitorWorkerFinished (visitorStatusNewResults → solutions) → return solutions
+                        VisitorWorkerFinished (visitorResult → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
                     workloads ← fmap (map visitorWorkerStolenWorkload . DList.toList) (readIORef workloads_ref)
