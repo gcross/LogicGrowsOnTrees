@@ -192,6 +192,14 @@ leftChildLabel :: VisitorLabel → VisitorLabel -- {{{
 leftChildLabel = VisitorLabel . fromJust . leftChild . unwrapVisitorLabel
 -- }}}
 
+normalizeLabeledVisitor :: LabeledVisitor α → Visitor α -- {{{
+normalizeLabeledVisitor = runLabeledT . unwrapLabeledVisitorT
+-- }}}
+
+normalizeLabeledVisitorT :: LabeledVisitorT m α → VisitorT m α -- {{{
+normalizeLabeledVisitorT = runLabeledT . unwrapLabeledVisitorT
+-- }}}
+
 rightChildLabel :: VisitorLabel → VisitorLabel -- {{{
 rightChildLabel = VisitorLabel . fromJust . rightChild . unwrapVisitorLabel
 -- }}}
