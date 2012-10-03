@@ -111,10 +111,88 @@ abortNetwork = VisitorNetworkSupervisorMonad $
     >>= abort
 -- }}}
 
+addWorker :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+addWorker worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerNotKnown worker_id
+    known_workers %: Set.insert worker_id
+    tryToObtainWorkloadFor worker_id
+-- }}}
+
 getCurrentProgress :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorNetworkSupervisorMonad result worker_id m (VisitorProgress result)
 getCurrentProgress = VisitorNetworkSupervisorMonad . lift . get $ current_progress
+-- }}}
+
+receiveProgressUpdate :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    Maybe (VisitorWorkerProgressUpdate result) →
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+receiveProgressUpdate maybe_update worker_id = VisitorNetworkSupervisorMonad $ do
+    (VisitorProgress checkpoint result) ← lift $ do
+        validateWorkerKnownAndActive worker_id
+        case maybe_update of
+            Nothing → return ()
+            Just (VisitorWorkerProgressUpdate progress_update remaining_workload) → do
+                current_progress %: (`mappend` progress_update)
+                active_workers %: (Map.insert worker_id remaining_workload)
+        clearPendingProgressUpdate worker_id
+        get current_progress
+    when (checkpoint == Explored) $
+        lift (Set.toList <$> get known_workers)
+            >>= abort . VisitorNetworkResult (Right result) 
+-- }}}
+
+receiveStolenWorkload :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    Maybe VisitorWorkload →
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+receiveStolenWorkload maybe_workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerKnownAndActive worker_id
+    maybe (return ()) enqueueWorkload maybe_workload
+    clearPendingWorkloadSteal worker_id
+-- }}}
+
+receiveWorkerFinished :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorProgress result →
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+receiveWorkerFinished final_progress worker_id = VisitorNetworkSupervisorMonad $
+    (lift $ do
+        validateWorkerKnownAndActive worker_id
+        active_workers %: Map.delete worker_id
+        current_progress %: (`mappend` final_progress)
+        VisitorProgress checkpoint new_results ← get current_progress
+        case checkpoint of
+            Explored → do
+                active_worker_ids ← Map.keys <$> get active_workers
+                unless (null active_worker_ids) $
+                    throw $ ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
+                known_worker_ids ← Set.toList <$> get known_workers
+                return . Just $ VisitorNetworkResult (Right new_results) known_worker_ids
+            _ → do
+                tryToObtainWorkloadFor worker_id
+                return Nothing
+    ) >>= maybe (return ()) abort
+-- }}}
+
+removeWorker :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorNetworkSupervisorMonad result worker_id m ()
+removeWorker worker_id = VisitorNetworkSupervisorMonad . lift $ do
+    validateWorkerKnown worker_id 
+    Map.lookup worker_id <$> get active_workers >>= maybe (return ()) enqueueWorkload
+    known_workers %: Set.delete worker_id
+    active_workers %: Map.delete worker_id
+    clearPendingWorkloadSteal worker_id
+    clearPendingProgressUpdate worker_id
 -- }}}
 
 requestProgressUpdate :: -- {{{
@@ -169,84 +247,6 @@ runVisitorNetworkSupervisorStartingFrom starting_progress actions loop =
     loop'
   where
     loop' = loop
--- }}}
-
-updateProgressUpdateReceived :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe (VisitorWorkerProgressUpdate result) →
-    worker_id →
-    VisitorNetworkSupervisorMonad result worker_id m ()
-updateProgressUpdateReceived maybe_update worker_id = VisitorNetworkSupervisorMonad $ do
-    (VisitorProgress checkpoint result) ← lift $ do
-        validateWorkerKnownAndActive worker_id
-        case maybe_update of
-            Nothing → return ()
-            Just (VisitorWorkerProgressUpdate progress_update remaining_workload) → do
-                current_progress %: (`mappend` progress_update)
-                active_workers %: (Map.insert worker_id remaining_workload)
-        clearPendingProgressUpdate worker_id
-        get current_progress
-    when (checkpoint == Explored) $
-        lift (Set.toList <$> get known_workers)
-            >>= abort . VisitorNetworkResult (Right result) 
--- }}}
-
-updateStolenWorkloadReceived :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe VisitorWorkload →
-    worker_id →
-    VisitorNetworkSupervisorMonad result worker_id m ()
-updateStolenWorkloadReceived maybe_workload worker_id = VisitorNetworkSupervisorMonad . lift $ do
-    validateWorkerKnownAndActive worker_id
-    maybe (return ()) enqueueWorkload maybe_workload
-    clearPendingWorkloadSteal worker_id
--- }}}
-
-updateWorkerAdded :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    worker_id →
-    VisitorNetworkSupervisorMonad result worker_id m ()
-updateWorkerAdded worker_id = VisitorNetworkSupervisorMonad . lift $ do
-    validateWorkerNotKnown worker_id
-    known_workers %: Set.insert worker_id
-    tryToObtainWorkloadFor worker_id
--- }}}
-
-updateWorkerFinished :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorProgress result →
-    worker_id →
-    VisitorNetworkSupervisorMonad result worker_id m ()
-updateWorkerFinished final_progress worker_id = VisitorNetworkSupervisorMonad $
-    (lift $ do
-        validateWorkerKnownAndActive worker_id
-        active_workers %: Map.delete worker_id
-        current_progress %: (`mappend` final_progress)
-        VisitorProgress checkpoint new_results ← get current_progress
-        case checkpoint of
-            Explored → do
-                active_worker_ids ← Map.keys <$> get active_workers
-                unless (null active_worker_ids) $
-                    throw $ ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
-                known_worker_ids ← Set.toList <$> get known_workers
-                return . Just $ VisitorNetworkResult (Right new_results) known_worker_ids
-            _ → do
-                tryToObtainWorkloadFor worker_id
-                return Nothing
-    ) >>= maybe (return ()) abort
--- }}}
-
-updateWorkerRemoved :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    worker_id →
-    VisitorNetworkSupervisorMonad result worker_id m ()
-updateWorkerRemoved worker_id = VisitorNetworkSupervisorMonad . lift $ do
-    validateWorkerKnown worker_id 
-    Map.lookup worker_id <$> get active_workers >>= maybe (return ()) enqueueWorkload
-    known_workers %: Set.delete worker_id
-    active_workers %: Map.delete worker_id
-    clearPendingWorkloadSteal worker_id
-    clearPendingProgressUpdate worker_id
 -- }}}
 
 -- }}}
