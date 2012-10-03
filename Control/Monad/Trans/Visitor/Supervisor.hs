@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -15,7 +16,8 @@ import Control.Exception (Exception,assert)
 import Control.Monad (unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
-import Control.Monad.Trans.Class (lift)
+import qualified Control.Monad.State.Class as MonadsTF
+import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
 import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
 
@@ -94,6 +96,20 @@ newtype VisitorSupervisorMonad result worker_id m a = -- {{{
             a
         )
     } deriving (Applicative,Functor,Monad,MonadIO)
+-- }}}
+
+-- }}}
+
+-- Instances {{{
+
+instance MonadTrans (VisitorSupervisorMonad result worker_id) where -- {{{
+    lift = VisitorSupervisorMonad . lift . lift
+-- }}}
+
+instance MonadsTF.MonadState m ⇒ MonadsTF.MonadState (VisitorSupervisorMonad result worker_id m) where -- {{{
+    type StateType (VisitorSupervisorMonad result worker_id m) = MonadsTF.StateType m
+    get = lift MonadsTF.get
+    put = lift . MonadsTF.put
 -- }}}
 
 -- }}}

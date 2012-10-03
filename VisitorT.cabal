@@ -28,6 +28,7 @@ Library
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,
         MonadCatchIO-transformers == 0.3.*,
+        monads-tf == 0.1.*,
         operational == 0.2.*,
         sequential-index == 0.2.*,
         transformers >= 0.2 && < 0.4,
