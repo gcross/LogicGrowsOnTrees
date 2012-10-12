@@ -21,7 +21,6 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
 import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
 
-import Data.Accessor ((^.),(^=),(^:))
 import Data.Accessor.Monad.TF.State ((%=),(%:),get)
 import Data.Accessor.Template (deriveAccessors)
 import Data.Either.Unwrap (whenLeft)
