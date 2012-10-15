@@ -23,7 +23,7 @@ import Data.Serialize (Serialize(),encode)
 
 -- Types {{{
 
-data VisitorTInstruction m α where -- # {{{
+data VisitorTInstruction m α where -- {{{
     Cache :: Serialize α ⇒ m (Maybe α) → VisitorTInstruction m α
     Choice :: VisitorT m α → VisitorT m α → VisitorTInstruction m α
     Null :: VisitorTInstruction m α
