@@ -159,6 +159,18 @@ getWaitingWorkers = VisitorSupervisorMonad . lift $
         Right _ → return Seq.empty
 -- }}}
 
+performGlobalProgressUpdate :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorSupervisorMonad result worker_id m ()
+performGlobalProgressUpdate = VisitorSupervisorMonad . lift $ do
+    active_worker_ids ← Map.keysSet <$> get active_workers
+    if (Set.null active_worker_ids)
+        then receiveCurrentProgress
+        else do
+            workers_pending_progress_update %= active_worker_ids
+            asks broadcast_progress_update_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
+-- }}}
+
 receiveProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     Maybe (VisitorWorkerProgressUpdate result) →
@@ -225,18 +237,6 @@ removeWorker worker_id = VisitorSupervisorMonad . lift $ do
     active_workers %: Map.delete worker_id
     clearPendingWorkloadSteal worker_id
     clearPendingProgressUpdate worker_id
--- }}}
-
-requestProgressUpdate :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorSupervisorMonad result worker_id m ()
-requestProgressUpdate = VisitorSupervisorMonad . lift $ do
-    active_worker_ids ← Map.keysSet <$> get active_workers
-    if (Set.null active_worker_ids)
-        then receiveCurrentProgress
-        else do
-            workers_pending_progress_update %= active_worker_ids
-            asks broadcast_progress_update_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
 -- }}}
 
 runVisitorSupervisor :: -- {{{

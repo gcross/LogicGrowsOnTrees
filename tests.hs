@@ -705,7 +705,7 @@ tests = -- {{{
             [testCase "request progress update when no workers present" $ do -- {{{
                 (maybe_progress_ref,actions) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (runVisitorSupervisor actions $ do
-                    requestProgressUpdate
+                    performGlobalProgressUpdate
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) ([]::[()])))
                 readIORef maybe_progress_ref >>= (@?= Just (VisitorProgress Unexplored ()))
@@ -726,7 +726,7 @@ tests = -- {{{
                             addWorker worker_id
                             receiveStolenWorkload (Just undefined) 0
                         mapM_ addWorker inactive_workers
-                        requestProgressUpdate
+                        performGlobalProgressUpdate
                         mapM_ removeWorker active_workers
                         abortSupervisor
                      ) >>= (@?= (VisitorSupervisorResult (Left progress)) inactive_workers)
@@ -741,7 +741,7 @@ tests = -- {{{
                 let progress = VisitorProgress Unexplored (Sum 0)
                 (runVisitorSupervisor actions3 $ do
                     addWorker ()
-                    requestProgressUpdate
+                    performGlobalProgressUpdate
                     receiveProgressUpdate Nothing ()
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [()])
@@ -755,7 +755,7 @@ tests = -- {{{
                 let progress = VisitorProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 (runVisitorSupervisor actions3 $ do
                     addWorker ()
-                    requestProgressUpdate
+                    performGlobalProgressUpdate
                     receiveProgressUpdate (Just (VisitorWorkerProgressUpdate progress undefined)) ()
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [()])
@@ -771,7 +771,7 @@ tests = -- {{{
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     receiveStolenWorkload (Just undefined) 1
-                    requestProgressUpdate
+                    performGlobalProgressUpdate
                     addWorker (3 :: Int)
                     receiveProgressUpdate Nothing 1
                     abortSupervisor
@@ -787,7 +787,7 @@ tests = -- {{{
                 (runVisitorSupervisor actions3 $ do
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
-                    requestProgressUpdate
+                    performGlobalProgressUpdate
                     receiveProgressUpdate (Just (VisitorWorkerProgressUpdate progress undefined)) 1
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [1,2])
