@@ -142,6 +142,23 @@ getCurrentProgress :: -- {{{
 getCurrentProgress = VisitorSupervisorMonad . lift . get $ current_progress
 -- }}}
 
+getNumberOfWorkers :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorSupervisorMonad result worker_id m Int
+getNumberOfWorkers = VisitorSupervisorMonad . lift . (Set.size <$>) . get $ known_workers
+-- }}}
+
+getWaitingWorkers :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorSupervisorMonad result worker_id m (Seq worker_id)
+getWaitingWorkers = VisitorSupervisorMonad . lift $
+    get waiting_workers_or_available_workloads
+    >>=
+    \x → case x of
+        Left waiting_workers → return waiting_workers
+        Right _ → return Seq.empty
+-- }}}
+
 receiveProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     Maybe (VisitorWorkerProgressUpdate result) →
