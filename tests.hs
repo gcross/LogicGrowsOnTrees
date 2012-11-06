@@ -86,29 +86,35 @@ instance Arbitrary UUID where -- {{{
     arbitrary = MkGen (\r _ -> fst (random r))
 -- }}}
 
-instance (Serialize α, Arbitrary α, Functor m, Monad m) ⇒ Arbitrary (VisitorT m α) where -- {{{
-    arbitrary = sized arb
+instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitrary (VisitorT m α) where -- {{{
+    arbitrary = sized (flip arb mzero)
       where
-        arb :: Int → Gen (VisitorT m α)
-        arb 0 = frequency
-                    [(3,result)
+        arb :: Monoid α ⇒ Int → VisitorT m α → Gen (VisitorT m α)
+        arb 0 _ = null
+        arb 1 intermediate = frequency
+                    [(3,resultPlus intermediate)
                     ,(1,null)
-                    ,(2,cached)
+                    ,(2,cachedPlus intermediate)
                     ]
-        arb n = frequency
-                    [(3,result)
-                    ,(2,bindToArbitrary n result)
-                    ,(1,bindToArbitrary n null)
-                    ,(2,bindToArbitrary n cached)
-                    ,(4,liftM2 mplus (arb (n `div` 2)) (arb (n `div` 2)))
+        arb n intermediate = frequency
+                    [(2,resultPlus intermediate >>= arb n)
+                    ,(1,null)
+                    ,(2,cachedPlus intermediate >>= arb n)
+                    ,(4, do left_size ← choose (0,n)
+                            let right_size = n-left_size
+                            left ← arb left_size intermediate
+                            right ← arb right_size intermediate
+                            return $ left `mplus` right
+                     )
                     ]
         null, result, cached :: Gen (VisitorT m α)
         null = return mzero
         result = fmap return arbitrary
         cached = fmap cache arbitrary
 
-        bindToArbitrary :: Int → Gen (VisitorT m α) → Gen (VisitorT m α)
-        bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
+        resultPlus, cachedPlus :: Monoid α ⇒ VisitorT m α → Gen (VisitorT m α)
+        resultPlus intermediate = fmap (liftM2 mappend intermediate) result
+        cachedPlus intermediate = fmap (liftM2 mappend intermediate) cached
 -- }}}
 
 instance Arbitrary VisitorCheckpoint where -- {{{
@@ -346,7 +352,7 @@ main = defaultMain tests
 tests = -- {{{
     [testGroup "Control.Monad.Trans.Visitor" -- {{{
         [testGroup "Eq instance" -- {{{
-            [testProperty "self" $ \(v :: Visitor Int) → v == v
+            [testProperty "self" $ \(v :: Visitor [()]) → v == v
             ]
          -- }}}
         ,testGroup "runVisitor" -- {{{
@@ -402,7 +408,7 @@ tests = -- {{{
                 ==
                 (mergeCheckpointRoot $ CacheCheckpoint (encode i) checkpoint)
              -- }}}
-            ,testProperty "choice" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor Int) (other_checkpoint :: VisitorCheckpoint) → -- {{{
+            ,testProperty "choice" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor [()]) (other_checkpoint :: VisitorCheckpoint) → -- {{{
                 (checkpointFromContext (Seq.singleton (LeftChoiceContextStep other_checkpoint other_visitor)) inner_checkpoint)
                 ==
                 (mergeCheckpointRoot $ ChoiceCheckpoint inner_checkpoint other_checkpoint)
@@ -525,7 +531,7 @@ tests = -- {{{
             (compare `on` branchingFromLabel) a b == compare a b
          -- }}}
         ,testGroup "runVisitorWithLabels" -- {{{
-            [testProperty "same result as runVisitor" $ \(visitor :: Visitor Int) →
+            [testProperty "same result as runVisitor" $ \(visitor :: Visitor [()]) →
                  runVisitor ((:[]) <$> visitor) == (visitorSolutionResult <$> runVisitorWithLabels visitor)
             ]
          -- }}}
