@@ -8,7 +8,23 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Supervisor where
+module Control.Monad.Trans.Visitor.Supervisor -- {{{
+    ( VisitorSupervisorActions(..)
+    , VisitorSupervisorMonad
+    , VisitorSupervisorResult(..)
+    , abortSupervisor
+    , addWorker
+    , getCurrentProgress
+    , getNumberOfWorkers
+    , getWaitingWorkers
+    , performGlobalProgressUpdate
+    , receiveProgressUpdate
+    , receiveStolenWorkload
+    , receiveWorkerFinished
+    , removeWorker
+    , runVisitorSupervisor
+    , runVisitorSupervisorStartingFrom
+    ) where -- }}}
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>),Applicative)
