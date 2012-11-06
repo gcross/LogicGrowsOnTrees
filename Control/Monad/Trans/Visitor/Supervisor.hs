@@ -193,12 +193,17 @@ receiveProgressUpdate maybe_update worker_id = VisitorSupervisorMonad $ do
 
 receiveStolenWorkload :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe VisitorWorkload →
+    Maybe (VisitorWorkerStolenWorkload result) →
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
-receiveStolenWorkload maybe_workload worker_id = VisitorSupervisorMonad . lift $ do
+receiveStolenWorkload maybe_stolen_workload worker_id = VisitorSupervisorMonad . lift $ do
     validateWorkerKnownAndActive worker_id
-    maybe (return ()) enqueueWorkload maybe_workload
+    case maybe_stolen_workload of
+        Nothing → return ()
+        Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate progress_update remaining_workload) workload) → do
+            current_progress %: (`mappend` progress_update)
+            active_workers %: (Map.insert worker_id remaining_workload)
+            enqueueWorkload workload
     clearPendingWorkloadSteal worker_id
 -- }}}
 

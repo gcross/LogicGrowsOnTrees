@@ -724,7 +724,7 @@ tests = -- {{{
                         addWorker 0
                         forM_ (tail active_workers) $ \worker_id → do
                             addWorker worker_id
-                            receiveStolenWorkload (Just undefined) 0
+                            receiveStolenWorkload (Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty entire_workload) undefined)) 0
                         mapM_ addWorker inactive_workers
                         performGlobalProgressUpdate
                         mapM_ removeWorker active_workers
@@ -770,7 +770,7 @@ tests = -- {{{
                 (runVisitorSupervisor actions3 $ do
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
-                    receiveStolenWorkload (Just undefined) 1
+                    receiveStolenWorkload (Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty entire_workload) undefined)) 1
                     performGlobalProgressUpdate
                     addWorker (3 :: Int)
                     receiveProgressUpdate Nothing 1
