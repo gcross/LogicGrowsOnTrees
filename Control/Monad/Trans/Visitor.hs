@@ -48,6 +48,7 @@ data VisitorTInstruction m α where -- {{{
 type VisitorInstruction = VisitorTInstruction Identity
 
 newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstruction m) m α }
+    deriving (Applicative,Functor,Monad,MonadIO)
 type Visitor = VisitorT Identity
 type VisitorIO = VisitorT IO
 
@@ -60,13 +61,6 @@ instance Monad m ⇒ Alternative (VisitorT m) where -- {{{
     (<|>) = mplus
 -- }}}
 
-instance Monad m ⇒ Applicative (VisitorT m) where -- {{{
-    pure = VisitorT . pure
-    (VisitorT f) <*> (VisitorT x) = VisitorT (f <*> x)
-    (VisitorT x) *> (VisitorT y) = VisitorT (x *> y)
-    (VisitorT x) <* (VisitorT y) = VisitorT (x <* y)
--- }}}
-    
 instance Eq α ⇒ Eq (Visitor α) where -- {{{
     (VisitorT x) == (VisitorT y) = e x y
       where
@@ -79,19 +73,6 @@ instance Eq α ⇒ Eq (Visitor α) where -- {{{
                     (Just x, Just y) → e (kx x) (ky y)
             (Choice (VisitorT ax) (VisitorT bx) :>>= kx, Choice (VisitorT ay) (VisitorT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
--- }}}
-
-instance Monad m ⇒ Functor (VisitorT m) where -- {{{
-    fmap f = VisitorT . fmap f . unwrapVisitorT
--- }}}
-
-instance Monad m ⇒ Monad (VisitorT m) where -- {{{
-    return = VisitorT . return
-    mx >>= k = VisitorT $ (unwrapVisitorT mx) >>= (unwrapVisitorT . k)
--- }}}
-
-instance MonadIO m ⇒ MonadIO (VisitorT m) where -- {{{
-    liftIO = VisitorT . liftIO
 -- }}}
 
 instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
