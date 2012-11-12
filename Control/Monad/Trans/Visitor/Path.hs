@@ -56,24 +56,24 @@ oppositeBranchOf LeftBranch = RightBranch
 oppositeBranchOf RightBranch = LeftBranch
 -- }}}
 
-walkVisitorDownPath :: VisitorPath → Visitor α → Visitor α -- {{{
-walkVisitorDownPath path = runIdentity . walkVisitorTDownPath path
+sendVisitorDownPath :: VisitorPath → Visitor α → Visitor α -- {{{
+sendVisitorDownPath path = runIdentity . sendVisitorTDownPath path
 -- }}}
 
-walkVisitorTDownPath :: Monad m ⇒ VisitorPath → VisitorT m α → m (VisitorT m α) -- {{{
-walkVisitorTDownPath (viewl → EmptyL) = return
-walkVisitorTDownPath path@(viewl → step :< tail) =
+sendVisitorTDownPath :: Monad m ⇒ VisitorPath → VisitorT m α → m (VisitorT m α) -- {{{
+sendVisitorTDownPath (viewl → EmptyL) = return
+sendVisitorTDownPath path@(viewl → step :< tail) =
     viewT . unwrapVisitorT >=> \view → case (view,step) of
         (Return x,_) →
             throw VisitorTerminatedBeforeEndOfWalk
         (Null :>>= _,_) →
             throw VisitorTerminatedBeforeEndOfWalk
         (Cache _ :>>= k,CacheStep cache) →
-            walkVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
+            sendVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
         (Choice left _ :>>= k,ChoiceStep LeftBranch) →
-            walkVisitorTDownPath tail (left >>= VisitorT . k)
+            sendVisitorTDownPath tail (left >>= VisitorT . k)
         (Choice _ right :>>= k,ChoiceStep RightBranch) →
-            walkVisitorTDownPath tail (right >>= VisitorT . k)
+            sendVisitorTDownPath tail (right >>= VisitorT . k)
         _ → throw PastVisitorIsInconsistentWithPresentVisitor
 -- }}}
 

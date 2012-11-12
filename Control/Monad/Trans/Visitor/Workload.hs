@@ -50,7 +50,7 @@ runVisitorThroughWorkload :: -- {{{
     Visitor α →
     α
 runVisitorThroughWorkload =
-    (mconcat . map fst)
+    (fst . last)
     .*
     walkVisitorThroughWorkload
 -- }}}
@@ -71,7 +71,7 @@ walkVisitorThroughWorkload :: -- {{{
 walkVisitorThroughWorkload VisitorWorkload{..} =
     walkVisitorThroughCheckpoint visitorWorkloadCheckpoint
     .
-    walkVisitorDownPath visitorWorkloadPath
+    sendVisitorDownPath visitorWorkloadPath
 -- }}}
 
 walkVisitorTThroughWorkload :: -- {{{
@@ -90,7 +90,7 @@ walkVisitorTThroughWorkload VisitorWorkload{..} =
         walkVisitorTThroughCheckpoint visitorWorkloadCheckpoint
     )
     .
-    walkVisitorTDownPath visitorWorkloadPath
+    sendVisitorTDownPath visitorWorkloadPath
 -- }}}
 
 -- }}}

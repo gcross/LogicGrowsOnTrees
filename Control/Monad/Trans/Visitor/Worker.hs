@@ -137,7 +137,7 @@ forkVisitorTWorkerThread :: -- {{{
     IO (VisitorWorkerEnvironment α)
 forkVisitorTWorkerThread =
     genericForkVisitorTWorkerThread
-        walkVisitorTDownPath
+        sendVisitorTDownPath
         stepVisitorTThroughCheckpoint
 -- }}}
 
@@ -149,7 +149,7 @@ forkVisitorWorkerThread :: -- {{{
     IO (VisitorWorkerEnvironment α)
 forkVisitorWorkerThread =
     genericForkVisitorTWorkerThread
-        (return .* walkVisitorDownPath)
+        (return .* sendVisitorDownPath)
         (return .** stepVisitorThroughCheckpoint)
         id
 -- }}}
@@ -364,7 +364,7 @@ preforkVisitorTWorkerThread :: -- {{{
     IO (IO (),VisitorWorkerEnvironment α)
 preforkVisitorTWorkerThread =
     genericPreforkVisitorTWorkerThread
-        walkVisitorTDownPath
+        sendVisitorTDownPath
         stepVisitorTThroughCheckpoint
 -- }}}
 
@@ -376,7 +376,7 @@ preforkVisitorWorkerThread :: -- {{{
     IO (IO (), VisitorWorkerEnvironment α)
 preforkVisitorWorkerThread =
     genericPreforkVisitorTWorkerThread
-        (return .* walkVisitorDownPath)
+        (return .* sendVisitorDownPath)
         (return .** stepVisitorThroughCheckpoint)
         id
 -- }}}

@@ -163,16 +163,12 @@ runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [VisitorSolution 
 runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel
 -- }}}
 
-solutionsToMap :: Foldable t ⇒ t (VisitorSolution α) → Map VisitorLabel α -- {{{
-solutionsToMap = Fold.foldl' (flip $ \(VisitorSolution label solution) → Map.insert label solution) Map.empty
+sendVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α -- {{{
+sendVisitorDownLabel label = runIdentity . sendVisitorTDownLabel label
 -- }}}
 
-walkVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α -- {{{
-walkVisitorDownLabel label = runIdentity . walkVisitorTDownLabel label
--- }}}
-
-walkVisitorTDownLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (VisitorT m α) -- {{{
-walkVisitorTDownLabel (VisitorLabel label) = go root
+sendVisitorTDownLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (VisitorT m α) -- {{{
+sendVisitorTDownLabel (VisitorLabel label) = go root
   where
     go parent visitor
       | parent == label = return visitor
@@ -191,6 +187,10 @@ walkVisitorTDownLabel (VisitorLabel label) = go root
                     go
                         (fromJust . rightChild $ parent)
                         (right >>= VisitorT . k)
+-- }}}
+
+solutionsToMap :: Foldable t ⇒ t (VisitorSolution α) → Map VisitorLabel α -- {{{
+solutionsToMap = Fold.foldl' (flip $ \(VisitorSolution label solution) → Map.insert label solution) Map.empty
 -- }}}
 
 -- }}}
