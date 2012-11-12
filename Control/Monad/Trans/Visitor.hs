@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -19,6 +20,22 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Monoid (Monoid(..))
 import Data.Serialize (Serialize(),encode)
+-- }}}
+
+-- Classes {{{
+
+class MonadPlus m ⇒ MonadVisitor m where -- {{{
+    cache :: Serialize x ⇒ x → m x
+    cacheGuard :: Bool → m ()
+    cacheMaybe :: Serialize x ⇒ Maybe x → m x
+-- }}}
+
+class MonadPlus (t m) ⇒ MonadVisitorTrans t m where -- {{{
+    runAndCache :: Serialize x ⇒ m x → t m x
+    runAndCacheGuard :: m Bool → t m ()
+    runAndCacheMaybe :: Serialize x ⇒ m (Maybe x) → t m x
+-- }}}
+
 -- }}}
 
 -- Types {{{
@@ -82,6 +99,18 @@ instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
     left `mplus` right = VisitorT . singleton $ Choice left right
 -- }}}
 
+instance (Functor m, Monad m) ⇒ MonadVisitor (VisitorT m) where -- {{{
+    cache = runAndCache . return
+    cacheGuard = runAndCacheGuard . return
+    cacheMaybe = runAndCacheMaybe . return
+-- }}}
+
+instance (Functor m, Monad m) ⇒ MonadVisitorTrans VisitorT m where -- {{{
+    runAndCache = runAndCacheMaybe . fmap Just
+    runAndCacheGuard = runAndCacheMaybe . fmap (\x → if x then Just () else Nothing)
+    runAndCacheMaybe = VisitorT . singleton . Cache
+-- }}}
+
 instance MonadTrans VisitorT where -- {{{
     lift = VisitorT . lift
 -- }}}
@@ -107,30 +136,6 @@ instance Show α ⇒ Show (Visitor α) where -- {{{
 -- }}}
 
 -- Functions {{{
-
-cache :: (Functor m, Monad m, Serialize x) ⇒ x → VisitorT m x -- {{{
-cache = runAndCache . return
--- }}}
-
-cacheGuard :: (Functor m, Monad m) ⇒ Bool → VisitorT m () -- {{{
-cacheGuard = runAndCacheGuard . return
--- }}}
-
-cacheMaybe :: (Monad m, Serialize x) ⇒ Maybe x → VisitorT m x -- {{{
-cacheMaybe = runAndCacheMaybe . return
--- }}}
-
-runAndCache :: (Functor m, Serialize x) ⇒ m x → VisitorT m x -- {{{
-runAndCache = runAndCacheMaybe . fmap Just
--- }}}
-
-runAndCacheGuard :: Functor m ⇒ m Bool → VisitorT m () -- {{{
-runAndCacheGuard = runAndCacheMaybe . fmap (\x → if x then Just () else Nothing)
--- }}}
-
-runAndCacheMaybe :: Serialize x ⇒ m (Maybe x) → VisitorT m x -- {{{
-runAndCacheMaybe = VisitorT . singleton . Cache
--- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
 runVisitor = runIdentity . runVisitorTAndGatherResults
