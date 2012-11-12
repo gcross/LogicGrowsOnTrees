@@ -44,12 +44,42 @@ entire_workload = VisitorWorkload Seq.empty Unexplored
 
 -- Functions {{{
 
+runVisitorThroughWorkload :: -- {{{
+    Monoid α ⇒
+    VisitorWorkload →
+    Visitor α →
+    α
+runVisitorThroughWorkload =
+    (mconcat . map fst)
+    .*
+    walkVisitorThroughWorkload
+-- }}}
+
 runVisitorTThroughWorkload :: -- {{{
     (Functor m, Monad m, Monoid α) ⇒
     VisitorWorkload →
     VisitorT m α →
+    m α
+runVisitorTThroughWorkload = gatherResults .* walkVisitorTThroughWorkload
+-- }}}
+
+walkVisitorThroughWorkload :: -- {{{
+    Monoid α ⇒
+    VisitorWorkload →
+    Visitor α →
+    [(α,VisitorCheckpoint)]
+walkVisitorThroughWorkload VisitorWorkload{..} =
+    walkVisitorThroughCheckpoint visitorWorkloadCheckpoint
+    .
+    walkVisitorDownPath visitorWorkloadPath
+-- }}}
+
+walkVisitorTThroughWorkload :: -- {{{
+    (Functor m, Monad m, Monoid α) ⇒
+    VisitorWorkload →
+    VisitorT m α →
     VisitorTResultFetcher m α
-runVisitorTThroughWorkload VisitorWorkload{..} =
+walkVisitorTThroughWorkload VisitorWorkload{..} =
     VisitorTResultFetcher
     .
     join
@@ -57,40 +87,10 @@ runVisitorTThroughWorkload VisitorWorkload{..} =
     fmap (
         fetchVisitorTResult
         .
-        runVisitorTThroughCheckpoint visitorWorkloadCheckpoint
+        walkVisitorTThroughCheckpoint visitorWorkloadCheckpoint
     )
     .
     walkVisitorTDownPath visitorWorkloadPath
--- }}}
-
-runVisitorTThroughWorkloadAndGatherResults :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
-    VisitorWorkload →
-    VisitorT m α →
-    m α
-runVisitorTThroughWorkloadAndGatherResults = gatherResults .* runVisitorTThroughWorkload
--- }}}
-
-runVisitorThroughWorkload :: -- {{{
-    Monoid α ⇒
-    VisitorWorkload →
-    Visitor α →
-    [(α,VisitorCheckpoint)]
-runVisitorThroughWorkload VisitorWorkload{..} =
-    runVisitorThroughCheckpoint visitorWorkloadCheckpoint
-    .
-    walkVisitorDownPath visitorWorkloadPath
--- }}}
-
-runVisitorThroughWorkloadAndGatherResults :: -- {{{
-    Monoid α ⇒
-    VisitorWorkload →
-    Visitor α →
-    α
-runVisitorThroughWorkloadAndGatherResults =
-    (mconcat . map fst)
-    .*
-    runVisitorThroughWorkload
 -- }}}
 
 -- }}}

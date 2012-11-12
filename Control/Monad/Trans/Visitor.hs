@@ -119,30 +119,30 @@ instance Show α ⇒ Show (Visitor α) where -- {{{
 -- Functions {{{
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
-runVisitor = runIdentity . runVisitorTAndGatherResults
+runVisitor = runIdentity . runVisitorT
 -- }}}
 
-runVisitorT :: Monad m ⇒ VisitorT m α → m () -- {{{
+runVisitorT :: (Monad m, Monoid α) ⇒ VisitorT m α → m α -- {{{
 runVisitorT = viewT . unwrapVisitorT >=> \view →
     case view of
-        Return x → return ()
-        (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorT . VisitorT . k)
-        (Choice left right :>>= k) → do
-            runVisitorT $ left >>= VisitorT . k
-            runVisitorT $ right >>= VisitorT . k
-        (Null :>>= _) → return ()
--- }}}
-
-runVisitorTAndGatherResults :: (Monad m, Monoid α) ⇒ VisitorT m α → m α -- {{{
-runVisitorTAndGatherResults = viewT . unwrapVisitorT >=> \view →
-    case view of
         Return x → return x
-        (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorTAndGatherResults . VisitorT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorT . VisitorT . k)
         (Choice left right :>>= k) →
             liftM2 mappend
-                (runVisitorTAndGatherResults $ left >>= VisitorT . k)
-                (runVisitorTAndGatherResults $ right >>= VisitorT . k)
+                (runVisitorT $ left >>= VisitorT . k)
+                (runVisitorT $ right >>= VisitorT . k)
         (Null :>>= _) → return mempty
+-- }}}
+
+runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m () -- {{{
+runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
+    case view of
+        Return x → return ()
+        (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorTAndIgnoreResults . VisitorT . k)
+        (Choice left right :>>= k) → do
+            runVisitorTAndIgnoreResults $ left >>= VisitorT . k
+            runVisitorTAndIgnoreResults $ right >>= VisitorT . k
+        (Null :>>= _) → return ()
 -- }}}
 
 -- }}}

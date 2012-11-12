@@ -241,73 +241,16 @@ runVisitorThroughCheckpoint :: -- {{{
     Monoid α ⇒
     VisitorCheckpoint →
     Visitor α →
-    [(α,VisitorCheckpoint)]
-runVisitorThroughCheckpoint = go True .* runVisitorTThroughCheckpoint
-  where
-    go True (runIdentity . fetchVisitorTResult → Nothing) = [(mempty,Explored)]
-    go False (runIdentity . fetchVisitorTResult → Nothing) = []
-    go _ (runIdentity . fetchVisitorTResult → Just (next_accum,checkpoint,next_result)) =
-      (next_accum,checkpoint)
-      :
-      go False next_result
--- }}}
-
-runVisitorThroughCheckpointAndGatherResults :: -- {{{
-    Monoid α ⇒
-    VisitorCheckpoint →
-    Visitor α →
     α
-runVisitorThroughCheckpointAndGatherResults = (fst . last) .* runVisitorThroughCheckpoint
+runVisitorThroughCheckpoint = (fst . last) .* walkVisitorThroughCheckpoint
 -- }}}
 
 runVisitorTThroughCheckpoint :: -- {{{
     (Functor m, Monad m, Monoid α) ⇒
     VisitorCheckpoint →
     VisitorT m α →
-    VisitorTResultFetcher m α
-runVisitorTThroughCheckpoint = go mempty Seq.empty
-  where
-    go accum context =
-        (VisitorTResultFetcher
-         .
-         fmap (\x → case x of
-            (maybe_solution,Nothing) → Just
-                (maybe id (flip mappend) maybe_solution accum
-                ,Explored
-                ,VisitorTResultFetcher (return Nothing)
-                )
-            (maybe_solution,Just (new_context, new_unexplored_checkpoint, new_visitor)) → Just $
-              let new_accum = maybe id (flip mappend) maybe_solution accum in
-                (new_accum
-                ,checkpointFromContext new_context new_unexplored_checkpoint
-                ,go new_accum new_context new_unexplored_checkpoint new_visitor
-                )
-         )
-        )
-        .*
-        stepVisitorTThroughCheckpoint context
--- }}}
-
-runVisitorTThroughCheckpointAndGatherResults :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
-    VisitorCheckpoint →
-    VisitorT m α →
     m α
-runVisitorTThroughCheckpointAndGatherResults = gatherResults .* runVisitorTThroughCheckpoint
--- }}}
-
-runVisitorTTWithCheckpoints :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
-    VisitorT m α →
-    VisitorTResultFetcher m α
-runVisitorTTWithCheckpoints = runVisitorTThroughCheckpoint Unexplored
--- }}}
-
-runVisitorWithCheckpoints :: -- {{{
-    Monoid α ⇒
-    Visitor α →
-    [(α,VisitorCheckpoint)]
-runVisitorWithCheckpoints = runVisitorThroughCheckpoint Unexplored
+runVisitorTThroughCheckpoint = gatherResults .* walkVisitorTThroughCheckpoint
 -- }}}
 
 stepVisitorThroughCheckpoint :: -- {{{
@@ -367,6 +310,63 @@ stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \v
   where
     moveUpMyContext = moveUpContext context
     moveDownMyContext step checkpoint visitor = moveDownContext step checkpoint visitor context
+-- }}}
+
+walkVisitor :: -- {{{
+    Monoid α ⇒
+    Visitor α →
+    [(α,VisitorCheckpoint)]
+walkVisitor = walkVisitorThroughCheckpoint Unexplored
+-- }}}
+
+walkVisitorT :: -- {{{
+    (Functor m, Monad m, Monoid α) ⇒
+    VisitorT m α →
+    VisitorTResultFetcher m α
+walkVisitorT = walkVisitorTThroughCheckpoint Unexplored
+-- }}}
+
+walkVisitorThroughCheckpoint :: -- {{{
+    Monoid α ⇒
+    VisitorCheckpoint →
+    Visitor α →
+    [(α,VisitorCheckpoint)]
+walkVisitorThroughCheckpoint = go True .* walkVisitorTThroughCheckpoint
+  where
+    go True (runIdentity . fetchVisitorTResult → Nothing) = [(mempty,Explored)]
+    go False (runIdentity . fetchVisitorTResult → Nothing) = []
+    go _ (runIdentity . fetchVisitorTResult → Just (next_accum,checkpoint,next_result)) =
+      (next_accum,checkpoint)
+      :
+      go False next_result
+-- }}}
+
+walkVisitorTThroughCheckpoint :: -- {{{
+    (Functor m, Monad m, Monoid α) ⇒
+    VisitorCheckpoint →
+    VisitorT m α →
+    VisitorTResultFetcher m α
+walkVisitorTThroughCheckpoint = go mempty Seq.empty
+  where
+    go accum context =
+        (VisitorTResultFetcher
+         .
+         fmap (\x → case x of
+            (maybe_solution,Nothing) → Just
+                (maybe id (flip mappend) maybe_solution accum
+                ,Explored
+                ,VisitorTResultFetcher (return Nothing)
+                )
+            (maybe_solution,Just (new_context, new_unexplored_checkpoint, new_visitor)) → Just $
+              let new_accum = maybe id (flip mappend) maybe_solution accum in
+                (new_accum
+                ,checkpointFromContext new_context new_unexplored_checkpoint
+                ,go new_accum new_context new_unexplored_checkpoint new_visitor
+                )
+         )
+        )
+        .*
+        stepVisitorTThroughCheckpoint context
 -- }}}
 
 -- }}}

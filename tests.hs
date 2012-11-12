@@ -378,17 +378,17 @@ tests = -- {{{
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return [42]
-                ) @?= ((),[1,2,3])
+                ) @?= ([42,42],[1,2,3])
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorTAndGatherResults" -- {{{
+        ,testGroup "runVisitorTAndIgnoreResults" -- {{{
             [testCase "Writer" $ -- {{{
-                (runWriter . runVisitorTAndGatherResults $ do
+                (runWriter . runVisitorTAndIgnoreResults $ do
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return [42]
-                ) @?= ([42,42],[1,2,3])
+                ) @?= ((),[1,2,3])
              -- }}}
             ]
          -- }}}
@@ -423,9 +423,9 @@ tests = -- {{{
                 checkpoint1 ← randomCheckpointForVisitor visitor
                 checkpoint2 ← randomCheckpointForVisitor visitor
                 let checkpoint3 = checkpoint1 ⊕ checkpoint2
-                    solutions1 = runVisitorThroughCheckpointAndGatherResults checkpoint1 visitor
-                    solutions2 = runVisitorThroughCheckpointAndGatherResults checkpoint2 visitor
-                    solutions3 = runVisitorThroughCheckpointAndGatherResults checkpoint3 visitor
+                    solutions1 = runVisitorThroughCheckpoint checkpoint1 visitor
+                    solutions2 = runVisitorThroughCheckpoint checkpoint2 visitor
+                    solutions3 = runVisitorThroughCheckpoint checkpoint3 visitor
                 return $ solutions3 == solutions1 `Set.intersection` solutions2
              -- }}}
             ,testCase "throws the correct exceptions" $ -- {{{
@@ -447,30 +447,30 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorThroughCheckpoint" -- {{{
+        ,testGroup "walkVisitorThroughCheckpoint" -- {{{
             [testProperty "matches walk down path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
                 runVisitor (walkVisitorDownPath path visitor)
                 ==
-                (fst . last) (runVisitorThroughCheckpoint (checkpointFromUnexploredPath path) visitor)
+                (fst . last) (walkVisitorThroughCheckpoint (checkpointFromUnexploredPath path) visitor)
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorWithCheckpoints" -- {{{
+        ,testGroup "walkVisitor" -- {{{
             [testProperty "last checkpoint is correct" $ \(v :: Visitor ()) → -- {{{
-                let checkpoints = runVisitorWithCheckpoints v
+                let checkpoints = walkVisitor v
                 in unsafePerformIO $ (last checkpoints @=? (runVisitor v,Explored)) >> return True
              -- }}}
             ,testProperty "checkpoints accurately capture remaining search space" $ \(v :: Visitor [Int]) → -- {{{
                 let results_using_progressive_checkpoints =
-                        [result ⊕ runVisitorThroughCheckpointAndGatherResults checkpoint v
-                        | (result,checkpoint) ← runVisitorWithCheckpoints v
+                        [result ⊕ runVisitorThroughCheckpoint checkpoint v
+                        | (result,checkpoint) ← walkVisitor v
                         ]
                 in all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
              -- }}}
             ,testGroup "example instances" -- {{{
                 [testGroup "mplus" -- {{{
                     [testCase "mzero + mzero" $ -- {{{
-                        runVisitorWithCheckpoints (mzero `mplus` mzero :: Visitor (Maybe ()))
+                        walkVisitor (mzero `mplus` mzero :: Visitor (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -478,7 +478,7 @@ tests = -- {{{
                         ]
                      -- }}}
                     ,testCase "mzero + return" $ -- {{{
-                        runVisitorWithCheckpoints (mzero `mplus` return (Just ()) :: Visitor (Maybe ()))
+                        walkVisitor (mzero `mplus` return (Just ()) :: Visitor (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -486,7 +486,7 @@ tests = -- {{{
                         ]
                      -- }}}
                     ,testCase "return + mzero" $ -- {{{
-                        runVisitorWithCheckpoints (return (Just ()) `mplus` mzero :: Visitor (Maybe ()))
+                        walkVisitor (return (Just ()) `mplus` mzero :: Visitor (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Just (),ChoiceCheckpoint Explored Unexplored)
@@ -495,8 +495,8 @@ tests = -- {{{
                      -- }}}
                     ]
                  -- }}}
-                ,testCase "mzero" $ runVisitorWithCheckpoints (mzero :: Visitor [Int]) @?= [([],Explored)]
-                ,testCase "return" $ runVisitorWithCheckpoints (return [0] :: Visitor [Int]) @?= [([0],Explored)]
+                ,testCase "mzero" $ walkVisitor (mzero :: Visitor [Int]) @?= [([],Explored)]
+                ,testCase "return" $ walkVisitor (return [0] :: Visitor [Int]) @?= [([0],Explored)]
                 ]
              -- }}}
             ]
@@ -611,7 +611,7 @@ tests = -- {{{
                         runWriter . walkVisitorTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
                             runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
                 log @?= []
-                (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([24],[])
+                (runWriter . runVisitorT $ transformed_visitor) @?= ([24],[])
              -- }}}
             ,testCase "choice step" $ do -- {{{
                 let (transformed_visitor,log) =
@@ -621,7 +621,7 @@ tests = -- {{{
                             lift (tell [4])
                             return [42]
                 log @?= [1]
-                (runWriter . runVisitorTAndGatherResults $ transformed_visitor) @?= ([42],[3,4])
+                (runWriter . runVisitorT $ transformed_visitor) @?= ([42],[3,4])
              -- }}}
             ]
          -- }}}
@@ -918,7 +918,7 @@ tests = -- {{{
                         zipWith
                             mappend
                             (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate) checkpoints)
-                            (map (flip runVisitorThroughCheckpointAndGatherResults visitor . visitorCheckpoint . visitorWorkerProgressUpdate) checkpoints)
+                            (map (flip runVisitorThroughCheckpoint visitor . visitorCheckpoint . visitorWorkerProgressUpdate) checkpoints)
                 return $ all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
              -- }}}
             ,testCase "terminates successfully with null visitor" $ do -- {{{
@@ -973,10 +973,10 @@ tests = -- {{{
                         $
                         readIORef maybe_maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
-                    runVisitorTThroughWorkloadAndGatherResults remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
-                    stolen_solutions ← runVisitorTThroughWorkloadAndGatherResults workload visitor_with_blocking_value
+                    runVisitorTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
+                    stolen_solutions ← runVisitorTThroughWorkload workload visitor_with_blocking_value
                     let solutions = mconcat [prestolen_solutions,remaining_solutions,stolen_solutions]
-                    correct_solutions ← runVisitorTAndGatherResults visitor_with_blocking_value
+                    correct_solutions ← runVisitorT visitor_with_blocking_value
                     solutions @?= correct_solutions
                     return True
                  -- }}}
@@ -1003,7 +1003,7 @@ tests = -- {{{
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
                     workloads ← fmap (map visitorWorkerStolenWorkload . DList.toList) (readIORef workloads_ref)
-                    let stolen_solutions = mconcat . map (flip runVisitorThroughWorkloadAndGatherResults visitor) $ workloads
+                    let stolen_solutions = mconcat . map (flip runVisitorThroughWorkload visitor) $ workloads
                         solutions = remaining_solutions ⊕ stolen_solutions
                         correct_solutions = runVisitor visitor
                     solutions @?= correct_solutions
