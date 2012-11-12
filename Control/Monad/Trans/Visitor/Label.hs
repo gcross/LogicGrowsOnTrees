@@ -12,7 +12,8 @@ import Control.Monad ((>=>),liftM2)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.Composition
-import Data.Map as Map
+import qualified Data.Map as Map
+import Data.Map (Map)
 import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.Foldable as Fold
