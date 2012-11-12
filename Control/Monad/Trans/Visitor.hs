@@ -57,7 +57,7 @@ type VisitorIO = VisitorT IO
 -- Instances {{{
 
 instance Monad m ⇒ Alternative (VisitorT m) where -- {{{
-    empty = mempty
+    empty = mzero
     (<|>) = mplus
 -- }}}
 
