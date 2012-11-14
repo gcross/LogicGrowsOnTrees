@@ -547,6 +547,17 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testProperty "runLabelledVisitor" $ -- {{{
+            let gen _ 0 = return mzero
+                gen label 1 = return (All . (== label) <$> getLabel)
+                gen label n = do
+                    left_size ← choose (0,n)
+                    let right_size = n-left_size
+                    left ← gen (leftChildLabel label) left_size
+                    right ← gen (rightChildLabel label) right_size
+                    return $ left `mplus` right
+            in getAll . runLabeledVisitor <$> sized (gen rootLabel)
+         -- }}}
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Path" -- {{{

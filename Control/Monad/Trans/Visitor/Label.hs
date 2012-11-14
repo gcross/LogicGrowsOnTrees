@@ -1,5 +1,7 @@
 
 -- Language extensions {{{
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -7,9 +9,13 @@
 module Control.Monad.Trans.Visitor.Label where
 
 -- Imports {{{
+import Control.Applicative (Alternative(..),Applicative(..))
 import Control.Exception (throw)
-import Control.Monad ((>=>),liftM2)
+import Control.Monad (MonadPlus(..),(>=>),liftM2)
+import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
+import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition
 import qualified Data.Map as Map
@@ -19,7 +25,7 @@ import Data.Monoid
 import Data.Foldable as Fold
 import Data.Foldable (Foldable)
 import Data.Function (on)
-import Data.Functor.Identity (runIdentity)
+import Data.Functor.Identity (Identity,runIdentity)
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import Data.SequentialIndex (SequentialIndex,root,leftChild,rightChild)
 
@@ -28,7 +34,15 @@ import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Path
 -- }}}
 
+-- Classes {{{
+class Monad m ⇒ MonadLabeled m where
+    getLabel :: m VisitorLabel
+-- }}}
+
 -- Types {{{
+
+newtype LabeledT m α = LabeledT { unwrapLabeledT :: ReaderT VisitorLabel m α }
+    deriving (Applicative,Functor,Monad,MonadIO)
 
 newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq)
 
@@ -40,6 +54,12 @@ data VisitorSolution α = VisitorSolution
 -- }}}
 
 -- Instances {{{
+
+instance (Alternative m, Monad m) ⇒ Alternative (LabeledT m) where -- {{{
+    empty = LabeledT $ lift empty
+    LabeledT left <|> LabeledT right = LabeledT . ReaderT $
+        \branch → (runReaderT left (leftChildLabel branch)) <|> (runReaderT right (rightChildLabel branch))
+-- }}}
 
 instance Monoid VisitorLabel where -- {{{
     mempty = rootLabel
@@ -63,6 +83,34 @@ instance Ord VisitorLabel where -- {{{
 
 instance Show VisitorLabel where -- {{{
     show = fmap (\branch → case branch of {LeftBranch → 'L'; RightBranch → 'R'}) . branchingFromLabel
+-- }}}
+
+instance Monad m ⇒ MonadLabeled (LabeledT m) where -- {{{
+    getLabel = LabeledT $ ask
+-- }}}
+
+instance MonadPlus m ⇒ MonadPlus (LabeledT m) where -- {{{
+    mzero = LabeledT $ lift mzero
+    LabeledT left `mplus` LabeledT right = LabeledT . ReaderT $
+        \branch → (runReaderT left (leftChildLabel branch)) `mplus` (runReaderT right (rightChildLabel branch))
+-- }}}
+
+instance MonadVisitor m ⇒ MonadVisitor (LabeledT m) where -- {{{
+    cache = LabeledT . lift . cache
+    cacheGuard = LabeledT . lift . cacheGuard
+    cacheMaybe = LabeledT . lift . cacheMaybe
+-- }}}
+
+instance MonadVisitorTrans m ⇒ MonadVisitorTrans (LabeledT m) where -- {{{
+    type NestedMonadInVisitor (LabeledT m) = NestedMonadInVisitor m
+    runAndCache = LabeledT . lift . runAndCache
+    runAndCacheGuard = LabeledT . lift . runAndCacheGuard
+    runAndCacheMaybe = LabeledT . lift . runAndCacheMaybe
+-- }}}
+
+instance MonadPlus m ⇒ Monoid (LabeledT m α) where -- {{{
+    mempty = mzero
+    mappend = mplus
 -- }}}
 
 -- }}}
@@ -136,6 +184,22 @@ rightChildLabel = VisitorLabel . fromJust . rightChild . unwrapVisitorLabel
 
 rootLabel :: VisitorLabel -- {{{
 rootLabel = VisitorLabel root
+-- }}}
+
+runLabeledT :: LabeledT m α → m α -- {{{
+runLabeledT = flip runReaderT rootLabel . unwrapLabeledT
+-- }}}
+
+runLabeledVisitor :: Monoid α ⇒ LabeledT Visitor α → α -- {{{
+runLabeledVisitor = runVisitor . runLabeledT
+-- }}}
+
+runLabeledVisitorT :: (Monoid α,Monad m) ⇒ LabeledT (VisitorT m) α → m α -- {{{
+runLabeledVisitorT = runVisitorT . runLabeledT
+-- }}}
+
+runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledT (VisitorT m) α → m () -- {{{
+runLabeledVisitorTAndIgnoreResults = runVisitorTAndIgnoreResults . runLabeledT
 -- }}}
 
 runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ VisitorT m α → m [VisitorSolution α] -- {{{
