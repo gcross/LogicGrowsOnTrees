@@ -2,8 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -30,10 +29,11 @@ class MonadPlus m ⇒ MonadVisitor m where -- {{{
     cacheMaybe :: Serialize x ⇒ Maybe x → m x
 -- }}}
 
-class MonadPlus (t m) ⇒ MonadVisitorTrans t m where -- {{{
-    runAndCache :: Serialize x ⇒ m x → t m x
-    runAndCacheGuard :: m Bool → t m ()
-    runAndCacheMaybe :: Serialize x ⇒ m (Maybe x) → t m x
+class MonadPlus m ⇒ MonadVisitorTrans m where -- {{{
+    type NestedMonadInVisitor m :: * → *
+    runAndCache :: Serialize x ⇒ (NestedMonadInVisitor m) x → m x
+    runAndCacheGuard :: (NestedMonadInVisitor m) Bool → m ()
+    runAndCacheMaybe :: Serialize x ⇒ (NestedMonadInVisitor m) (Maybe x) → m x
 -- }}}
 
 -- }}}
@@ -86,7 +86,8 @@ instance (Functor m, Monad m) ⇒ MonadVisitor (VisitorT m) where -- {{{
     cacheMaybe = runAndCacheMaybe . return
 -- }}}
 
-instance (Functor m, Monad m) ⇒ MonadVisitorTrans VisitorT m where -- {{{
+instance (Functor m, Monad m) ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
+    type NestedMonadInVisitor (VisitorT m) = m
     runAndCache = runAndCacheMaybe . fmap Just
     runAndCacheGuard = runAndCacheMaybe . fmap (\x → if x then Just () else Nothing)
     runAndCacheMaybe = VisitorT . singleton . Cache
