@@ -41,8 +41,9 @@ class Monad m ⇒ MonadLabeled m where
 -- Types {{{
 
 newtype LabeledT m α = LabeledT { unwrapLabeledT :: ReaderT VisitorLabel m α }
-    deriving (Applicative,Functor,Monad,MonadIO)
-type LabeledVisitorT m = LabeledT (VisitorT m)
+    deriving (Applicative,Functor,Monad,MonadIO,MonadTrans)
+newtype LabeledVisitorT m α = LabeledVisitorT { unwrapLabeledVisitorT :: LabeledT (VisitorT m) α }
+    deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLabeled,MonadPlus,MonadVisitor,Monoid)
 type LabeledVisitorIO = LabeledVisitorT IO
 type LabeledVisitor = LabeledVisitorT Identity
 
@@ -91,6 +92,10 @@ instance Monad m ⇒ MonadLabeled (LabeledT m) where -- {{{
     getLabel = LabeledT $ ask
 -- }}}
 
+instance MonadTrans LabeledVisitorT where -- {{{
+    lift = LabeledVisitorT . lift . lift
+-- }}}
+
 instance MonadPlus m ⇒ MonadPlus (LabeledT m) where -- {{{
     mzero = LabeledT $ lift mzero
     LabeledT left `mplus` LabeledT right = LabeledT . ReaderT $
@@ -108,6 +113,13 @@ instance MonadVisitorTrans m ⇒ MonadVisitorTrans (LabeledT m) where -- {{{
     runAndCache = LabeledT . lift . runAndCache
     runAndCacheGuard = LabeledT . lift . runAndCacheGuard
     runAndCacheMaybe = LabeledT . lift . runAndCacheMaybe
+-- }}}
+
+instance (Functor m, Monad m) ⇒ MonadVisitorTrans (LabeledVisitorT m) where -- {{{
+    type NestedMonadInVisitor (LabeledVisitorT m) = m
+    runAndCache = LabeledVisitorT . runAndCache
+    runAndCacheGuard = LabeledVisitorT . runAndCacheGuard
+    runAndCacheMaybe = LabeledVisitorT . runAndCacheMaybe
 -- }}}
 
 instance MonadPlus m ⇒ Monoid (LabeledT m α) where -- {{{
@@ -193,15 +205,15 @@ runLabeledT = flip runReaderT rootLabel . unwrapLabeledT
 -- }}}
 
 runLabeledVisitor :: Monoid α ⇒ LabeledVisitor α → α -- {{{
-runLabeledVisitor = runVisitor . runLabeledT
+runLabeledVisitor = runVisitor . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
 runLabeledVisitorT :: (Monoid α,Monad m) ⇒ LabeledVisitorT m α → m α -- {{{
-runLabeledVisitorT = runVisitorT . runLabeledT
+runLabeledVisitorT = runVisitorT . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
 runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledVisitorT m α → m () -- {{{
-runLabeledVisitorTAndIgnoreResults = runVisitorTAndIgnoreResults . runLabeledT
+runLabeledVisitorTAndIgnoreResults = runVisitorTAndIgnoreResults . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
 runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ VisitorT m α → m [VisitorSolution α] -- {{{
