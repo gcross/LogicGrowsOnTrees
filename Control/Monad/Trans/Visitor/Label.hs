@@ -42,6 +42,9 @@ class Monad m ⇒ MonadLabeled m where
 
 newtype LabeledT m α = LabeledT { unwrapLabeledT :: ReaderT VisitorLabel m α }
     deriving (Applicative,Functor,Monad,MonadIO)
+type LabeledVisitorT m = LabeledT (VisitorT m)
+type LabeledVisitorIO = LabeledVisitorT IO
+type LabeledVisitor = LabeledVisitorT Identity
 
 newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq)
 
@@ -189,15 +192,15 @@ runLabeledT :: LabeledT m α → m α -- {{{
 runLabeledT = flip runReaderT rootLabel . unwrapLabeledT
 -- }}}
 
-runLabeledVisitor :: Monoid α ⇒ LabeledT Visitor α → α -- {{{
+runLabeledVisitor :: Monoid α ⇒ LabeledVisitor α → α -- {{{
 runLabeledVisitor = runVisitor . runLabeledT
 -- }}}
 
-runLabeledVisitorT :: (Monoid α,Monad m) ⇒ LabeledT (VisitorT m) α → m α -- {{{
+runLabeledVisitorT :: (Monoid α,Monad m) ⇒ LabeledVisitorT m α → m α -- {{{
 runLabeledVisitorT = runVisitorT . runLabeledT
 -- }}}
 
-runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledT (VisitorT m) α → m () -- {{{
+runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledVisitorT m α → m () -- {{{
 runLabeledVisitorTAndIgnoreResults = runVisitorTAndIgnoreResults . runLabeledT
 -- }}}
 
