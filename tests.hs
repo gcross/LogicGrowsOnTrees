@@ -58,6 +58,7 @@ import Test.HUnit
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen
 import Test.QuickCheck.Modifiers
+import Test.QuickCheck.Monadic
 import Test.QuickCheck.Property
 
 import Control.Monad.Trans.Visitor
@@ -697,7 +698,8 @@ tests = -- {{{
                             else return []
                     ) >>= shuffle
                 let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
-                morallyDubiousIOProperty $ do
+
+                monadicIO . run $ do
                     (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                     (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
                     VisitorSupervisorResult progress remaining_worker_ids ← runVisitorSupervisor actions_2 $ do
@@ -708,7 +710,6 @@ tests = -- {{{
                     worker_ids_left @?= sort remaining_worker_ids
                     readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
                     readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
-                    return True
              -- }}}
             ]
          -- }}}
@@ -726,7 +727,7 @@ tests = -- {{{
                 number_of_inactive_workers ← choose (0,10)
                 let active_workers = [0..number_of_active_workers-1]
                     inactive_workers = [101..101+number_of_inactive_workers-1]
-                morallyDubiousIOProperty $ do
+                monadicIO . run $ do
                     (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                     (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                     let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
@@ -743,7 +744,6 @@ tests = -- {{{
                      ) >>= (@?= (VisitorSupervisorResult (Left progress)) inactive_workers)
                     readIORef broadcast_ids_list_ref >>= (@?= [active_workers])
                     readIORef maybe_progress_ref >>= (@?= Just progress)
-                    return True
              -- }}}
             ,testCase "request and receive Nothing progress update when one worker present" $ do -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
