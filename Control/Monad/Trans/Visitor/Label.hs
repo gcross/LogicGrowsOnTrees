@@ -1,4 +1,3 @@
-
 -- Language extensions {{{
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
