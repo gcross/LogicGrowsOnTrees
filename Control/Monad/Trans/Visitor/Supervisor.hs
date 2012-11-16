@@ -42,12 +42,11 @@ import Data.Accessor.Template (deriveAccessors)
 import Data.Either.Unwrap (whenLeft)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (isNothing)
+import Data.Maybe (fromJust,isNothing)
 import Data.Monoid (Monoid(..))
-import qualified Data.Sequence as Seq
-import Data.Sequence (Seq,ViewL(..),(|>),viewl)
 import qualified Data.Set as Set
 import Data.Set (Set)
+import qualified Data.Sequence as Seq
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor.Checkpoint
@@ -82,7 +81,7 @@ data VisitorSupervisorActions result worker_id m = -- {{{
 
 data VisitorSupervisorState result worker_id = -- {{{
     VisitorSupervisorState
-    {   waiting_workers_or_available_workloads_ :: !(Either (Seq worker_id) (Set VisitorWorkload))
+    {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) (Set VisitorWorkload))
     ,   known_workers_ :: !(Set worker_id)
     ,   active_workers_ :: !(Map worker_id VisitorWorkload)
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
@@ -166,13 +165,9 @@ getNumberOfWorkers = VisitorSupervisorMonad . lift . (Set.size <$>) . get $ know
 
 getWaitingWorkers :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorSupervisorMonad result worker_id m (Seq worker_id)
+    VisitorSupervisorMonad result worker_id m (Set worker_id)
 getWaitingWorkers = VisitorSupervisorMonad . lift $
-    get waiting_workers_or_available_workloads
-    >>=
-    \x → case x of
-        Left waiting_workers → return waiting_workers
-        Right _ → return Seq.empty
+    either id (const Set.empty) <$> get waiting_workers_or_available_workloads
 -- }}}
 
 performGlobalProgressUpdate :: -- {{{
@@ -256,6 +251,7 @@ removeWorker worker_id = VisitorSupervisorMonad . lift $ do
     Map.lookup worker_id <$> get active_workers >>= maybe (return ()) enqueueWorkload
     known_workers %: Set.delete worker_id
     active_workers %: Map.delete worker_id
+    waiting_workers_or_available_workloads %: either (Left . Set.delete worker_id) Right
     clearPendingWorkloadSteal worker_id
     clearPendingProgressUpdate worker_id
 -- }}}
@@ -342,7 +338,7 @@ clearPendingWorkloadSteal worker_id =
     -- none was started.
     (do workers_pending_workload_steal %: Set.delete worker_id
         no_workload_steals_remain ← Set.null <$> get workers_pending_workload_steal
-        workers_are_waiting_for_workloads ← either (not . Seq.null) (const False) <$> get waiting_workers_or_available_workloads
+        workers_are_waiting_for_workloads ← either (not . Set.null) (const False) <$> get waiting_workers_or_available_workloads
         when (no_workload_steals_remain && workers_are_waiting_for_workloads) broadcastWorkloadStealToActiveWorkers
     )
 -- }}}
@@ -355,10 +351,10 @@ enqueueWorkload workload =
     get waiting_workers_or_available_workloads
     >>=
     \x → case x of
-        Left (viewl → (free_worker_id :< remaining_workers)) → do
+        Left (Set.minView → Just (free_worker_id,remaining_workers)) → do
             sendWorkloadToWorker workload free_worker_id
             waiting_workers_or_available_workloads %= Left remaining_workers
-        Left (viewl → EmptyL) →
+        Left (Set.minView → Nothing) →
             waiting_workers_or_available_workloads %= Right (Set.singleton workload)
         Right available_workloads →
             waiting_workers_or_available_workloads %= Right (Set.insert workload available_workloads)
@@ -393,11 +389,11 @@ tryToObtainWorkloadFor worker_id =
     get waiting_workers_or_available_workloads
     >>=
     \x → case x of
-        Left waiting_workers → assert (not . Seq.null $ waiting_workers) $
-            waiting_workers_or_available_workloads %= Left (waiting_workers |> worker_id)
+        Left waiting_workers → assert (not . Set.null $ waiting_workers) $
+            waiting_workers_or_available_workloads %= Left (Set.insert worker_id waiting_workers)
         Right (Set.minView → Nothing) → do
             broadcastWorkloadStealToActiveWorkers
-            waiting_workers_or_available_workloads %= Left (Seq.singleton worker_id)
+            waiting_workers_or_available_workloads %= Left (Set.singleton worker_id)
         Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadToWorker workload worker_id
             waiting_workers_or_available_workloads %= Right remaining_workloads
