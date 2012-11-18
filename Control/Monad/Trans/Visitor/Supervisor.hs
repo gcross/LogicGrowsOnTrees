@@ -57,11 +57,17 @@ import Control.Monad.Trans.Visitor.Workload
 -- Exceptions {{{
 
 data SupervisorError worker_id = -- {{{
-    WorkerAlreadyKnown worker_id
-  | WorkerNotKnown worker_id
-  | WorkerNotActive worker_id
+    WorkerAlreadyKnown String worker_id
+  | WorkerNotKnown String worker_id
+  | WorkerNotActive String worker_id
   | ActiveWorkersRemainedAfterSpaceFullyExplored [worker_id]
-  deriving (Eq,Show,Typeable)
+  deriving (Eq,Typeable)
+
+instance Show worker_id ⇒ Show (SupervisorError worker_id) where
+    show (WorkerAlreadyKnown action worker_id) = "Worker id " ++ show worker_id ++ " already known when " ++ action ++ "."
+    show (WorkerNotKnown action worker_id) = "Worker id " ++ show worker_id ++ " not known when " ++ action ++ "."
+    show (WorkerNotActive action worker_id) = "Worker id " ++ show worker_id ++ " not active when " ++ action ++ "."
+    show (ActiveWorkersRemainedAfterSpaceFullyExplored worker_ids) = "Worker ids " ++ show worker_ids ++ " were still active after the space was supposedly fully explored."
 
 instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (SupervisorError worker_id)
 -- }}}
@@ -146,7 +152,7 @@ addWorker :: -- {{{
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
 addWorker worker_id = VisitorSupervisorMonad . lift $ do
-    validateWorkerNotKnown worker_id
+    validateWorkerNotKnown "adding worker" worker_id
     known_workers %: Set.insert worker_id
     tryToObtainWorkloadFor worker_id
 -- }}}
@@ -189,7 +195,7 @@ receiveProgressUpdate :: -- {{{
     VisitorSupervisorMonad result worker_id m ()
 receiveProgressUpdate maybe_update worker_id = VisitorSupervisorMonad $ do
     (VisitorProgress checkpoint result) ← lift $ do
-        validateWorkerKnownAndActive worker_id
+        validateWorkerKnownAndActive "receiving progress update" worker_id
         case maybe_update of
             Nothing → return ()
             Just (VisitorWorkerProgressUpdate progress_update remaining_workload) → do
@@ -208,7 +214,7 @@ receiveStolenWorkload :: -- {{{
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
 receiveStolenWorkload maybe_stolen_workload worker_id = VisitorSupervisorMonad . lift $ do
-    validateWorkerKnownAndActive worker_id
+    validateWorkerKnownAndActive "receiving stolen workload" worker_id
     case maybe_stolen_workload of
         Nothing → return ()
         Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate progress_update remaining_workload) workload) → do
@@ -225,7 +231,7 @@ receiveWorkerFinished :: -- {{{
     VisitorSupervisorMonad result worker_id m ()
 receiveWorkerFinished final_progress worker_id = VisitorSupervisorMonad $
     (lift $ do
-        validateWorkerKnownAndActive worker_id
+        validateWorkerKnownAndActive "the worker was declared finished" worker_id
         active_workers %: Map.delete worker_id
         current_progress %: (`mappend` final_progress)
         VisitorProgress checkpoint new_results ← get current_progress
@@ -247,7 +253,7 @@ removeWorker :: -- {{{
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
 removeWorker worker_id = VisitorSupervisorMonad . lift $ do
-    validateWorkerKnown worker_id 
+    validateWorkerKnown "removing the worker" worker_id
     Map.lookup worker_id <$> get active_workers >>= maybe (return ()) enqueueWorkload
     known_workers %: Set.delete worker_id
     active_workers %: Map.delete worker_id
@@ -401,30 +407,33 @@ tryToObtainWorkloadFor worker_id =
 
 validateWorkerKnown :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    String →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
-validateWorkerKnown worker_id =
+validateWorkerKnown action worker_id =
     Set.notMember worker_id <$> (get known_workers)
-        >>= flip when (throw $ WorkerNotKnown worker_id)
+        >>= flip when (throw $ WorkerNotKnown action worker_id)
 -- }}}
 
 validateWorkerKnownAndActive :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    String →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
-validateWorkerKnownAndActive worker_id = do
-    validateWorkerKnown worker_id
+validateWorkerKnownAndActive action worker_id = do
+    validateWorkerKnown action worker_id
     Set.notMember worker_id <$> (get known_workers)
-        >>= flip when (throw $ WorkerNotActive worker_id)
+        >>= flip when (throw $ WorkerNotActive action worker_id)
 -- }}}
 
 validateWorkerNotKnown :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    String →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
-validateWorkerNotKnown worker_id = do
+validateWorkerNotKnown action worker_id = do
     Set.member worker_id <$> (get known_workers)
-        >>= flip when (throw $ WorkerAlreadyKnown worker_id)
+        >>= flip when (throw $ WorkerAlreadyKnown action worker_id)
 -- }}}
 
 -- }}}
