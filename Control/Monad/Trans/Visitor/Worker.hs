@@ -15,7 +15,7 @@ module Control.Monad.Trans.Visitor.Worker where
 import Prelude hiding (catch)
 
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
-import Control.Exception (AsyncException,SomeException,catch,catchJust,evaluate,fromException)
+import Control.Exception (AsyncException(ThreadKilled),SomeException,catch,evaluate,fromException)
 import Control.Monad.IO.Class
 
 import Data.Bool.Higher ((??))
@@ -315,8 +315,6 @@ genericPreforkVisitorTWorkerThread
     start_flag_ivar ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←
-            catchJust
-                (\e → case fromException e of {Just (_ :: AsyncException) → Nothing; _ → Just e})
                 (do IVar.blocking . IVar.read $ start_flag_ivar
                     run $
                         walk initial_path visitor
@@ -327,7 +325,11 @@ genericPreforkVisitorTWorkerThread
                             mempty
                             initial_checkpoint
                 )
-                (return . VisitorWorkerFailed)
+                `catch`
+                (\e → case fromException e of
+                    Just ThreadKilled → return VisitorWorkerAborted
+                    _ → return $ VisitorWorkerFailed e
+                )
         atomicModifyIORef pending_requests_ref (Nothing,)
             >>=
             maybe
