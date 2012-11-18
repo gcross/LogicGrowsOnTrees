@@ -217,7 +217,14 @@ genericPreforkVisitorTWorkerThread
           = liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
                 Nothing → return VisitorWorkerAborted
-                Just (viewl → _ :< _) → do
+                Just (Seq.length → 0) →
+                    loop2
+                        cursor
+                        context
+                        result
+                        checkpoint
+                        visitor
+                _ → do
                     -- Respond to request {{{
                     request ← liftIO $
                         atomicModifyIORef pending_requests_ref (
@@ -272,12 +279,6 @@ genericPreforkVisitorTWorkerThread
                                         checkpoint
                                         visitor
                     -- }}}
-                _ → loop2
-                        cursor
-                        context
-                        result
-                        checkpoint
-                        visitor
         loop2
             cursor
             context
