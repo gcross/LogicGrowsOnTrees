@@ -14,8 +14,10 @@ module Control.Monad.Trans.Visitor.Worker where
 -- Imports {{{
 import Prelude hiding (catch)
 
+import Control.Arrow ((&&&))
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
 import Control.Exception (AsyncException(ThreadKilled),SomeException,catch,evaluate,fromException)
+import Control.Monad (liftM)
 import Control.Monad.IO.Class
 
 import Data.Bool.Higher ((??))
@@ -43,16 +45,18 @@ import Control.Monad.Trans.Visitor.Workload
 data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
     {   workerInitialPath :: VisitorPath
     ,   workerThreadId :: ThreadId
-    ,   workerPendingRequests :: IORef (VisitorWorkerRequestQueue α)
+    ,   workerPendingRequests :: VisitorWorkerRequestQueue α
+    ,   workerTerminationFlag :: IVar ()
     }
 -- }}}
 
 data VisitorWorkerRequest α = -- {{{
-    ProgressUpdateRequested (Maybe (VisitorWorkerProgressUpdate α) → IO ())
+    AbortRequested
+  | ProgressUpdateRequested (VisitorWorkerProgressUpdate α → IO ())
   | WorkloadStealRequested (Maybe (VisitorWorkerStolenWorkload α) → IO ())
 -- }}}
 
-type VisitorWorkerRequestQueue α = Maybe (Seq (VisitorWorkerRequest α))
+type VisitorWorkerRequestQueue α = IORef [VisitorWorkerRequest α]
 
 data VisitorWorkerProgressUpdate α = VisitorWorkerProgressUpdate -- {{{
     {   visitorWorkerProgressUpdate :: VisitorProgress α
@@ -76,20 +80,6 @@ data VisitorWorkerTerminationReason α = -- {{{
 -- }}}
 
 -- Functions {{{
-
-attemptAddToWorkerRequestQueue :: -- {{{
-    IORef (VisitorWorkerRequestQueue α) →
-    VisitorWorkerRequest α →
-    IO Bool
-
-attemptAddToWorkerRequestQueue request_queue element =
-    atomicModifyIORef
-        request_queue
-        (maybe
-            (Nothing,False)
-            ((,True) . Just . (|> element))
-        )
---}}}
 
 computeProgressUpdate :: -- {{{
     α →
@@ -206,7 +196,7 @@ genericPreforkVisitorTWorkerThread
     visitor
     (VisitorWorkload initial_path initial_checkpoint)
   = do
-    pending_requests_ref ← newIORef $ (Just Seq.empty)
+    pending_requests_ref ← newIORef []
     let initial_label = labelFromPath initial_path
         loop1
             cursor
@@ -216,70 +206,73 @@ genericPreforkVisitorTWorkerThread
             visitor
           = liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
-                Nothing → return VisitorWorkerAborted
-                Just (Seq.length → 0) →
-                    loop2
+                [] → loop3
                         cursor
                         context
                         result
                         checkpoint
                         visitor
-                _ → do
-                    -- Respond to request {{{
-                    request ← liftIO $
-                        atomicModifyIORef pending_requests_ref (
-                            \maybe_requests → case fmap viewl maybe_requests of
-                                Nothing → (Nothing,Nothing)
-                                Just EmptyL → (Just Seq.empty,Nothing)
-                                Just (request :< rest_requests) → (Just rest_requests,Just request)
-                        )
-                    case request of
+                _ → (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
+                    >>= loop2
+                            cursor
+                            context
+                            result
+                            checkpoint
+                            visitor
+        loop2
+            cursor
+            context
+            result
+            checkpoint
+            visitor
+            requests
+          = case requests of
+            -- Respond to request {{{
+                [] → do
+                    liftIO yield
+                    loop3
+                        cursor
+                        context
+                        result
+                        checkpoint
+                        visitor
+                AbortRequested:_ → return VisitorWorkerAborted
+                ProgressUpdateRequested submitProgress:rest_requests → do
+                    liftIO . submitProgress $ computeProgressUpdate result initial_path cursor context checkpoint
+                    loop2
+                        cursor
+                        context
+                        mempty
+                        checkpoint
+                        visitor
+                        rest_requests
+                WorkloadStealRequested submitMaybeWorkload:rest_requests →
+                    case tryStealWorkload initial_path cursor context of
                         Nothing → do
-                            liftIO yield
+                            liftIO $ submitMaybeWorkload Nothing
                             loop2
                                 cursor
                                 context
                                 result
                                 checkpoint
                                 visitor
-                        Just (ProgressUpdateRequested submitMaybeProgress) → do
+                                rest_requests
+                        Just (new_cursor,new_context,workload) → do
                             liftIO $ do
-                                submitMaybeProgress . Just $ computeProgressUpdate result initial_path cursor context checkpoint
-                                yield
+                                submitMaybeWorkload (Just (
+                                    VisitorWorkerStolenWorkload
+                                        (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
+                                        workload
+                                 ))
                             loop2
-                                cursor
-                                context
+                                new_cursor
+                                new_context
                                 mempty
                                 checkpoint
                                 visitor
-                        Just (WorkloadStealRequested submitMaybeWorkload) →
-                            case tryStealWorkload initial_path cursor context of
-                                Nothing → do
-                                    liftIO $ do
-                                        submitMaybeWorkload Nothing
-                                        yield
-                                    loop2
-                                        cursor
-                                        context
-                                        result
-                                        checkpoint
-                                        visitor
-                                Just (new_cursor,new_context,workload) → do
-                                    liftIO $ do
-                                        submitMaybeWorkload (Just (
-                                            VisitorWorkerStolenWorkload
-                                                (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
-                                                workload
-                                         ))
-                                        yield
-                                    loop2
-                                        new_cursor
-                                        new_context
-                                        mempty
-                                        checkpoint
-                                        visitor
-                    -- }}}
-        loop2
+                                rest_requests
+            -- }}}
+        loop3
             cursor
             context
             result
@@ -314,6 +307,7 @@ genericPreforkVisitorTWorkerThread
                         new_visitor
             -- }}}
     start_flag_ivar ← IVar.new
+    finished_flag ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←
                 (do IVar.blocking . IVar.read $ start_flag_ivar
@@ -331,14 +325,7 @@ genericPreforkVisitorTWorkerThread
                     Just ThreadKilled → return VisitorWorkerAborted
                     _ → return $ VisitorWorkerFailed e
                 )
-        atomicModifyIORef pending_requests_ref (Nothing,)
-            >>=
-            maybe
-                (return ())
-                (Fold.mapM_ $ \request → case request of
-                    ProgressUpdateRequested submitMaybeProgress → submitMaybeProgress Nothing
-                    WorkloadStealRequested submitMaybeWorkload → submitMaybeWorkload Nothing
-                )
+        IVar.write finished_flag ()
         finishedCallback termination_reason
     return
         (IVar.write start_flag_ivar ()
@@ -346,6 +333,7 @@ genericPreforkVisitorTWorkerThread
             initial_path
             thread_id
             pending_requests_ref
+            finished_flag
         )
 -- }}}
 
@@ -382,6 +370,28 @@ preforkVisitorWorkerThread =
         (return .* sendVisitorDownPath)
         (return .** stepVisitorThroughCheckpoint)
         id
+-- }}}
+
+sendAbortRequest :: VisitorWorkerRequestQueue α → IO () -- {{{
+sendAbortRequest = flip sendRequest AbortRequested
+-- }}}
+
+sendProgressUpdateRequest :: -- {{{
+    VisitorWorkerRequestQueue α →
+    (VisitorWorkerProgressUpdate α → IO ()) →
+    IO ()
+sendProgressUpdateRequest queue = sendRequest queue . ProgressUpdateRequested
+-- }}}
+
+sendRequest :: VisitorWorkerRequestQueue α → VisitorWorkerRequest α → IO () -- {{{
+sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
+-- }}}
+
+sendWorkloadStealRequest :: -- {{{
+    VisitorWorkerRequestQueue α →
+    (Maybe (VisitorWorkerStolenWorkload α) → IO ()) →
+    IO ()
+sendWorkloadStealRequest queue = sendRequest queue . WorkloadStealRequested
 -- }}}
 
 tryStealWorkload :: -- {{{

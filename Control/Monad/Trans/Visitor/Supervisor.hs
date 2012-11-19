@@ -190,17 +190,14 @@ performGlobalProgressUpdate = VisitorSupervisorMonad . lift $ do
 
 receiveProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe (VisitorWorkerProgressUpdate result) →
+    VisitorWorkerProgressUpdate result →
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
-receiveProgressUpdate maybe_update worker_id = VisitorSupervisorMonad $ do
+receiveProgressUpdate (VisitorWorkerProgressUpdate progress_update remaining_workload) worker_id = VisitorSupervisorMonad $ do
     (VisitorProgress checkpoint result) ← lift $ do
         validateWorkerKnownAndActive "receiving progress update" worker_id
-        case maybe_update of
-            Nothing → return ()
-            Just (VisitorWorkerProgressUpdate progress_update remaining_workload) → do
-                current_progress %: (`mappend` progress_update)
-                active_workers %: (Map.insert worker_id remaining_workload)
+        current_progress %: (`mappend` progress_update)
+        active_workers %: (Map.insert worker_id remaining_workload)
         clearPendingProgressUpdate worker_id
         get current_progress
     when (checkpoint == Explored) $

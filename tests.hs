@@ -745,20 +745,6 @@ tests = -- {{{
                     readIORef broadcast_ids_list_ref >>= (@?= [active_workers])
                     readIORef maybe_progress_ref >>= (@?= Just progress)
              -- }}}
-            ,testCase "request and receive Nothing progress update when one worker present" $ do -- {{{
-                (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
-                let actions3 = ignoreAcceptWorkloadAction actions2
-                let progress = VisitorProgress Unexplored (Sum 0)
-                (runVisitorSupervisor actions3 $ do
-                    addWorker ()
-                    performGlobalProgressUpdate
-                    receiveProgressUpdate Nothing ()
-                    abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left progress)) [()])
-                readIORef maybe_progress_ref >>= (@?= Just progress)
-                readIORef broadcast_ids_list_ref >>= (@?= [[()]])
-             -- }}}
             ,testCase "request and receive Just progress update when one worker present" $ do -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
@@ -767,28 +753,11 @@ tests = -- {{{
                 (runVisitorSupervisor actions3 $ do
                     addWorker ()
                     performGlobalProgressUpdate
-                    receiveProgressUpdate (Just (VisitorWorkerProgressUpdate progress undefined)) ()
+                    receiveProgressUpdate (VisitorWorkerProgressUpdate progress undefined) ()
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [()])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
                 readIORef broadcast_ids_list_ref >>= (@?= [[()]])
-             -- }}}
-            ,testCase "request and receive Nothing progress update when three workers present" $ do -- {{{
-                (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
-                let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                let progress = VisitorProgress Unexplored (Sum 0)
-                (runVisitorSupervisor actions3 $ do
-                    addWorker (1 :: Int)
-                    addWorker (2 :: Int)
-                    receiveStolenWorkload (Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty entire_workload) undefined)) 1
-                    performGlobalProgressUpdate
-                    addWorker (3 :: Int)
-                    receiveProgressUpdate Nothing 1
-                    abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left progress)) [1,2,3])
-                readIORef broadcast_ids_list_ref >>= (@?= [[1,2]])
-                readIORef maybe_progress_ref >>= (@?= Nothing)
              -- }}}
             ,testCase "request and receive progress update when active and inactive workers present" $ do -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
@@ -799,7 +768,7 @@ tests = -- {{{
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     performGlobalProgressUpdate
-                    receiveProgressUpdate (Just (VisitorWorkerProgressUpdate progress undefined)) 1
+                    receiveProgressUpdate (VisitorWorkerProgressUpdate progress undefined) 1
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [1,2])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
@@ -810,7 +779,7 @@ tests = -- {{{
                 let progress = VisitorProgress Explored (Sum 1)
                 (runVisitorSupervisor actions $ do
                     addWorker ()
-                    receiveProgressUpdate (Just (VisitorWorkerProgressUpdate progress undefined)) ()
+                    receiveProgressUpdate (VisitorWorkerProgressUpdate progress undefined) ()
                     forever $
                         liftIO $
                             assertFailure "loop continued past final progress update"
@@ -853,7 +822,7 @@ tests = -- {{{
                     (IVar.write termination_result_ivar)
                     (liftIO (waitQSem semaphore) `mplus` error "should never get here")
                     entire_workload
-                writeIORef workerPendingRequests Nothing
+                sendAbortRequest workerPendingRequests
                 signalQSem semaphore
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
@@ -861,7 +830,7 @@ tests = -- {{{
                     VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → return ()
                 workerInitialPath @?= Seq.empty
-                readIORef workerPendingRequests >>= assertBool "is the request queue still null?" . isNothing
+                (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
             ,testGroup "obtains all solutions" -- {{{
                 [testProperty "with no initial path" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
@@ -906,30 +875,27 @@ tests = -- {{{
                     (IVar.write termination_result_ivar)
                     visitor
                     entire_workload
-                checkpoints_ref ← newIORef DList.empty
-                let progress_updates = Seq.singleton . ProgressUpdateRequested $
-                        maybe
-                            (atomicModifyIORef workerPendingRequests $ (,()) . fmap (const Seq.empty))
-                            (\checkpoint → do
-                                atomicModifyIORef checkpoints_ref $ (,()) . flip DList.snoc checkpoint
-                                atomicModifyIORef workerPendingRequests $ (,()) . fmap (const progress_updates)
-                            )
-                writeIORef workerPendingRequests . Just $ progress_updates
+                progress_updates_ref ← newIORef DList.empty
+                let sendMyProgressUpdateRequest = sendProgressUpdateRequest workerPendingRequests submitProgressUpdate
+                    submitProgressUpdate progress_update = do
+                        atomicModifyIORef progress_updates_ref $ (,()) . flip DList.snoc progress_update
+                        sendMyProgressUpdateRequest
+                sendMyProgressUpdateRequest
                 startWorker
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 remaining_solutions ← case termination_result of
                     VisitorWorkerFinished (visitorResult → solutions) → return solutions
                     VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → error "worker aborted prematurely"
-                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
-                checkpoints ← fmap DList.toList (readIORef checkpoints_ref)
+                (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
+                progress_updates ← fmap DList.toList (readIORef progress_updates_ref)
                 let correct_solutions = runVisitor visitor
-                correct_solutions @=? ((⊕ remaining_solutions) . mconcat . fmap (visitorResult . visitorWorkerProgressUpdate) $ checkpoints)
+                correct_solutions @=? ((⊕ remaining_solutions) . mconcat . fmap (visitorResult . visitorWorkerProgressUpdate) $ progress_updates)
                 let results_using_progressive_checkpoints =
                         zipWith
                             mappend
-                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate) checkpoints)
-                            (map (flip runVisitorThroughCheckpoint visitor . visitorCheckpoint . visitorWorkerProgressUpdate) checkpoints)
+                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate) progress_updates)
+                            (map (flip runVisitorThroughCheckpoint visitor . visitorCheckpoint . visitorWorkerProgressUpdate) progress_updates)
                 return $ all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
              -- }}}
             ,testCase "terminates successfully with null visitor" $ do -- {{{
@@ -945,7 +911,7 @@ tests = -- {{{
                     VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
-                readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+                (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
             ,testGroup "work stealing correctly preserves total workload" -- {{{
                 [testProperty "single steal" $ flip fmap arbitrary $ \(visitor :: VisitorIO (Set Int)) → unsafePerformIO $ do -- {{{
@@ -963,9 +929,9 @@ tests = -- {{{
                         (IVar.write termination_result_ivar)
                         visitor_with_blocking_value
                         entire_workload
-                    maybe_maybe_workload_ref ← newIORef Nothing
+                    maybe_workload_ref ← newIORef Nothing
                     waitQSem worker_started_qsem
-                    writeIORef workerPendingRequests . Just . Seq.singleton . WorkloadStealRequested $ writeIORef maybe_maybe_workload_ref . Just
+                    sendWorkloadStealRequest workerPendingRequests $ writeIORef maybe_workload_ref
                     IVar.write blocking_value_ivar (Set.singleton 42)
                     VisitorProgress checkpoint remaining_solutions ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
@@ -974,15 +940,11 @@ tests = -- {{{
                             VisitorWorkerFinished final_progress → return final_progress
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
-                    readIORef workerPendingRequests >>= assertBool "has the request queue been nulled?" . isNothing
+                    (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
                     VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint prestolen_solutions) remaining_workload) workload ←
-                        fmap (
-                            fromMaybe (error "stolen workload not available")
-                            .
-                            fromMaybe (error "steal request ignored")
-                        )
+                        fmap (fromMaybe (error "stolen workload not available"))
                         $
-                        readIORef maybe_maybe_workload_ref
+                        readIORef maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
                     runVisitorTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
                     stolen_solutions ← runVisitorTThroughWorkload workload visitor_with_blocking_value
@@ -998,22 +960,18 @@ tests = -- {{{
                         visitor
                         entire_workload
                     workloads_ref ← newIORef DList.empty
-                    let submitWorkloadStealReqest = atomicModifyIORef workerPendingRequests $ (,()) . fmap (const workload_steal_requests)
-                        workload_steal_requests = Seq.singleton . WorkloadStealRequested $
-                            maybe
-                                submitWorkloadStealReqest
-                                (\workload → do
-                                    atomicModifyIORef workloads_ref $ (,()) . flip DList.snoc workload
-                                    submitWorkloadStealReqest
-                                )
-                    writeIORef workerPendingRequests . Just $ workload_steal_requests
+                    let submitMyWorkloadStealReqest = sendWorkloadStealRequest workerPendingRequests submitStolenWorkload
+                        submitStolenWorkload workload = do
+                            atomicModifyIORef workloads_ref $ (,()) . flip DList.snoc workload
+                            submitMyWorkloadStealReqest
+                    submitMyWorkloadStealReqest
                     startWorker
                     termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                     remaining_solutions ← case termination_result of
                         VisitorWorkerFinished (visitorResult → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
-                    workloads ← fmap (map visitorWorkerStolenWorkload . DList.toList) (readIORef workloads_ref)
+                    workloads ← fmap (map visitorWorkerStolenWorkload . catMaybes . DList.toList) (readIORef workloads_ref)
                     let stolen_solutions = mconcat . map (flip runVisitorThroughWorkload visitor) $ workloads
                         solutions = remaining_solutions ⊕ stolen_solutions
                         correct_solutions = runVisitor visitor
