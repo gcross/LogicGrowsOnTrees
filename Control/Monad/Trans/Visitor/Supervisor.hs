@@ -190,10 +190,10 @@ performGlobalProgressUpdate = VisitorSupervisorMonad . lift $ do
 
 receiveProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorWorkerProgressUpdate result →
     worker_id →
+    VisitorWorkerProgressUpdate result →
     VisitorSupervisorMonad result worker_id m ()
-receiveProgressUpdate (VisitorWorkerProgressUpdate progress_update remaining_workload) worker_id = VisitorSupervisorMonad $ do
+receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = VisitorSupervisorMonad $ do
     (VisitorProgress checkpoint result) ← lift $ do
         validateWorkerKnownAndActive "receiving progress update" worker_id
         current_progress %: (`mappend` progress_update)
@@ -207,10 +207,10 @@ receiveProgressUpdate (VisitorWorkerProgressUpdate progress_update remaining_wor
 
 receiveStolenWorkload :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe (VisitorWorkerStolenWorkload result) →
     worker_id →
+    Maybe (VisitorWorkerStolenWorkload result) →
     VisitorSupervisorMonad result worker_id m ()
-receiveStolenWorkload maybe_stolen_workload worker_id = VisitorSupervisorMonad . lift $ do
+receiveStolenWorkload worker_id maybe_stolen_workload = VisitorSupervisorMonad . lift $ do
     validateWorkerKnownAndActive "receiving stolen workload" worker_id
     case maybe_stolen_workload of
         Nothing → return ()
@@ -223,10 +223,10 @@ receiveStolenWorkload maybe_stolen_workload worker_id = VisitorSupervisorMonad .
 
 receiveWorkerFinished :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorProgress result →
     worker_id →
+    VisitorProgress result →
     VisitorSupervisorMonad result worker_id m ()
-receiveWorkerFinished final_progress worker_id = VisitorSupervisorMonad $
+receiveWorkerFinished worker_id final_progress = VisitorSupervisorMonad $
     (lift $ do
         validateWorkerKnownAndActive "the worker was declared finished" worker_id
         active_workers %: Map.delete worker_id

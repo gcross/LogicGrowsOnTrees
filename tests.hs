@@ -736,7 +736,7 @@ tests = -- {{{
                         addWorker 0
                         forM_ (tail active_workers) $ \worker_id → do
                             addWorker worker_id
-                            receiveStolenWorkload (Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty entire_workload) undefined)) 0
+                            receiveStolenWorkload 0 $ Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty entire_workload) undefined)
                         mapM_ addWorker inactive_workers
                         performGlobalProgressUpdate
                         mapM_ removeWorker active_workers
@@ -753,7 +753,7 @@ tests = -- {{{
                 (runVisitorSupervisor actions3 $ do
                     addWorker ()
                     performGlobalProgressUpdate
-                    receiveProgressUpdate (VisitorWorkerProgressUpdate progress undefined) ()
+                    receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress undefined
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [()])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
@@ -768,7 +768,7 @@ tests = -- {{{
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     performGlobalProgressUpdate
-                    receiveProgressUpdate (VisitorWorkerProgressUpdate progress undefined) 1
+                    receiveProgressUpdate 1 $ VisitorWorkerProgressUpdate progress undefined
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [1,2])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
@@ -779,7 +779,7 @@ tests = -- {{{
                 let progress = VisitorProgress Explored (Sum 1)
                 (runVisitorSupervisor actions $ do
                     addWorker ()
-                    receiveProgressUpdate (VisitorWorkerProgressUpdate progress undefined) ()
+                    receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress undefined
                     forever $
                         liftIO $
                             assertFailure "loop continued past final progress update"
@@ -794,7 +794,7 @@ tests = -- {{{
                 (runVisitorSupervisor actions2 $ do
                     addWorker (1::Int)
                     addWorker 2
-                    receiveStolenWorkload Nothing 1
+                    receiveStolenWorkload 1 Nothing
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) [1,2]))
                 readIORef broadcast_ids_list_ref >>= (@?= [[1],[1]])
