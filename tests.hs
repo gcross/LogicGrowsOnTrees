@@ -956,10 +956,13 @@ tests = -- {{{
                         readIORef maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
                     runVisitorTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
-                    stolen_solutions ← runVisitorTThroughWorkload workload visitor_with_blocking_value
-                    let solutions = mconcat [prestolen_solutions,remaining_solutions,stolen_solutions]
                     correct_solutions ← runVisitorT visitor_with_blocking_value
-                    solutions @?= correct_solutions
+                    stolen_solutions_via_workload ← runVisitorTThroughWorkload workload visitor_with_blocking_value
+                    correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions_via_workload]
+                    stolen_solutions_via_checkpoint ← runVisitorTThroughCheckpoint checkpoint visitor_with_blocking_value
+                    correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions_via_checkpoint]
+                    stolen_solutions_via_remaining_workload ← runVisitorTThroughWorkload remaining_workload visitor_with_blocking_value
+                    correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions_via_remaining_workload]
                     return True
                  -- }}}
                 ,testProperty "continuous stealing" $ \(visitor :: Visitor (Set Int)) → unsafePerformIO $ do -- {{{
@@ -980,11 +983,24 @@ tests = -- {{{
                         VisitorWorkerFinished (visitorResult → solutions) → return solutions
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
-                    workloads ← fmap (map visitorWorkerStolenWorkload . catMaybes . DList.toList) (readIORef workloads_ref)
-                    let stolen_solutions = mconcat . map (flip runVisitorThroughWorkload visitor) $ workloads
-                        solutions = remaining_solutions ⊕ stolen_solutions
-                        correct_solutions = runVisitor visitor
-                    solutions @?= correct_solutions
+                    steals ← fmap (catMaybes . DList.toList) (readIORef workloads_ref)
+                    let correct_solutions = runVisitor visitor
+                    correct_solutions @=?
+                        (remaining_solutions ⊕ (mconcat . map (flip runVisitorThroughWorkload visitor. visitorWorkerStolenWorkload) $ steals))
+                    assertBool "Do the progress update workloads get the correct answer?" $
+                        (all (== correct_solutions))
+                        (zipWith
+                            mappend
+                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate . visitorWorkerStolenWorkerProgressUpdate) steals)
+                            (map (flip runVisitorThroughWorkload visitor . visitorWorkerRemainingWorkload . visitorWorkerStolenWorkerProgressUpdate) steals)
+                        )
+                    assertBool "Do the progress update checkpoints get the correct answer?" $
+                        (all (== correct_solutions))
+                        (zipWith
+                            mappend
+                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate . visitorWorkerStolenWorkerProgressUpdate) steals)
+                            (map (flip runVisitorThroughCheckpoint visitor . visitorCheckpoint . visitorWorkerProgressUpdate . visitorWorkerStolenWorkerProgressUpdate) steals)
+                        )
                     return True
                  -- }}}
                 ]
