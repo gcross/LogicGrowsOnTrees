@@ -896,8 +896,15 @@ tests = -- {{{
                             mappend
                             (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate) progress_updates)
                             (map (flip runVisitorThroughCheckpoint visitor . visitorCheckpoint . visitorWorkerProgressUpdate) progress_updates)
-                assertBool "Do runs starting from the progress updates get the correct result?" $
+                assertBool "Do runs starting from the progress update checkpoints get the correct result?" $
                     all (== correct_solutions) results_using_progressive_checkpoints
+                let results_using_progressive_workloads =
+                        zipWith
+                            mappend
+                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate) progress_updates)
+                            (map (flip runVisitorThroughWorkload visitor . visitorWorkerRemainingWorkload) progress_updates)
+                assertBool "Do runs starting from the progress update workloads get the correct result?" $
+                    all (== correct_solutions) results_using_progressive_workloads
                 return True
              -- }}}
             ,testCase "terminates successfully with null visitor" $ do -- {{{
