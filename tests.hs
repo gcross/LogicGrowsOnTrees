@@ -869,7 +869,7 @@ tests = -- {{{
                  -- }}}
                 ]
              -- }}}
-            ,testProperty "progress updates produce valid checkpoints" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
+            ,testProperty "progress updates correctly capture current and remaining progress" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                 termination_result_ivar ← IVar.new
                 (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
                     (IVar.write termination_result_ivar)
@@ -896,7 +896,9 @@ tests = -- {{{
                             mappend
                             (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate) progress_updates)
                             (map (flip runVisitorThroughCheckpoint visitor . visitorCheckpoint . visitorWorkerProgressUpdate) progress_updates)
-                return $ all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
+                assertBool "Do runs starting from the progress updates get the correct result?" $
+                    all (== correct_solutions) results_using_progressive_checkpoints
+                return True
              -- }}}
             ,testCase "terminates successfully with null visitor" $ do -- {{{
                 termination_result_ivar ← IVar.new
