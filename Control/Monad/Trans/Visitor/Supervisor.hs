@@ -392,7 +392,7 @@ tryToObtainWorkloadFor worker_id =
     get waiting_workers_or_available_workloads
     >>=
     \x → case x of
-        Left waiting_workers → assert (not . Set.null $ waiting_workers) $
+        Left waiting_workers →
             waiting_workers_or_available_workloads %= Left (Set.insert worker_id waiting_workers)
         Right (Set.minView → Nothing) → do
             broadcastWorkloadStealToActiveWorkers
