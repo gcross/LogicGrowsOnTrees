@@ -156,14 +156,14 @@ checkpointFromSequence processStep (viewr → rest :> step) =
 -- }}}
 
 checkpointFromUnexploredPath :: VisitorPath → VisitorCheckpoint -- {{{
-checkpointFromUnexploredPath (viewl → EmptyL) = Unexplored
-checkpointFromUnexploredPath (viewl → step :< rest_path) =
-    case step of
+checkpointFromUnexploredPath path = checkpointFromSequence
+    (\step → case step of
         CacheStep c → CacheCheckpoint c
         ChoiceStep LeftBranch → flip ChoiceCheckpoint Explored
         ChoiceStep RightBranch → ChoiceCheckpoint Explored
-    $
-    checkpointFromUnexploredPath rest_path
+    )
+    path
+    Unexplored
 -- }}}
 
 gatherResults :: -- {{{
