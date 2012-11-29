@@ -42,7 +42,7 @@ data Branch = -- {{{
 data VisitorStep = -- {{{
     CacheStep ByteString
  |  ChoiceStep Branch
- deriving (Eq,Show)
+ deriving (Eq,Ord,Show)
 -- }}}
 
 type VisitorPath = Seq VisitorStep

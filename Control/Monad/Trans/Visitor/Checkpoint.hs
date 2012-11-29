@@ -38,7 +38,7 @@ data VisitorCheckpoint = -- {{{
   | ChoiceCheckpoint VisitorCheckpoint VisitorCheckpoint
   | Explored
   | Unexplored
-  deriving (Eq,Read,Show)
+  deriving (Eq,Ord,Read,Show)
 -- }}}
 
 type VisitorCheckpointCursor = Seq VisitorCheckpointDifferential

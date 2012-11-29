@@ -24,15 +24,8 @@ import Control.Monad.Trans.Visitor.Path
 data VisitorWorkload = VisitorWorkload -- {{{
     {   visitorWorkloadPath :: VisitorPath
     ,   visitorWorkloadCheckpoint :: VisitorCheckpoint
-    } deriving (Eq,Show)
+    } deriving (Eq,Ord,Show)
 -- }}}
-
--- }}}
-
--- Instances {{{
-
-instance Ord VisitorWorkload where
-    compare = compare `on` (Seq.length . visitorWorkloadPath)
 
 -- }}}
 
