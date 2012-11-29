@@ -147,9 +147,9 @@ applyContextToLabel (viewl → step :< rest) =
     applyContextToLabel rest
     .
     case step of
-        BranchContextStep branch_active → labelTransformerForBranch branch_active
         CacheContextStep _ → id
-        LeftChoiceContextStep _ _ → leftChildLabel
+        LeftBranchContextStep _ _ → leftChildLabel
+        RightBranchContextStep → rightChildLabel
 -- }}}
 
 applyPathToLabel :: VisitorPath → VisitorLabel → VisitorLabel -- {{{

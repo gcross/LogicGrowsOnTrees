@@ -53,9 +53,9 @@ type VisitorTContext m α = Seq (VisitorTContextStep m α)
 type VisitorContext α = VisitorTContext Identity α
 
 data VisitorTContextStep m α = -- {{{
-    BranchContextStep Branch
-  | CacheContextStep ByteString
-  | LeftChoiceContextStep VisitorCheckpoint (VisitorT m α)
+    CacheContextStep ByteString
+  | LeftBranchContextStep VisitorCheckpoint (VisitorT m α)
+  | RightBranchContextStep
 -- }}}
 type VisitorContextStep = VisitorTContextStep Identity
 
@@ -108,9 +108,9 @@ instance Monoid α ⇒ Monoid (VisitorProgress α) where -- {{{
 -- }}}
 
 instance Show (VisitorTContextStep m α) where -- {{{
-    show (BranchContextStep branch) = "BranchContextStep{" ++ show branch ++ "}"
     show (CacheContextStep c) = "CacheContextStep[" ++ show c ++ "]"
-    show (LeftChoiceContextStep checkpoint _) = "LeftChoiceContextStep(" ++ show checkpoint ++ ")"
+    show (LeftBranchContextStep checkpoint _) = "LeftBranchContextStep(" ++ show checkpoint ++ ")"
+    show RightBranchContextStep = "RightRightBranchContextStep"
 -- }}}
 
 -- }}}
@@ -120,10 +120,9 @@ instance Show (VisitorTContextStep m α) where -- {{{
 checkpointFromContext :: VisitorTContext m α → VisitorCheckpoint → VisitorCheckpoint -- {{{
 checkpointFromContext = checkpointFromSequence $
     \step → case step of
-        BranchContextStep LeftBranch → flip ChoiceCheckpoint Explored
-        BranchContextStep RightBranch → ChoiceCheckpoint Explored
         CacheContextStep cache → CacheCheckpoint cache
-        LeftChoiceContextStep right_checkpoint _ → flip ChoiceCheckpoint right_checkpoint
+        LeftBranchContextStep right_checkpoint _ → flip ChoiceCheckpoint right_checkpoint
+        RightBranchContextStep → ChoiceCheckpoint Explored
 -- }}}
 
 checkpointFromCursor :: VisitorCheckpointCursor → VisitorCheckpoint → VisitorCheckpoint -- {{{
@@ -209,13 +208,13 @@ moveDownContext step checkpoint visitor =
 
 moveUpContext :: VisitorTContextUpdate m α -- {{{
 moveUpContext (viewr → EmptyR) = Nothing
-moveUpContext (viewr → rest_context :> BranchContextStep _) = moveUpContext rest_context
 moveUpContext (viewr → rest_context :> CacheContextStep _) = moveUpContext rest_context
-moveUpContext (viewr → rest_context :> LeftChoiceContextStep right_checkpoint right_visitor) =
-    Just (rest_context |> BranchContextStep RightBranch
+moveUpContext (viewr → rest_context :> LeftBranchContextStep right_checkpoint right_visitor) =
+    Just (rest_context |> RightBranchContextStep
          ,right_checkpoint
          ,right_visitor
          )
+moveUpContext (viewr → rest_context :> RightBranchContextStep) = moveUpContext rest_context
 -- }}}
 
 pathFromContext :: VisitorTContext m α → VisitorPath -- {{{
@@ -227,9 +226,9 @@ pathFromCursor = fmap pathStepFromCursorDifferential
 -- }}}
 
 pathStepFromContextStep :: VisitorTContextStep m α → VisitorStep -- {{{
-pathStepFromContextStep (BranchContextStep active_branch) = ChoiceStep active_branch
 pathStepFromContextStep (CacheContextStep cache) = CacheStep cache
-pathStepFromContextStep (LeftChoiceContextStep _ _) = ChoiceStep LeftBranch
+pathStepFromContextStep (LeftBranchContextStep _ _) = ChoiceStep LeftBranch
+pathStepFromContextStep (RightBranchContextStep) = ChoiceStep RightBranch
 -- }}}
 
 pathStepFromCursorDifferential :: VisitorCheckpointDifferential → VisitorStep -- {{{
@@ -295,14 +294,14 @@ stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \v
     (Choice left right :>>= k, ChoiceCheckpoint left_checkpoint right_checkpoint) → return
         (Nothing
         ,moveDownMyContext
-            (LeftChoiceContextStep right_checkpoint (right >>= VisitorT . k))
+            (LeftBranchContextStep right_checkpoint (right >>= VisitorT . k))
             left_checkpoint
             (left >>= VisitorT . k)
         )
     (Choice left right :>>= k,Unexplored) → return
         (Nothing
         ,moveDownMyContext
-            (LeftChoiceContextStep Unexplored (right >>= VisitorT . k))
+            (LeftBranchContextStep Unexplored (right >>= VisitorT . k))
             Unexplored
             (left >>= VisitorT . k)
         )

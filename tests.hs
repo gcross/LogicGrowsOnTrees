@@ -397,22 +397,20 @@ tests = -- {{{
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Checkpoint" -- {{{
         [testGroup "contextFromCheckpoint" -- {{{
-            [testProperty "branch" $ \(checkpoint :: VisitorCheckpoint) (active_branch :: Branch) → -- {{{
-                checkpointFromContext (Seq.singleton (BranchContextStep active_branch)) checkpoint
-                ==
-                (mergeCheckpointRoot $ case active_branch of
-                    LeftBranch → ChoiceCheckpoint checkpoint Explored
-                    RightBranch → ChoiceCheckpoint Explored checkpoint)
-             -- }}}
-            ,testProperty "cache" $ \(checkpoint :: VisitorCheckpoint) (i :: Int) → -- {{{
+            [testProperty "cache" $ \(checkpoint :: VisitorCheckpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
                 ==
                 (mergeCheckpointRoot $ CacheCheckpoint (encode i) checkpoint)
              -- }}}
-            ,testProperty "choice" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor [()]) (other_checkpoint :: VisitorCheckpoint) → -- {{{
-                (checkpointFromContext (Seq.singleton (LeftChoiceContextStep other_checkpoint other_visitor)) inner_checkpoint)
+            ,testProperty "left branch" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor [()]) (other_checkpoint :: VisitorCheckpoint) → -- {{{
+                (checkpointFromContext (Seq.singleton (LeftBranchContextStep other_checkpoint other_visitor)) inner_checkpoint)
                 ==
                 (mergeCheckpointRoot $ ChoiceCheckpoint inner_checkpoint other_checkpoint)
+             -- }}}
+            ,testProperty "right branch" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
+                checkpointFromContext (Seq.singleton RightBranchContextStep) checkpoint
+                ==
+                (mergeCheckpointRoot $ ChoiceCheckpoint Explored checkpoint)
              -- }}}
             ,testProperty "empty" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
                 checkpointFromContext Seq.empty checkpoint == checkpoint

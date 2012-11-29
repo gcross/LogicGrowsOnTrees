@@ -403,11 +403,9 @@ tryStealWorkload initial_path = go
   where
     go _      (viewl → EmptyL) = Nothing
     go cursor (viewl → step :< rest_context) = case step of
-        BranchContextStep active_branch →
-            go (cursor |> ChoiceCheckpointD active_branch Explored) rest_context
         CacheContextStep cache →
             go (cursor |> CacheCheckpointD cache) rest_context
-        LeftChoiceContextStep other_checkpoint _ →
+        LeftBranchContextStep other_checkpoint _ →
             Just
                 (cursor |> ChoiceCheckpointD LeftBranch Unexplored
                 ,rest_context
@@ -415,6 +413,8 @@ tryStealWorkload initial_path = go
                     ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
                     other_checkpoint
                 )
+        RightBranchContextStep →
+            go (cursor |> ChoiceCheckpointD RightBranch Explored) rest_context
 -- }}}
 
 -- }}}
