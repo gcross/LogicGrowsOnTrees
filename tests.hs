@@ -732,9 +732,11 @@ tests = -- {{{
                     let progress = VisitorProgress Unexplored (Sum 0)
                     (runVisitorSupervisor actions3 $ do
                         addWorker 0
-                        forM_ (tail active_workers) $ \worker_id → do
+                        forM_ (zip [0..] (tail active_workers)) $ \(prefix_count,worker_id) → do
                             addWorker worker_id
-                            receiveStolenWorkload 0 $ Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty entire_workload) undefined)
+                            let remaining_workload = VisitorWorkload (Seq.replicate (prefix_count+1) (ChoiceStep LeftBranch)) Unexplored
+                            let stolen_workload = VisitorWorkload (Seq.replicate (prefix_count) (ChoiceStep LeftBranch) |> (ChoiceStep RightBranch)) Unexplored
+                            receiveStolenWorkload 0 $ Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty remaining_workload) stolen_workload)
                         mapM_ addWorker inactive_workers
                         performGlobalProgressUpdate
                         mapM_ removeWorker active_workers
@@ -751,7 +753,7 @@ tests = -- {{{
                 (runVisitorSupervisor actions3 $ do
                     addWorker ()
                     performGlobalProgressUpdate
-                    receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress undefined
+                    receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress entire_workload
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [()])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
@@ -766,7 +768,7 @@ tests = -- {{{
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     performGlobalProgressUpdate
-                    receiveProgressUpdate 1 $ VisitorWorkerProgressUpdate progress undefined
+                    receiveProgressUpdate 1 $ VisitorWorkerProgressUpdate progress entire_workload
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left progress)) [1,2])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
