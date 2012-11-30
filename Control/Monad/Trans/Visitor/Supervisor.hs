@@ -15,6 +15,8 @@ module Control.Monad.Trans.Visitor.Supervisor -- {{{
     , VisitorSupervisorResult(..)
     , abortSupervisor
     , addWorker
+    , disableSupervisorDebugMode
+    , enableSupervisorDebugMode
     , getCurrentProgress
     , getNumberOfWorkers
     , getWaitingWorkers
@@ -27,6 +29,7 @@ module Control.Monad.Trans.Visitor.Supervisor -- {{{
     , removeWorker
     , runVisitorSupervisor
     , runVisitorSupervisorStartingFrom
+    , setSupervisorDebugMode
     ) where -- }}}
 
 -- Imports {{{
@@ -148,6 +151,7 @@ data VisitorSupervisorState result worker_id = -- {{{
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
     ,   workers_pending_progress_update_ :: !(Set worker_id)
     ,   current_progress_ :: !(VisitorProgress result)
+    ,   debug_mode_ :: !Bool
     }
 $( deriveAccessors ''VisitorSupervisorState )
 -- }}}
@@ -210,6 +214,18 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . VisitorSup
     validateWorkerNotKnown "adding worker" worker_id
     known_workers %: Set.insert worker_id
     tryToObtainWorkloadFor worker_id
+-- }}}
+
+disableSupervisorDebugMode :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorSupervisorMonad result worker_id m ()
+disableSupervisorDebugMode = setSupervisorDebugMode False
+-- }}}
+
+enableSupervisorDebugMode :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorSupervisorMonad result worker_id m ()
+enableSupervisorDebugMode = setSupervisorDebugMode True
 -- }}}
 
 getCurrentProgress :: -- {{{
@@ -360,6 +376,7 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
             ,   workers_pending_workload_steal_ = mempty
             ,   workers_pending_progress_update_ = mempty
             ,   current_progress_ = starting_progress
+            ,   debug_mode_ = False
             }
         )
     )
@@ -371,6 +388,13 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
     loop'
   where
     loop' = loop
+-- }}}
+
+setSupervisorDebugMode :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    Bool →
+    VisitorSupervisorMonad result worker_id m ()
+setSupervisorDebugMode = VisitorSupervisorMonad . lift . (debug_mode %=)
 -- }}}
 
 -- }}}
@@ -454,7 +478,8 @@ postValidate :: -- {{{
     String →
     VisitorSupervisorMonad result worker_id m α →
     VisitorSupervisorMonad result worker_id m α
-postValidate label action = action >>= \result → VisitorSupervisorMonad . lift $ do
+postValidate label action = action >>= \result → VisitorSupervisorMonad . lift $
+  (whenDebugging $ do
     debugM $ " === BEGIN VALIDATE === " ++ label
     get known_workers >>= debugM . ("Known workers is now " ++) . show
     get active_workers >>= debugM . ("Active workers is now " ++) . show
@@ -488,7 +513,7 @@ postValidate label action = action >>= \result → VisitorSupervisorMonad . lift
             then throw $ SpaceFullyExploredButSearchNotTerminated
             else throw $ SpaceFullyExploredButWorkloadsRemain workers_and_workloads
     debugM $ " === END VALIDATE === " ++ label
-    return result
+  ) >> return result
 -- }}}
 
 receiveCurrentProgress :: -- {{{
@@ -559,6 +584,13 @@ validateWorkerNotKnown :: -- {{{
 validateWorkerNotKnown action worker_id = do
     Set.member worker_id <$> (get known_workers)
         >>= flip when (throw $ WorkerAlreadyKnown action worker_id)
+-- }}}
+
+whenDebugging :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    VisitorSupervisorContext result worker_id m () →
+    VisitorSupervisorContext result worker_id m ()
+whenDebugging action = get debug_mode >>= flip when action
 -- }}}
 
 -- }}}
