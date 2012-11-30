@@ -87,7 +87,7 @@ data VisitorSupervisorActions result worker_id m = -- {{{
 
 data VisitorSupervisorState result worker_id = -- {{{
     VisitorSupervisorState
-    {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) (Set VisitorWorkload))
+    {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) [VisitorWorkload])
     ,   known_workers_ :: !(Set worker_id)
     ,   active_workers_ :: !(Map worker_id VisitorWorkload)
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
@@ -277,7 +277,7 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
         actions
         (VisitorSupervisorState
             {   waiting_workers_or_available_workloads_ =
-                    Right (Set.singleton (VisitorWorkload Seq.empty (visitorCheckpoint starting_progress)))
+                    Right [VisitorWorkload Seq.empty (visitorCheckpoint starting_progress)  ]
             ,   known_workers_ = mempty
             ,   active_workers_ = mempty
             ,   workers_pending_workload_steal_ = mempty
@@ -353,9 +353,9 @@ enqueueWorkload workload =
             sendWorkloadToWorker workload free_worker_id
             waiting_workers_or_available_workloads %= Left remaining_workers
         Left (Set.minView → Nothing) →
-            waiting_workers_or_available_workloads %= Right (Set.singleton workload)
+            waiting_workers_or_available_workloads %= Right [workload]
         Right available_workloads →
-            waiting_workers_or_available_workloads %= Right (Set.insert workload available_workloads)
+            waiting_workers_or_available_workloads %= Right (workload:available_workloads)
 -- }}}
 
 receiveCurrentProgress :: -- {{{
@@ -389,10 +389,10 @@ tryToObtainWorkloadFor worker_id =
     \x → case x of
         Left waiting_workers →
             waiting_workers_or_available_workloads %= Left (Set.insert worker_id waiting_workers)
-        Right (Set.minView → Nothing) → do
+        Right [] → do
             broadcastWorkloadStealToActiveWorkers
             waiting_workers_or_available_workloads %= Left (Set.singleton worker_id)
-        Right (Set.minView → Just (workload,remaining_workloads)) → do
+        Right (workload:remaining_workloads) → do
             sendWorkloadToWorker workload worker_id
             waiting_workers_or_available_workloads %= Right remaining_workloads
 -- }}}
