@@ -55,6 +55,8 @@ import Data.Set (Set)
 import qualified Data.Sequence as Seq
 import Data.Typeable (Typeable)
 
+import qualified System.Log.Logger as Logger
+
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Worker
@@ -373,6 +375,10 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
 
 -- }}}
 
+-- Logging Functions {{{
+debugM = Logger.debugM "Supervisor"
+-- }}}
+
 -- Internal Functions {{{
 
 broadcastWorkloadStealToActiveWorkers :: -- {{{
@@ -448,11 +454,11 @@ postValidate :: -- {{{
     VisitorSupervisorMonad result worker_id m α →
     VisitorSupervisorMonad result worker_id m α
 postValidate label action = action >>= \result → VisitorSupervisorMonad . lift $ do
-    liftIO . putStrLn $ " === BEGIN VALIDATE === " ++ label
-    get known_workers >>= liftIO . putStrLn . ("Known workers is now " ++) . show
-    get active_workers >>= liftIO . putStrLn . ("Active workers is now " ++) . show
-    get waiting_workers_or_available_workloads >>= liftIO . putStrLn . ("Waiting/Available queue is now " ++) . show
-    get current_progress >>= liftIO . putStrLn . ("Current checkpoint is now " ++) . show . visitorCheckpoint
+    liftIO . debugM $ " === BEGIN VALIDATE === " ++ label
+    get known_workers >>= liftIO . debugM . ("Known workers is now " ++) . show
+    get active_workers >>= liftIO . debugM . ("Active workers is now " ++) . show
+    get waiting_workers_or_available_workloads >>= liftIO . debugM . ("Waiting/Available queue is now " ++) . show
+    get current_progress >>= liftIO . debugM . ("Current checkpoint is now " ++) . show . visitorCheckpoint
     workers_and_workloads ←
         liftM2 (++)
             (map (Nothing,) . either (const []) id <$> get waiting_workers_or_available_workloads)
@@ -480,7 +486,7 @@ postValidate label action = action >>= \result → VisitorSupervisorMonad . lift
         if null workers_and_workloads
             then throw $ SpaceFullyExploredButSearchNotTerminated
             else throw $ SpaceFullyExploredButWorkloadsRemain workers_and_workloads
-    liftIO . putStrLn $ " === END VALIDATE === " ++ label
+    liftIO . debugM $ " === END VALIDATE === " ++ label
     return result
 -- }}}
 
