@@ -325,6 +325,15 @@ clearPendingProgressUpdate worker_id =
     )
 -- }}}
 
+clearPendingResponses :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorSupervisorContext result worker_id m ()
+clearPendingResponses worker_id = do
+    clearPendingProgressUpdate worker_id
+    clearPendingWorkloadSteal worker_id
+-- }}}
+
 clearPendingWorkloadSteal :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
