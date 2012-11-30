@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -30,8 +31,9 @@ module Control.Monad.Trans.Visitor.Supervisor -- {{{
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>),Applicative)
-import Control.Exception (Exception,assert)
-import Control.Monad (unless,when)
+import Control.Arrow (first,second)
+import Control.Exception (Exception(..),assert)
+import Control.Monad (liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import qualified Control.Monad.State.Class as MonadsTF
@@ -42,6 +44,8 @@ import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
 import Data.Accessor.Monad.TF.State ((%=),(%:),get)
 import Data.Accessor.Template (deriveAccessors)
 import Data.Either.Unwrap (whenLeft)
+import qualified Data.Foldable as Fold
+import Data.List (inits)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (fromJust,isNothing)
@@ -52,26 +56,69 @@ import qualified Data.Sequence as Seq
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
 
 -- Exceptions {{{
 
-data SupervisorError worker_id = -- {{{
-    WorkerAlreadyKnown String worker_id
+-- InvalidWorkspaceError {{{
+data InvalidWorkspaceError = -- {{{
+    IncompleteWorkspace VisitorCheckpoint
+  | SpaceFullyExploredButSearchNotTerminated
+  deriving (Eq,Typeable)
+-- }}}
+instance Show InvalidWorkspaceError where -- {{{
+    show (IncompleteWorkspace workspace) = "Full workspace is incomplete: " ++ show workspace
+    show SpaceFullyExploredButSearchNotTerminated = "The space has been fully explored but the search was not terminated."
+-- }}}
+instance Exception InvalidWorkspaceError
+-- }}}
+
+-- WorkerManagementError {{{
+data WorkerManagementError worker_id = -- {{{
+    ActiveWorkersRemainedAfterSpaceFullyExplored [worker_id]
+  | ConflictingWorkloads (Maybe worker_id) VisitorPath (Maybe worker_id) VisitorPath
+  | SpaceFullyExploredButWorkloadsRemain [(Maybe worker_id,VisitorWorkload)]
+  | WorkerAlreadyKnown String worker_id
   | WorkerNotKnown String worker_id
   | WorkerNotActive String worker_id
-  | ActiveWorkersRemainedAfterSpaceFullyExplored [worker_id]
   deriving (Eq,Typeable)
-
-instance Show worker_id ⇒ Show (SupervisorError worker_id) where
+ -- }}}
+instance Show worker_id ⇒ Show (WorkerManagementError worker_id) where -- {{{
+    show (ActiveWorkersRemainedAfterSpaceFullyExplored worker_ids) = "Worker ids " ++ show worker_ids ++ " were still active after the space was supposedly fully explored."
+    show (ConflictingWorkloads wid1 path1 wid2 path2) =
+        "Workload " ++ f wid1 ++ " with initial path " ++ show path1 ++ " conflicts with workload " ++ f wid2 ++ " with initial path " ++ show path2 ++ "."
+      where
+        f Nothing = "sitting idle"
+        f (Just wid) = "of worker " ++ show wid
+    show (SpaceFullyExploredButWorkloadsRemain workers_and_workloads) = "The space has been fully explored, but the following workloads remain: " ++ show workers_and_workloads
     show (WorkerAlreadyKnown action worker_id) = "Worker id " ++ show worker_id ++ " already known when " ++ action ++ "."
     show (WorkerNotKnown action worker_id) = "Worker id " ++ show worker_id ++ " not known when " ++ action ++ "."
     show (WorkerNotActive action worker_id) = "Worker id " ++ show worker_id ++ " not active when " ++ action ++ "."
-    show (ActiveWorkersRemainedAfterSpaceFullyExplored worker_ids) = "Worker ids " ++ show worker_ids ++ " were still active after the space was supposedly fully explored."
+-- }}}
+instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (WorkerManagementError worker_id)
+-- }}}
 
-instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (SupervisorError worker_id)
+-- SupervisorError {{{
+data SupervisorError worker_id = -- {{{
+    SupervisorInvalidWorkspaceError InvalidWorkspaceError
+  | SupervisorWorkerManagementError (WorkerManagementError worker_id)
+  deriving (Eq,Typeable)
+-- }}}
+instance Show worker_id ⇒ Show (SupervisorError worker_id) where -- {{{
+    show (SupervisorInvalidWorkspaceError e) = show e
+    show (SupervisorWorkerManagementError e) = show e
+-- }}}
+instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (SupervisorError worker_id) where -- {{{
+    toException (SupervisorInvalidWorkspaceError e) = toException e
+    toException (SupervisorWorkerManagementError e) = toException e
+    fromException e =
+        (SupervisorInvalidWorkspaceError <$> fromException e)
+        `mplus`
+        (SupervisorWorkerManagementError <$> fromException e)
+-- }}}
 -- }}}
 
 -- }}}
@@ -153,7 +200,7 @@ addWorker :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
-addWorker worker_id = VisitorSupervisorMonad . lift $ do
+addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
     validateWorkerNotKnown "adding worker" worker_id
     known_workers %: Set.insert worker_id
     tryToObtainWorkloadFor worker_id
@@ -181,7 +228,7 @@ getWaitingWorkers = VisitorSupervisorMonad . lift $
 performGlobalProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m ()
-performGlobalProgressUpdate = VisitorSupervisorMonad . lift $ do
+performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . VisitorSupervisorMonad . lift $ do
     active_worker_ids ← Map.keysSet <$> get active_workers
     if (Set.null active_worker_ids)
         then receiveCurrentProgress
@@ -195,7 +242,7 @@ receiveProgressUpdate :: -- {{{
     worker_id →
     VisitorWorkerProgressUpdate result →
     VisitorSupervisorMonad result worker_id m ()
-receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = VisitorSupervisorMonad . lift $ do
+receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") . VisitorSupervisorMonad . lift $ do
     validateWorkerKnownAndActive "receiving progress update" worker_id
     current_progress %: (`mappend` progress_update)
     active_workers %: (Map.insert worker_id remaining_workload)
@@ -207,7 +254,7 @@ receiveStolenWorkload :: -- {{{
     worker_id →
     Maybe (VisitorWorkerStolenWorkload result) →
     VisitorSupervisorMonad result worker_id m ()
-receiveStolenWorkload worker_id maybe_stolen_workload = VisitorSupervisorMonad . lift $ do
+receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") . VisitorSupervisorMonad . lift $ do
     validateWorkerKnownAndActive "receiving stolen workload" worker_id
     case maybe_stolen_workload of
         Nothing → return ()
@@ -240,7 +287,7 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     worker_id →
     VisitorProgress result →
     VisitorSupervisorMonad result worker_id m ()
-receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = VisitorSupervisorMonad $
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (visitorCheckpoint final_progress)) . VisitorSupervisorMonad $
     (lift $ do
         validateWorkerKnownAndActive "the worker was declared finished" worker_id
         clearPendingResponses worker_id
@@ -265,7 +312,7 @@ removeWorker :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
-removeWorker worker_id = VisitorSupervisorMonad . lift $ do
+removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
     validateWorkerKnown "removing the worker" worker_id
     known_workers %: Set.delete worker_id
     Map.lookup worker_id <$> get active_workers >>= \maybe_workload →
@@ -389,6 +436,48 @@ enqueueWorkload workload =
             waiting_workers_or_available_workloads %= Right [workload]
         Right available_workloads →
             waiting_workers_or_available_workloads %= Right (workload:available_workloads)
+-- }}}
+
+postValidate :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    String →
+    VisitorSupervisorMonad result worker_id m α →
+    VisitorSupervisorMonad result worker_id m α
+postValidate label action = action >>= \result → VisitorSupervisorMonad . lift $ do
+    liftIO . putStrLn $ " === BEGIN VALIDATE === " ++ label
+    get known_workers >>= liftIO . putStrLn . ("Known workers is now " ++) . show
+    get active_workers >>= liftIO . putStrLn . ("Active workers is now " ++) . show
+    get waiting_workers_or_available_workloads >>= liftIO . putStrLn . ("Waiting/Available queue is now " ++) . show
+    get current_progress >>= liftIO . putStrLn . ("Current checkpoint is now " ++) . show . visitorCheckpoint
+    workers_and_workloads ←
+        liftM2 (++)
+            (map (Nothing,) . either (const []) id <$> get waiting_workers_or_available_workloads)
+            (map (first Just) . Map.assocs <$> get active_workers)
+    let go [] _ = return ()
+        go ((maybe_worker_id,VisitorWorkload initial_path _):rest_workloads) known_prefixes =
+            case Map.lookup initial_path_as_list known_prefixes of
+                Nothing → go rest_workloads . mappend known_prefixes . Map.fromList . map (,(maybe_worker_id,initial_path)) . inits $ initial_path_as_list
+                Just (maybe_other_worker_id,other_initial_path) →
+                    throw $ ConflictingWorkloads maybe_worker_id initial_path maybe_other_worker_id other_initial_path
+          where initial_path_as_list = Fold.toList initial_path
+    go workers_and_workloads Map.empty
+    VisitorProgress checkpoint _ ← get current_progress
+    let total_workspace =
+            mappend checkpoint
+            .
+            mconcat
+            .
+            map (flip checkpointFromInitialPath Explored . visitorWorkloadPath . snd)
+            $
+            workers_and_workloads
+    unless (total_workspace == Explored) $ throw $ IncompleteWorkspace total_workspace
+    VisitorProgress checkpoint _ ← get current_progress
+    when (checkpoint == Explored) $
+        if null workers_and_workloads
+            then throw $ SpaceFullyExploredButSearchNotTerminated
+            else throw $ SpaceFullyExploredButWorkloadsRemain workers_and_workloads
+    liftIO . putStrLn $ " === END VALIDATE === " ++ label
+    return result
 -- }}}
 
 receiveCurrentProgress :: -- {{{
