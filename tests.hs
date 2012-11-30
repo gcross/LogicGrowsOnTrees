@@ -10,14 +10,21 @@
 -- }}}
 
 -- Imports {{{
+import Prelude hiding (catch)
 import Control.Applicative
+import Control.Arrow ((&&&))
 import Control.Concurrent
 import Control.Concurrent.QSem
+import Control.Concurrent.STM.TChan
+import Control.Concurrent.STM.TMVar
+import Control.Concurrent.STM.TVar
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Operational (ProgramViewT(..),view)
+import Control.Monad.STM
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Reader (ReaderT(..),ask)
 import Control.Monad.Trans.Writer
 
 import Data.ByteString (ByteString)
@@ -34,6 +41,8 @@ import Data.IVar (IVar)
 import qualified Data.IVar as IVar
 import Data.List (inits,mapAccumL,sort)
 import Data.Maybe
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Monoid
 import Data.Monoid.Unicode
 import Data.Sequence (Seq,(<|),(|>),(><))
@@ -64,6 +73,7 @@ import Test.QuickCheck.Property
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Label
+import qualified Control.Monad.Trans.Visitor.Parallel.Threads as Threads
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
@@ -184,6 +194,10 @@ data TestException = TestException Int deriving (Eq,Show,Typeable)
 instance Exception TestException
 -- }}}
 -- }}} Exceptions
+
+-- Type alises {{{
+type ThreadsTestVisitor = LabeledVisitorT (ReaderT (TVar (Map (VisitorLabel,Int) (TMVar ())),TChan ((VisitorLabel,Int),TMVar ())) IO)
+-- }}}
 
 -- Functions {{{
 addAcceptOneWorkloadAction :: -- {{{
@@ -558,6 +572,114 @@ tests = -- {{{
             in getAll . runLabeledVisitor <$> sized (gen rootLabel)
          -- }}}
         ]
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor.Parallel.Threads" $ -- {{{
+      let
+        gen1, gen2 :: Int → Int → ThreadsTestVisitor (Set Int) → Gen (ThreadsTestVisitor (Set Int))
+        gen1 n level intermediate = (action level >>) <$> gen2 n level intermediate
+        gen2 0 level _ = null
+        gen2 1 level intermediate = frequency
+                    [(3,resultPlus intermediate)
+                    ,(1,null)
+                    ,(2,cachedPlus intermediate)
+                    ]
+        gen2 n level intermediate = frequency
+                    [(2,resultPlus intermediate >>= gen1 n (level+1))
+                    ,(1,null)
+                    ,(2,cachedPlus intermediate >>= gen1 n (level+1))
+                    ,(4, do left_size ← choose (0,n)
+                            let right_size = n-left_size
+                            left ← gen1 left_size 0 intermediate
+                            right ← gen1 right_size 0 intermediate
+                            return $ left `mplus` right
+                     )
+                    ]
+
+        null, result, cached :: Gen (ThreadsTestVisitor (Set Int))
+        null = return mzero
+        result = fmap return arbitrary
+        cached = fmap cache arbitrary
+
+        resultPlus intermediate = fmap (liftM2 mappend intermediate) result
+        cachedPlus intermediate = fmap (liftM2 mappend intermediate) cached
+
+        action :: Int → ThreadsTestVisitor ()
+        action level = do
+            label ← getLabel
+            let position = (label,level)
+            (tokens_tvar,requests_channel) ← lift ask
+            liftIO $ do
+                token_tmvar ← atomically $ do
+                    tokens ← readTVar tokens_tvar
+                    case Map.lookup position tokens of
+                        Just token_tmvar → do return token_tmvar
+                        Nothing → do
+                            token_tmvar ← newEmptyTMVar
+                            modifyTVar tokens_tvar $ Map.insert position token_tmvar
+                            writeTChan requests_channel (position,token_tmvar)
+                            return token_tmvar
+                (atomically $ readTMVar token_tmvar)
+                 `catch`
+                  (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for token " ++ show position)
+
+        runTest generateNoise = do
+            labeled_visitor ← sized (\n → gen1 (if n > 4 then 3*n else n) 0 mzero)
+            morallyDubiousIOProperty $ do
+                requests_channel ← newTChanIO
+                tokens_mvar ← newTVarIO Map.empty
+                termination_reason_ivar ← IVar.new
+                controller ←
+                    Threads.runVisitorT
+                        (flip runReaderT (tokens_mvar,requests_channel))
+                        (IVar.write termination_reason_ivar)
+                        (normalizeLabeledVisitorT labeled_visitor)
+                Threads.changeNumberOfWorkers (const $ return 1) controller
+                progresses_ivar ← newIORef []
+                request_handler ← forkIO . forever $ do
+                    (position,token_tmvar) ← atomically $ readTChan requests_channel
+                    generateNoise >>= ($ controller)
+                    progress ← Threads.getCurrentProgress controller
+                    modifyIORef progresses_ivar (progress:)
+                    (atomically $ putTMVar token_tmvar ())
+                     `catch`
+                      (\BlockedIndefinitelyOnMVar → error $ "blocked forever while sending token " ++ show position)
+                termination_reason ← (IVar.blocking . IVar.read $ termination_reason_ivar)
+                 `catch`
+                  (\BlockedIndefinitelyOnMVar → error $ "blocked forever waiting for termination")
+                killThread request_handler
+                result ← case termination_reason of
+                    Threads.Completed result → return result
+                    Threads.Aborted _ → error "prematurely aborted"
+                    Threads.Failure exception → throwIO exception
+                expected_result ←
+                    flip runReaderT (tokens_mvar,requests_channel)
+                    .
+                    runLabeledVisitorT
+                    $
+                    labeled_visitor
+                return $ result == expected_result
+      in  [testProperty "single thread" . runTest $
+              (\i → case i of
+                  0 → void . \controller → do
+                      Threads.changeNumberOfWorkers (return . (\i → 0)) controller
+                      Threads.changeNumberOfWorkers (return . (\i → 1)) controller
+                  1 → void . (flip Threads.requestProgressUpdateAsync (const $ return ()))
+                  _ → const $ return ()
+              ) <$> randomRIO (0,1::Int)
+          ,testProperty "two threads" . runTest $
+              (\i → case i of
+                  0 → void . (Threads.changeNumberOfWorkers $ return . (\i → 3-i))
+                  1 → void . (flip Threads.requestProgressUpdateAsync (const $ return ()))
+                  _ → const $ return ()
+              ) <$> randomRIO (0,1::Int)
+          ,testProperty "many threads" . runTest $
+              (\i → case i of
+                  0 → void . (Threads.changeNumberOfWorkers $ return . (\i → if i > 1 then i-1 else i))
+                  1 → void . (Threads.changeNumberOfWorkers $ return . (+1))
+                  2 → void . (flip Threads.requestProgressUpdateAsync (const $ return ()))
+                  _ → const $ return ()
+              ) <$> randomRIO (0,2::Int)
+          ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Path" -- {{{
         [testGroup "sendVisitorDownPath" -- {{{

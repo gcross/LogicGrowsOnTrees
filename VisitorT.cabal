@@ -31,13 +31,16 @@ Library
         MonadCatchIO-transformers == 0.3.*,
         monads-tf == 0.1.*,
         operational == 0.2.*,
+        PSQueue == 1.1.*,
         sequential-index == 0.2.*,
+        stm == 2.3.*,
         transformers >= 0.2 && < 0.4,
         yjtools >= 0.9.7 && < 0.10
     Exposed-modules:
         Control.Monad.Trans.Visitor
         Control.Monad.Trans.Visitor.Checkpoint
         Control.Monad.Trans.Visitor.Label
+        Control.Monad.Trans.Visitor.Parallel.Threads
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Supervisor
         Control.Monad.Trans.Visitor.Worker
