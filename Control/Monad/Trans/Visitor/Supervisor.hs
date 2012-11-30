@@ -63,17 +63,19 @@ import Control.Monad.Trans.Visitor.Workload
 
 -- Exceptions {{{
 
--- InvalidWorkspaceError {{{
-data InvalidWorkspaceError = -- {{{
+-- InconsistencyError {{{
+data InconsistencyError = -- {{{
     IncompleteWorkspace VisitorCheckpoint
+  | OutOfSourcesForNewWorkloads
   | SpaceFullyExploredButSearchNotTerminated
   deriving (Eq,Typeable)
 -- }}}
-instance Show InvalidWorkspaceError where -- {{{
+instance Show InconsistencyError where -- {{{
     show (IncompleteWorkspace workspace) = "Full workspace is incomplete: " ++ show workspace
+    show OutOfSourcesForNewWorkloads = "The search is incomplete but there are no sources of workloads available."
     show SpaceFullyExploredButSearchNotTerminated = "The space has been fully explored but the search was not terminated."
 -- }}}
-instance Exception InvalidWorkspaceError
+instance Exception InconsistencyError
 -- }}}
 
 -- WorkerManagementError {{{
@@ -82,6 +84,7 @@ data WorkerManagementError worker_id = -- {{{
   | ConflictingWorkloads (Maybe worker_id) VisitorPath (Maybe worker_id) VisitorPath
   | SpaceFullyExploredButWorkloadsRemain [(Maybe worker_id,VisitorWorkload)]
   | WorkerAlreadyKnown String worker_id
+  | WorkerAlreadyHasWorkload worker_id
   | WorkerNotKnown String worker_id
   | WorkerNotActive String worker_id
   deriving (Eq,Typeable)
@@ -95,6 +98,7 @@ instance Show worker_id ⇒ Show (WorkerManagementError worker_id) where -- {{{
         f (Just wid) = "of worker " ++ show wid
     show (SpaceFullyExploredButWorkloadsRemain workers_and_workloads) = "The space has been fully explored, but the following workloads remain: " ++ show workers_and_workloads
     show (WorkerAlreadyKnown action worker_id) = "Worker id " ++ show worker_id ++ " already known when " ++ action ++ "."
+    show (WorkerAlreadyHasWorkload worker_id) = "Attempted to send workload to worker id " ++ show worker_id ++ " which is already active."
     show (WorkerNotKnown action worker_id) = "Worker id " ++ show worker_id ++ " not known when " ++ action ++ "."
     show (WorkerNotActive action worker_id) = "Worker id " ++ show worker_id ++ " not active when " ++ action ++ "."
 -- }}}
@@ -103,19 +107,19 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Worke
 
 -- SupervisorError {{{
 data SupervisorError worker_id = -- {{{
-    SupervisorInvalidWorkspaceError InvalidWorkspaceError
+    SupervisorInconsistencyError InconsistencyError
   | SupervisorWorkerManagementError (WorkerManagementError worker_id)
   deriving (Eq,Typeable)
 -- }}}
 instance Show worker_id ⇒ Show (SupervisorError worker_id) where -- {{{
-    show (SupervisorInvalidWorkspaceError e) = show e
+    show (SupervisorInconsistencyError e) = show e
     show (SupervisorWorkerManagementError e) = show e
 -- }}}
 instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (SupervisorError worker_id) where -- {{{
-    toException (SupervisorInvalidWorkspaceError e) = toException e
+    toException (SupervisorInconsistencyError e) = toException e
     toException (SupervisorWorkerManagementError e) = toException e
     fromException e =
-        (SupervisorInvalidWorkspaceError <$> fromException e)
+        (SupervisorInconsistencyError <$> fromException e)
         `mplus`
         (SupervisorWorkerManagementError <$> fromException e)
 -- }}}
@@ -376,7 +380,7 @@ broadcastWorkloadStealToActiveWorkers :: -- {{{
     VisitorSupervisorContext result worker_id m ()
 broadcastWorkloadStealToActiveWorkers = do
     active_worker_ids ← Map.keysSet <$> get active_workers
-    when (Set.null active_worker_ids) $ error "no workers to broadcast!"
+    when (Set.null active_worker_ids) $ throw OutOfSourcesForNewWorkloads
     asks broadcast_workload_steal_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
     workers_pending_workload_steal %= active_worker_ids
 -- }}}
@@ -497,7 +501,7 @@ sendWorkloadToWorker :: -- {{{
 sendWorkloadToWorker workload worker_id = do
     asks send_workload_to_worker_action >>= lift . (\f → f workload worker_id)
     isNothing . Map.lookup worker_id <$> get active_workers
-        >>= flip unless (error "sending a workload to a worker already active!")
+        >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %: Map.insert worker_id workload
 -- }}}
 
