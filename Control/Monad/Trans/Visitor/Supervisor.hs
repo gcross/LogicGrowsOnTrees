@@ -376,7 +376,8 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
 -- }}}
 
 -- Logging Functions {{{
-debugM = Logger.debugM "Supervisor"
+debugM :: MonadIO m ⇒ String → m ()
+debugM = liftIO . Logger.debugM "Supervisor"
 -- }}}
 
 -- Internal Functions {{{
@@ -454,11 +455,11 @@ postValidate :: -- {{{
     VisitorSupervisorMonad result worker_id m α →
     VisitorSupervisorMonad result worker_id m α
 postValidate label action = action >>= \result → VisitorSupervisorMonad . lift $ do
-    liftIO . debugM $ " === BEGIN VALIDATE === " ++ label
-    get known_workers >>= liftIO . debugM . ("Known workers is now " ++) . show
-    get active_workers >>= liftIO . debugM . ("Active workers is now " ++) . show
-    get waiting_workers_or_available_workloads >>= liftIO . debugM . ("Waiting/Available queue is now " ++) . show
-    get current_progress >>= liftIO . debugM . ("Current checkpoint is now " ++) . show . visitorCheckpoint
+    debugM $ " === BEGIN VALIDATE === " ++ label
+    get known_workers >>= debugM . ("Known workers is now " ++) . show
+    get active_workers >>= debugM . ("Active workers is now " ++) . show
+    get waiting_workers_or_available_workloads >>= debugM . ("Waiting/Available queue is now " ++) . show
+    get current_progress >>= debugM . ("Current checkpoint is now " ++) . show . visitorCheckpoint
     workers_and_workloads ←
         liftM2 (++)
             (map (Nothing,) . either (const []) id <$> get waiting_workers_or_available_workloads)
@@ -486,7 +487,7 @@ postValidate label action = action >>= \result → VisitorSupervisorMonad . lift
         if null workers_and_workloads
             then throw $ SpaceFullyExploredButSearchNotTerminated
             else throw $ SpaceFullyExploredButWorkloadsRemain workers_and_workloads
-    liftIO . debugM $ " === END VALIDATE === " ++ label
+    debugM $ " === END VALIDATE === " ++ label
     return result
 -- }}}
 
