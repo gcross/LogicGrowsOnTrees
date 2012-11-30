@@ -193,16 +193,11 @@ receiveProgressUpdate :: -- {{{
     worker_id →
     VisitorWorkerProgressUpdate result →
     VisitorSupervisorMonad result worker_id m ()
-receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = VisitorSupervisorMonad $ do
-    (VisitorProgress checkpoint result) ← lift $ do
-        validateWorkerKnownAndActive "receiving progress update" worker_id
-        current_progress %: (`mappend` progress_update)
-        active_workers %: (Map.insert worker_id remaining_workload)
-        clearPendingProgressUpdate worker_id
-        get current_progress
-    when (checkpoint == Explored) $
-        lift (Set.toList <$> get known_workers)
-            >>= abort . VisitorSupervisorResult (Right result) 
+receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = VisitorSupervisorMonad . lift $ do
+    validateWorkerKnownAndActive "receiving progress update" worker_id
+    current_progress %: (`mappend` progress_update)
+    active_workers %: (Map.insert worker_id remaining_workload)
+    clearPendingProgressUpdate worker_id
 -- }}}
 
 receiveStolenWorkload :: -- {{{

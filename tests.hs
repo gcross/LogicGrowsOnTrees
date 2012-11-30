@@ -774,17 +774,6 @@ tests = -- {{{
                 readIORef maybe_progress_ref >>= (@?= Just progress)
                 readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
-            ,testCase "final progress update ends the server monad" $ do -- {{{
-                let actions = ignoreAcceptWorkloadAction bad_test_supervisor_actions
-                let progress = VisitorProgress Explored (Sum 1)
-                (runVisitorSupervisor actions $ do
-                    addWorker ()
-                    receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress undefined
-                    forever $
-                        liftIO $
-                            assertFailure "loop continued past final progress update"
-                 ) >>= (@?= (VisitorSupervisorResult (Right (Sum 1)) [()]))
-             -- }}}
             ]
          -- }}}
         ,testGroup "workload steals" -- {{{
