@@ -21,6 +21,8 @@ module Control.Monad.Trans.Visitor.Supervisor -- {{{
     , receiveProgressUpdate
     , receiveStolenWorkload
     , receiveWorkerFinished
+    , receiveWorkerFinishedAndRemoved
+    , receiveWorkerFinishedWithRemovalFlag
     , removeWorker
     , runVisitorSupervisor
     , runVisitorSupervisorStartingFrom
@@ -221,11 +223,30 @@ receiveWorkerFinished :: -- {{{
     worker_id →
     VisitorProgress result →
     VisitorSupervisorMonad result worker_id m ()
-receiveWorkerFinished worker_id final_progress = VisitorSupervisorMonad $
+receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
+-- }}}
+
+receiveWorkerFinishedAndRemoved :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorProgress result →
+    VisitorSupervisorMonad result worker_id m ()
+receiveWorkerFinishedAndRemoved = receiveWorkerFinishedWithRemovalFlag True
+-- }}}
+
+receiveWorkerFinishedWithRemovalFlag :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    Bool →
+    worker_id →
+    VisitorProgress result →
+    VisitorSupervisorMonad result worker_id m ()
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = VisitorSupervisorMonad $
     (lift $ do
         validateWorkerKnownAndActive "the worker was declared finished" worker_id
+        clearPendingResponses worker_id
         active_workers %: Map.delete worker_id
         current_progress %: (`mappend` final_progress)
+        when remove_worker $ known_workers %: Set.delete worker_id
         VisitorProgress checkpoint new_results ← get current_progress
         case checkpoint of
             Explored → do
@@ -235,7 +256,7 @@ receiveWorkerFinished worker_id final_progress = VisitorSupervisorMonad $
                 known_worker_ids ← Set.toList <$> get known_workers
                 return . Just $ VisitorSupervisorResult (Right new_results) known_worker_ids
             _ → do
-                tryToObtainWorkloadFor worker_id
+                unless remove_worker $ tryToObtainWorkloadFor worker_id
                 return Nothing
     ) >>= maybe (return ()) abort
 -- }}}
