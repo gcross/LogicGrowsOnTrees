@@ -246,12 +246,15 @@ removeWorker :: -- {{{
     VisitorSupervisorMonad result worker_id m ()
 removeWorker worker_id = VisitorSupervisorMonad . lift $ do
     validateWorkerKnown "removing the worker" worker_id
-    Map.lookup worker_id <$> get active_workers >>= maybe (return ()) enqueueWorkload
     known_workers %: Set.delete worker_id
-    active_workers %: Map.delete worker_id
-    waiting_workers_or_available_workloads %: either (Left . Set.delete worker_id) Right
-    clearPendingWorkloadSteal worker_id
-    clearPendingProgressUpdate worker_id
+    Map.lookup worker_id <$> get active_workers >>= \maybe_workload →
+        case maybe_workload of
+            Just workload → do
+                active_workers %: Map.delete worker_id
+                enqueueWorkload workload
+                clearPendingResponses worker_id
+            Nothing → do
+                waiting_workers_or_available_workloads %: either (Left . Set.delete worker_id) Right
 -- }}}
 
 runVisitorSupervisor :: -- {{{
