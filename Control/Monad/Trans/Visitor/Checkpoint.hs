@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
@@ -309,6 +310,7 @@ stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \v
   where
     moveUpMyContext = moveUpContext context
     moveDownMyContext step checkpoint visitor = moveDownContext step checkpoint visitor context
+{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTContext Identity α → VisitorCheckpoint → Visitor α → Identity (Maybe α,Maybe (VisitorTContext Identity α, VisitorCheckpoint, Visitor α)) #-}
 -- }}}
 
 walkVisitor :: -- {{{
@@ -357,8 +359,8 @@ walkVisitorTThroughCheckpoint = go mempty Seq.empty
                 ,Explored
                 ,VisitorTResultFetcher (return Nothing)
                 )
-            (maybe_solution,Just (new_context, new_unexplored_checkpoint, new_visitor)) → Just $
-              let new_accum = maybe id (flip mappend) maybe_solution accum in
+            (maybe_solution,Just (!new_context, new_unexplored_checkpoint, new_visitor)) → Just $
+              let !new_accum = maybe id (flip mappend) maybe_solution accum in
                 (new_accum
                 ,checkpointFromContext new_context new_unexplored_checkpoint
                 ,go new_accum new_context new_unexplored_checkpoint new_visitor
@@ -367,6 +369,7 @@ walkVisitorTThroughCheckpoint = go mempty Seq.empty
         )
         .*
         stepVisitorTThroughCheckpoint context
+{-# SPECIALIZE walkVisitorTThroughCheckpoint :: Monoid α ⇒ VisitorCheckpoint → Visitor α → VisitorTResultFetcher Identity α #-}
 -- }}}
 
 -- }}}

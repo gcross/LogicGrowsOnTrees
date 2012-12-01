@@ -133,6 +133,7 @@ runVisitorT = viewT . unwrapVisitorT >=> \view →
                 (runVisitorT $ left >>= VisitorT . k)
                 (runVisitorT $ right >>= VisitorT . k)
         (Null :>>= _) → return mempty
+{-# SPECIALIZE runVisitorT :: Monoid α ⇒ VisitorT Identity α → Identity α #-}
 -- }}}
 
 runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m () -- {{{
