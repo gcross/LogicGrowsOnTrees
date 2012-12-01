@@ -330,14 +330,15 @@ walkVisitorThroughCheckpoint :: -- {{{
     VisitorCheckpoint →
     Visitor α →
     [(α,VisitorCheckpoint)]
-walkVisitorThroughCheckpoint = go True .* walkVisitorTThroughCheckpoint
+walkVisitorThroughCheckpoint = go1 .* walkVisitorTThroughCheckpoint
   where
-    go True (runIdentity . fetchVisitorTResult → Nothing) = [(mempty,Explored)]
-    go False (runIdentity . fetchVisitorTResult → Nothing) = []
-    go _ (runIdentity . fetchVisitorTResult → Just (next_accum,checkpoint,next_result)) =
-      (next_accum,checkpoint)
-      :
-      go False next_result
+    go1 (runIdentity . fetchVisitorTResult → Just (next_accum,checkpoint,next_result)) = go3 next_accum checkpoint next_result
+    go1 _ = [(mempty,Explored)]
+
+    go2 (runIdentity . fetchVisitorTResult → Just (next_accum,checkpoint,next_result)) = go3 next_accum checkpoint next_result
+    go2 _ = []
+
+    go3 next_accum checkpoint !next_result = (next_accum,checkpoint):go2 next_result
 -- }}}
 
 walkVisitorTThroughCheckpoint :: -- {{{
