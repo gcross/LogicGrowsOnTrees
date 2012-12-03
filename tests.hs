@@ -660,7 +660,7 @@ tests = -- {{{
                     $
                     labeled_visitor
                 return $ result == expected_result
-      in  [testProperty "single thread" . runTest $
+      in  [testProperty "one thread" . runTest $
               (\i → case i of
                   0 → void . \controller → do
                       Threads.changeNumberOfWorkers (return . (\i → 0)) controller
