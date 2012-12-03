@@ -770,6 +770,7 @@ tests = -- {{{
             [testCase "add one worker then abort" $ do -- {{{
                 (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                 (runVisitorSupervisor actions $ do
+                    enableSupervisorDebugMode
                     addWorker ()
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) [()]))
@@ -778,6 +779,7 @@ tests = -- {{{
             ,testCase "add then remove one worker then abort" $ do -- {{{
                 (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                 (runVisitorSupervisor actions $ do
+                    enableSupervisorDebugMode
                     addWorker ()
                     removeWorker ()
                     abortSupervisor
@@ -787,6 +789,7 @@ tests = -- {{{
             ,testCase "add then remove then add one worker then abort" $ do -- {{{
                 (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
                 (runVisitorSupervisor actions $ do
+                    enableSupervisorDebugMode
                     addWorker 1
                     removeWorker 1
                     addWorker 2
@@ -798,6 +801,7 @@ tests = -- {{{
                 (maybe_workload_ref,actions1) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
                 (runVisitorSupervisor actions2 $ do
+                    enableSupervisorDebugMode
                     addWorker 1
                     addWorker 2
                     removeWorker 1
@@ -825,6 +829,7 @@ tests = -- {{{
                     (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                     (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
                     VisitorSupervisorResult progress remaining_worker_ids ← runVisitorSupervisor actions_2 $ do
+                        enableSupervisorDebugMode
                         mapM_ addWorker worker_ids_to_add
                         mapM_ removeWorker worker_ids_to_remove
                         abortSupervisor
@@ -839,6 +844,7 @@ tests = -- {{{
             [testCase "request progress update when no workers present" $ do -- {{{
                 (maybe_progress_ref,actions) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (runVisitorSupervisor actions $ do
+                    enableSupervisorDebugMode
                     performGlobalProgressUpdate
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) ([]::[()])))
@@ -875,6 +881,7 @@ tests = -- {{{
                 let actions3 = ignoreAcceptWorkloadAction actions2
                 let progress = VisitorProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 (runVisitorSupervisor actions3 $ do
+                    enableSupervisorDebugMode
                     addWorker ()
                     performGlobalProgressUpdate
                     receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress entire_workload
@@ -889,6 +896,7 @@ tests = -- {{{
                 let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
                 let progress = VisitorProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 (runVisitorSupervisor actions3 $ do
+                    enableSupervisorDebugMode
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     performGlobalProgressUpdate
