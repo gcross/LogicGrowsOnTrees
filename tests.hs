@@ -58,6 +58,7 @@ import Data.UUID (UUID)
 import Debug.Trace (trace)
 
 import System.IO.Unsafe
+import System.Log.Logger
 import System.Random
 
 import Test.Framework
@@ -362,7 +363,8 @@ bad_test_supervisor_actions =
 -- }}}
 -- }}} Helpers
 
-main = defaultMain tests
+main = --updateGlobalLogger rootLoggerName (setLevel DEBUG) >>
+       defaultMain tests
 
 tests = -- {{{
     [testGroup "Control.Monad.Trans.Visitor" -- {{{

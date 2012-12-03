@@ -326,6 +326,7 @@ genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker = do
         (flip catch (return . Failure) . flip evalStateT initial_state $ do
             VisitorSupervisorResult termination_reason _ ←
                 runVisitorSupervisor (constructWorkgroupActions messages spawnWorker) $
+                    -- enableSupervisorDebugMode >>
                     forever (join . liftIO . readChan $ messages)
             (IntMap.elems <$> get active_workers)
                 >>= mapM_ (liftIO . killThread . workerThreadId)
