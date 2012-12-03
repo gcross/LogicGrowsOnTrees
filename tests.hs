@@ -231,7 +231,7 @@ addAcceptMultipleWorkloadsAction actions = do
 
 addAppendWorkloadStealBroadcastIdsAction :: -- {{{
     VisitorSupervisorActions result worker_id IO →
-    IO (IORef [[worker_id]],VisitorSupervisorActions result worker_id IO)
+    IO (IORef [[(worker_id,Int)]],VisitorSupervisorActions result worker_id IO)
 addAppendWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
@@ -808,7 +808,7 @@ tests = -- {{{
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) ([2::Int])))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
-                readIORef broadcast_ids_list_ref >>= (@?= [[1]])
+                readIORef broadcast_ids_list_ref >>= (@?= [[(1,1)]])
              -- }}}
             ,testProperty "add then remove many workers then abort" $ do -- {{{
                 (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
@@ -836,7 +836,7 @@ tests = -- {{{
                     progress @?= Left (VisitorProgress Unexplored ())
                     worker_ids_left @?= sort remaining_worker_ids
                     readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
-                    readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
+                    readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[(head worker_ids_to_add,1)]])
              -- }}}
             ]
          -- }}}
@@ -866,7 +866,7 @@ tests = -- {{{
                             addWorker worker_id
                             let remaining_workload = VisitorWorkload (Seq.replicate (prefix_count+1) (ChoiceStep LeftBranch)) Unexplored
                             let stolen_workload = VisitorWorkload (Seq.replicate (prefix_count) (ChoiceStep LeftBranch) |> (ChoiceStep RightBranch)) Unexplored
-                            receiveStolenWorkload 0 $ Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty remaining_workload) stolen_workload)
+                            receiveStolenWorkload worker_id $ Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty remaining_workload) stolen_workload)
                         mapM_ addWorker inactive_workers
                         performGlobalProgressUpdate
                         mapM_ removeWorker active_workers
@@ -918,7 +918,7 @@ tests = -- {{{
                     receiveStolenWorkload 1 Nothing
                     abortSupervisor
                  ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) [1,2]))
-                readIORef broadcast_ids_list_ref >>= (@?= [[1],[1]])
+                readIORef broadcast_ids_list_ref >>= (@?= [[(1,1)],[(1,1)]])
              -- }}}
             ]
          -- }}}

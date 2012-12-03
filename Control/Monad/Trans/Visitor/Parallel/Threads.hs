@@ -235,17 +235,6 @@ infoM = liftIO . Logger.infoM logger_name
 
 -- Internal Functions {{{
 
-applyToSelectedActiveWorkers :: -- {{{
-    Monoid result ⇒
-    (WorkerId → VisitorWorkerEnvironment result → WorkgroupStateMonad result ()) →
-    [WorkerId] →
-    WorkgroupStateMonad result ()
-applyToSelectedActiveWorkers action worker_ids = do
-    workers ← get active_workers
-    forM_ worker_ids $ \worker_id →
-        maybe (return ()) (action worker_id) (IntMap.lookup worker_id workers)
--- }}}
-
 bumpWorkerRemovalPriority :: -- {{{
     (MonadState m, StateType m ~ WorkgroupState result) ⇒
     WorkerId →
@@ -260,12 +249,26 @@ constructWorkgroupActions :: -- {{{
     ((VisitorWorkerTerminationReason result → IO ()) → VisitorWorkload → IO (VisitorWorkerEnvironment result)) →
     VisitorSupervisorActions result WorkerId (WorkgroupStateMonad result)
 constructWorkgroupActions messages spawnWorker = VisitorSupervisorActions
-    {   broadcast_progress_update_to_workers_action =
-            applyToSelectedActiveWorkers $ \worker_id (VisitorWorkerEnvironment{workerPendingRequests}) → liftIO $
-                sendProgressUpdateRequest workerPendingRequests $ writeChan messages . receiveProgressUpdate worker_id
-    ,   broadcast_workload_steal_to_workers_action =
-            applyToSelectedActiveWorkers $ \worker_id (VisitorWorkerEnvironment{workerPendingRequests}) → liftIO $
-                sendWorkloadStealRequest workerPendingRequests $ writeChan messages . receiveStolenWorkload worker_id
+    {   broadcast_progress_update_to_workers_action = \worker_ids → do
+            workers ← get active_workers
+            liftIO . forM_ worker_ids $ \worker_id →
+                case IntMap.lookup worker_id workers of
+                    Nothing → return ()
+                    Just VisitorWorkerEnvironment{workerPendingRequests} →
+                        sendProgressUpdateRequest
+                            workerPendingRequests
+                            (writeChan messages . receiveProgressUpdate worker_id)
+    ,   broadcast_workload_steal_to_workers_action = \worker_ids_and_counts → do
+            workers ← get active_workers
+            liftIO . forM_ worker_ids_and_counts $ \(worker_id,count) →
+                case IntMap.lookup worker_id workers of
+                    Nothing → return ()
+                    Just VisitorWorkerEnvironment{workerPendingRequests} → do
+                        debugM $ "Sending " ++ show count ++ " steal request(s) to " ++ show worker_id ++ "."
+                        replicateM_ count $
+                            sendWorkloadStealRequest
+                                workerPendingRequests
+                                (writeChan messages . receiveStolenWorkload worker_id)
     ,   receive_current_progress_action = \progress → do
             get progress_receivers >>= mapM_ (liftIO . ($ progress))
             progress_receivers %= []
