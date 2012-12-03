@@ -275,9 +275,9 @@ constructWorkgroupActions messages spawnWorker = VisitorSupervisorActions
   where
     receiveTerminationReason worker_id (VisitorWorkerFinished final_progress) = do
         remove_worker ← IntMap.notMember worker_id <$> get active_workers
-        if remove_worker
-            then infoM $ "Worker " ++ show worker_id ++ " has finished, and will be removed."
-            else infoM $ "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
+        infoM $ if remove_worker
+            then "Worker " ++ show worker_id ++ " has finished, and will be removed."
+            else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
         receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress
     receiveTerminationReason _ (VisitorWorkerFailed exception) =
         throw exception
