@@ -226,8 +226,11 @@ runVisitorStartingFrom starting_progress notifyFinished =
 -- }}}
 
 -- Logging Functions {{{
-infoM :: MonadIO m ⇒ String → m ()
-infoM = liftIO . Logger.infoM "Threads"
+logger_name = "Threads"
+
+debugM, infoM :: MonadIO m ⇒ String → m ()
+debugM = liftIO . Logger.debugM logger_name
+infoM = liftIO . Logger.infoM logger_name
 -- }}}
 
 -- Internal Functions {{{
