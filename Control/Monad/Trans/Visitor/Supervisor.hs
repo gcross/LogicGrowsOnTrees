@@ -40,18 +40,21 @@ import Control.Monad (liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import qualified Control.Monad.State.Class as MonadsTF
+import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
 import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
 
-import Data.Accessor.Monad.TF.State ((%=),(%:),get)
+import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
 import Data.Accessor.Template (deriveAccessors)
 import Data.Either.Unwrap (whenLeft)
 import qualified Data.Foldable as Fold
+import qualified Data.IntMap as IntMap
+import Data.IntMap (IntMap)
 import Data.List (inits)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (fromJust,isNothing)
+import Data.Maybe (fromJust,fromMaybe,isJust,isNothing)
 import Data.Monoid (Monoid(..))
 import qualified Data.Set as Set
 import Data.Set (Set)
@@ -145,9 +148,11 @@ data VisitorSupervisorActions result worker_id m = -- {{{
 
 data VisitorSupervisorState result worker_id = -- {{{
     VisitorSupervisorState
-    {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) [VisitorWorkload])
+    {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) (Set VisitorWorkload))
     ,   known_workers_ :: !(Set worker_id)
     ,   active_workers_ :: !(Map worker_id VisitorWorkload)
+    ,   current_steal_depth_ :: !Int
+    ,   available_workers_for_steal_ :: !(IntMap (Set worker_id))
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
     ,   workers_pending_progress_update_ :: !(Set worker_id)
     ,   current_progress_ :: !(VisitorProgress result)
@@ -267,7 +272,10 @@ receiveProgressUpdate :: -- {{{
 receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") . VisitorSupervisorMonad . lift $ do
     validateWorkerKnownAndActive "receiving progress update" worker_id
     current_progress %: (`mappend` progress_update)
-    active_workers %: (Map.insert worker_id remaining_workload)
+    is_pending_workload_steal ← Set.member worker_id <$> get workers_pending_workload_steal
+    unless is_pending_workload_steal $ dequeueWorkerForSteal worker_id
+    active_workers %: Map.insert worker_id remaining_workload
+    unless is_pending_workload_steal $ enqueueWorkerForSteal worker_id
     clearPendingProgressUpdate worker_id
 -- }}}
 
@@ -278,13 +286,15 @@ receiveStolenWorkload :: -- {{{
     VisitorSupervisorMonad result worker_id m ()
 receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") . VisitorSupervisorMonad . lift $ do
     validateWorkerKnownAndActive "receiving stolen workload" worker_id
+    workers_pending_workload_steal %: Set.delete worker_id
     case maybe_stolen_workload of
         Nothing → return ()
         Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate progress_update remaining_workload) workload) → do
             current_progress %: (`mappend` progress_update)
-            active_workers %: (Map.insert worker_id remaining_workload)
+            active_workers %: Map.insert worker_id remaining_workload
             enqueueWorkload workload
-    clearPendingWorkloadSteal worker_id
+    enqueueWorkerForSteal worker_id
+    checkWhetherMoreStealsAreNeeded
 -- }}}
 
 receiveWorkerFinished :: -- {{{
@@ -312,19 +322,18 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
 receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (visitorCheckpoint final_progress)) . VisitorSupervisorMonad $
     (lift $ do
         validateWorkerKnownAndActive "the worker was declared finished" worker_id
-        clearPendingResponses worker_id
-        active_workers %: Map.delete worker_id
         current_progress %: (`mappend` final_progress)
         when remove_worker $ known_workers %: Set.delete worker_id
         VisitorProgress checkpoint new_results ← get current_progress
         case checkpoint of
             Explored → do
-                active_worker_ids ← Map.keys <$> get active_workers
+                active_worker_ids ← Map.keys . Map.delete worker_id <$> get active_workers
                 unless (null active_worker_ids) $
                     throw $ ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
                 known_worker_ids ← Set.toList <$> get known_workers
                 return . Just $ VisitorSupervisorResult (Right new_results) known_worker_ids
             _ → do
+                deactivateWorker False worker_id
                 unless remove_worker $ tryToObtainWorkloadFor worker_id
                 return Nothing
     ) >>= maybe (return ()) abort
@@ -337,14 +346,9 @@ removeWorker :: -- {{{
 removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
     validateWorkerKnown "removing the worker" worker_id
     known_workers %: Set.delete worker_id
-    Map.lookup worker_id <$> get active_workers >>= \maybe_workload →
-        case maybe_workload of
-            Just workload → do
-                active_workers %: Map.delete worker_id
-                enqueueWorkload workload
-                clearPendingResponses worker_id
-            Nothing → do
-                waiting_workers_or_available_workloads %: either (Left . Set.delete worker_id) Right
+    ifM (isJust . Map.lookup worker_id <$> get active_workers)
+        (deactivateWorker True worker_id)
+        (waiting_workers_or_available_workloads %: either (Left . Set.delete worker_id) Right)
 -- }}}
 
 runVisitorSupervisor :: -- {{{
@@ -370,9 +374,11 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
         actions
         (VisitorSupervisorState
             {   waiting_workers_or_available_workloads_ =
-                    Right [VisitorWorkload Seq.empty (visitorCheckpoint starting_progress)  ]
+                    Right . Set.singleton $ VisitorWorkload Seq.empty (visitorCheckpoint starting_progress)
             ,   known_workers_ = mempty
             ,   active_workers_ = mempty
+            ,   current_steal_depth_ = 0
+            ,   available_workers_for_steal_ = mempty
             ,   workers_pending_workload_steal_ = mempty
             ,   workers_pending_progress_update_ = mempty
             ,   current_progress_ = starting_progress
@@ -406,14 +412,39 @@ debugM = liftIO . Logger.debugM "Supervisor"
 
 -- Internal Functions {{{
 
-broadcastWorkloadStealToActiveWorkers :: -- {{{
+checkWhetherMoreStealsAreNeeded :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorContext result worker_id m ()
-broadcastWorkloadStealToActiveWorkers = do
-    active_worker_ids ← Map.keysSet <$> get active_workers
-    when (Set.null active_worker_ids) $ throw OutOfSourcesForNewWorkloads
-    asks broadcast_workload_steal_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
-    workers_pending_workload_steal %= active_worker_ids
+checkWhetherMoreStealsAreNeeded = do
+    number_of_waiting_workers ← either Set.size (const 0) <$> get waiting_workers_or_available_workloads
+    number_of_pending_workload_steals ← Set.size <$> get workers_pending_workload_steal
+    available_workers ← get available_workers_for_steal
+    when (number_of_pending_workload_steals == 0
+       && number_of_waiting_workers > 0
+       && IntMap.null available_workers
+      ) $ throw OutOfSourcesForNewWorkloads
+    let number_of_needed_steals = (number_of_waiting_workers - number_of_pending_workload_steals) `max` 0
+    when (number_of_needed_steals > 0 && (not . IntMap.null) available_workers) $ do
+        depth ← do
+            old_depth ← get current_steal_depth
+            if number_of_pending_workload_steals == 0 && IntMap.notMember old_depth available_workers
+                then do
+                    let new_depth = fst (IntMap.findMin available_workers)
+                    current_steal_depth %= new_depth
+                    return new_depth
+                else return old_depth
+        let (maybe_new_workers,workers_to_steal_from) =
+                go []
+                   (fromMaybe Set.empty . IntMap.lookup depth $ available_workers)
+                   number_of_needed_steals
+              where
+                go accum (Set.minView → Nothing) _ = (Nothing,accum)
+                go accum workers 0 = (Just workers,accum)
+                go accum (Set.minView → Just (worker_id,rest_workers)) n =
+                    go (worker_id:accum) rest_workers (n-1)
+        workers_pending_workload_steal %: (Set.union . Set.fromList) workers_to_steal_from
+        available_workers_for_steal %: IntMap.update (const maybe_new_workers) depth
+        asks broadcast_workload_steal_to_workers_action >>= lift . ($ workers_to_steal_from)
 -- }}}
 
 clearPendingProgressUpdate :: -- {{{
@@ -431,29 +462,51 @@ clearPendingProgressUpdate worker_id =
     )
 -- }}}
 
-clearPendingResponses :: -- {{{
+deactivateWorker :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    Bool →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
-clearPendingResponses worker_id = do
+deactivateWorker reenqueue_workload worker_id = do
+    workers_pending_workload_steal %: Set.delete worker_id
+    dequeueWorkerForSteal worker_id
+    if reenqueue_workload
+        then getAndModify active_workers (Map.delete worker_id)
+              >>=
+                enqueueWorkload
+                .
+                fromMaybe (error $ "Attempt to deactive worker " ++ show worker_id ++ " which was not listed as active.")
+                .
+                Map.lookup worker_id
+        else active_workers %: Map.delete worker_id
     clearPendingProgressUpdate worker_id
-    clearPendingWorkloadSteal worker_id
+    checkWhetherMoreStealsAreNeeded
 -- }}}
 
-clearPendingWorkloadSteal :: -- {{{
+dequeueWorkerForSteal :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorContext result worker_id m ()
-clearPendingWorkloadSteal worker_id =
-    Set.member worker_id <$> get workers_pending_workload_steal >>= flip when
-    -- Note, the conditional above is needed to prevent a "misfire" where
-    -- we think that we have just completed a workload steal even though
-    -- none was started.
-    (do workers_pending_workload_steal %: Set.delete worker_id
-        no_workload_steals_remain ← Set.null <$> get workers_pending_workload_steal
-        workers_are_waiting_for_workloads ← either (not . Set.null) (const False) <$> get waiting_workers_or_available_workloads
-        when (no_workload_steals_remain && workers_are_waiting_for_workloads) broadcastWorkloadStealToActiveWorkers
-    )
+dequeueWorkerForSteal worker_id =
+    getWorkerDepth worker_id >>= \depth →
+        available_workers_for_steal %:
+            IntMap.update
+                (\queue → let new_queue = Set.delete worker_id queue
+                          in if Set.null new_queue then Nothing else Just new_queue
+                )
+                depth
+-- }}}
+
+enqueueWorkerForSteal :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorSupervisorContext result worker_id m ()
+enqueueWorkerForSteal worker_id =
+    getWorkerDepth worker_id >>= \depth →
+        available_workers_for_steal %:
+            IntMap.alter
+                (Just . maybe (Set.singleton worker_id) (Set.insert worker_id))
+                depth
 -- }}}
 
 enqueueWorkload :: -- {{{
@@ -465,12 +518,26 @@ enqueueWorkload workload =
     >>=
     \x → case x of
         Left (Set.minView → Just (free_worker_id,remaining_workers)) → do
-            sendWorkloadToWorker workload free_worker_id
             waiting_workers_or_available_workloads %= Left remaining_workers
+            sendWorkloadToWorker workload free_worker_id
         Left (Set.minView → Nothing) →
-            waiting_workers_or_available_workloads %= Right [workload]
+            waiting_workers_or_available_workloads %= Right (Set.singleton workload)
         Right available_workloads →
-            waiting_workers_or_available_workloads %= Right (workload:available_workloads)
+            waiting_workers_or_available_workloads %= Right (Set.insert workload available_workloads)
+-- }}}
+
+getWorkerDepth :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorSupervisorContext result worker_id m Int
+getWorkerDepth worker_id =
+    maybe
+        (error $ "Attempted to get the depth of inactive worker " ++ show worker_id ++ ".")
+        workloadDepth
+    .
+    Map.lookup worker_id
+    <$>
+    get active_workers
 -- }}}
 
 postValidate :: -- {{{
@@ -487,7 +554,7 @@ postValidate label action = action >>= \result → VisitorSupervisorMonad . lift
     get current_progress >>= debugM . ("Current checkpoint is now " ++) . show . visitorCheckpoint
     workers_and_workloads ←
         liftM2 (++)
-            (map (Nothing,) . either (const []) id <$> get waiting_workers_or_available_workloads)
+            (map (Nothing,) . Set.toList . either (const (Set.empty)) id <$> get waiting_workers_or_available_workloads)
             (map (first Just) . Map.assocs <$> get active_workers)
     let go [] _ = return ()
         go ((maybe_worker_id,VisitorWorkload initial_path _):rest_workloads) known_prefixes =
@@ -535,6 +602,8 @@ sendWorkloadToWorker workload worker_id = do
     isNothing . Map.lookup worker_id <$> get active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %: Map.insert worker_id workload
+    enqueueWorkerForSteal worker_id
+    checkWhetherMoreStealsAreNeeded
 -- }}}
 
 tryToObtainWorkloadFor :: -- {{{
@@ -545,12 +614,13 @@ tryToObtainWorkloadFor worker_id =
     get waiting_workers_or_available_workloads
     >>=
     \x → case x of
-        Left waiting_workers →
+        Left waiting_workers → do
             waiting_workers_or_available_workloads %= Left (Set.insert worker_id waiting_workers)
-        Right [] → do
-            broadcastWorkloadStealToActiveWorkers
+            checkWhetherMoreStealsAreNeeded
+        Right (Set.minView → Nothing) → do
             waiting_workers_or_available_workloads %= Left (Set.singleton worker_id)
-        Right (workload:remaining_workloads) → do
+            checkWhetherMoreStealsAreNeeded
+        Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadToWorker workload worker_id
             waiting_workers_or_available_workloads %= Right remaining_workloads
 -- }}}
