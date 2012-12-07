@@ -43,6 +43,7 @@ import qualified Control.Monad.State.Class as MonadsTF
 import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
+import Control.Monad.Trans.Abort.Instances.MonadsTF
 import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
 
 import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
@@ -319,24 +320,21 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     worker_id →
     VisitorProgress result →
     VisitorSupervisorMonad result worker_id m ()
-receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (visitorCheckpoint final_progress)) . VisitorSupervisorMonad $
-    (lift $ do
-        validateWorkerKnownAndActive "the worker was declared finished" worker_id
-        current_progress %: (`mappend` final_progress)
-        when remove_worker $ known_workers %: Set.delete worker_id
-        VisitorProgress checkpoint new_results ← get current_progress
-        case checkpoint of
-            Explored → do
-                active_worker_ids ← Map.keys . Map.delete worker_id <$> get active_workers
-                unless (null active_worker_ids) $
-                    throw $ ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
-                known_worker_ids ← Set.toList <$> get known_workers
-                return . Just $ VisitorSupervisorResult (Right new_results) known_worker_ids
-            _ → do
-                deactivateWorker False worker_id
-                unless remove_worker $ tryToObtainWorkloadFor worker_id
-                return Nothing
-    ) >>= maybe (return ()) abort
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (visitorCheckpoint final_progress)) . VisitorSupervisorMonad $ do
+    lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
+    current_progress %: (`mappend` final_progress)
+    when remove_worker $ known_workers %: Set.delete worker_id
+    VisitorProgress checkpoint new_results ← get current_progress
+    case checkpoint of
+        Explored → do
+            active_worker_ids ← Map.keys . Map.delete worker_id <$> get active_workers
+            unless (null active_worker_ids) . throw $
+                ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
+            known_worker_ids ← Set.toList <$> get known_workers
+            abort $ VisitorSupervisorResult (Right new_results) known_worker_ids
+        _ → lift $ do
+            deactivateWorker False worker_id
+            unless remove_worker $ tryToObtainWorkloadFor worker_id
 -- }}}
 
 removeWorker :: -- {{{
