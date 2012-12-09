@@ -45,6 +45,7 @@ Library
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Supervisor
         Control.Monad.Trans.Visitor.Worker
+        Control.Monad.Trans.Visitor.Workload
     Extensions:
 
 Test-Suite tests
