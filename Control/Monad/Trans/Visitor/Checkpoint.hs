@@ -311,6 +311,7 @@ stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \v
     moveUpMyContext = moveUpContext context
     moveDownMyContext step checkpoint visitor = moveDownContext step checkpoint visitor context
 {-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTContext Identity α → VisitorCheckpoint → Visitor α → Identity (Maybe α,Maybe (VisitorTContext Identity α, VisitorCheckpoint, Visitor α)) #-}
+{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTContext IO α → VisitorCheckpoint → VisitorIO α → IO (Maybe α,Maybe (VisitorTContext IO α, VisitorCheckpoint, VisitorIO α)) #-}
 -- }}}
 
 walkVisitor :: -- {{{
@@ -370,6 +371,7 @@ walkVisitorTThroughCheckpoint = go mempty Seq.empty
         .*
         stepVisitorTThroughCheckpoint context
 {-# SPECIALIZE walkVisitorTThroughCheckpoint :: Monoid α ⇒ VisitorCheckpoint → Visitor α → VisitorTResultFetcher Identity α #-}
+{-# SPECIALIZE walkVisitorTThroughCheckpoint :: Monoid α ⇒ VisitorCheckpoint → VisitorIO α → VisitorTResultFetcher IO α #-}
 -- }}}
 
 -- }}}
