@@ -182,7 +182,7 @@ runVisitorIOStartingFrom starting_progress notifyFinished =
 -- }}}
 
 runVisitorT :: -- {{{
-    (Monoid result, Functor m, MonadIO m) ⇒
+    (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →
     VisitorT m result →
@@ -191,7 +191,7 @@ runVisitorT = runVisitorTStartingFrom mempty
 -- }}}
 
 runVisitorTStartingFrom :: -- {{{
-    (Monoid result, Functor m, MonadIO m) ⇒
+    (Monoid result, MonadIO m) ⇒
     VisitorProgress result →
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →

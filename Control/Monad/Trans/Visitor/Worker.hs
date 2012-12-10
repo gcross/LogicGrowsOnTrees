@@ -125,7 +125,7 @@ forkVisitorIOWorkerThread = forkVisitorTWorkerThread id
 -- }}}
 
 forkVisitorTWorkerThread :: -- {{{
-    (Functor m, MonadIO m, Monoid α) ⇒
+    (MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorT m α →
@@ -353,7 +353,7 @@ preforkVisitorIOWorkerThread = preforkVisitorTWorkerThread id
 -- }}}
 
 preforkVisitorTWorkerThread :: -- {{{
-    (Functor m, MonadIO m, Monoid α) ⇒
+    (MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorT m α →

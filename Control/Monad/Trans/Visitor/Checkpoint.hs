@@ -14,7 +14,7 @@ module Control.Monad.Trans.Visitor.Checkpoint where
 
 -- Imports {{{
 import Control.Exception (Exception(),throw)
-import Control.Monad ((>=>),join)
+import Control.Monad ((>=>),join,liftM)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
@@ -170,7 +170,7 @@ checkpointFromUnexploredPath path = checkpointFromSequence
 -- }}}
 
 gatherResults :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
+    (Monad m, Monoid α) ⇒
     VisitorTResultFetcher m α →
     m α
 gatherResults = go mempty
@@ -248,7 +248,7 @@ runVisitorThroughCheckpoint = (fst . last) .* walkVisitorThroughCheckpoint
 -- }}}
 
 runVisitorTThroughCheckpoint :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
+    (Monad m, Monoid α) ⇒
     VisitorCheckpoint →
     VisitorT m α →
     m α
@@ -264,7 +264,7 @@ stepVisitorThroughCheckpoint context checkpoint = runIdentity . stepVisitorTThro
 -- }}}
 
 stepVisitorTThroughCheckpoint :: -- {{{
-    (Functor m, Monad m) ⇒
+    Monad m ⇒
     VisitorTContext m α →
     VisitorCheckpoint →
     VisitorT m α →
@@ -324,7 +324,7 @@ walkVisitor = walkVisitorThroughCheckpoint Unexplored
 -- }}}
 
 walkVisitorT :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
+    (Monad m, Monoid α) ⇒
     VisitorT m α →
     VisitorTResultFetcher m α
 walkVisitorT = walkVisitorTThroughCheckpoint Unexplored
@@ -347,7 +347,7 @@ walkVisitorThroughCheckpoint = go1 .* walkVisitorTThroughCheckpoint
 -- }}}
 
 walkVisitorTThroughCheckpoint :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
+    (Monad m, Monoid α) ⇒
     VisitorCheckpoint →
     VisitorT m α →
     VisitorTResultFetcher m α
@@ -356,7 +356,7 @@ walkVisitorTThroughCheckpoint = go mempty Seq.empty
     go accum context =
         (VisitorTResultFetcher
          .
-         fmap (\x → case x of
+         liftM (\x → case x of
             (maybe_solution,Nothing) → Just
                 (maybe id (flip mappend) maybe_solution accum
                 ,Explored
