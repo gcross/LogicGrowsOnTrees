@@ -18,7 +18,7 @@ import Control.Concurrent.Chan (Chan,newChan,readChan,writeChan)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Exception (BlockedIndefinitelyOnMVar(..),SomeException,assert,catch,evaluate)
 import Control.Monad (forever,forM_,join,mapM_,replicateM_,unless,when)
-import Control.Monad.CatchIO (MonadCatchIO,throw)
+import Control.Monad.CatchIO (throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.State.Class (MonadState,StateType)
 import Control.Monad.STM (atomically)
@@ -182,7 +182,7 @@ runVisitorIOStartingFrom starting_progress notifyFinished =
 -- }}}
 
 runVisitorT :: -- {{{
-    (Monoid result, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Functor m, MonadIO m) ⇒
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →
     VisitorT m result →
@@ -191,7 +191,7 @@ runVisitorT = runVisitorTStartingFrom mempty
 -- }}}
 
 runVisitorTStartingFrom :: -- {{{
-    (Monoid result, Functor m, MonadCatchIO m) ⇒
+    (Monoid result, Functor m, MonadIO m) ⇒
     VisitorProgress result →
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →
