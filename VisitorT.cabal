@@ -25,6 +25,7 @@ Library
         data-accessor-template == 0.2.*,
         data-accessor-monads-tf == 0.2.*,
         data-ivar == 0.30.*,
+        derive >= 2.5.11 && < 2.6,
         dlist == 0.5.*,
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,

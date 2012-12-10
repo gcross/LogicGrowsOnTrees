@@ -28,6 +28,7 @@ module Control.Monad.Trans.Visitor.Supervisor -- {{{
     , receiveWorkerFinishedWithRemovalFlag
     , removeWorker
     , runVisitorSupervisor
+    , runVisitorSupervisorMaybeStartingFrom
     , runVisitorSupervisorStartingFrom
     , setSupervisorDebugMode
     ) where -- }}}
@@ -162,7 +163,11 @@ data VisitorSupervisorState result worker_id = -- {{{
 $( deriveAccessors ''VisitorSupervisorState )
 -- }}}
 
-data VisitorSupervisorResult result worker_id = VisitorSupervisorResult (Either (VisitorProgress result) result) [worker_id] deriving (Eq,Show)
+data VisitorSupervisorResult result worker_id =
+    VisitorSupervisorResult
+    {   visitorSupervisorResultProgress :: Either (VisitorProgress result) result
+    ,   visitorSupervisorResultRemainingWorkers :: [worker_id]
+    } deriving (Eq,Show)
 
 type VisitorSupervisorContext result worker_id m = -- {{{
     RWST
@@ -355,6 +360,16 @@ runVisitorSupervisor :: -- {{{
     (∀ a. VisitorSupervisorMonad result worker_id m a) →
     m (VisitorSupervisorResult result worker_id)
 runVisitorSupervisor = runVisitorSupervisorStartingFrom mempty
+-- }}}
+
+runVisitorSupervisorMaybeStartingFrom :: -- {{{
+    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    Maybe (VisitorProgress result) →
+    VisitorSupervisorActions result worker_id m →
+    (∀ a. VisitorSupervisorMonad result worker_id m a) →
+    m (VisitorSupervisorResult result worker_id)
+runVisitorSupervisorMaybeStartingFrom Nothing = runVisitorSupervisor
+runVisitorSupervisorMaybeStartingFrom (Just progress) = runVisitorSupervisorStartingFrom progress
 -- }}}
 
 runVisitorSupervisorStartingFrom :: -- {{{

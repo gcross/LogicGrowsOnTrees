@@ -5,6 +5,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -22,6 +23,8 @@ import Control.Monad.IO.Class
 
 import Data.Bool.Higher ((??))
 import Data.Composition
+import Data.Derive.Serialize
+import Data.DeriveTH
 import qualified Data.Foldable as Fold
 import Data.Functor.Identity (Identity)
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef,writeIORef)
@@ -31,6 +34,7 @@ import Data.Monoid (Monoid(..))
 import Data.Monoid.Unicode((⊕))
 import Data.Maybe (isJust)
 import Data.Sequence ((|>),(><),Seq,viewl,ViewL(..))
+import Data.Serialize
 import qualified Data.Sequence as Seq
 
 import Control.Monad.Trans.Visitor
@@ -42,12 +46,18 @@ import Control.Monad.Trans.Visitor.Workload
 
 -- Types {{{
 
-data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
-    {   workerInitialPath :: VisitorPath
-    ,   workerThreadId :: ThreadId
-    ,   workerPendingRequests :: VisitorWorkerRequestQueue α
-    ,   workerTerminationFlag :: IVar ()
-    }
+data VisitorWorkerProgressUpdate α = VisitorWorkerProgressUpdate -- {{{
+    {   visitorWorkerProgressUpdate :: VisitorProgress α
+    ,   visitorWorkerRemainingWorkload :: VisitorWorkload
+    } deriving (Eq,Show)
+$( derive makeSerialize ''VisitorWorkerProgressUpdate )
+-- }}}
+
+data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload -- {{{
+    {   visitorWorkerStolenWorkerProgressUpdate :: VisitorWorkerProgressUpdate α
+    ,   visitorWorkerStolenWorkload :: VisitorWorkload
+    } deriving (Eq,Show)
+$( derive makeSerialize ''VisitorWorkerStolenWorkload )
 -- }}}
 
 data VisitorWorkerRequest α = -- {{{
@@ -58,16 +68,12 @@ data VisitorWorkerRequest α = -- {{{
 
 type VisitorWorkerRequestQueue α = IORef [VisitorWorkerRequest α]
 
-data VisitorWorkerProgressUpdate α = VisitorWorkerProgressUpdate -- {{{
-    {   visitorWorkerProgressUpdate :: VisitorProgress α
-    ,   visitorWorkerRemainingWorkload :: VisitorWorkload
-    } deriving (Eq,Show)
--- }}}
-
-data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload -- {{{
-    {   visitorWorkerStolenWorkerProgressUpdate :: VisitorWorkerProgressUpdate α
-    ,   visitorWorkerStolenWorkload :: VisitorWorkload
-    } deriving (Eq,Show)
+data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
+    {   workerInitialPath :: VisitorPath
+    ,   workerThreadId :: ThreadId
+    ,   workerPendingRequests :: VisitorWorkerRequestQueue α
+    ,   workerTerminationFlag :: IVar ()
+    }
 -- }}}
 
 data VisitorWorkerTerminationReason α = -- {{{

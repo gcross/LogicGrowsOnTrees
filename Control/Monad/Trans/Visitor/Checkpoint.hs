@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -19,13 +20,16 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
 import Data.Composition
+import Data.Derive.Monoid
+import Data.Derive.Serialize
+import Data.DeriveTH
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Maybe (mapMaybe)
 import Data.Monoid (Monoid(..))
 import Data.Monoid.Unicode
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
-import Data.Serialize (Serialize(),decode,encode)
+import Data.Serialize
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor
@@ -40,6 +44,7 @@ data VisitorCheckpoint = -- {{{
   | Explored
   | Unexplored
   deriving (Eq,Ord,Read,Show)
+$( derive makeSerialize ''VisitorCheckpoint )
 -- }}}
 
 type VisitorCheckpointCursor = Seq VisitorCheckpointDifferential
@@ -71,6 +76,8 @@ data VisitorProgress α = VisitorProgress -- {{{
     {   visitorCheckpoint :: VisitorCheckpoint
     ,   visitorResult :: α
     } deriving (Eq,Show)
+$( derive makeMonoid ''VisitorProgress )
+$( derive makeSerialize ''VisitorProgress )
 -- }}}
 
 newtype VisitorTResultFetcher m α = VisitorTResultFetcher -- {{{
@@ -101,11 +108,6 @@ instance Monoid VisitorCheckpoint where -- {{{
     (CacheCheckpoint cx x) `mappend` (CacheCheckpoint cy y)
       | cx == cy = mergeCheckpointRoot (CacheCheckpoint cx (x ⊕ y))
     mappend x y = throw (InconsistentCheckpoints x y)
--- }}}
-
-instance Monoid α ⇒ Monoid (VisitorProgress α) where -- {{{
-    mempty = VisitorProgress mempty mempty
-    VisitorProgress a1 b1 `mappend` VisitorProgress a2 b2 = VisitorProgress (a1 `mappend` a2) (b1 `mappend` b2)
 -- }}}
 
 instance Show (VisitorTContextStep m α) where -- {{{

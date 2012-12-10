@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -12,9 +13,11 @@ import Control.Monad ((>=>))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
+import Data.Derive.Serialize
+import Data.DeriveTH
 import Data.Functor.Identity (runIdentity)
 import Data.Sequence (Seq,viewl,ViewL(..))
-import Data.Serialize (Serialize(),decode)
+import Data.Serialize
 import Data.Typeable (Typeable)
 
 import Control.Monad.Trans.Visitor
@@ -37,12 +40,14 @@ data Branch = -- {{{
     LeftBranch
   | RightBranch
   deriving (Eq,Ord,Read,Show)
+$( derive makeSerialize ''Branch )
 -- }}}
 
 data VisitorStep = -- {{{
     CacheStep ByteString
  |  ChoiceStep Branch
  deriving (Eq,Ord,Show)
+$( derive makeSerialize ''VisitorStep )
 -- }}}
 
 type VisitorPath = Seq VisitorStep

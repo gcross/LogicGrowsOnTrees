@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
@@ -8,10 +9,13 @@ module Control.Monad.Trans.Visitor.Workload where
 -- Imports {{{
 import Control.Monad (join)
 import Data.Composition ((.*))
+import Data.Derive.Serialize
+import Data.DeriveTH
 import Data.Function (on)
 import Data.Maybe (catMaybes)
 import Data.Monoid (Monoid(..))
 import qualified Data.Sequence as Seq
+import Data.Serialize
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
@@ -25,6 +29,7 @@ data VisitorWorkload = VisitorWorkload -- {{{
     {   visitorWorkloadPath :: VisitorPath
     ,   visitorWorkloadCheckpoint :: VisitorCheckpoint
     } deriving (Eq,Show)
+$( derive makeSerialize ''VisitorWorkload )
 -- }}}
 
 -- }}}
