@@ -169,6 +169,7 @@ genericForkVisitorTWorkerThread
   = do (start,environment) ← genericPreforkVisitorTWorkerThread walk step run finishedCallback visitor workload
        start
        return environment
+{-# INLINE genericForkVisitorTWorkerThread #-}
 -- }}}
 
 genericPreforkVisitorTWorkerThread :: -- {{{
@@ -264,6 +265,7 @@ genericPreforkVisitorTWorkerThread
             pending_requests_ref
             finished_flag
         )
+{-# INLINE genericPreforkVisitorTWorkerThread #-}
 -- }}}
 
 preforkVisitorIOWorkerThread :: -- {{{
