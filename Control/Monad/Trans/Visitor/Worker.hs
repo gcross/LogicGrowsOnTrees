@@ -146,21 +146,14 @@ forkVisitorWorkerThread :: -- {{{
 forkVisitorWorkerThread =
     genericForkVisitorTWorkerThread
         (return .* sendVisitorDownPath)
-        (return .** stepVisitorThroughCheckpoint)
+        (return . stepVisitorThroughCheckpoint)
         id
 -- }}}
 
 genericForkVisitorTWorkerThread :: -- {{{
     (MonadIO n, Monoid α) ⇒
-    (
-        VisitorPath → VisitorT m α → n (VisitorT m α)
-    ) →
-    (
-        VisitorTContext m α →
-        VisitorCheckpoint →
-        VisitorT m α →
-        n (Maybe α,Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α))
-    ) →
+    (VisitorPath → VisitorT m α → n (VisitorT m α)) →
+    (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
     (∀ β. n β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorT m α →
@@ -180,15 +173,8 @@ genericForkVisitorTWorkerThread
 
 genericPreforkVisitorTWorkerThread :: -- {{{
     (MonadIO n, Monoid α) ⇒
-    (
-        VisitorPath → VisitorT m α → n (VisitorT m α)
-    ) →
-    (
-        VisitorTContext m α →
-        VisitorCheckpoint →
-        VisitorT m α →
-        n (Maybe α,Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α))
-    ) →
+    (VisitorPath → VisitorT m α → n (VisitorT m α)) →
+    (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
     (∀ β. n β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorT m α →
@@ -204,94 +190,41 @@ genericPreforkVisitorTWorkerThread
   = do
     pending_requests_ref ← newIORef []
     let initial_label = labelFromPath initial_path
-        loop1
-            cursor
-            context
-            result
-            checkpoint
-            visitor
-          = liftIO (readIORef pending_requests_ref) >>= \pending_requests →
+        loop1 result cursor visitor_state =
+            liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
-                [] → loop3
-                        cursor
-                        context
-                        result
-                        checkpoint
-                        visitor
+                [] → loop3 result cursor visitor_state
                 _ → (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
-                    >>= loop2
-                            cursor
-                            context
-                            result
-                            checkpoint
-                            visitor
-        loop2
-            cursor
-            context
-            result
-            checkpoint
-            visitor
-            requests
-          = case requests of
+                    >>= loop2 result cursor visitor_state
+        loop2 result cursor visitor_state@(VisitorTState context checkpoint visitor) requests =
+          case requests of
             -- Respond to request {{{
-                [] → do
-                    liftIO yield
-                    loop3
-                        cursor
-                        context
-                        result
-                        checkpoint
-                        visitor
+                [] → liftIO yield >> loop3 result cursor visitor_state
                 AbortRequested:_ → return VisitorWorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     liftIO . submitProgress $ computeProgressUpdate result initial_path cursor context checkpoint
-                    loop2
-                        cursor
-                        context
-                        mempty
-                        checkpoint
-                        visitor
-                        rest_requests
+                    loop2 result cursor visitor_state rest_requests
                 WorkloadStealRequested submitMaybeWorkload:rest_requests →
                     case tryStealWorkload initial_path cursor context of
                         Nothing → do
                             liftIO $ submitMaybeWorkload Nothing
-                            loop2
-                                cursor
-                                context
-                                result
-                                checkpoint
-                                visitor
-                                rest_requests
+                            loop2 result cursor visitor_state rest_requests
                         Just (new_cursor,new_context,workload) → do
-                            liftIO $ do
-                                submitMaybeWorkload (Just (
-                                    VisitorWorkerStolenWorkload
-                                        (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
-                                        workload
-                                 ))
-                            loop2
-                                new_cursor
-                                new_context
-                                mempty
-                                checkpoint
-                                visitor
-                                rest_requests
+                            liftIO . submitMaybeWorkload . Just $
+                                VisitorWorkerStolenWorkload
+                                    (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
+                                    workload
+                            loop2 mempty new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
             -- }}}
-        loop3
-            cursor
-            context
-            result
-            checkpoint
-            visitor
+        loop3 result cursor visitor_state
           = do
             -- Step visitor {{{
-            (maybe_solution,maybe_next) ← step context checkpoint visitor
+            (maybe_solution,maybe_new_visitor_state) ← step visitor_state
             new_result ← liftIO $ do
                 case maybe_solution of
                     Nothing → return result
                     Just solution → evaluate $ solution `seq` (result ⊕ solution)
-            case maybe_next of
+            case maybe_new_visitor_state of
                 Nothing →
                     return
                     .
@@ -304,13 +237,7 @@ genericPreforkVisitorTWorkerThread
                     checkpointFromCursor cursor
                     $
                     Explored
-                Just (new_context,new_checkpoint,new_visitor) →
-                    loop1
-                        cursor
-                        new_context
-                        new_result
-                        new_checkpoint
-                        new_visitor
+                Just new_visitor_state → loop1 new_result cursor new_visitor_state
             -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
@@ -320,11 +247,7 @@ genericPreforkVisitorTWorkerThread
                     run $
                         walk initial_path visitor
                         >>=
-                        loop1
-                            Seq.empty
-                            Seq.empty
-                            mempty
-                            initial_checkpoint
+                        loop1 mempty Seq.empty . initialVisitorState initial_checkpoint
                 )
                 `catch`
                 (\e → case fromException e of
@@ -374,7 +297,7 @@ preforkVisitorWorkerThread :: -- {{{
 preforkVisitorWorkerThread =
     genericPreforkVisitorTWorkerThread
         (return .* sendVisitorDownPath)
-        (return .** stepVisitorThroughCheckpoint)
+        (return . stepVisitorThroughCheckpoint)
         id
 -- }}}
 

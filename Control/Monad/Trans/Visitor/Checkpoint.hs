@@ -86,6 +86,12 @@ newtype VisitorTResultFetcher m α = VisitorTResultFetcher -- {{{
 -- }}}
 type VisitorResultFetcher = VisitorTResultFetcher Identity
 
+data VisitorTState m α = VisitorTState -- {{{
+    {   visitorStateContext :: !(VisitorTContext m α)
+    ,   visitorStateCheckpoint :: !VisitorCheckpoint
+    ,   visitorStateVisitor :: !(VisitorT m α)
+    }
+type VisitorState = VisitorTState Identity
 -- }}}
 
 -- Exceptions {{{
@@ -183,6 +189,10 @@ gatherResults = go mempty
             (\(result,_,fetcher) → go result fetcher)
 -- }}}
 
+initialVisitorState :: VisitorCheckpoint → VisitorT m α → VisitorTState m α -- {{{
+initialVisitorState = VisitorTState Seq.empty
+-- }}}
+
 mergeAllCheckpointNodes :: VisitorCheckpoint → VisitorCheckpoint -- {{{
 mergeAllCheckpointNodes (ChoiceCheckpoint left right) = mergeCheckpointRoot (ChoiceCheckpoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
 mergeAllCheckpointNodes (CacheCheckpoint cache checkpoint) = mergeCheckpointRoot (CacheCheckpoint cache (mergeAllCheckpointNodes checkpoint))
@@ -196,26 +206,14 @@ mergeCheckpointRoot (CacheCheckpoint _ Explored) = Explored
 mergeCheckpointRoot checkpoint = checkpoint
 -- }}}
 
-moveDownContext :: -- {{{
-    VisitorTContextStep m α →
-    VisitorCheckpoint →
-    VisitorT m α →
-    VisitorTContextUpdate m α
-moveDownContext step checkpoint visitor =
-    Just
-    .
-    (,checkpoint,visitor)
-    .
-    (|> step)
--- }}}
-
-moveUpContext :: VisitorTContextUpdate m α -- {{{
+moveUpContext :: VisitorTContext m α → Maybe (VisitorTState m α) -- {{{
 moveUpContext (viewr → EmptyR) = Nothing
 moveUpContext (viewr → rest_context :> CacheContextStep _) = moveUpContext rest_context
 moveUpContext (viewr → rest_context :> LeftBranchContextStep right_checkpoint right_visitor) =
-    Just (rest_context |> RightBranchContextStep
-         ,right_checkpoint
-         ,right_visitor
+    Just (VisitorTState
+            (rest_context |> RightBranchContextStep)
+            right_checkpoint
+            right_visitor
          )
 moveUpContext (viewr → rest_context :> RightBranchContextStep) = moveUpContext rest_context
 -- }}}
@@ -256,64 +254,53 @@ runVisitorTThroughCheckpoint = gatherResults .* walkVisitorTThroughCheckpoint
 -- }}}
 
 stepVisitorThroughCheckpoint :: -- {{{
-    VisitorContext α →
-    VisitorCheckpoint →
-    Visitor α →
-    (Maybe α,Maybe (VisitorContext α, VisitorCheckpoint, Visitor α))
-stepVisitorThroughCheckpoint context checkpoint = runIdentity . stepVisitorTThroughCheckpoint context checkpoint
+    VisitorState α →
+    (Maybe α,Maybe (VisitorState α))
+stepVisitorThroughCheckpoint = runIdentity . stepVisitorTThroughCheckpoint
 -- }}}
 
 stepVisitorTThroughCheckpoint :: -- {{{
     Monad m ⇒
-    VisitorTContext m α →
-    VisitorCheckpoint →
-    VisitorT m α →
-    m (Maybe α,Maybe (VisitorTContext m α, VisitorCheckpoint, VisitorT m α))
-stepVisitorTThroughCheckpoint context Explored = const $ return (Nothing,moveUpContext context)
-stepVisitorTThroughCheckpoint context checkpoint = viewT . unwrapVisitorT >=> \view → case (view,checkpoint) of
-    (Return x,Unexplored) → return (Just x, moveUpMyContext)
-    (Null :>>= _,Unexplored) → return (Nothing, moveUpMyContext)
-    (Cache mx :>>= k,CacheCheckpoint cache rest_checkpoint) →
-        return
-        .
-        (Nothing,)
-        .
-        moveDownMyContext (CacheContextStep cache) rest_checkpoint
-        .
-        either error (VisitorT . k)
-        .
-        decode
-        $
-        cache
+    VisitorTState m α →
+    m (Maybe α,Maybe (VisitorTState m α))
+stepVisitorTThroughCheckpoint (VisitorTState context Explored _) = return (Nothing,moveUpContext context)
+stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint visitor) =
+  (viewT . unwrapVisitorT) visitor >>= \view → case (view,checkpoint) of
+    (Return x,Unexplored) → return (Just x, moveUpContext context)
+    (Null :>>= _,Unexplored) → return (Nothing, moveUpContext context)
+    (Cache mx :>>= k,CacheCheckpoint cache rest_checkpoint) → return
+        (Nothing, Just $
+            VisitorTState
+                (context |> CacheContextStep cache)
+                rest_checkpoint
+                (either error (VisitorT . k) . decode $ cache)
+        )
     (Cache mx :>>= k,Unexplored) →
         mx >>= return . maybe
-            (Nothing, moveUpMyContext)
-            (\x → (Nothing,) $
-                moveDownMyContext
-                    (CacheContextStep (encode x))
+            (Nothing, moveUpContext context)
+            (\x → (Nothing, Just $
+                VisitorTState
+                    (context |> CacheContextStep (encode x))
                     Unexplored
                     (VisitorT . k $ x)
-            )
+            ))
     (Choice left right :>>= k, ChoiceCheckpoint left_checkpoint right_checkpoint) → return
-        (Nothing
-        ,moveDownMyContext
-            (LeftBranchContextStep right_checkpoint (right >>= VisitorT . k))
-            left_checkpoint
-            (left >>= VisitorT . k)
+        (Nothing, Just $
+            VisitorTState
+                (context |> LeftBranchContextStep right_checkpoint (right >>= VisitorT . k))
+                left_checkpoint
+                (left >>= VisitorT . k)
         )
     (Choice left right :>>= k,Unexplored) → return
-        (Nothing
-        ,moveDownMyContext
-            (LeftBranchContextStep Unexplored (right >>= VisitorT . k))
-            Unexplored
-            (left >>= VisitorT . k)
+        (Nothing, Just $
+            VisitorTState
+                (context |> LeftBranchContextStep Unexplored (right >>= VisitorT . k))
+                Unexplored
+                (left >>= VisitorT . k)
         )
     _ → throw PastVisitorIsInconsistentWithPresentVisitor
-  where
-    moveUpMyContext = moveUpContext context
-    moveDownMyContext step checkpoint visitor = moveDownContext step checkpoint visitor context
-{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTContext Identity α → VisitorCheckpoint → Visitor α → Identity (Maybe α,Maybe (VisitorTContext Identity α, VisitorCheckpoint, Visitor α)) #-}
-{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTContext IO α → VisitorCheckpoint → VisitorIO α → IO (Maybe α,Maybe (VisitorTContext IO α, VisitorCheckpoint, VisitorIO α)) #-}
+{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorState α → Identity (Maybe α,Maybe (VisitorState α)) #-}
+{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTState IO α → IO (Maybe α,Maybe (VisitorTState IO α)) #-}
 -- }}}
 
 walkVisitor :: -- {{{
@@ -347,31 +334,25 @@ walkVisitorThroughCheckpoint = go1 .* walkVisitorTThroughCheckpoint
 -- }}}
 
 walkVisitorTThroughCheckpoint :: -- {{{
-    (Monad m, Monoid α) ⇒
+    ∀ m α. (Monad m, Monoid α) ⇒
     VisitorCheckpoint →
     VisitorT m α →
     VisitorTResultFetcher m α
-walkVisitorTThroughCheckpoint = go mempty Seq.empty
+walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
   where
-    go accum context =
-        (VisitorTResultFetcher
-         .
-         liftM (\x → case x of
-            (maybe_solution,Nothing) → Just
-                (maybe id (flip mappend) maybe_solution accum
-                ,Explored
-                ,VisitorTResultFetcher (return Nothing)
-                )
-            (maybe_solution,Just (!new_context, new_unexplored_checkpoint, new_visitor)) → Just $
-              let !new_accum = maybe id (flip mappend) maybe_solution accum in
-                (new_accum
-                ,checkpointFromContext new_context new_unexplored_checkpoint
-                ,go new_accum new_context new_unexplored_checkpoint new_visitor
-                )
-         )
-        )
-        .*
-        stepVisitorTThroughCheckpoint context
+    go :: α → VisitorTState m α → VisitorTResultFetcher m α
+    go accum visitor_state = VisitorTResultFetcher $
+        stepVisitorTThroughCheckpoint visitor_state
+        >>=
+        \(maybe_solution,maybe_new_state) → return $
+            let !new_accum = maybe id (flip mappend) maybe_solution accum
+            in Just $ case maybe_new_state of
+                Nothing → (new_accum,Explored,VisitorTResultFetcher (return Nothing))
+                Just new_state@(VisitorTState context unexplored_checkpoint _) →
+                    (new_accum
+                    ,checkpointFromContext context unexplored_checkpoint
+                    ,go new_accum new_state
+                    )
 {-# SPECIALIZE walkVisitorTThroughCheckpoint :: Monoid α ⇒ VisitorCheckpoint → Visitor α → VisitorTResultFetcher Identity α #-}
 {-# SPECIALIZE walkVisitorTThroughCheckpoint :: Monoid α ⇒ VisitorCheckpoint → VisitorIO α → VisitorTResultFetcher IO α #-}
 -- }}}
