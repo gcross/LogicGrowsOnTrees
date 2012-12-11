@@ -206,18 +206,6 @@ mergeCheckpointRoot (CacheCheckpoint _ Explored) = Explored
 mergeCheckpointRoot checkpoint = checkpoint
 -- }}}
 
-moveUpContext :: VisitorTContext m α → Maybe (VisitorTState m α) -- {{{
-moveUpContext (viewr → EmptyR) = Nothing
-moveUpContext (viewr → rest_context :> CacheContextStep _) = moveUpContext rest_context
-moveUpContext (viewr → rest_context :> LeftBranchContextStep right_checkpoint right_visitor) =
-    Just (VisitorTState
-            (rest_context |> RightBranchContextStep)
-            right_checkpoint
-            right_visitor
-         )
-moveUpContext (viewr → rest_context :> RightBranchContextStep) = moveUpContext rest_context
--- }}}
-
 pathFromContext :: VisitorTContext m α → VisitorPath -- {{{
 pathFromContext = fmap pathStepFromContextStep
 -- }}}
@@ -263,42 +251,58 @@ stepVisitorTThroughCheckpoint :: -- {{{
     Monad m ⇒
     VisitorTState m α →
     m (Maybe α,Maybe (VisitorTState m α))
-stepVisitorTThroughCheckpoint (VisitorTState context Explored _) = return (Nothing,moveUpContext context)
-stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint visitor) =
-  (viewT . unwrapVisitorT) visitor >>= \view → case (view,checkpoint) of
-    (Return x,Unexplored) → return (Just x, moveUpContext context)
-    (Null :>>= _,Unexplored) → return (Nothing, moveUpContext context)
-    (Cache mx :>>= k,CacheCheckpoint cache rest_checkpoint) → return
-        (Nothing, Just $
-            VisitorTState
-                (context |> CacheContextStep cache)
-                rest_checkpoint
-                (either error (VisitorT . k) . decode $ cache)
-        )
-    (Cache mx :>>= k,Unexplored) →
-        mx >>= return . maybe
-            (Nothing, moveUpContext context)
-            (\x → (Nothing, Just $
+stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint visitor) = case checkpoint of
+    Explored → return (Nothing, moveUpContext)
+    Unexplored → getView >>= \view → case view of
+        Return x → return (Just x, moveUpContext)
+        Null :>>= _ → return (Nothing, moveUpContext)
+        Cache mx :>>= k →
+            mx >>= return . maybe
+                (Nothing, moveUpContext)
+                (\x → (Nothing, Just $
+                    VisitorTState
+                        (context |> CacheContextStep (encode x))
+                        Unexplored
+                        (VisitorT . k $ x)
+                ))
+        Choice left right :>>= k → return
+            (Nothing, Just $
                 VisitorTState
-                    (context |> CacheContextStep (encode x))
+                    (context |> LeftBranchContextStep Unexplored (right >>= VisitorT . k))
                     Unexplored
-                    (VisitorT . k $ x)
-            ))
-    (Choice left right :>>= k, ChoiceCheckpoint left_checkpoint right_checkpoint) → return
-        (Nothing, Just $
-            VisitorTState
-                (context |> LeftBranchContextStep right_checkpoint (right >>= VisitorT . k))
-                left_checkpoint
-                (left >>= VisitorT . k)
-        )
-    (Choice left right :>>= k,Unexplored) → return
-        (Nothing, Just $
-            VisitorTState
-                (context |> LeftBranchContextStep Unexplored (right >>= VisitorT . k))
-                Unexplored
-                (left >>= VisitorT . k)
-        )
-    _ → throw PastVisitorIsInconsistentWithPresentVisitor
+                    (left >>= VisitorT . k)
+            )
+    CacheCheckpoint cache rest_checkpoint → getView >>= \view → case view of
+        Cache mx :>>= k → return
+            (Nothing, Just $
+                VisitorTState
+                    (context |> CacheContextStep cache)
+                    rest_checkpoint
+                    (either error (VisitorT . k) . decode $ cache)
+            )
+        _ → throw PastVisitorIsInconsistentWithPresentVisitor
+    ChoiceCheckpoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
+        Choice left right :>>= k → return
+            (Nothing, Just $
+                VisitorTState
+                    (context |> LeftBranchContextStep right_checkpoint (right >>= VisitorT . k))
+                    left_checkpoint
+                    (left >>= VisitorT . k)
+            )
+        _ → throw PastVisitorIsInconsistentWithPresentVisitor
+  where
+    getView = viewT . unwrapVisitorT $ visitor
+    moveUpContext = go context
+      where
+        go context = case viewr context of
+            EmptyR → Nothing
+            rest_context :> LeftBranchContextStep right_checkpoint right_visitor →
+                Just (VisitorTState
+                        (rest_context |> RightBranchContextStep)
+                        right_checkpoint
+                        right_visitor
+                     )
+            rest_context :> _ → go rest_context
 {-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorState α → Identity (Maybe α,Maybe (VisitorState α)) #-}
 {-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTState IO α → IO (Maybe α,Maybe (VisitorTState IO α)) #-}
 -- }}}
