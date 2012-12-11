@@ -462,6 +462,15 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testGroup "runVisitorThroughCheckpoint" -- {{{
+            [testProperty "matches walkVisitorThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do
+                checkpoint ← randomCheckpointForVisitor visitor
+                morallyDubiousIOProperty $ do
+                    runVisitorThroughCheckpoint checkpoint visitor
+                        @?= (fst . last $ walkVisitorThroughCheckpoint checkpoint visitor)
+                    return True
+            ]
+         -- }}}
         ,testGroup "walkVisitorThroughCheckpoint" -- {{{
             [testProperty "matches walk down path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
                 runVisitor (sendVisitorDownPath path visitor)

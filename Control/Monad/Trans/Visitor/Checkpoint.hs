@@ -230,7 +230,7 @@ runVisitorThroughCheckpoint :: -- {{{
     VisitorCheckpoint →
     Visitor α →
     α
-runVisitorThroughCheckpoint = (fst . last) .* walkVisitorThroughCheckpoint
+runVisitorThroughCheckpoint = runIdentity .* runVisitorTThroughCheckpoint
 -- }}}
 
 runVisitorTThroughCheckpoint :: -- {{{
@@ -238,7 +238,15 @@ runVisitorTThroughCheckpoint :: -- {{{
     VisitorCheckpoint →
     VisitorT m α →
     m α
-runVisitorTThroughCheckpoint = gatherResults .* walkVisitorTThroughCheckpoint
+runVisitorTThroughCheckpoint = go mempty .* initialVisitorState
+  where
+    go !accum =
+        stepVisitorTThroughCheckpoint
+        >=>
+        \(maybe_solution,maybe_new_visitor_state) →
+            let new_accum = maybe id (flip mappend) maybe_solution accum
+            in maybe (return accum) (go accum) maybe_new_visitor_state
+{-# INLINE runVisitorTThroughCheckpoint #-}
 -- }}}
 
 stepVisitorThroughCheckpoint :: -- {{{
@@ -303,8 +311,7 @@ stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint vi
                         right_visitor
                      )
             rest_context :> _ → go rest_context
-{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorState α → Identity (Maybe α,Maybe (VisitorState α)) #-}
-{-# SPECIALIZE stepVisitorTThroughCheckpoint :: VisitorTState IO α → IO (Maybe α,Maybe (VisitorTState IO α)) #-}
+{-# INLINE stepVisitorTThroughCheckpoint #-}
 -- }}}
 
 walkVisitor :: -- {{{
@@ -319,6 +326,7 @@ walkVisitorT :: -- {{{
     VisitorT m α →
     VisitorTResultFetcher m α
 walkVisitorT = walkVisitorTThroughCheckpoint Unexplored
+{-# INLINE walkVisitorT #-}
 -- }}}
 
 walkVisitorThroughCheckpoint :: -- {{{
@@ -357,8 +365,7 @@ walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
                     ,checkpointFromContext context unexplored_checkpoint
                     ,go new_accum new_state
                     )
-{-# SPECIALIZE walkVisitorTThroughCheckpoint :: Monoid α ⇒ VisitorCheckpoint → Visitor α → VisitorTResultFetcher Identity α #-}
-{-# SPECIALIZE walkVisitorTThroughCheckpoint :: Monoid α ⇒ VisitorCheckpoint → VisitorIO α → VisitorTResultFetcher IO α #-}
+{-# INLINE walkVisitorTThroughCheckpoint #-}
 -- }}}
 
 -- }}}
