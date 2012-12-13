@@ -100,6 +100,7 @@ instance MonadTrans VisitorT where -- {{{
 instance Monad m ⇒ Monoid (VisitorT m α) where -- {{{
     mempty = mzero
     mappend = mplus
+    mconcat = msumBalanced
 -- }}}
 
 instance Show α ⇒ Show (Visitor α) where -- {{{
@@ -118,6 +119,37 @@ instance Show α ⇒ Show (Visitor α) where -- {{{
 -- }}}
 
 -- Functions {{{
+
+allFrom :: MonadPlus m ⇒ [α] → m α -- {{{
+allFrom = msumBalanced . map return
+-- }}}
+
+between :: (Enum n, MonadPlus m) ⇒ n → n → m n -- {{{
+between x y =
+    if a > b
+        then mzero
+        else go a b
+  where
+    a = fromEnum x
+    b = fromEnum y
+
+    go a b | a == b    = return (toEnum a)
+    go a b | otherwise = go a (a+d) `mplus` go (a+d+1) b
+      where
+        d = (b-a) `div` 2
+{-# INLINE between #-}
+-- }}}
+
+msumBalanced :: MonadPlus m ⇒ [m α] → m α -- {{{
+msumBalanced x = go (length x) x
+  where
+    go _ []  = mzero
+    go _ [x] = x
+    go n x   = go i a `mplus` go (n-i) b
+      where
+        (a,b) = splitAt i x
+        i = n `div` 2
+-- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
 runVisitor = runIdentity . runVisitorT

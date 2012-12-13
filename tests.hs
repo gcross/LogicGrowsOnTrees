@@ -372,6 +372,13 @@ tests = -- {{{
             [testProperty "self" $ \(v :: Visitor [()]) → v == v
             ]
          -- }}}
+        ,testProperty "allFrom" $ \(x :: [Int]) → x == allFrom x
+        ,testProperty "between" $ do -- {{{
+            x ← choose ( 0,100) :: Gen Int
+            y ← choose (50,100)
+            return $ between x y == [x..y]
+         -- }}}
+        ,testProperty "msumBalanced" $ \(x :: [Int]) → x == msumBalanced (map return x)
         ,testGroup "runVisitor" -- {{{
             [testCase "return" $ runVisitor (return [()]) @?= [()]
             ,testCase "mzero" $ runVisitor (mzero :: Visitor [()]) @?= []
