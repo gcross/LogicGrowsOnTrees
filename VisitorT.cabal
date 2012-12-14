@@ -41,6 +41,7 @@ Library
     Exposed-modules:
         Control.Monad.Trans.Visitor
         Control.Monad.Trans.Visitor.Checkpoint
+        Control.Monad.Trans.Visitor.Examples.Queens
         Control.Monad.Trans.Visitor.Label
         Control.Monad.Trans.Visitor.Parallel.Threads
         Control.Monad.Trans.Visitor.Path

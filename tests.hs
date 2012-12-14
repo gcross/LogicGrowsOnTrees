@@ -73,6 +73,7 @@ import Test.QuickCheck.Property
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Examples.Queens
 import Control.Monad.Trans.Visitor.Label
 import qualified Control.Monad.Trans.Visitor.Parallel.Threads as Threads
 import Control.Monad.Trans.Visitor.Path
@@ -529,6 +530,59 @@ tests = -- {{{
                 ,testCase "mzero" $ walkVisitor (mzero :: Visitor [Int]) @?= [([],Explored)]
                 ,testCase "return" $ walkVisitor (return [0] :: Visitor [Int]) @?= [([0],Explored)]
                 ]
+             -- }}}
+            ]
+         -- }}}
+        ]
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Examples" -- {{{
+        [testGroup "Queens" -- {{{
+            [testGroup "solutions are valid" $ -- {{{
+                let makeTest n = testCase ("n = " ++ show n) $ do
+                        let solutions = nqueens n
+                        forM_ solutions $ \solution →
+                            forM_ [(row1,row2) | row1 ← [0..n-2], row2 ← [row1+1..n-1]] $ \(row1,row2) → do
+                                let col1 = solution !! row1
+                                    col2 = solution !! row2
+                                assertBool "columns do not conflict" (col1 /= col2)
+                                assertBool "negative diagonals do not conflict" ((row1+col1) /= (row2+col2))
+                                assertBool "positive diagonals do not conflict" ((row1-col1) /= (row2-col2))
+                in map makeTest [2..10]
+             -- }}}
+            ,testGroup "solutions are unique" $ -- {{{
+                let makeTest n = testCase ("n = " ++ show n) $
+                        length solutions_as_list @?= Set.size solutions_as_set
+                      where
+                        solutions_as_list = nqueens n
+                        solutions_as_set = Set.fromList solutions_as_list
+                in map makeTest [2..10]
+             -- }}}
+            ,testGroup "solutions have correct size" $ -- {{{
+                let makeTest n correct_count = testCase ("n = " ++ show n) $
+                        (correct_count @=?)
+                        .
+                        getSum
+                        .
+                        runVisitor
+                        .
+                        fmap (const $ Sum 1)
+                        .
+                        nqueens
+                        $
+                        n
+                in map (uncurry makeTest) $
+                    [( 2,0)
+                    ,( 3,0)
+                    ,( 4,2)
+                    ,( 5,10)
+                    ,( 6,4)
+                    ,( 7,40)
+                    ,( 8,92)
+                    ,( 9,352)
+                    ,(10,724)
+                    ,(11,2680)
+                    ,(12,14200)
+                    ]
              -- }}}
             ]
          -- }}}
