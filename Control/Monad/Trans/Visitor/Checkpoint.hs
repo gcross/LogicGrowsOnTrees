@@ -94,6 +94,8 @@ data VisitorTState m α = VisitorTState -- {{{
 type VisitorState = VisitorTState Identity
 -- }}}
 
+-- }}}
+
 -- Exceptions {{{
 
 data InconsistentCheckpoints = InconsistentCheckpoints VisitorCheckpoint VisitorCheckpoint deriving (Eq,Show,Typeable)
