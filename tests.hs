@@ -512,14 +512,14 @@ tests = -- {{{
                 partial_result == runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
          -- }}}
         ,testGroup "Monoid instance" -- {{{
-            [testProperty "product results in intersection of solutions" $ \(visitor :: Visitor (Set UUID)) → do -- {{{
+            [testProperty "product results in intersection of solutions" $ \(UniqueVisitor visitor) → do -- {{{
                 (_,checkpoint1) ← randomCheckpointForVisitor visitor
                 (_,checkpoint2) ← randomCheckpointForVisitor visitor
                 let checkpoint3 = checkpoint1 ⊕ checkpoint2
                     solutions1 = runVisitorThroughCheckpoint checkpoint1 visitor
                     solutions2 = runVisitorThroughCheckpoint checkpoint2 visitor
                     solutions3 = runVisitorThroughCheckpoint checkpoint3 visitor
-                return $ solutions3 == solutions1 `Set.intersection` solutions2
+                return $ solutions3 == solutions1 `IntSet.intersection` solutions2
              -- }}}
             ,testCase "throws the correct exceptions" $ -- {{{
                 mapM_ (\(x,y) →
@@ -568,7 +568,7 @@ tests = -- {{{
                 let checkpoints = walkVisitor v
                 in unsafePerformIO $ (last checkpoints @=? (runVisitor v,Explored)) >> return True
              -- }}}
-            ,testProperty "checkpoints accurately capture remaining search space" $ \(v :: Visitor [Int]) → -- {{{
+            ,testProperty "checkpoints accurately capture remaining search space" $ \(UniqueVisitor v) → -- {{{
                 let results_using_progressive_checkpoints =
                         [result ⊕ runVisitorThroughCheckpoint checkpoint v
                         | (result,checkpoint) ← walkVisitor v
