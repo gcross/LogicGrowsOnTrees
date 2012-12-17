@@ -107,34 +107,37 @@ instance Arbitrary UUID where -- {{{
 -- }}}
 
 instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitrary (VisitorT m α) where -- {{{
-    arbitrary = sized (flip arb mzero)
+    arbitrary = fmap ($ mempty) (sized arb)
       where
-        arb :: Monoid α ⇒ Int → VisitorT m α → Gen (VisitorT m α)
-        arb 0 _ = null
-        arb 1 intermediate = frequency
-                    [(3,resultPlus intermediate)
-                    ,(1,null)
-                    ,(2,cachedPlus intermediate)
-                    ]
-        arb n intermediate = frequency
-                    [(2,resultPlus intermediate >>= arb n)
-                    ,(1,null)
-                    ,(2,cachedPlus intermediate >>= arb n)
-                    ,(4, do left_size ← choose (0,n)
-                            let right_size = n-left_size
-                            left ← arb left_size intermediate
-                            right ← arb right_size intermediate
-                            return $ left `mplus` right
-                     )
-                    ]
-        null, result, cached :: Gen (VisitorT m α)
-        null = return mzero
+        arb :: Monoid α ⇒ Int → Gen (α → VisitorT m α)
+        arb 0 = null
+        arb 1 = frequency
+            [(1,null)
+            ,(3,resultPlus)
+            ,(2,cachedPlus)
+            ]
+        arb n = frequency
+            [(2,liftM2 (>=>) resultPlus (arb n))
+            ,(2,liftM2 (>=>) cachedPlus (arb n))
+            ,(4, do left_size ← choose (0,n)
+                    let right_size = n-left_size
+                    liftM2 (liftA2 mplus)
+                        (arb left_size)
+                        (arb right_size)
+             )
+            ]
+
+        null :: Gen (α → VisitorT m α)
+        null = return (const mzero)
+
+        result, cached :: Gen (VisitorT m α)
         result = fmap return arbitrary
         cached = fmap cache arbitrary
 
-        resultPlus, cachedPlus :: Monoid α ⇒ VisitorT m α → Gen (VisitorT m α)
-        resultPlus intermediate = fmap (liftM2 mappend intermediate) result
-        cachedPlus intermediate = fmap (liftM2 mappend intermediate) cached
+        resultPlus, cachedPlus :: Monoid α ⇒ Gen (α → VisitorT m α)
+        resultPlus = (\x → flip fmap x . mappend) <$> result
+        cachedPlus = (\x → flip fmap x . mappend) <$> cached
+-- }}}
 
 instance Arbitrary UniqueVisitor where -- {{{
     arbitrary = fmap (UniqueVisitor . ($ 0) . snd) (sized $ \n → arb n IntSet.empty 0)
