@@ -711,36 +711,38 @@ tests = -- {{{
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Parallel.Threads" $ -- {{{
       let
-        gen1, gen2 :: Int → Int → ThreadsTestVisitor (Set Int) → Gen (ThreadsTestVisitor (Set Int))
-        gen1 n level intermediate = (action level >>) <$> gen2 n level intermediate
-        gen2 0 level _ = null
-        gen2 1 level intermediate = frequency
-                    [(3,resultPlus intermediate)
-                    ,(1,null)
-                    ,(2,cachedPlus intermediate)
+        gen1, gen2 :: Int → Int → Gen (IntSet → ThreadsTestVisitor IntSet)
+        gen1 n level = (action level >=>) <$> gen2 n level
+        gen2 0 level = null
+        gen2 1 level = frequency
+                    [(1,null)
+                    ,(3,resultPlus)
+                    ,(2,cachedPlus)
                     ]
-        gen2 n level intermediate = frequency
-                    [(2,resultPlus intermediate >>= gen1 n (level+1))
-                    ,(1,null)
-                    ,(2,cachedPlus intermediate >>= gen1 n (level+1))
+        gen2 n level = frequency
+                    [(1,null)
+                    ,(2,liftM2 (>=>) resultPlus (gen1 n (level+1)))
+                    ,(2,liftM2 (>=>) cachedPlus (gen1 n (level+1)))
                     ,(4, do left_size ← choose (0,n)
                             let right_size = n-left_size
-                            left ← gen1 left_size 0 intermediate
-                            right ← gen1 right_size 0 intermediate
-                            return $ left `mplus` right
+                            liftM2 (liftA2 mplus)
+                                (gen1 left_size 0)
+                                (gen1 right_size 0)
                      )
                     ]
 
-        null, result, cached :: Gen (ThreadsTestVisitor (Set Int))
-        null = return mzero
+        null :: Gen (IntSet → ThreadsTestVisitor IntSet)
+        null = return (const mzero)
+
+        result, cached :: Gen (ThreadsTestVisitor IntSet)
         result = fmap return arbitrary
         cached = fmap cache arbitrary
 
-        resultPlus intermediate = fmap (liftM2 mappend intermediate) result
-        cachedPlus intermediate = fmap (liftM2 mappend intermediate) cached
+        resultPlus = (\x → flip fmap x . mappend) <$> result
+        cachedPlus = (\x → flip fmap x . mappend) <$> cached
 
-        action :: Int → ThreadsTestVisitor ()
-        action level = do
+        action :: Int → IntSet → ThreadsTestVisitor IntSet
+        action level intermediate = do
             label ← getLabel
             let position = (label,level)
             (tokens_tvar,requests_channel) ← lift ask
@@ -757,25 +759,23 @@ tests = -- {{{
                 (atomically $ readTMVar token_tmvar)
                  `catch`
                   (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for token " ++ show position)
+            return intermediate
 
         runTest generateNoise = do
-            labeled_visitor ← sized (\n → gen1 (if n > 4 then 3*n else n) 0 mzero)
+            visitor ← normalizeLabeledVisitorT . ($ mempty) <$> sized (\n → gen1 (if n > 4 then 3*n else n) 0)
             morallyDubiousIOProperty $ do
                 requests_channel ← newTChanIO
                 tokens_mvar ← newTVarIO Map.empty
+                let run = flip runReaderT (tokens_mvar,requests_channel)
                 termination_reason_ivar ← IVar.new
-                controller ←
-                    Threads.runVisitorT
-                        (flip runReaderT (tokens_mvar,requests_channel))
-                        (IVar.write termination_reason_ivar)
-                        (normalizeLabeledVisitorT labeled_visitor)
+                controller ← Threads.runVisitorT run (IVar.write termination_reason_ivar) visitor
                 Threads.changeNumberOfWorkers (const $ return 1) controller
-                progresses_ivar ← newIORef []
+                progresses_ref ← newIORef []
+                let receiveProgress (VisitorProgress Unexplored _) = return ()
+                    receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
                 request_handler ← forkIO . forever $ do
                     (position,token_tmvar) ← atomically $ readTChan requests_channel
-                    generateNoise >>= ($ controller)
-                    progress ← Threads.getCurrentProgress controller
-                    modifyIORef progresses_ivar (progress:)
+                    generateNoise receiveProgress >>= ($ controller)
                     (atomically $ putTMVar token_tmvar ())
                      `catch`
                       (\BlockedIndefinitelyOnMVar → error $ "blocked forever while sending token " ++ show position)
@@ -787,32 +787,28 @@ tests = -- {{{
                     Threads.Completed result → return result
                     Threads.Aborted _ → error "prematurely aborted"
                     Threads.Failure exception → throwIO exception
-                expected_result ←
-                    flip runReaderT (tokens_mvar,requests_channel)
-                    .
-                    runLabeledVisitorT
-                    $
-                    labeled_visitor
-                return $ result == expected_result
-      in  [testProperty "one thread" . runTest $
+                expected_result ← run . runVisitorT $ visitor
+                result @?= expected_result
+                return True
+      in  [testProperty "one thread" . runTest $ \receiveProgress →
               (\i → case i of
                   0 → void . \controller → do
                       Threads.changeNumberOfWorkers (return . (\i → 0)) controller
                       Threads.changeNumberOfWorkers (return . (\i → 1)) controller
-                  1 → void . (flip Threads.requestProgressUpdateAsync (const $ return ()))
+                  1 → void . (flip Threads.requestProgressUpdateAsync receiveProgress)
                   _ → const $ return ()
               ) <$> randomRIO (0,1::Int)
-          ,testProperty "two threads" . runTest $
+          ,testProperty "two threads" . runTest $ \receiveProgress →
               (\i → case i of
                   0 → void . (Threads.changeNumberOfWorkers $ return . (\i → 3-i))
-                  1 → void . (flip Threads.requestProgressUpdateAsync (const $ return ()))
+                  1 → void . (flip Threads.requestProgressUpdateAsync receiveProgress)
                   _ → const $ return ()
               ) <$> randomRIO (0,1::Int)
-          ,testProperty "many threads" . runTest $
+          ,testProperty "many threads" . runTest $ \receiveProgress →
               (\i → case i of
                   0 → void . (Threads.changeNumberOfWorkers $ return . (\i → if i > 1 then i-1 else i))
                   1 → void . (Threads.changeNumberOfWorkers $ return . (+1))
-                  2 → void . (flip Threads.requestProgressUpdateAsync (const $ return ()))
+                  2 → void . (flip Threads.requestProgressUpdateAsync receiveProgress)
                   _ → const $ return ()
               ) <$> randomRIO (0,2::Int)
           ]
