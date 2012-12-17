@@ -611,7 +611,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Examples" -- {{{
+    ,testGroup "Control.Monad.Trans.Visitor.Examples" -- {{{
         [testGroup "Queens" -- {{{
             [testGroup "solutions are valid" $ -- {{{
                 let makeTest n = testCase ("n = " ++ show n) $ do
