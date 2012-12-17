@@ -195,6 +195,15 @@ initialVisitorState :: VisitorCheckpoint → VisitorT m α → VisitorTState m �
 initialVisitorState = VisitorTState Seq.empty
 -- }}}
 
+invertCheckpoint :: VisitorCheckpoint → VisitorCheckpoint -- {{{
+invertCheckpoint Explored = Unexplored
+invertCheckpoint Unexplored = Explored
+invertCheckpoint (CacheCheckpoint cache rest) =
+    mergeCheckpointRoot (CacheCheckpoint cache (invertCheckpoint rest))
+invertCheckpoint (ChoiceCheckpoint left right) =
+    mergeCheckpointRoot (ChoiceCheckpoint (invertCheckpoint left) (invertCheckpoint right))
+-- }}}
+
 mergeAllCheckpointNodes :: VisitorCheckpoint → VisitorCheckpoint -- {{{
 mergeAllCheckpointNodes (ChoiceCheckpoint left right) = mergeCheckpointRoot (ChoiceCheckpoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
 mergeAllCheckpointNodes (CacheCheckpoint cache checkpoint) = mergeCheckpointRoot (CacheCheckpoint cache (mergeAllCheckpointNodes checkpoint))

@@ -507,6 +507,10 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testProperty "invertCheckpoint" $ \(visitor :: Visitor (Set UUID)) → -- {{{
+            randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
+                partial_result == runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
+         -- }}}
         ,testGroup "Monoid instance" -- {{{
             [testProperty "product results in intersection of solutions" $ \(visitor :: Visitor (Set UUID)) → do -- {{{
                 (_,checkpoint1) ← randomCheckpointForVisitor visitor
