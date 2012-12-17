@@ -801,6 +801,16 @@ tests = -- {{{
                     Threads.Failure exception → throwIO exception
                 expected_result ← run . runVisitorT $ visitor
                 result @?= expected_result
+                progresses ← remdups <$> readIORef progresses_ref
+                mapM_ (\(current_result,checkpoint) → do
+                    (run $ runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor)
+                        >>= (current_result @=?)
+                    (run $ runVisitorTThroughCheckpoint checkpoint visitor)
+                        >>= (expected_result @=?) . mappend current_result
+                 ) . snd . mapAccumL (\current_result (VisitorProgress checkpoint new_result) →
+                    let new_current_result = current_result `mappend` new_result
+                    in (new_current_result,(new_current_result,checkpoint))
+                 ) mempty . reverse $ progresses
                 return True
       in  [testProperty "one thread" . runTest $ \receiveProgress →
               (\i → case i of
