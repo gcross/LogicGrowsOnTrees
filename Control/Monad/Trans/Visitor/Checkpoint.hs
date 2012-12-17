@@ -247,7 +247,7 @@ runVisitorTThroughCheckpoint = go mempty .* initialVisitorState
         >=>
         \(maybe_solution,maybe_new_visitor_state) →
             let new_accum = maybe id (flip mappend) maybe_solution accum
-            in maybe (return accum) (go accum) maybe_new_visitor_state
+            in maybe (return new_accum) (go new_accum) maybe_new_visitor_state
 {-# INLINE runVisitorTThroughCheckpoint #-}
 -- }}}
 
