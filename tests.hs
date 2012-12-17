@@ -346,19 +346,21 @@ shuffle items = do
     return (hd:tl)
 -- }}}
 
-randomCheckpointForVisitor :: Visitor α → Gen VisitorCheckpoint -- {{{
+randomCheckpointForVisitor :: Monoid α ⇒ Visitor α → Gen (α,VisitorCheckpoint) -- {{{
 randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
   where
     go1 visitor = frequency
-        [(1,return Explored)
-        ,(1,return Unexplored)
+        [(1,return (runVisitor (VisitorT visitor),Explored))
+        ,(1,return (mempty,Unexplored))
         ,(3,go2 visitor)
         ]
     go2 (view → Cache (Identity (Just x)) :>>= k) =
-        fmap (CacheCheckpoint (encode x)) (go1 (k x))
+        fmap (second $ CacheCheckpoint (encode x)) (go1 (k x))
     go2 (view → Choice (VisitorT x) (VisitorT y) :>>= k) =
-        liftM2 ChoiceCheckpoint (go1 (x >>= k)) (go1 (y >>= k))
-    go2 _ = elements [Explored,Unexplored]
+        liftM2 (\(left_result,left) (right_result,right) →
+            (left_result `mappend` right_result, ChoiceCheckpoint left right)
+        ) (go1 (x >>= k)) (go1 (y >>= k))
+    go2 visitor = elements [(runVisitor (VisitorT visitor),Explored),(mempty,Unexplored)]
 -- }}}
 
 randomPathForVisitor :: Visitor α → Gen VisitorPath -- {{{
@@ -507,8 +509,8 @@ tests = -- {{{
          -- }}}
         ,testGroup "Monoid instance" -- {{{
             [testProperty "product results in intersection of solutions" $ \(visitor :: Visitor (Set UUID)) → do -- {{{
-                checkpoint1 ← randomCheckpointForVisitor visitor
-                checkpoint2 ← randomCheckpointForVisitor visitor
+                (_,checkpoint1) ← randomCheckpointForVisitor visitor
+                (_,checkpoint2) ← randomCheckpointForVisitor visitor
                 let checkpoint3 = checkpoint1 ⊕ checkpoint2
                     solutions1 = runVisitorThroughCheckpoint checkpoint1 visitor
                     solutions2 = runVisitorThroughCheckpoint checkpoint2 visitor
@@ -535,12 +537,18 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "runVisitorThroughCheckpoint" -- {{{
-            [testProperty "matches walkVisitorThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do
-                checkpoint ← randomCheckpointForVisitor visitor
+            [testProperty "completes the solution space" $ \(UniqueVisitor visitor) → -- {{{
+                randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
+                    runVisitor visitor ==
+                        mappend partial_result (runVisitorThroughCheckpoint checkpoint visitor)
+             -- }}}
+            ,testProperty "matches walkVisitorThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+                (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
                     runVisitorThroughCheckpoint checkpoint visitor
                         @?= (fst . last $ walkVisitorThroughCheckpoint checkpoint visitor)
                     return True
+             -- }}}
             ]
          -- }}}
         ,testGroup "walkVisitorThroughCheckpoint" -- {{{
