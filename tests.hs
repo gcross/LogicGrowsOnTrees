@@ -230,14 +230,14 @@ instance Eq α ⇒ Eq (DList α) where -- {{{
 instance Show α ⇒ Show (DList α) where -- {{{
     show = ("DList.fromList " ++) . show . DList.toList
 -- }}}
--- }}} Instances
+-- }}}
 
 -- Exceptions {{{
 -- TestException {{{
 data TestException = TestException Int deriving (Eq,Show,Typeable)
 instance Exception TestException
 -- }}}
--- }}} Exceptions
+-- }}}
 
 -- Type alises {{{
 type ThreadsTestVisitor = LabeledVisitorT (ReaderT (TVar (Map (VisitorLabel,Int) (TMVar ())),TChan ((VisitorLabel,Int),TMVar ())) IO)
@@ -391,7 +391,8 @@ randomVisitorWithoutCache = sized arb
 
     bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
 -- }}}
--- }}} Functions
+
+-- }}}
 
 -- Values {{{
 bad_test_supervisor_actions :: VisitorSupervisorActions result worker_id m -- {{{
@@ -408,7 +409,7 @@ bad_test_supervisor_actions =
     }
 -- }}}
 -- }}}
--- }}} Helpers
+-- }}}
 
 main = --updateGlobalLogger rootLoggerName (setLevel DEBUG) >>
        defaultMain tests
