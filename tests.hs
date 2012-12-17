@@ -12,7 +12,7 @@
 -- Imports {{{
 import Prelude hiding (catch)
 import Control.Applicative
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&),second)
 import Control.Concurrent
 import Control.Concurrent.QSem
 import Control.Concurrent.STM.TChan
@@ -27,6 +27,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 import Control.Monad.Trans.Writer
 
+import Data.Bits (xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import qualified Data.DList as DList
@@ -36,6 +37,8 @@ import qualified Data.Foldable as Fold
 import Data.Function
 import Data.Functor
 import Data.Functor.Identity
+import qualified Data.IntSet as IntSet
+import Data.IntSet (IntSet)
 import Data.IORef
 import Data.IVar (IVar)
 import qualified Data.IVar as IVar
@@ -91,6 +94,10 @@ instance (Arbitrary α, Ord α) ⇒ Arbitrary (Set α) where -- {{{
     arbitrary = fmap Set.fromList (listOf arbitrary)
 -- }}}
 
+instance Arbitrary IntSet where -- {{{
+    arbitrary = fmap IntSet.fromList (listOf arbitrary)
+-- }}}
+
 instance Arbitrary α ⇒ Arbitrary (DList α) where -- {{{
     arbitrary = DList.fromList <$> listOf arbitrary
 -- }}}
@@ -128,6 +135,41 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
         resultPlus, cachedPlus :: Monoid α ⇒ VisitorT m α → Gen (VisitorT m α)
         resultPlus intermediate = fmap (liftM2 mappend intermediate) result
         cachedPlus intermediate = fmap (liftM2 mappend intermediate) cached
+
+instance Arbitrary UniqueVisitor where -- {{{
+    arbitrary = fmap (UniqueVisitor . ($ 0) . snd) (sized $ \n → arb n IntSet.empty 0)
+      where
+        arb :: Int → IntSet → Int → Gen (IntSet, Int → Visitor IntSet)
+        arb 0 observed _ = return (observed,const mzero)
+        arb 1 observed intermediate = frequency
+            [(1,return (observed,const mzero))
+            ,(3,generateUnique (return . IntSet.singleton) observed intermediate)
+            ,(2,generateUnique (cache . IntSet.singleton) observed intermediate)
+            ]
+        arb n observed intermediate = frequency
+            [(2,generateForNext return observed intermediate (arb n))
+            ,(2,generateForNext cache observed intermediate (arb n))
+            ,(4, do left_size ← choose (0,n)
+                    let right_size = n-left_size
+                    (observed_1,visitor1) ← arb left_size observed intermediate
+                    (observed_2,visitor2) ← arb right_size observed_1 intermediate
+                    return (observed_2,liftA2 mplus visitor1 visitor2)
+             )
+            ]
+
+        generateUnique :: (Int → Visitor α) → IntSet → Int → Gen (IntSet, Int → Visitor α)
+        generateUnique construct observed intermediate =
+            (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate))) >>= \x → return $
+                let final_value = x `xor` intermediate
+                in (IntSet.insert final_value observed, construct . xor x)
+
+        generateForNext :: (Int → Visitor α) → IntSet → Int → (IntSet → Int → Gen (IntSet,α → Visitor β)) → Gen (IntSet, Int → Visitor β)
+        generateForNext construct observed intermediate next = do
+            x ← arbitrary
+            let new_intermediate = x `xor` intermediate
+            fmap (second (construct . xor x >=>)) $ next observed new_intermediate
+-- }}}
+
 -- }}}
 
 instance Arbitrary VisitorCheckpoint where -- {{{
@@ -199,6 +241,10 @@ instance Exception TestException
 
 -- Type alises {{{
 type ThreadsTestVisitor = LabeledVisitorT (ReaderT (TVar (Map (VisitorLabel,Int) (TMVar ())),TChan ((VisitorLabel,Int),TMVar ())) IO)
+-- }}}
+
+-- Newtypes {{{
+newtype UniqueVisitor = UniqueVisitor (Visitor IntSet) deriving Show
 -- }}}
 
 -- Functions {{{
@@ -368,7 +414,14 @@ main = --updateGlobalLogger rootLoggerName (setLevel DEBUG) >>
        defaultMain tests
 
 tests = -- {{{
-    [testGroup "Control.Monad.Trans.Visitor" -- {{{
+    [testGroup "test helpers" $ -- {{{
+        [testProperty "UniqueVisitor has unique results" $ \(UniqueVisitor visitor) → -- {{{
+            let results = runVisitor (fmap (:[]) visitor )
+            in length results == IntSet.size (mconcat results)
+         -- }}}
+        ]
+     -- }}}
+    ,testGroup "Control.Monad.Trans.Visitor" -- {{{
         [testGroup "Eq instance" -- {{{
             [testProperty "self" $ \(v :: Visitor [()]) → v == v
             ]
