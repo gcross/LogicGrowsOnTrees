@@ -395,6 +395,13 @@ randomVisitorWithoutCache = sized arb
     bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
 -- }}}
 
+remdups :: (Eq a) => [a] -> [a] -- {{{
+remdups []  =  []
+remdups (x : []) =  [x]
+remdups (x : xx : xs)
+ | x == xx   = remdups (x : xs)
+ | otherwise = x : remdups (xx : xs)
+-- }}}
 -- }}}
 
 -- Values {{{
