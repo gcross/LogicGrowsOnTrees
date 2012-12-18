@@ -25,6 +25,7 @@ import Control.Monad.Operational (ProgramViewT(..),view)
 import Control.Monad.STM
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
+import Control.Monad.Trans.State (StateT,evalStateT,get,modify)
 import Control.Monad.Trans.Writer
 
 import Data.Bits (xor)
@@ -51,7 +52,7 @@ import Data.Monoid.Unicode
 import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import qualified Data.Serialize as Serialize
-import Data.Serialize (Serialize(..),decode,encode)
+import Data.Serialize (Serialize(),decode,encode)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Typeable
@@ -87,6 +88,10 @@ import Control.Monad.Trans.Visitor.Supervisor
 
 -- Helpers {{{
 -- Instances {{{
+-- Newtypes {{{
+newtype UniqueVisitorT m = UniqueVisitor { unwrapUniqueVisitor :: VisitorT m IntSet }
+-- }}}
+
 -- Arbitrary {{{
 instance Arbitrary Branch where arbitrary = elements [LeftBranch,RightBranch]
 
@@ -139,40 +144,40 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
         cachedPlus = (\x → flip fmap x . mappend) <$> cached
 -- }}}
 
-instance Arbitrary UniqueVisitor where -- {{{
-    arbitrary = fmap (UniqueVisitor . ($ 0) . snd) (sized $ \n → arb n IntSet.empty 0)
+instance Monad m ⇒ Arbitrary (UniqueVisitorT m) where -- {{{
+    arbitrary = fmap (UniqueVisitor . ($ 0)) (sized $ \n → evalStateT (arb n 0) IntSet.empty)
       where
-        arb :: Int → IntSet → Int → Gen (IntSet, Int → Visitor IntSet)
-        arb 0 observed _ = return (observed,const mzero)
-        arb 1 observed intermediate = frequency
-            [(1,return (observed,const mzero))
-            ,(3,generateUnique (return . IntSet.singleton) observed intermediate)
-            ,(2,generateUnique (cache . IntSet.singleton) observed intermediate)
+        arb :: Int → Int → StateT IntSet Gen (Int → VisitorT m IntSet)
+        arb 0 _ = return (const mzero)
+        arb 1 intermediate = frequencyT
+            [(1,return (const mzero))
+            ,(3,generateUnique (return . IntSet.singleton) intermediate)
+            ,(2,generateUnique (cache . IntSet.singleton) intermediate)
             ]
-        arb n observed intermediate = frequency
-            [(2,generateForNext return observed intermediate (arb n))
-            ,(2,generateForNext cache observed intermediate (arb n))
-            ,(4, do left_size ← choose (0,n)
+        arb n intermediate = frequencyT
+            [(2,generateForNext return intermediate (arb n))
+            ,(2,generateForNext cache intermediate (arb n))
+            ,(4, do left_size ← lift $ choose (0,n)
                     let right_size = n-left_size
-                    (observed_1,visitor1) ← arb left_size observed intermediate
-                    (observed_2,visitor2) ← arb right_size observed_1 intermediate
-                    return (observed_2,liftA2 mplus visitor1 visitor2)
+                    liftM2 (liftA2 mplus)
+                        (arb left_size intermediate)
+                        (arb right_size intermediate)
              )
             ]
 
-        generateUnique :: (Int → Visitor α) → IntSet → Int → Gen (IntSet, Int → Visitor α)
-        generateUnique construct observed intermediate =
-            (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate))) >>= \x → return $
-                let final_value = x `xor` intermediate
-                in (IntSet.insert final_value observed, construct . xor x)
+        generateUnique :: Monad m ⇒ (Int → VisitorT m α) → Int → StateT IntSet Gen (Int → VisitorT m α)
+        generateUnique construct intermediate = do
+            observed ← get
+            x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
+            let final_value = x `xor` intermediate
+            modify (IntSet.insert final_value)
+            return $ construct . xor x
 
-        generateForNext :: (Int → Visitor α) → IntSet → Int → (IntSet → Int → Gen (IntSet,α → Visitor β)) → Gen (IntSet, Int → Visitor β)
-        generateForNext construct observed intermediate next = do
-            x ← arbitrary
+        generateForNext :: Monad m ⇒ (Int → VisitorT m α) → Int → (Int → StateT IntSet Gen (α → VisitorT m β)) → StateT IntSet Gen (Int → VisitorT m β)
+        generateForNext construct intermediate next = do
+            x ← lift arbitrary
             let new_intermediate = x `xor` intermediate
-            fmap (second (construct . xor x >=>)) $ next observed new_intermediate
--- }}}
-
+            fmap (construct . xor x >=>) $ next new_intermediate
 -- }}}
 
 instance Arbitrary VisitorCheckpoint where -- {{{
@@ -226,12 +231,17 @@ instance Serialize UUID where -- {{{
 -- }}}
 -- }}} Serialize
 
+-- Eq {{{
 instance Eq α ⇒ Eq (DList α) where -- {{{
     (==) = (==) `on` DList.toList
 -- }}}
+-- }}}
 
+-- Show {{{
 instance Show α ⇒ Show (DList α) where -- {{{
     show = ("DList.fromList " ++) . show . DList.toList
+-- }}}
+instance Show UniqueVisitor where show = show . unwrapUniqueVisitor
 -- }}}
 -- }}}
 
@@ -244,10 +254,7 @@ instance Exception TestException
 
 -- Type alises {{{
 type ThreadsTestVisitor = LabeledVisitorT (ReaderT (TVar (Map (VisitorLabel,Int) (TMVar ())),TChan ((VisitorLabel,Int),TMVar ())) IO)
--- }}}
-
--- Newtypes {{{
-newtype UniqueVisitor = UniqueVisitor (Visitor IntSet) deriving Show
+type UniqueVisitor = UniqueVisitorT Identity
 -- }}}
 
 -- Functions {{{
@@ -334,6 +341,18 @@ ignoreWorkloadStealAction :: -- {{{
     VisitorSupervisorActions result worker_id IO →
     VisitorSupervisorActions result worker_id IO
 ignoreWorkloadStealAction actions = actions { broadcast_workload_steal_to_workers_action = \_ → return () }
+-- }}}
+
+frequencyT :: (MonadTrans t, Monad (t Gen)) ⇒ [(Int, t Gen a)] → t Gen a -- {{{
+frequencyT [] = error "frequencyT used with empty list"
+frequencyT xs0 = lift (choose (1, tot)) >>= pick xs0
+ where
+  tot = sum (map fst xs0)
+
+  pick ((k,x):xs) n
+    | n <= k    = x
+    | otherwise = pick xs (n-k)
+  pick _ _  = error "frequencyT.pick used with empty list"
 -- }}}
 
 shuffle :: [α] → Gen [α] -- {{{
