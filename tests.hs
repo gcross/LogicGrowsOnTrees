@@ -1163,10 +1163,11 @@ tests = -- {{{
                 ]
              -- }}}
             ,testProperty "progress updates correctly capture current and remaining progress" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
+                starting_flag ← IVar.new
                 termination_result_ivar ← IVar.new
-                (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
+                VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
                     (IVar.write termination_result_ivar)
-                    visitor
+                    ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
                     entire_workload
                 progress_updates_ref ← newIORef DList.empty
                 let sendMyProgressUpdateRequest = sendProgressUpdateRequest workerPendingRequests submitProgressUpdate
@@ -1174,7 +1175,7 @@ tests = -- {{{
                         atomicModifyIORef progress_updates_ref $ (,()) . flip DList.snoc progress_update
                         sendMyProgressUpdateRequest
                 sendMyProgressUpdateRequest
-                startWorker
+                IVar.write starting_flag ()
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 remaining_solutions ← case termination_result of
                     VisitorWorkerFinished (visitorResult → solutions) → return solutions

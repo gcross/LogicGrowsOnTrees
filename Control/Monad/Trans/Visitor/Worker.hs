@@ -165,28 +165,6 @@ genericForkVisitorTWorkerThread
     run
     finishedCallback
     visitor
-    workload
-  = do (start,environment) ← genericPreforkVisitorTWorkerThread walk step run finishedCallback visitor workload
-       start
-       return environment
-{-# INLINE genericForkVisitorTWorkerThread #-}
--- }}}
-
-genericPreforkVisitorTWorkerThread :: -- {{{
-    (MonadIO n, Monoid α) ⇒
-    (VisitorPath → VisitorT m α → n (VisitorT m α)) →
-    (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
-    (∀ β. n β → IO β) →
-    (VisitorWorkerTerminationReason α → IO ()) →
-    VisitorT m α →
-    VisitorWorkload →
-    IO (IO (), VisitorWorkerEnvironment α)
-genericPreforkVisitorTWorkerThread
-    walk
-    step
-    run
-    finishedCallback
-    visitor
     (VisitorWorkload initial_path initial_checkpoint)
   = do
     pending_requests_ref ← newIORef []
@@ -244,11 +222,10 @@ genericPreforkVisitorTWorkerThread
     finished_flag ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←
-                (do IVar.blocking . IVar.read $ start_flag_ivar
-                    run $
-                        walk initial_path visitor
-                        >>=
-                        loop1 mempty Seq.empty . initialVisitorState initial_checkpoint
+                (run $
+                    walk initial_path visitor
+                    >>=
+                    loop1 mempty Seq.empty . initialVisitorState initial_checkpoint
                 )
                 `catch`
                 (\e → case fromException e of
@@ -257,50 +234,13 @@ genericPreforkVisitorTWorkerThread
                 )
         IVar.write finished_flag ()
         finishedCallback termination_reason
-    return
-        (IVar.write start_flag_ivar ()
-        ,VisitorWorkerEnvironment
+    return $
+        VisitorWorkerEnvironment
             initial_path
             thread_id
             pending_requests_ref
             finished_flag
-        )
-{-# INLINE genericPreforkVisitorTWorkerThread #-}
--- }}}
-
-preforkVisitorIOWorkerThread :: -- {{{
-    Monoid α ⇒
-    (VisitorWorkerTerminationReason α → IO ()) →
-    VisitorIO α →
-    VisitorWorkload →
-    IO (IO (), VisitorWorkerEnvironment α)
-preforkVisitorIOWorkerThread = preforkVisitorTWorkerThread id
--- }}}
-
-preforkVisitorTWorkerThread :: -- {{{
-    (MonadIO m, Monoid α) ⇒
-    (∀ β. m β → IO β) →
-    (VisitorWorkerTerminationReason α → IO ()) →
-    VisitorT m α →
-    VisitorWorkload →
-    IO (IO (),VisitorWorkerEnvironment α)
-preforkVisitorTWorkerThread =
-    genericPreforkVisitorTWorkerThread
-        sendVisitorTDownPath
-        stepVisitorTThroughCheckpoint
--- }}}
-
-preforkVisitorWorkerThread :: -- {{{
-    Monoid α ⇒
-    (VisitorWorkerTerminationReason α → IO ()) →
-    Visitor α →
-    VisitorWorkload →
-    IO (IO (), VisitorWorkerEnvironment α)
-preforkVisitorWorkerThread =
-    genericPreforkVisitorTWorkerThread
-        (return .* sendVisitorDownPath)
-        (return . stepVisitorThroughCheckpoint)
-        id
+{-# INLINE genericForkVisitorTWorkerThread #-}
 -- }}}
 
 sendAbortRequest :: VisitorWorkerRequestQueue α → IO () -- {{{
