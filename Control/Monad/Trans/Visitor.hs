@@ -11,7 +11,7 @@ module Control.Monad.Trans.Visitor where
 
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
-import Control.Monad (MonadPlus(..),(>=>),liftM2)
+import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -80,16 +80,16 @@ instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
     left `mplus` right = VisitorT . singleton $ Choice left right
 -- }}}
 
-instance (Functor m, Monad m) ⇒ MonadVisitor (VisitorT m) where -- {{{
+instance Monad m ⇒ MonadVisitor (VisitorT m) where -- {{{
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
     cacheMaybe = runAndCacheMaybe . return
 -- }}}
 
-instance (Functor m, Monad m) ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
+instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
     type NestedMonadInVisitor (VisitorT m) = m
-    runAndCache = runAndCacheMaybe . fmap Just
-    runAndCacheGuard = runAndCacheMaybe . fmap (\x → if x then Just () else Nothing)
+    runAndCache = runAndCacheMaybe . liftM Just
+    runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
     runAndCacheMaybe = VisitorT . singleton . Cache
 -- }}}
 
