@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DoRec #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -1215,26 +1216,29 @@ tests = -- {{{
                 (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
             ,testGroup "work stealing correctly preserves total workload" -- {{{
-                [testProperty "single steal" $ flip fmap arbitrary $ \(visitor :: VisitorIO (Set Int)) → unsafePerformIO $ do -- {{{
-                    worker_started_qsem ← newQSem 0
+                [testProperty "single steal" $ \(UniqueVisitor visitor :: UniqueVisitor) → unsafePerformIO $ do -- {{{
+                    reached_position_qsem ← newQSem 0
                     blocking_value_ivar ← IVar.new
                     let visitor_with_blocking_value =
-                            ((liftIO (do
-                                signalQSem worker_started_qsem
-                                IVar.blocking . IVar.read $ blocking_value_ivar
-                            ))
-                            ⊕ return (Set.singleton 24))
-                            ⊕ visitor
+                            mplus
+                                (mplus
+                                    (liftIO $ do
+                                        signalQSem reached_position_qsem
+                                        IVar.blocking . IVar.read $ blocking_value_ivar
+                                    )
+                                    (return (IntSet.singleton 101010101))
+                                )
+                                (endowVisitor visitor)
                     termination_result_ivar ← IVar.new
                     VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
                         (IVar.write termination_result_ivar)
                         visitor_with_blocking_value
                         entire_workload
                     maybe_workload_ref ← newIORef Nothing
-                    waitQSem worker_started_qsem
+                    waitQSem reached_position_qsem
                     sendWorkloadStealRequest workerPendingRequests $ writeIORef maybe_workload_ref
-                    IVar.write blocking_value_ivar (Set.singleton 42)
-                    VisitorProgress checkpoint remaining_solutions ←
+                    IVar.write blocking_value_ivar (IntSet.singleton 202020202)
+                    final_progress@(VisitorProgress checkpoint remaining_solutions) ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of
@@ -1242,57 +1246,150 @@ tests = -- {{{
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                     (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
-                    VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint prestolen_solutions) remaining_workload) workload ←
+                    VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint prestolen_solutions) remaining_workload) stolen_workload ←
                         fmap (fromMaybe (error "stolen workload not available"))
                         $
                         readIORef maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
                     runVisitorTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
+                    runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor_with_blocking_value >>= (prestolen_solutions @?=)
                     correct_solutions ← runVisitorT visitor_with_blocking_value
-                    stolen_solutions_via_workload ← runVisitorTThroughWorkload workload visitor_with_blocking_value
-                    correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions_via_workload]
-                    stolen_solutions_via_checkpoint ← runVisitorTThroughCheckpoint checkpoint visitor_with_blocking_value
-                    correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions_via_checkpoint]
-                    stolen_solutions_via_remaining_workload ← runVisitorTThroughWorkload remaining_workload visitor_with_blocking_value
-                    correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions_via_remaining_workload]
+                    stolen_solutions ← runVisitorTThroughWorkload stolen_workload visitor_with_blocking_value
+                    correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions]
+                    assertEqual "There is no overlap between the prestolen solutions and the remaining solutions."
+                        IntSet.empty
+                        (prestolen_solutions `IntSet.intersection` remaining_solutions)
+                    assertEqual "There is no overlap between the prestolen solutions and the stolen solutions."
+                        IntSet.empty
+                        (prestolen_solutions `IntSet.intersection` stolen_solutions)
+                    assertEqual "There is no overlap between the stolen solutions and the remaining solutions."
+                        IntSet.empty
+                        (stolen_solutions `IntSet.intersection` remaining_solutions)
                     return True
                  -- }}}
-                ,testProperty "continuous stealing" $ \(visitor :: Visitor (Set Int)) → unsafePerformIO $ do -- {{{
+                ,testProperty "continuous stealing" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
+                    starting_flag ← IVar.new
                     termination_result_ivar ← IVar.new
-                    (startWorker,VisitorWorkerEnvironment{..}) ← preforkVisitorWorkerThread
+                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
                         (IVar.write termination_result_ivar)
-                        visitor
+                        ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
                         entire_workload
-                    workloads_ref ← newIORef DList.empty
-                    let submitMyWorkloadStealReqest = sendWorkloadStealRequest workerPendingRequests submitStolenWorkload
-                        submitStolenWorkload workload = do
-                            atomicModifyIORef workloads_ref $ (,()) . flip DList.snoc workload
-                            submitMyWorkloadStealReqest
-                    submitMyWorkloadStealReqest
-                    startWorker
+                    steals_ref ← newIORef []
+                    let submitMyWorkloadStealRequest = sendWorkloadStealRequest workerPendingRequests submitStolenWorkload
+                        submitStolenWorkload Nothing = submitMyWorkloadStealRequest
+                        submitStolenWorkload (Just steal) = do
+                            atomicModifyIORef steals_ref ((steal:) &&& const ())
+                            submitMyWorkloadStealRequest
+                    submitMyWorkloadStealRequest
+                    IVar.write starting_flag ()
                     termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                    remaining_solutions ← case termination_result of
-                        VisitorWorkerFinished (visitorResult → solutions) → return solutions
+                    (VisitorProgress checkpoint remaining_solutions) ← case termination_result of
+                        VisitorWorkerFinished final_progress → return final_progress
                         VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                         VisitorWorkerAborted → error "worker aborted prematurely"
-                    steals ← fmap (catMaybes . DList.toList) (readIORef workloads_ref)
+                    steals ← reverse <$> readIORef steals_ref
                     let correct_solutions = runVisitor visitor
-                    correct_solutions @=?
-                        (remaining_solutions ⊕ (mconcat . map (flip runVisitorThroughWorkload visitor. visitorWorkerStolenWorkload) $ steals))
-                    assertBool "Do the progress update workloads get the correct answer?" $
-                        (all (== correct_solutions))
-                        (zipWith
-                            mappend
-                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate . visitorWorkerStolenWorkerProgressUpdate) steals)
-                            (map (flip runVisitorThroughWorkload visitor . visitorWorkerRemainingWorkload . visitorWorkerStolenWorkerProgressUpdate) steals)
-                        )
-                    assertBool "Do the progress update checkpoints get the correct answer?" $
-                        (all (== correct_solutions))
-                        (zipWith
-                            mappend
-                            (scanl1 mappend $ map (visitorResult . visitorWorkerProgressUpdate . visitorWorkerStolenWorkerProgressUpdate) steals)
-                            (map (flip runVisitorThroughCheckpoint visitor . visitorCheckpoint . visitorWorkerProgressUpdate . visitorWorkerStolenWorkerProgressUpdate) steals)
-                        )
+                        prestolen_solutions =
+                            map (
+                                visitorResult
+                                .
+                                visitorWorkerProgressUpdate
+                                .
+                                visitorWorkerStolenWorkerProgressUpdate
+                            ) steals
+                        stolen_solutions =
+                            map (
+                                flip runVisitorThroughWorkload visitor
+                                .
+                                visitorWorkerStolenWorkload
+                            ) steals
+                        all_solutions = remaining_solutions:(prestolen_solutions ++ stolen_solutions)
+                        total_solutions = mconcat all_solutions
+                    forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
+                        forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
+                            unless (i == j) $
+                                assertBool "Is there overlaps between non-intersection solutions?"
+                                    (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
+                    assertEqual "Do the steals together include all of the solutions?"
+                        correct_solutions
+                        total_solutions
+                    let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
+                        accumulated_stolen_solutions = scanl1 mappend stolen_solutions
+                    sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) _) → do
+                        let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
+                            accumulated_solutions = acc_prestolen `mappend` acc_stolen
+                        assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
+                            (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
+                        assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
+                            correct_solutions
+                            (accumulated_solutions `mappend` remaining_solutions)
+                        assertEqual "Is the checkpoint equal to the stolen plus the remaining solutions?"
+                            (acc_stolen `mappend` remaining_solutions)
+                            (runVisitorThroughCheckpoint checkpoint visitor)
+                     ) accumulated_prestolen_solutions accumulated_stolen_solutions steals
+                    return True
+                 -- }}}
+                ,testProperty "stealing at random leaves" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
+                    termination_result_ivar ← IVar.new
+                    steals_ref ← newIORef []
+                    rec VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                            (IVar.write termination_result_ivar)
+                            (do value ← endowVisitor visitor
+                                liftIO $ randomIO >>= flip when submitMyWorkloadStealRequest
+                                return value
+                            )
+                            entire_workload
+                        let submitMyWorkloadStealRequest =
+                                sendWorkloadStealRequest
+                                    workerPendingRequests
+                                    (maybe (return ()) $ atomicModifyIORef steals_ref . (&&& const ()) . (:))
+                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                    (VisitorProgress checkpoint remaining_solutions) ← case termination_result of
+                        VisitorWorkerFinished final_progress → return final_progress
+                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                        VisitorWorkerAborted → error "worker aborted prematurely"
+                    steals ← reverse <$> readIORef steals_ref
+                    let correct_solutions = runVisitor visitor
+                        prestolen_solutions =
+                            map (
+                                visitorResult
+                                .
+                                visitorWorkerProgressUpdate
+                                .
+                                visitorWorkerStolenWorkerProgressUpdate
+                            )
+                            $
+                            steals
+                        stolen_solutions =
+                            map (
+                                flip runVisitorThroughWorkload visitor
+                                .
+                                visitorWorkerStolenWorkload
+                            ) steals
+                    let all_solutions = remaining_solutions:(prestolen_solutions ++ stolen_solutions)
+                        total_solutions = mconcat all_solutions
+                    forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
+                        forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
+                            unless (i == j) $
+                                assertBool "Is there overlaps between non-intersection solutions?"
+                                    (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
+                    assertEqual "Do the steals together include all of the solutions?"
+                        correct_solutions
+                        total_solutions
+                    let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
+                        accumulated_stolen_solutions = scanl1 mappend stolen_solutions
+                    sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) _) → do
+                        let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
+                            accumulated_solutions = acc_prestolen `mappend` acc_stolen
+                        assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
+                            (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
+                        assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
+                            correct_solutions
+                            (accumulated_solutions `mappend` remaining_solutions)
+                        assertEqual "Is the checkpoint equal to the stolen plus the remaining solutions?"
+                            (acc_stolen `mappend` remaining_solutions)
+                            (runVisitorThroughCheckpoint checkpoint visitor)
+                     ) accumulated_prestolen_solutions accumulated_stolen_solutions steals
                     return True
                  -- }}}
                 ]
