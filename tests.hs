@@ -217,7 +217,7 @@ instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStolenWorkload α) where -- {{
 instance Arbitrary VisitorWorkload where -- {{{
     arbitrary = VisitorWorkload <$> arbitrary <*> arbitrary
 -- }}}
--- }}} Arbitrary
+-- }}}
 
 -- Serialize {{{
 instance Serialize α ⇒ Serialize (DList α) where -- {{{
