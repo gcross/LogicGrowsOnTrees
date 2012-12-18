@@ -140,6 +140,17 @@ between x y =
 {-# INLINE between #-}
 -- }}}
 
+endowVisitor :: Monad m ⇒ Visitor α → VisitorT m α -- {{{
+endowVisitor (view . unwrapVisitorT → Return x) = return x
+endowVisitor (view . unwrapVisitorT → Cache mx :>>= k) =
+    cacheMaybe (runIdentity mx) >>= endowVisitor . VisitorT . k
+endowVisitor (view . unwrapVisitorT → Choice left right :>>= k) =
+    mplus
+        (endowVisitor left >>= endowVisitor . VisitorT . k)
+        (endowVisitor right >>= endowVisitor . VisitorT . k)
+endowVisitor (view . unwrapVisitorT → Null :>>= k) = mzero
+-- }}}
+
 msumBalanced :: MonadPlus m ⇒ [m α] → m α -- {{{
 msumBalanced x = go (length x) x
   where
