@@ -1321,7 +1321,7 @@ tests = -- {{{
                     forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
                         forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
                             unless (i == j) $
-                                assertBool "Is there overlaps between non-intersection solutions?"
+                                assertBool "Is there overlap between non-intersecting solutions?"
                                     (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
                     assertEqual "Do the steals together include all of the solutions?"
                         correct_solutions
@@ -1384,7 +1384,7 @@ tests = -- {{{
                     forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
                         forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
                             unless (i == j) $
-                                assertBool "Is there overlaps between non-intersection solutions?"
+                                assertBool "Is there overlap between non-intersecting solutions?"
                                     (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
                     assertEqual "Do the steals together include all of the solutions?"
                         correct_solutions
