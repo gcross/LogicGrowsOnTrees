@@ -1162,56 +1162,79 @@ tests = -- {{{
                  -- }}}
                 ]
              -- }}}
-            ,testProperty "progress updates correctly capture current and remaining progress" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
-                starting_flag ← IVar.new
-                termination_result_ivar ← IVar.new
-                VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
-                    (IVar.write termination_result_ivar)
-                    ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
-                    entire_workload
-                progress_updates_ref ← newIORef []
-                let sendMyProgressUpdateRequest = sendProgressUpdateRequest workerPendingRequests submitProgressUpdate
-                    submitProgressUpdate progress_update = do
-                        atomicModifyIORef progress_updates_ref ((progress_update:) &&& const ())
-                        sendMyProgressUpdateRequest
-                sendMyProgressUpdateRequest
-                IVar.write starting_flag ()
-                termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                remaining_solutions ← case termination_result of
-                    VisitorWorkerFinished (visitorResult → solutions) → return solutions
-                    VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                    VisitorWorkerAborted → error "worker aborted prematurely"
-                (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
-                progress_updates ← reverse <$> readIORef progress_updates_ref
-                let correct_solutions = runVisitor visitor
-                    update_solutions = map (visitorResult . visitorWorkerProgressUpdate) progress_updates
-                    all_solutions = remaining_solutions:update_solutions
-                forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
-                    forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
-                        unless (i == j) $
-                            assertBool "Is there an overlap between non-intersecting solutions?"
-                                (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
-                let total_update_solutions = mconcat update_solutions
-                    total_solutions = mconcat all_solutions
-                assertEqual "Are the total solutions correct?"
-                    correct_solutions
-                    total_solutions
-                let accumulated_update_solutions = scanl1 mappend update_solutions
-                sequence_ $ zipWith (\accumulated_solutions (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) → do
-                    let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
-                    assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
-                        (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
-                    assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
-                        correct_solutions
-                        (accumulated_solutions `mappend` remaining_solutions)
-                    assertEqual "Is the checkpoint equal to the the remaining solutions?"
-                        remaining_solutions
-                        (runVisitorThroughCheckpoint checkpoint visitor)
-                    assertEqual "Is the inverted checkpoint equal to the the accumulated solutions?"
-                        accumulated_solutions
-                        (runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor)
-                 ) accumulated_update_solutions progress_updates
-                return True
+            ,testGroup "progress updates correctly capture current and remaining progress" $ -- {{{
+                let runAnalysis visitor termination_flag termination_result_ivar progress_updates_ref = do -- {{{
+                        termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                        remaining_solutions ← case termination_result of
+                            VisitorWorkerFinished (visitorResult → solutions) → return solutions
+                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            VisitorWorkerAborted → error "worker aborted prematurely"
+                        (IVar.nonblocking . IVar.read) termination_flag >>= assertBool "is the termination flag set?" . isJust
+                        progress_updates ← reverse <$> readIORef progress_updates_ref
+                        let correct_solutions = runVisitor visitor
+                            update_solutions = map (visitorResult . visitorWorkerProgressUpdate) progress_updates
+                            all_solutions = remaining_solutions:update_solutions
+                        forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
+                            forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
+                                unless (i == j) $
+                                    assertBool "Is there an overlap between non-intersecting solutions?"
+                                        (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
+                        let total_update_solutions = mconcat update_solutions
+                            total_solutions = mconcat all_solutions
+                        assertEqual "Are the total solutions correct?"
+                            correct_solutions
+                            total_solutions
+                        let accumulated_update_solutions = scanl1 mappend update_solutions
+                        sequence_ $
+                            zipWith (\accumulated_solutions (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) → do
+                                let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
+                                assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
+                                    (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
+                                assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
+                                    correct_solutions
+                                    (accumulated_solutions `mappend` remaining_solutions)
+                                assertEqual "Is the checkpoint equal to the the remaining solutions?"
+                                    remaining_solutions
+                                    (runVisitorThroughCheckpoint checkpoint visitor)
+                                assertEqual "Is the inverted checkpoint equal to the the accumulated solutions?"
+                                    accumulated_solutions
+                                    (runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor)
+                             ) accumulated_update_solutions progress_updates
+                        return True
+                in -- }}}
+                [testProperty "continuous progress update requests" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
+                    starting_flag ← IVar.new
+                    termination_result_ivar ← IVar.new
+                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                        (IVar.write termination_result_ivar)
+                        ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
+                        entire_workload
+                    progress_updates_ref ← newIORef []
+                    let sendMyProgressUpdateRequest = sendProgressUpdateRequest workerPendingRequests submitProgressUpdate
+                        submitProgressUpdate progress_update = do
+                            atomicModifyIORef progress_updates_ref ((progress_update:) &&& const ())
+                            sendMyProgressUpdateRequest
+                    sendMyProgressUpdateRequest
+                    IVar.write starting_flag ()
+                    runAnalysis visitor workerTerminationFlag termination_result_ivar progress_updates_ref
+                 -- }}}
+                ,testProperty "progress update requests at random leaves" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
+                    termination_result_ivar ← IVar.new
+                    progress_updates_ref ← newIORef []
+                    rec VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                            (IVar.write termination_result_ivar)
+                            (do value ← endowVisitor visitor
+                                liftIO $ randomIO >>= flip when submitMyProgressUpdateRequest
+                                return value
+                            )
+                            entire_workload
+                        let submitMyProgressUpdateRequest =
+                                sendProgressUpdateRequest
+                                    workerPendingRequests
+                                    (atomicModifyIORef progress_updates_ref . (&&& const ()) . (:))
+                    runAnalysis visitor workerTerminationFlag  termination_result_ivar progress_updates_ref
+                 -- }}}
+                ]
              -- }}}
             ,testCase "terminates successfully with null visitor" $ do -- {{{
                 termination_result_ivar ← IVar.new
