@@ -72,6 +72,7 @@ import Test.Framework.Providers.QuickCheck2
 import Test.HUnit
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen
+import Test.QuickCheck.Instances
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
 import Test.QuickCheck.Property
@@ -95,14 +96,6 @@ newtype UniqueVisitorT m = UniqueVisitor { unwrapUniqueVisitor :: VisitorT m Int
 
 -- Arbitrary {{{
 instance Arbitrary Branch where arbitrary = elements [LeftBranch,RightBranch]
-
-instance (Arbitrary α, Ord α) ⇒ Arbitrary (Set α) where -- {{{
-    arbitrary = fmap Set.fromList (listOf arbitrary)
--- }}}
-
-instance Arbitrary IntSet where -- {{{
-    arbitrary = fmap IntSet.fromList (listOf arbitrary)
--- }}}
 
 instance Arbitrary α ⇒ Arbitrary (DList α) where -- {{{
     arbitrary = DList.fromList <$> listOf arbitrary
@@ -195,8 +188,11 @@ instance Arbitrary VisitorCheckpoint where -- {{{
 
 instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
 
-instance Arbitrary VisitorPath where -- {{{
-    arbitrary = fmap Seq.fromList . listOf . oneof $ [fmap (CacheStep . encode) (arbitrary :: Gen Int),fmap ChoiceStep arbitrary]
+instance Arbitrary VisitorStep where -- {{{
+    arbitrary = oneof
+        [CacheStep <$> arbitrary
+        ,ChoiceStep <$> arbitrary
+        ]
 -- }}}
 
 instance Arbitrary α ⇒ Arbitrary (VisitorSolution α) where -- {{{

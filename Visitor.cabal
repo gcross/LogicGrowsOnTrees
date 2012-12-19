@@ -57,6 +57,7 @@ Test-Suite tests
         HUnit == 1.2.*,
         random == 1.0.*,
         QuickCheck >= 2.4 && < 2.6,
+        quickcheck-instances == 0.3.*,
         test-framework >= 0.6 && < 0.9,
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
