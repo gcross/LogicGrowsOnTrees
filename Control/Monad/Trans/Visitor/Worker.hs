@@ -182,7 +182,7 @@ genericForkVisitorTWorkerThread
                 AbortRequested:_ → return VisitorWorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     liftIO . submitProgress $ computeProgressUpdate result initial_path cursor context checkpoint
-                    loop2 result cursor visitor_state rest_requests
+                    loop2 mempty cursor visitor_state rest_requests
                 WorkloadStealRequested submitMaybeWorkload:rest_requests →
                     case tryStealWorkload initial_path cursor context of
                         Nothing → do
