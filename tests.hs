@@ -1251,7 +1251,56 @@ tests = -- {{{
                 workerInitialPath @?= Seq.empty
                 (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
-            ,testGroup "work stealing correctly preserves total workload" -- {{{
+            ,testGroup "work stealing correctly preserves total workload" $ -- {{{
+                let runManyStealsAnalysis visitor termination_flag termination_result_ivar steals_ref = do
+                        termination_result ← IVar.blocking $ IVar.read termination_result_ivar
+                        (VisitorProgress checkpoint remaining_solutions) ← case termination_result of
+                            VisitorWorkerFinished final_progress → return final_progress
+                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            VisitorWorkerAborted → error "worker aborted prematurely"
+                        (IVar.nonblocking . IVar.read) termination_flag >>= assertBool "is the termination flag set?" . isJust
+                        steals ← reverse <$> readIORef steals_ref
+                        let correct_solutions = runVisitor visitor
+                            prestolen_solutions =
+                                map (
+                                    visitorResult
+                                    .
+                                    visitorWorkerProgressUpdate
+                                    .
+                                    visitorWorkerStolenWorkerProgressUpdate
+                                ) steals
+                            stolen_solutions =
+                                map (
+                                    flip runVisitorThroughWorkload visitor
+                                    .
+                                    visitorWorkerStolenWorkload
+                                ) steals
+                            all_solutions = remaining_solutions:(prestolen_solutions ++ stolen_solutions)
+                            total_solutions = mconcat all_solutions
+                        forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
+                            forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
+                                unless (i == j) $
+                                    assertBool "Is there overlap between non-intersecting solutions?"
+                                        (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
+                        assertEqual "Do the steals together include all of the solutions?"
+                            correct_solutions
+                            total_solutions
+                        let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
+                            accumulated_stolen_solutions = scanl1 mappend stolen_solutions
+                        sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) _) → do
+                            let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
+                                accumulated_solutions = acc_prestolen `mappend` acc_stolen
+                            assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
+                                (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
+                            assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
+                                correct_solutions
+                                (accumulated_solutions `mappend` remaining_solutions)
+                            assertEqual "Is the checkpoint equal to the stolen plus the remaining solutions?"
+                                (acc_stolen `mappend` remaining_solutions)
+                                (runVisitorThroughCheckpoint checkpoint visitor)
+                         ) accumulated_prestolen_solutions accumulated_stolen_solutions steals
+                        return True
+                in -- }}}
                 [testProperty "single steal" $ \(UniqueVisitor visitor :: UniqueVisitor) → unsafePerformIO $ do -- {{{
                     reached_position_qsem ← newQSem 0
                     blocking_value_ivar ← IVar.new
@@ -1318,52 +1367,7 @@ tests = -- {{{
                             submitMyWorkloadStealRequest
                     submitMyWorkloadStealRequest
                     IVar.write starting_flag ()
-                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                    (VisitorProgress checkpoint remaining_solutions) ← case termination_result of
-                        VisitorWorkerFinished final_progress → return final_progress
-                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                        VisitorWorkerAborted → error "worker aborted prematurely"
-                    steals ← reverse <$> readIORef steals_ref
-                    let correct_solutions = runVisitor visitor
-                        prestolen_solutions =
-                            map (
-                                visitorResult
-                                .
-                                visitorWorkerProgressUpdate
-                                .
-                                visitorWorkerStolenWorkerProgressUpdate
-                            ) steals
-                        stolen_solutions =
-                            map (
-                                flip runVisitorThroughWorkload visitor
-                                .
-                                visitorWorkerStolenWorkload
-                            ) steals
-                        all_solutions = remaining_solutions:(prestolen_solutions ++ stolen_solutions)
-                        total_solutions = mconcat all_solutions
-                    forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
-                        forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
-                            unless (i == j) $
-                                assertBool "Is there overlap between non-intersecting solutions?"
-                                    (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
-                    assertEqual "Do the steals together include all of the solutions?"
-                        correct_solutions
-                        total_solutions
-                    let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
-                        accumulated_stolen_solutions = scanl1 mappend stolen_solutions
-                    sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) _) → do
-                        let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
-                            accumulated_solutions = acc_prestolen `mappend` acc_stolen
-                        assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
-                            (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
-                        assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
-                            correct_solutions
-                            (accumulated_solutions `mappend` remaining_solutions)
-                        assertEqual "Is the checkpoint equal to the stolen plus the remaining solutions?"
-                            (acc_stolen `mappend` remaining_solutions)
-                            (runVisitorThroughCheckpoint checkpoint visitor)
-                     ) accumulated_prestolen_solutions accumulated_stolen_solutions steals
-                    return True
+                    runManyStealsAnalysis visitor workerTerminationFlag termination_result_ivar steals_ref
                  -- }}}
                 ,testProperty "stealing at random leaves" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     termination_result_ivar ← IVar.new
@@ -1379,54 +1383,7 @@ tests = -- {{{
                                 sendWorkloadStealRequest
                                     workerPendingRequests
                                     (maybe (return ()) $ atomicModifyIORef steals_ref . (&&& const ()) . (:))
-                    termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                    (VisitorProgress checkpoint remaining_solutions) ← case termination_result of
-                        VisitorWorkerFinished final_progress → return final_progress
-                        VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                        VisitorWorkerAborted → error "worker aborted prematurely"
-                    steals ← reverse <$> readIORef steals_ref
-                    let correct_solutions = runVisitor visitor
-                        prestolen_solutions =
-                            map (
-                                visitorResult
-                                .
-                                visitorWorkerProgressUpdate
-                                .
-                                visitorWorkerStolenWorkerProgressUpdate
-                            )
-                            $
-                            steals
-                        stolen_solutions =
-                            map (
-                                flip runVisitorThroughWorkload visitor
-                                .
-                                visitorWorkerStolenWorkload
-                            ) steals
-                    let all_solutions = remaining_solutions:(prestolen_solutions ++ stolen_solutions)
-                        total_solutions = mconcat all_solutions
-                    forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
-                        forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
-                            unless (i == j) $
-                                assertBool "Is there overlap between non-intersecting solutions?"
-                                    (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
-                    assertEqual "Do the steals together include all of the solutions?"
-                        correct_solutions
-                        total_solutions
-                    let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
-                        accumulated_stolen_solutions = scanl1 mappend stolen_solutions
-                    sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) _) → do
-                        let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
-                            accumulated_solutions = acc_prestolen `mappend` acc_stolen
-                        assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
-                            (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
-                        assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
-                            correct_solutions
-                            (accumulated_solutions `mappend` remaining_solutions)
-                        assertEqual "Is the checkpoint equal to the stolen plus the remaining solutions?"
-                            (acc_stolen `mappend` remaining_solutions)
-                            (runVisitorThroughCheckpoint checkpoint visitor)
-                     ) accumulated_prestolen_solutions accumulated_stolen_solutions steals
-                    return True
+                    runManyStealsAnalysis visitor workerTerminationFlag termination_result_ivar steals_ref
                  -- }}}
                 ]
              -- }}}
