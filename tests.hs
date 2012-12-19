@@ -254,7 +254,6 @@ instance Exception TestException
 -- }}}
 
 -- Type alises {{{
-type ThreadsTestVisitor = LabeledVisitorT (ReaderT (TVar (Map (VisitorLabel,Int) (TMVar ())),TChan ((VisitorLabel,Int),TMVar ())) IO)
 type UniqueVisitor = UniqueVisitorT Identity
 -- }}}
 
@@ -742,118 +741,52 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Parallel.Threads" $ -- {{{
-      let
-        gen1, gen2 :: Int → Int → Gen (IntSet → ThreadsTestVisitor IntSet)
-        gen1 n level = (action level >=>) <$> gen2 n level
-        gen2 0 level = null
-        gen2 1 level = frequency
-                    [(1,null)
-                    ,(3,resultPlus)
-                    ,(2,cachedPlus)
-                    ]
-        gen2 n level = frequency
-                    [(1,null)
-                    ,(2,liftM2 (>=>) resultPlus (gen1 n (level+1)))
-                    ,(2,liftM2 (>=>) cachedPlus (gen1 n (level+1)))
-                    ,(4, do left_size ← choose (0,n)
-                            let right_size = n-left_size
-                            liftM2 (liftA2 mplus)
-                                (gen1 left_size 0)
-                                (gen1 right_size 0)
-                     )
-                    ]
-
-        null :: Gen (IntSet → ThreadsTestVisitor IntSet)
-        null = return (const mzero)
-
-        result, cached :: Gen (ThreadsTestVisitor IntSet)
-        result = fmap return arbitrary
-        cached = fmap cache arbitrary
-
-        resultPlus = (\x → flip fmap x . mappend) <$> result
-        cachedPlus = (\x → flip fmap x . mappend) <$> cached
-
-        action :: Int → IntSet → ThreadsTestVisitor IntSet
-        action level intermediate = do
-            label ← getLabel
-            let position = (label,level)
-            (tokens_tvar,requests_channel) ← lift ask
-            liftIO $ do
-                token_tmvar ← atomically $ do
-                    tokens ← readTVar tokens_tvar
-                    case Map.lookup position tokens of
-                        Just token_tmvar → do return token_tmvar
-                        Nothing → do
-                            token_tmvar ← newEmptyTMVar
-                            modifyTVar tokens_tvar $ Map.insert position token_tmvar
-                            writeTChan requests_channel (position,token_tmvar)
-                            return token_tmvar
-                (atomically $ readTMVar token_tmvar)
-                 `catch`
-                  (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for token " ++ show position)
-            return intermediate
-
-        runTest generateNoise = do
-            visitor ← normalizeLabeledVisitorT . ($ mempty) <$> sized (\n → gen1 (if n > 4 then 3*n else n) 0)
-            morallyDubiousIOProperty $ do
-                requests_channel ← newTChanIO
-                tokens_mvar ← newTVarIO Map.empty
-                let run = flip runReaderT (tokens_mvar,requests_channel)
+        let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
                 termination_reason_ivar ← IVar.new
-                controller ← Threads.runVisitorT run (IVar.write termination_reason_ivar) visitor
-                Threads.changeNumberOfWorkers (const $ return 1) controller
+                token_mvar ← newEmptyMVar
+                request_mvar ← newEmptyMVar
+                controller ←
+                    Threads.runVisitorIO
+                        (IVar.write termination_reason_ivar)
+                        (do value ← endowVisitor visitor
+                            liftIO $ putMVar request_mvar () >> takeMVar token_mvar
+                            return value
+                        )
                 progresses_ref ← newIORef []
                 let receiveProgress (VisitorProgress Unexplored _) = return ()
                     receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
-                request_handler ← forkIO . forever $ do
-                    (position,token_tmvar) ← atomically $ readTChan requests_channel
-                    generateNoise receiveProgress >>= ($ controller)
-                    (atomically $ putTMVar token_tmvar ())
-                     `catch`
-                      (\BlockedIndefinitelyOnMVar → error $ "blocked forever while sending token " ++ show position)
-                termination_reason ← (IVar.blocking . IVar.read $ termination_reason_ivar)
-                 `catch`
-                  (\BlockedIndefinitelyOnMVar → error $ "blocked forever waiting for termination")
-                killThread request_handler
+                token_manager_thread_id ← forkIO . forever $ do
+                    takeMVar request_mvar
+                    generateNoise receiveProgress controller
+                    putMVar token_mvar ()
+                Threads.changeNumberOfWorkers (const $ return 1) controller
+                termination_reason ← IVar.blocking . IVar.read $ termination_reason_ivar
+                killThread token_manager_thread_id
                 result ← case termination_reason of
                     Threads.Completed result → return result
                     Threads.Aborted _ → error "prematurely aborted"
                     Threads.Failure exception → throwIO exception
-                expected_result ← run . runVisitorT $ visitor
-                result @?= expected_result
-                progresses ← remdups <$> readIORef progresses_ref
-                mapM_ (\(current_result,checkpoint) → do
-                    (run $ runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor)
-                        >>= (current_result @=?)
-                    (run $ runVisitorTThroughCheckpoint checkpoint visitor)
-                        >>= (expected_result @=?) . mappend current_result
-                 ) . snd . mapAccumL (\current_result (VisitorProgress checkpoint new_result) →
-                    let new_current_result = current_result `mappend` new_result
-                    in (new_current_result,(new_current_result,checkpoint))
-                 ) mempty . reverse $ progresses
+                let correct_result = runVisitor visitor
+                result @?= correct_result
+                (remdups <$> readIORef progresses_ref) >>= mapM_ (\(VisitorProgress checkpoint result) → do
+                    result @=? runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
+                    correct_result @=? mappend result (runVisitorThroughCheckpoint checkpoint visitor)
+                 )
                 return True
-      in  [testProperty "one thread" . runTest $ \receiveProgress →
-              (\i → case i of
-                  0 → void . \controller → do
-                      Threads.changeNumberOfWorkers (return . (\i → 0)) controller
-                      Threads.changeNumberOfWorkers (return . (\i → 1)) controller
-                  1 → void . (flip Threads.requestProgressUpdateAsync receiveProgress)
-                  _ → const $ return ()
-              ) <$> randomRIO (0,1::Int)
-          ,testProperty "two threads" . runTest $ \receiveProgress →
-              (\i → case i of
-                  0 → void . (Threads.changeNumberOfWorkers $ return . (\i → 3-i))
-                  1 → void . (flip Threads.requestProgressUpdateAsync receiveProgress)
-                  _ → const $ return ()
-              ) <$> randomRIO (0,1::Int)
-          ,testProperty "many threads" . runTest $ \receiveProgress →
-              (\i → case i of
-                  0 → void . (Threads.changeNumberOfWorkers $ return . (\i → if i > 1 then i-1 else i))
-                  1 → void . (Threads.changeNumberOfWorkers $ return . (+1))
-                  2 → void . (flip Threads.requestProgressUpdateAsync receiveProgress)
-                  _ → const $ return ()
-              ) <$> randomRIO (0,2::Int)
-          ]
+      in
+      [testProperty "one thread" . runTest $ \receiveProgress controller → randomRIO (0,1::Int) >>= \i → case i of
+          0 → void $ do
+                  Threads.changeNumberOfWorkers (return . (\i → 0)) controller
+                  Threads.changeNumberOfWorkers (return . (\i → 1)) controller
+          1 → void $ Threads.requestProgressUpdateAsync controller receiveProgress
+      ,testProperty "two threads" . runTest $ \receiveProgress controller → randomRIO (0,1::Int) >>= \i → case i of
+          0 → void $ Threads.changeNumberOfWorkers (return . (\i → 3-i)) controller
+          1 → void $ Threads.requestProgressUpdateAsync controller receiveProgress
+      ,testProperty "many threads" . runTest $ \receiveProgress controller → randomRIO (0,2::Int) >>= \i → case i of
+          0 → void $ Threads.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i)) controller
+          1 → void $ Threads.changeNumberOfWorkers (return . (+1)) controller
+          2 → void $ Threads.requestProgressUpdateAsync controller receiveProgress
+      ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Path" -- {{{
         [testGroup "sendVisitorDownPath" -- {{{
