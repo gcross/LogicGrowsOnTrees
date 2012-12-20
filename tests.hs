@@ -628,25 +628,26 @@ tests = -- {{{
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Examples" -- {{{
         [testGroup "Queens" -- {{{
-            [testGroup "solutions are valid" $ -- {{{
-                let makeTest n = testCase ("n = " ++ show n) $ do
-                        let solutions = nqueens n
-                        forM_ solutions $ \solution →
-                            forM_ [(row1,row2) | row1 ← [0..n-2], row2 ← [row1+1..n-1]] $ \(row1,row2) → do
-                                let col1 = solution !! row1
-                                    col2 = solution !! row2
-                                assertBool "columns do not conflict" (col1 /= col2)
-                                assertBool "negative diagonals do not conflict" ((row1+col1) /= (row2+col2))
-                                assertBool "positive diagonals do not conflict" ((row1-col1) /= (row2-col2))
-                in map makeTest [2..10]
+            [testGroup "solutions are valid" -- {{{
+                [ testCase ("n = " ++ show n) $
+                    let solutions = nqueens n in
+                    forM_ solutions $ \solution →
+                        forM_ [(row1,row2) | row1 ← [0..n-2], row2 ← [row1+1..n-1]] $ \(row1,row2) → do
+                            let col1 = solution !! row1
+                                col2 = solution !! row2
+                            assertBool "columns do not conflict" (col1 /= col2)
+                            assertBool "negative diagonals do not conflict" ((row1+col1) /= (row2+col2))
+                            assertBool "positive diagonals do not conflict" ((row1-col1) /= (row2-col2))
+                | n ← [2..10]
+                ]
              -- }}}
             ,testGroup "solutions are unique" $ -- {{{
-                let makeTest n = testCase ("n = " ++ show n) $
-                        length solutions_as_list @?= Set.size solutions_as_set
-                      where
-                        solutions_as_list = nqueens n
+                [ testCase ("n = " ++ show n) $
+                    let solutions_as_list = nqueens n
                         solutions_as_set = Set.fromList solutions_as_list
-                in map makeTest [2..10]
+                    in length solutions_as_list @?= Set.size solutions_as_set
+                | n ← [2..10]
+                ]
              -- }}}
             ,testGroup "solutions have correct size" $ -- {{{
                 let makeTest n correct_count = testCase ("n = " ++ show n) $
