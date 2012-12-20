@@ -636,9 +636,9 @@ tests = -- {{{
                         forM_ [(row1,row2) | row1 ← [0..n-2], row2 ← [row1+1..n-1]] $ \(row1,row2) → do
                             let col1 = solution !! row1
                                 col2 = solution !! row2
-                            assertBool "columns do not conflict" (col1 /= col2)
-                            assertBool "negative diagonals do not conflict" ((row1+col1) /= (row2+col2))
-                            assertBool "positive diagonals do not conflict" ((row1-col1) /= (row2-col2))
+                            assertBool "columns conflict" (col1 /= col2)
+                            assertBool "negative diagonals conflict" ((row1+col1) /= (row2+col2))
+                            assertBool "positive diagonals conflict" ((row1-col1) /= (row2-col2))
                 | n ← [2..10]
                 ]
              -- }}}
