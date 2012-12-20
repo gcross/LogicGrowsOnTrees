@@ -462,6 +462,7 @@ tests = -- {{{
             return $ between x y == [x..y]
          -- }}}
         ,testProperty "msumBalanced" $ \(x :: [Int]) → x == msumBalanced (map return x)
+        ,testProperty "msumBalancedGreedy" $ \(x :: [UUID]) → ((==) `on` sort) x (msumBalancedGreedy (map return x))
         ,testGroup "runVisitor" -- {{{
             [testCase "return" $ runVisitor (return [()]) @?= [()]
             ,testCase "mzero" $ runVisitor (mzero :: Visitor [()]) @?= []

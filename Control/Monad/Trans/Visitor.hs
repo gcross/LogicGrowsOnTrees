@@ -124,6 +124,10 @@ allFrom :: MonadPlus m ⇒ [α] → m α -- {{{
 allFrom = msumBalanced . map return
 -- }}}
 
+allFromGreedy :: MonadPlus m ⇒ [α] → m α -- {{{
+allFromGreedy = msumBalancedGreedy . map return
+-- }}}
+
 between :: (Enum n, MonadPlus m) ⇒ n → n → m n -- {{{
 between x y =
     if a > b
@@ -160,6 +164,19 @@ msumBalanced x = go (length x) x
       where
         (a,b) = splitAt i x
         i = n `div` 2
+-- }}}
+
+msumBalancedGreedy :: MonadPlus m ⇒ [m α] → m α -- {{{
+msumBalancedGreedy = go []
+  where
+    go [] [] = mzero
+    go stacks [] = foldr1 mplus . map snd $ stacks
+    go stacks (x:xs) = go (addToStacks stacks 1 x) xs
+      where
+        addToStacks [] i x = [(i,x)]
+        addToStacks stacks@((i',x'):rest) i x
+         | i == i' = addToStacks rest (i+1) (x' `mplus` x)
+         | otherwise = (i,x):stacks
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
