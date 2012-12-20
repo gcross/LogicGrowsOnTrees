@@ -7,11 +7,12 @@ module Control.Monad.Trans.Visitor.Examples.Queens where
 
 -- Imports {{{
 import Control.Monad (MonadPlus(..))
+import Data.Bits ((.&.),clearBit,setBit,shiftL,shiftR,testBit)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import qualified Data.IntSet as IntSet
+import Data.Word (Word64)
 
-import Control.Monad.Trans.Visitor (Visitor,allFrom)
+import Control.Monad.Trans.Visitor (Visitor,allFromGreedy)
 -- }}}
 
 -- Values -- {{{
@@ -48,32 +49,39 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 -- Functions {{{
 
 nqueens :: MonadPlus m ⇒ Int → m [Int] -- {{{
-nqueens n = go n 0 (IntSet.fromDistinctAscList [0..n-1]) IntSet.empty IntSet.empty []
+nqueens n = go n 0 ((1 `shiftL` n)-1::Word64) (0::Word64) (0::Word64) []
   where
+    negative_diagonal_offset = n-1
     go 0 _ _ _ _ !positions = return (reverse positions)
-    go !n
+    go !numbers_of_rows_remaining
        !row
        !available_columns
        !occupied_negative_diagonals
        !occupied_positive_diagonals
        !positions
      = do
-        allFrom
+        allFromGreedy
             [ (column,negative_diagonal,positive_diagonal)
-            | column ← IntSet.toList available_columns
+            | column ← go1 0 available_columns
             , let negative_diagonal = row + column
-            , IntSet.notMember negative_diagonal occupied_negative_diagonals
-            , let positive_diagonal = row - column
-            , IntSet.notMember positive_diagonal occupied_positive_diagonals
+                  positive_diagonal = row - column + negative_diagonal_offset
+            , not $ (occupied_negative_diagonals `testBit` negative_diagonal)
+                 || (occupied_positive_diagonals `testBit` positive_diagonal)
             ]
         >>=
         \(column,negative_diagonal,positive_diagonal) →
-            go (n-1)
+            go (numbers_of_rows_remaining-1)
                (row+1)
-               (IntSet.delete column available_columns)
-               (IntSet.insert negative_diagonal occupied_negative_diagonals)
-               (IntSet.insert positive_diagonal occupied_positive_diagonals)
+               (available_columns `clearBit` column)
+               (occupied_negative_diagonals `setBit` negative_diagonal)
+               (occupied_positive_diagonals `setBit` positive_diagonal)
                (column:positions)
+    go1 _ 0 = []
+    go1 !i !bits
+     | (bits .&. 1 == 1) = i:next
+     | otherwise         =   next
+     where
+       next = go1 (i+1) (bits `shiftR` 1)
 {-# SPECIALIZE nqueens :: Int → [[Int]] #-}
 {-# SPECIALIZE nqueens :: Int → Visitor [Int] #-}
 -- }}}
