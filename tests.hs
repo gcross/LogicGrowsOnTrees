@@ -51,7 +51,6 @@ import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Monoid
-import Data.Monoid.Unicode
 import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import qualified Data.Serialize as Serialize
@@ -466,7 +465,7 @@ tests = -- {{{
         ,testGroup "runVisitor" -- {{{
             [testCase "return" $ runVisitor (return [()]) @?= [()]
             ,testCase "mzero" $ runVisitor (mzero :: Visitor [()]) @?= []
-            ,testCase "mplus" $ runVisitor (return [1] ⊕ return [2]) @?= [1,2]
+            ,testCase "mplus" $ runVisitor (return [1] `mplus` return [2]) @?= [1,2]
             ,testCase "cache" $ runVisitor (cache [42]) @?= [42::Int]
             ,testGroup "cacheMaybe" -- {{{
                 [testCase "Nothing" $ runVisitor (cacheMaybe (Nothing :: Maybe [()])) @?= []
@@ -532,7 +531,7 @@ tests = -- {{{
             [testProperty "product results in intersection of solutions" $ \(UniqueVisitor visitor) → do -- {{{
                 (_,checkpoint1) ← randomCheckpointForVisitor visitor
                 (_,checkpoint2) ← randomCheckpointForVisitor visitor
-                let checkpoint3 = checkpoint1 ⊕ checkpoint2
+                let checkpoint3 = checkpoint1 `mappend` checkpoint2
                     solutions1 = runVisitorThroughCheckpoint checkpoint1 visitor
                     solutions2 = runVisitorThroughCheckpoint checkpoint2 visitor
                     solutions3 = runVisitorThroughCheckpoint checkpoint3 visitor
@@ -541,7 +540,7 @@ tests = -- {{{
             ,testCase "throws the correct exceptions" $ -- {{{
                 mapM_ (\(x,y) →
                     try (
-                        evaluate (x ⊕ y)
+                        evaluate (x `mappend` y)
                         >>
                         assertFailure (show x ++ " and " ++ show y ++ " were not recognized as being inconsistent")
                     )
@@ -553,7 +552,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testProperty "unit element laws" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
-                mempty ⊕ checkpoint == checkpoint && checkpoint ⊕ mempty == checkpoint
+                (mempty `mappend` checkpoint == checkpoint) && (checkpoint `mappend` mempty == checkpoint)
              -- }}}
             ]
          -- }}}
@@ -587,7 +586,7 @@ tests = -- {{{
              -- }}}
             ,testProperty "checkpoints accurately capture remaining search space" $ \(UniqueVisitor v) → -- {{{
                 let results_using_progressive_checkpoints =
-                        [result ⊕ runVisitorThroughCheckpoint checkpoint v
+                        [ result `mappend` runVisitorThroughCheckpoint checkpoint v
                         | (result,checkpoint) ← walkVisitor v
                         ]
                 in all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
@@ -685,14 +684,14 @@ tests = -- {{{
          -- }}}
         ,testGroup "Monoid instance" -- {{{
             [testProperty "equivalent to concatenation of branchings" $ \(parent_branching :: [Branch]) (child_branching :: [Branch]) → -- {{{
-                labelFromBranching parent_branching ⊕ labelFromBranching child_branching
+                labelFromBranching parent_branching `mappend` labelFromBranching child_branching
                 ==
-                labelFromBranching (parent_branching ⊕ child_branching)
+                labelFromBranching (parent_branching `mappend` child_branching)
              -- }}}
             ,testProperty "obeys monoid laws" $ -- {{{
                 liftA2 (&&)
-                    (liftA2 (==) id (⊕ (mempty :: VisitorLabel)))
-                    (liftA2 (==) id ((mempty :: VisitorLabel) ⊕))
+                    (liftA2 (==) id (`mappend` (mempty :: VisitorLabel)))
+                    (liftA2 (==) id ((mempty :: VisitorLabel) `mappend`))
              -- }}}
             ]
          -- }}}

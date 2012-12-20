@@ -26,7 +26,6 @@ import Data.DeriveTH
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Maybe (mapMaybe)
 import Data.Monoid (Monoid(..))
-import Data.Monoid.Unicode
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
@@ -112,9 +111,10 @@ instance Monoid VisitorCheckpoint where -- {{{
     _ `mappend` Explored = Explored
     Unexplored `mappend` x = x
     x `mappend` Unexplored = x
-    (ChoiceCheckpoint lx rx) `mappend` (ChoiceCheckpoint ly ry) = mergeCheckpointRoot (ChoiceCheckpoint (lx ⊕ ly) (rx ⊕ ry))
+    (ChoiceCheckpoint lx rx) `mappend` (ChoiceCheckpoint ly ry) =
+        mergeCheckpointRoot (ChoiceCheckpoint (lx `mappend` ly) (rx `mappend` ry))
     (CacheCheckpoint cx x) `mappend` (CacheCheckpoint cy y)
-      | cx == cy = mergeCheckpointRoot (CacheCheckpoint cx (x ⊕ y))
+      | cx == cy = mergeCheckpointRoot (CacheCheckpoint cx (x `mappend` y))
     mappend x y = throw (InconsistentCheckpoints x y)
 -- }}}
 

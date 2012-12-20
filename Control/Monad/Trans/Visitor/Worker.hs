@@ -31,7 +31,6 @@ import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef,writeIORef)
 import qualified Data.IVar as IVar
 import Data.IVar (IVar)
 import Data.Monoid (Monoid(..))
-import Data.Monoid.Unicode((⊕))
 import Data.Maybe (isJust)
 import Data.Sequence ((|>),(><),Seq,viewl,ViewL(..))
 import Data.Serialize
@@ -202,7 +201,7 @@ genericForkVisitorTWorkerThread
             new_result ← liftIO $ do
                 case maybe_solution of
                     Nothing → return result
-                    Just solution → evaluate $ solution `seq` (result ⊕ solution)
+                    Just solution → evaluate $ solution `seq` (result `mappend` solution)
             case maybe_new_visitor_state of
                 Nothing →
                     return
