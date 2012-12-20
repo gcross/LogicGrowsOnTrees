@@ -39,6 +39,8 @@ import qualified Data.Foldable as Fold
 import Data.Function
 import Data.Functor
 import Data.Functor.Identity
+import qualified Data.IntMap as IntMap
+import Data.IntMap (IntMap)
 import qualified Data.IntSet as IntSet
 import Data.IntSet (IntSet)
 import Data.IORef
@@ -649,32 +651,22 @@ tests = -- {{{
                 | n ← [2..10]
                 ]
              -- }}}
-            ,testGroup "solutions have correct size" $ -- {{{
-                let makeTest n correct_count = testCase ("n = " ++ show n) $
-                        (correct_count @=?)
-                        .
-                        getSum
-                        .
-                        runVisitor
-                        .
-                        fmap (const $ Sum 1)
-                        .
-                        nqueens
-                        $
-                        n
-                in map (uncurry makeTest) $
-                    [( 2,0)
-                    ,( 3,0)
-                    ,( 4,2)
-                    ,( 5,10)
-                    ,( 6,4)
-                    ,( 7,40)
-                    ,( 8,92)
-                    ,( 9,352)
-                    ,(10,724)
-                    ,(11,2680)
-                    ,(12,14200)
-                    ]
+            ,testGroup "solutions have correct size" -- {{{
+                [ testCase ("n = " ++ show n) $
+                    (correct_count @=?)
+                    .
+                    getSum
+                    .
+                    runVisitor
+                    .
+                    fmap (const $ Sum 1)
+                    .
+                    nqueens
+                    $
+                    n
+                | n ← [2..12]
+                , let correct_count = fromJust $ IntMap.lookup n nqueens_correct_counts
+                ]
              -- }}}
             ]
          -- }}}
