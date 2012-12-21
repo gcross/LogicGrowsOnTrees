@@ -663,7 +663,7 @@ tests = -- {{{
                     $
                     n
                 | n ← [2..12]
-                , let correct_count = fromJust $ IntMap.lookup n nqueens_correct_counts
+                , let correct_count = nqueensCorrectCount n
                 ]
              -- }}}
             ]

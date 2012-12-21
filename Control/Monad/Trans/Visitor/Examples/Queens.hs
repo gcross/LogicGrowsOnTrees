@@ -10,6 +10,7 @@ import Control.Monad (MonadPlus(..))
 import Data.Bits ((.&.),clearBit,setBit,shiftL,shiftR,testBit)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.Word (Word64)
 
@@ -48,6 +49,10 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 -- }}}
 
 -- Functions {{{
+
+nqueensCorrectCount :: Int → Int -- {{{
+nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
+-- }}}
 
 nqueensGeneric :: MonadPlus m ⇒ α → (Int → α → α) → (α → β) → Int → m β -- {{{
 nqueensGeneric initial_value updateValue finalizeValue n =
