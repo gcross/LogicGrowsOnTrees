@@ -46,6 +46,7 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
     --,(22,2691008701644)
     --,(23,24233937684440)
     ]
+
 -- }}}
 
 -- Functions {{{
