@@ -21,7 +21,7 @@ import Criterion.Main
 runWithCPUs :: Int → Int → IO ()
 runWithCPUs n number_of_workers = do
     result_mvar ← newEmptyMVar
-    controller ← runVisitor (putMVar result_mvar) (fmap (const $ Sum (1::Int)) $ nqueens n)
+    controller ← runVisitor (putMVar result_mvar) (nqueensCount n)
     changeNumberOfWorkersAsync (const (return number_of_workers)) controller (void . return)
     takeMVar result_mvar >>= \x → case x of
         Completed (getSum → result) → if result == correct_counts !! n then return () else error $ "result == " ++ show result ++ ", but should be " ++ show (correct_counts !! n)

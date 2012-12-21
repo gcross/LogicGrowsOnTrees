@@ -632,7 +632,7 @@ tests = -- {{{
         [testGroup "Queens" -- {{{
             [testGroup "solutions are valid" -- {{{
                 [ testCase ("n = " ++ show n) $
-                    let solutions = nqueens n in
+                    let solutions = nqueensSolutions n in
                     forM_ solutions $ \solution →
                         forM_ [(row1,row2) | row1 ← [0..n-2], row2 ← [row1+1..n-1]] $ \(row1,row2) → do
                             let col1 = solution !! row1
@@ -645,7 +645,7 @@ tests = -- {{{
              -- }}}
             ,testGroup "solutions are unique" $ -- {{{
                 [ testCase ("n = " ++ show n) $
-                    let solutions_as_list = nqueens n
+                    let solutions_as_list = nqueensSolutions n
                         solutions_as_set = Set.fromList solutions_as_list
                     in length solutions_as_list @?= Set.size solutions_as_set
                 | n ← [2..10]
@@ -659,9 +659,7 @@ tests = -- {{{
                     .
                     runVisitor
                     .
-                    fmap (const $ Sum 1)
-                    .
-                    nqueens
+                    nqueensCount
                     $
                     n
                 | n ← [2..12]

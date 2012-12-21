@@ -10,6 +10,7 @@ import Control.Monad (MonadPlus(..))
 import Data.Bits ((.&.),clearBit,setBit,shiftL,shiftR,testBit)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import Data.Monoid
 import Data.Word (Word64)
 
 import Control.Monad.Trans.Visitor (Visitor,allFromGreedy)
@@ -48,17 +49,18 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 
 -- Functions {{{
 
-nqueens :: MonadPlus m ⇒ Int → m [Int] -- {{{
-nqueens n = go n 0 ((1 `shiftL` n)-1::Word64) (0::Word64) (0::Word64) []
+nqueensGeneric :: MonadPlus m ⇒ α → (Int → α → α) → (α → β) → Int → m β -- {{{
+nqueensGeneric initial_value updateValue finalizeValue n =
+    go n 0 ((1 `shiftL` n)-1::Word64) (0::Word64) (0::Word64) initial_value
   where
     negative_diagonal_offset = n-1
-    go 0 _ _ _ _ !positions = return (reverse positions)
+    go 0 _ _ _ _ !value = return (finalizeValue value)
     go !numbers_of_rows_remaining
        !row
        !available_columns
        !occupied_negative_diagonals
        !occupied_positive_diagonals
-       !positions
+       !value
      = do
         allFromGreedy
             [ (column,negative_diagonal,positive_diagonal)
@@ -75,15 +77,31 @@ nqueens n = go n 0 ((1 `shiftL` n)-1::Word64) (0::Word64) (0::Word64) []
                (available_columns `clearBit` column)
                (occupied_negative_diagonals `setBit` negative_diagonal)
                (occupied_positive_diagonals `setBit` positive_diagonal)
-               (column:positions)
+               (column `updateValue` value)
     go1 _ 0 = []
     go1 !i !bits
      | (bits .&. 1 == 1) = i:next
      | otherwise         =   next
      where
        next = go1 (i+1) (bits `shiftR` 1)
-{-# SPECIALIZE nqueens :: Int → [[Int]] #-}
-{-# SPECIALIZE nqueens :: Int → Visitor [Int] #-}
+{-# INLINE nqueensGeneric #-}
+-- }}}
+
+nqueensCount :: MonadPlus m ⇒ Int → m (Sum Int) -- {{{
+nqueensCount = nqueensGeneric () (const id) (const (Sum 1))
+{-# SPECIALIZE nqueensCount :: Int → [Sum Int] #-}
+{-# SPECIALIZE nqueensCount :: Int → Visitor (Sum Int) #-}
+-- }}}
+
+nqueensSolutions :: MonadPlus m ⇒ Int → m [Int] -- {{{
+nqueensSolutions = nqueensGeneric [] (:) reverse
+{-# SPECIALIZE nqueensSolutions :: Int → [[Int]] #-}
+{-# SPECIALIZE nqueensSolutions :: Int → Visitor [Int] #-}
+-- }}}
+
+nqueensTrivial :: MonadPlus m ⇒ Int → m () -- {{{
+nqueensTrivial = nqueensGeneric () (const id) (const ())
+{-# SPECIALIZE nqueensTrivial :: Int → [()] #-}
 -- }}}
 
 -- }}}

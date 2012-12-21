@@ -15,10 +15,9 @@ import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
 
-nqueensCount = fmap (const $ Sum (1 :: Int)) . nqueens
-
 main = defaultMain
-    [bench "list" $ nf (length . nqueens) n
+    [bench "list of ()" $ nf (length . nqueensTrivial) n
+    ,bench "list of Sum 1" $ nf (length . nqueensCount) n
     ,bench "visitor" $ nf (getSum . runVisitor . nqueensCount) n
     ,bench "visitor w/ checkpointing" $ nf (getSum . runVisitorThroughCheckpoint Unexplored . nqueensCount) n
     ,bench "visitor using worker" $ do
