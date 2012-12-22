@@ -7,7 +7,7 @@ module Control.Monad.Trans.Visitor.Examples.Queens where
 
 -- Imports {{{
 import Control.Monad (MonadPlus(..))
-import Data.Bits ((.&.),clearBit,setBit,shiftL,shiftR,testBit)
+import Data.Bits ((.&.),(.|.),clearBit,setBit,shiftL,shiftR,testBit)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust)
@@ -57,39 +57,33 @@ nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 
 nqueensGeneric :: MonadPlus m ⇒ α → (Int → α → α) → (α → β) → Int → m β -- {{{
 nqueensGeneric initial_value updateValue finalizeValue n =
-    go n 0 ((1 `shiftL` n)-1::Word64) (0::Word64) (0::Word64) initial_value
+    go n (0::Word64) (0::Word64) (0::Word64) initial_value
   where
-    negative_diagonal_offset = n-1
-    go 0 _ _ _ _ !value = return (finalizeValue value)
+    go 0 _ _ _ !value = return (finalizeValue value)
     go !numbers_of_rows_remaining
-       !row
-       !available_columns
+       !occupied_columns
        !occupied_negative_diagonals
        !occupied_positive_diagonals
        !value
      = do
-        allFromGreedy
-            [ (column,negative_diagonal,positive_diagonal)
-            | column ← go1 0 available_columns
-            , let negative_diagonal = row + column
-                  positive_diagonal = row - column + negative_diagonal_offset
-            , not $ (occupied_negative_diagonals `testBit` negative_diagonal)
-                 || (occupied_positive_diagonals `testBit` positive_diagonal)
-            ]
+        allFromGreedy columns
         >>=
-        \(column,negative_diagonal,positive_diagonal) →
+        \(column,b) →
             go (numbers_of_rows_remaining-1)
-               (row+1)
-               (available_columns `clearBit` column)
-               (occupied_negative_diagonals `setBit` negative_diagonal)
-               (occupied_positive_diagonals `setBit` positive_diagonal)
+               (occupied_columns .|. b)
+               ((occupied_negative_diagonals .|. b) `shiftR` 1)
+               ((occupied_positive_diagonals .|. b) `shiftL` 1)
                (column `updateValue` value)
-    go1 _ 0 = []
-    go1 !i !bits
-     | (bits .&. 1 == 1) = i:next
-     | otherwise         =   next
-     where
-       next = go1 (i+1) (bits `shiftR` 1)
+      where
+        blocked_columns = occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
+        columns = goColumns 0 1
+          where
+            goColumns !i !b
+             | i == n                         =       []
+             | (b .&. blocked_columns == 0)   = (i,b):next
+             | otherwise                      =       next
+             where
+               next = goColumns (i+1) (b `shiftL` 1)
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
