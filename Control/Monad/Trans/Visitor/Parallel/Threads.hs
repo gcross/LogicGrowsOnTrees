@@ -76,7 +76,7 @@ newtype WorkgroupController result = C { unwrapWorkgroupController :: Controller
 data TerminationReason result = -- {{{
     Completed result
   | Aborted (VisitorProgress result)
-  | Failure SomeException
+  | Failure String
 -- }}}
 
 -- }}}
@@ -282,8 +282,8 @@ constructWorkgroupActions messages spawnWorker = VisitorSupervisorActions
             then "Worker " ++ show worker_id ++ " has finished, and will be removed."
             else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
         receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress
-    receiveTerminationReason _ (VisitorWorkerFailed exception) =
-        throw exception
+    receiveTerminationReason worker_id (VisitorWorkerFailed exception) =
+        receiveWorkerFailure worker_id (show exception)
     receiveTerminationReason worker_id VisitorWorkerAborted = do
         infoM $ "Worker " ++ show worker_id ++ " has been aborted."
         removeWorker worker_id
@@ -326,7 +326,7 @@ genericRunVisitorStartingFrom :: -- {{{
 genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker = do
     messages ← newChan
     forkIO $
-        (flip catch (return . Failure) . flip evalStateT initial_state $ do
+        (flip evalStateT initial_state $ do
             VisitorSupervisorResult termination_reason _ ←
                 runVisitorSupervisor (constructWorkgroupActions messages spawnWorker) $
                     -- enableSupervisorDebugMode >>
@@ -334,8 +334,10 @@ genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker = do
             (IntMap.elems <$> get active_workers)
                 >>= mapM_ (liftIO . killThread . workerThreadId)
             return $ case termination_reason of
-                Left remaining_progress → Aborted remaining_progress
-                Right result → Completed result
+                SupervisorAborted remaining_progress → Aborted remaining_progress
+                SupervisorCompleted result → Completed result
+                SupervisorFailure worker_id message →
+                    Failure $ "Thread " ++ show worker_id ++ " failed with message: " ++ message
         ) >>= notifyFinished
     return $ C messages
   where

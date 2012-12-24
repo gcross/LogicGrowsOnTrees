@@ -5,7 +5,6 @@
 
 -- Imports {{{
 import Control.Concurrent.MVar
-import Control.Exception
 import Control.Monad
 
 import Data.Bits
@@ -27,7 +26,7 @@ runWithCPUs n number_of_workers = do
     takeMVar result_mvar >>= \x → case x of
         Completed (getSum → result) → if result == correct_count then return () else error $ "result == " ++ show result ++ ", but should be " ++ show correct_count
         Aborted progress → error $ "aborted with progress " ++ show progress
-        Failure exception → throwIO exception
+        Failure message → error message
     return ()
 
 main = defaultMain $ map (b 11) [1..4]

@@ -752,7 +752,7 @@ tests = -- {{{
                 result ← case termination_reason of
                     Threads.Completed result → return result
                     Threads.Aborted _ → error "prematurely aborted"
-                    Threads.Failure exception → throwIO exception
+                    Threads.Failure message → error message
                 let correct_result = runVisitor visitor
                 result @?= correct_result
                 (remdups <$> readIORef progresses_ref) >>= mapM_ (\(VisitorProgress checkpoint result) → do
@@ -856,7 +856,11 @@ tests = -- {{{
     ,testGroup "Control.Monad.Trans.Visitor.Supervisor" -- {{{
         [testCase "immediately abort" $ -- {{{
             runVisitorSupervisor bad_test_supervisor_actions abortSupervisor
-            >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) ([] :: [Int])))
+            >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([] :: [Int]))
+         -- }}}
+        ,testCase "failure" $ -- {{{
+            runVisitorSupervisor bad_test_supervisor_actions (receiveWorkerFailure () "FAIL" :: ∀ α. VisitorSupervisorMonad () () IO α)
+            >>= (@?= VisitorSupervisorResult (SupervisorFailure () "FAIL") [])
          -- }}}
         ,testGroup "adding and removing workers" -- {{{
             [testCase "add one worker then abort" $ do -- {{{
@@ -865,7 +869,7 @@ tests = -- {{{
                     enableSupervisorDebugMode
                     addWorker ()
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) [()]))
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) [()])
                 readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
              -- }}}
             ,testCase "add then remove one worker then abort" $ do -- {{{
@@ -875,7 +879,7 @@ tests = -- {{{
                     addWorker ()
                     removeWorker ()
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) []))
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) [])
                 readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
              -- }}}
             ,testCase "add then remove then add one worker then abort" $ do -- {{{
@@ -886,7 +890,7 @@ tests = -- {{{
                     removeWorker 1
                     addWorker 2
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) ([2::Int])))
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([2::Int]))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
              -- }}}
             ,testCase "add two workers then remove first worker then abort" $ do -- {{{
@@ -898,7 +902,7 @@ tests = -- {{{
                     addWorker 2
                     removeWorker 1
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) ([2::Int])))
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([2::Int]))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
                 readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
@@ -925,7 +929,7 @@ tests = -- {{{
                         mapM_ addWorker worker_ids_to_add
                         mapM_ removeWorker worker_ids_to_remove
                         abortSupervisor
-                    progress @?= Left (VisitorProgress Unexplored ())
+                    progress @?= SupervisorAborted (VisitorProgress Unexplored ())
                     worker_ids_left @?= sort remaining_worker_ids
                     readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
                     readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
@@ -939,7 +943,7 @@ tests = -- {{{
                     enableSupervisorDebugMode
                     performGlobalProgressUpdate
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) ([]::[()])))
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([]::[()]))
                 readIORef maybe_progress_ref >>= (@?= Just (VisitorProgress Unexplored ()))
              -- }}}
             ,testProperty "request progress update when all active workers present leave" $ do -- {{{
@@ -963,7 +967,7 @@ tests = -- {{{
                         performGlobalProgressUpdate
                         mapM_ removeWorker active_workers
                         abortSupervisor
-                     ) >>= (@?= (VisitorSupervisorResult (Left progress)) inactive_workers)
+                     ) >>= (@?= VisitorSupervisorResult (SupervisorAborted progress) inactive_workers)
                     readIORef broadcast_ids_list_ref >>= (@?= [active_workers])
                     readIORef maybe_progress_ref >>= (@?= Just progress)
              -- }}}
@@ -978,7 +982,7 @@ tests = -- {{{
                     performGlobalProgressUpdate
                     receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress entire_workload
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left progress)) [()])
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted progress) [()])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
                 readIORef broadcast_ids_list_ref >>= (@?= [[()]])
              -- }}}
@@ -994,7 +998,7 @@ tests = -- {{{
                     performGlobalProgressUpdate
                     receiveProgressUpdate 1 $ VisitorWorkerProgressUpdate progress entire_workload
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left progress)) [1,2])
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted progress) [1,2])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
                 readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
@@ -1009,7 +1013,7 @@ tests = -- {{{
                     addWorker 2
                     receiveStolenWorkload 1 Nothing
                     abortSupervisor
-                 ) >>= (@?= (VisitorSupervisorResult (Left (VisitorProgress Unexplored ())) [1,2]))
+                 ) >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) [1,2])
                 readIORef broadcast_ids_list_ref >>= (@?= [[1],[1]])
              -- }}}
             ]
@@ -1021,7 +1025,7 @@ tests = -- {{{
             (runVisitorSupervisorStartingFrom progress actions $ do
                 addWorker ()
                 abortSupervisor
-             ) >>= (@?= (VisitorSupervisorResult (Left progress) [()]))
+             ) >>= (@?= VisitorSupervisorResult (SupervisorAborted progress) [()])
             readIORef maybe_workload_ref >>= (@?= Just ((),(VisitorWorkload Seq.empty checkpoint)))
          -- }}}
         ]
@@ -1172,7 +1176,7 @@ tests = -- {{{
                 (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
             ,testGroup "work stealing correctly preserves total workload" $ -- {{{
-                let runManyStealsAnalysis visitor termination_flag termination_result_ivar steals_ref = do
+                let runManyStealsAnalysis visitor termination_flag termination_result_ivar steals_ref = do -- {{{
                         termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                         (VisitorProgress checkpoint remaining_solutions) ← case termination_result of
                             VisitorWorkerFinished final_progress → return final_progress
