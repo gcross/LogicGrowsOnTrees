@@ -41,11 +41,13 @@ import Control.Monad (liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import qualified Control.Monad.State.Class as MonadsTF
+import Control.Monad.Reader (asks)
 import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
 import Control.Monad.Trans.Abort.Instances.MonadsTF
-import Control.Monad.Trans.RWS.Strict (RWST,asks,evalRWST)
+import Control.Monad.Trans.Reader (ReaderT,runReaderT)
+import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 
 import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
 import Data.Accessor.Template (deriveAccessors)
@@ -170,11 +172,8 @@ data VisitorSupervisorResult result worker_id =
     } deriving (Eq,Show)
 
 type VisitorSupervisorContext result worker_id m = -- {{{
-    RWST
-        (VisitorSupervisorActions result worker_id m)
-        ()
-        (VisitorSupervisorState result worker_id)
-        m
+    StateT (VisitorSupervisorState result worker_id)
+        (ReaderT (VisitorSupervisorActions result worker_id m) m)
 -- }}}
 
 newtype VisitorSupervisorMonad result worker_id m α = -- {{{
@@ -193,7 +192,7 @@ newtype VisitorSupervisorMonad result worker_id m α = -- {{{
 -- Instances {{{
 
 instance MonadTrans (VisitorSupervisorMonad result worker_id) where -- {{{
-    lift = VisitorSupervisorMonad . lift . lift
+    lift = VisitorSupervisorMonad . lift . liftUserToContext
 -- }}}
 
 instance MonadsTF.MonadState m ⇒ MonadsTF.MonadState (VisitorSupervisorMonad result worker_id m) where -- {{{
@@ -267,7 +266,7 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . Visit
         then receiveCurrentProgress
         else do
             workers_pending_progress_update %= active_worker_ids
-            asks broadcast_progress_update_to_workers_action >>= lift . ($ Set.toList active_worker_ids)
+            asks broadcast_progress_update_to_workers_action >>= liftUserToContext . ($ Set.toList active_worker_ids)
 -- }}}
 
 receiveProgressUpdate :: -- {{{
@@ -379,12 +378,9 @@ runVisitorSupervisorStartingFrom :: -- {{{
     (∀ α. VisitorSupervisorMonad result worker_id m α) →
     m (VisitorSupervisorResult result worker_id)
 runVisitorSupervisorStartingFrom starting_progress actions loop =
-    (fst <$>)
+    flip runReaderT actions
     .
-    (\x ->
-     evalRWST
-        x
-        actions
+    flip evalStateT
         (VisitorSupervisorState
             {   waiting_workers_or_available_workloads_ =
                     Right . Set.singleton $ VisitorWorkload Seq.empty (visitorCheckpoint starting_progress)
@@ -398,7 +394,6 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
             ,   debug_mode_ = False
             }
         )
-    )
     .
     runAbortT
     .
@@ -457,7 +452,9 @@ checkWhetherMoreStealsAreNeeded = do
                     go (worker_id:accum) rest_workers (n-1)
         workers_pending_workload_steal %: (Set.union . Set.fromList) workers_to_steal_from
         available_workers_for_steal %: IntMap.update (const maybe_new_workers) depth
-        asks broadcast_workload_steal_to_workers_action >>= lift . ($ workers_to_steal_from)
+        unless (null workers_to_steal_from) $ do
+            infoM $ "Sending workload steal requests to " ++ show workers_to_steal_from
+            asks broadcast_workload_steal_to_workers_action >>= liftUserToContext . ($ workers_to_steal_from)
 -- }}}
 
 clearPendingProgressUpdate :: -- {{{
@@ -553,6 +550,10 @@ getWorkerDepth worker_id =
     get active_workers
 -- }}}
 
+liftUserToContext :: Monad m ⇒ m α → VisitorSupervisorContext result worker_id m α -- {{{
+liftUserToContext = lift . lift
+-- }}}
+
 postValidate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     String →
@@ -602,7 +603,7 @@ receiveCurrentProgress :: -- {{{
 receiveCurrentProgress = do
     callback ← asks receive_current_progress_action
     current_progress ← get current_progress
-    lift (callback current_progress)
+    liftUserToContext (callback current_progress)
 -- }}}
 
 sendWorkloadToWorker :: -- {{{
@@ -611,7 +612,7 @@ sendWorkloadToWorker :: -- {{{
     worker_id →
     VisitorSupervisorContext result worker_id m ()
 sendWorkloadToWorker workload worker_id = do
-    asks send_workload_to_worker_action >>= lift . (\f → f workload worker_id)
+    asks send_workload_to_worker_action >>= liftUserToContext . (\f → f workload worker_id)
     isNothing . Map.lookup worker_id <$> get active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %: Map.insert worker_id workload
