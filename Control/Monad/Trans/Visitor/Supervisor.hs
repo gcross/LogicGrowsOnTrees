@@ -221,6 +221,7 @@ addWorker :: -- {{{
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
 addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
+    infoM $ "Adding worker " ++ show worker_id
     validateWorkerNotKnown "adding worker" worker_id
     known_workers %: Set.insert worker_id
     tryToObtainWorkloadFor worker_id
@@ -261,6 +262,7 @@ performGlobalProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m ()
 performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . VisitorSupervisorMonad . lift $ do
+    infoM $ "Performing global progress update."
     active_worker_ids ← Map.keysSet <$> get active_workers
     if (Set.null active_worker_ids)
         then receiveCurrentProgress
@@ -275,6 +277,7 @@ receiveProgressUpdate :: -- {{{
     VisitorWorkerProgressUpdate result →
     VisitorSupervisorMonad result worker_id m ()
 receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") . VisitorSupervisorMonad . lift $ do
+    infoM $ "Received progress update from " ++ show worker_id
     validateWorkerKnownAndActive "receiving progress update" worker_id
     current_progress %: (`mappend` progress_update)
     is_pending_workload_steal ← Set.member worker_id <$> get workers_pending_workload_steal
@@ -290,6 +293,7 @@ receiveStolenWorkload :: -- {{{
     Maybe (VisitorWorkerStolenWorkload result) →
     VisitorSupervisorMonad result worker_id m ()
 receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") . VisitorSupervisorMonad . lift $ do
+    infoM $ "Received stolen workload from " ++ show worker_id
     validateWorkerKnownAndActive "receiving stolen workload" worker_id
     workers_pending_workload_steal %: Set.delete worker_id
     case maybe_stolen_workload of
@@ -325,6 +329,9 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     VisitorProgress result →
     VisitorSupervisorMonad result worker_id m ()
 receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (visitorCheckpoint final_progress)) . VisitorSupervisorMonad $ do
+    infoM $ if remove_worker
+        then "Worker " ++ show worker_id ++ " finished and removed."
+        else "Worker " ++ show worker_id ++ " finished."
     lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
     current_progress %: (`mappend` final_progress)
     when remove_worker $ known_workers %: Set.delete worker_id
@@ -346,6 +353,7 @@ removeWorker :: -- {{{
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
 removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
+    infoM $ "Removing worker " ++ show worker_id
     validateWorkerKnown "removing the worker" worker_id
     known_workers %: Set.delete worker_id
     ifM (isJust . Map.lookup worker_id <$> get active_workers)
@@ -416,6 +424,9 @@ setSupervisorDebugMode = VisitorSupervisorMonad . lift . (debug_mode %=)
 -- Logging Functions {{{
 debugM :: MonadIO m ⇒ String → m ()
 debugM = liftIO . Logger.debugM "Supervisor"
+
+infoM :: MonadIO m ⇒ String → m ()
+infoM = liftIO . Logger.infoM "Supervisor"
 -- }}}
 
 -- Internal Functions {{{
@@ -612,6 +623,7 @@ sendWorkloadToWorker :: -- {{{
     worker_id →
     VisitorSupervisorContext result worker_id m ()
 sendWorkloadToWorker workload worker_id = do
+    infoM $ "Sending workload to " ++ show worker_id
     asks send_workload_to_worker_action >>= liftUserToContext . (\f → f workload worker_id)
     isNothing . Map.lookup worker_id <$> get active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
