@@ -7,7 +7,7 @@ Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
 Stability:           Provisional
 Synopsis:            
 Description:         
-Cabal-version:       >=1.2.3
+Cabal-version:       >=1.6
 Build-type:          Simple
 Category:	     
 
