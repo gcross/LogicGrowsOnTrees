@@ -177,13 +177,13 @@ type VisitorSupervisorContext result worker_id m = -- {{{
         m
 -- }}}
 
-newtype VisitorSupervisorMonad result worker_id m a = -- {{{
+newtype VisitorSupervisorMonad result worker_id m α = -- {{{
     VisitorSupervisorMonad {
       unwrapVisitorSupervisorMonad ::
         (AbortT
             (VisitorSupervisorResult result worker_id)
             (VisitorSupervisorContext result worker_id m)
-            a
+            α
         )
     } deriving (Applicative,Functor,Monad,MonadIO)
 -- }}}
@@ -376,7 +376,7 @@ runVisitorSupervisorStartingFrom :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorProgress result →
     VisitorSupervisorActions result worker_id m →
-    (∀ a. VisitorSupervisorMonad result worker_id m a) →
+    (∀ α. VisitorSupervisorMonad result worker_id m α) →
     m (VisitorSupervisorResult result worker_id)
 runVisitorSupervisorStartingFrom starting_progress actions loop =
     (fst <$>)
