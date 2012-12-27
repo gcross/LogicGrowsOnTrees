@@ -7,7 +7,7 @@ module Control.Monad.Trans.Visitor.Examples.Queens where
 
 -- Imports {{{
 import Control.Monad (MonadPlus(..))
-import Data.Bits ((.&.),(.|.),clearBit,setBit,shiftL,shiftR,testBit)
+import Data.Bits ((.&.),(.|.),clearBit,setBit,testBit,unsafeShiftL,unsafeShiftR)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust)
@@ -71,8 +71,8 @@ nqueensGeneric initial_value updateValue finalizeValue n =
         \(column,b) →
             go (numbers_of_rows_remaining-1)
                (occupied_columns .|. b)
-               ((occupied_negative_diagonals .|. b) `shiftR` 1)
-               ((occupied_positive_diagonals .|. b) `shiftL` 1)
+               ((occupied_negative_diagonals .|. b) `unsafeShiftR` 1)
+               ((occupied_positive_diagonals .|. b) `unsafeShiftL` 1)
                (column `updateValue` value)
       where
         blocked_columns = occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
@@ -83,7 +83,7 @@ nqueensGeneric initial_value updateValue finalizeValue n =
              | (b .&. blocked_columns == 0)   = (i,b):next
              | otherwise                      =       next
              where
-               next = goColumns (i+1) (b `shiftL` 1)
+               next = goColumns (i+1) (b `unsafeShiftL` 1)
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
