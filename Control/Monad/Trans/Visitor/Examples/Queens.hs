@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
@@ -16,6 +17,14 @@ import Data.Word (Word64)
 
 import Control.Monad.Trans.Visitor (Visitor,allFromGreedy)
 -- }}}
+
+data NQueensState α = NQueensState
+    {   number_of_rows_remaining :: {-# UNPACK #-} !Int
+    ,   occupied_columns :: {-# UNPACK #-} !Word64
+    ,   occupied_negative_diagonals :: {-# UNPACK #-} !Word64
+    ,   occupied_positive_diagonals :: {-# UNPACK #-} !Word64
+    ,   value :: !α
+    }
 
 -- Values -- {{{
 
@@ -57,23 +66,20 @@ nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 
 nqueensGeneric :: MonadPlus m ⇒ α → (Int → α → α) → (α → β) → Int → m β -- {{{
 nqueensGeneric initial_value updateValue finalizeValue n =
-    go n (0::Word64) (0::Word64) (0::Word64) initial_value
+    go $ NQueensState n 0 0 0 initial_value
   where
-    go 0 _ _ _ !value = return (finalizeValue value)
-    go !numbers_of_rows_remaining
-       !occupied_columns
-       !occupied_negative_diagonals
-       !occupied_positive_diagonals
-       !value
+    go !(NQueensState 0 _ _ _ !value) = return (finalizeValue value)
+    go !(NQueensState{..})
      = do
         allFromGreedy columns
         >>=
-        \(column,b) →
-            go (numbers_of_rows_remaining-1)
-               (occupied_columns .|. b)
-               ((occupied_negative_diagonals .|. b) `unsafeShiftR` 1)
-               ((occupied_positive_diagonals .|. b) `unsafeShiftL` 1)
-               (column `updateValue` value)
+        \(column,b) → go $
+            NQueensState
+                (number_of_rows_remaining-1)
+                (occupied_columns .|. b)
+                ((occupied_negative_diagonals .|. b) `unsafeShiftR` 1)
+                ((occupied_positive_diagonals .|. b) `unsafeShiftL` 1)
+                (column `updateValue` value)
       where
         blocked_columns = occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
         columns = goColumns 0 1
