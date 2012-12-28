@@ -19,7 +19,16 @@ import Data.Word (Word64)
 import Control.Monad.Trans.Visitor (Visitor,allFromGreedy)
 -- }}}
 
-data NQueensState = NQueensState
+-- Types {{{
+
+data NQueensCallbacks α β = NQueensCallbacks -- {{{
+    {   initial_value :: !α
+    ,   updateValue :: !((Int,Int) → α → α)
+    ,   finalizeValue :: !(α → β)
+    }
+-- }}}
+
+data NQueensState = NQueensState -- {{{
     {   number_of_rows_remaining :: {-# UNPACK #-} !Int
     ,   row :: {-# UNPACK #-} !Int
     ,   row_bit :: {-# UNPACK #-} !Word64
@@ -28,6 +37,9 @@ data NQueensState = NQueensState
     ,   occupied_negative_diagonals :: {-# UNPACK #-} !Word64
     ,   occupied_positive_diagonals :: {-# UNPACK #-} !Word64
     }
+-- }}}
+
+-- }}}
 
 -- Values -- {{{
 
@@ -67,8 +79,8 @@ nqueensCorrectCount :: Int → Int -- {{{
 nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 -- }}}
 
-nqueensGeneric :: MonadPlus m ⇒ α → ((Int,Int) → α → α) → (α → β) → Int → m β -- {{{
-nqueensGeneric initial_value updateValue finalizeValue n =
+nqueensGeneric :: MonadPlus m ⇒ NQueensCallbacks α β → Int → m β -- {{{
+nqueensGeneric NQueensCallbacks{..} n =
     go initial_value $ NQueensState n 0 1 0 0 0 0
   where
     go !value !(NQueensState{number_of_rows_remaining=0}) = return (finalizeValue value)
@@ -112,19 +124,19 @@ nqueensGeneric initial_value updateValue finalizeValue n =
 -- }}}
 
 nqueensCount :: MonadPlus m ⇒ Int → m (Sum Int) -- {{{
-nqueensCount = nqueensGeneric () (const id) (const (Sum 1))
+nqueensCount = nqueensGeneric $ NQueensCallbacks () (const id) (const (Sum 1))
 {-# SPECIALIZE nqueensCount :: Int → [Sum Int] #-}
 {-# SPECIALIZE nqueensCount :: Int → Visitor (Sum Int) #-}
 -- }}}
 
 nqueensSolutions :: MonadPlus m ⇒ Int → m [(Int,Int)] -- {{{
-nqueensSolutions = nqueensGeneric [] (:) sort
+nqueensSolutions = nqueensGeneric $ NQueensCallbacks [] (:) sort
 {-# SPECIALIZE nqueensSolutions :: Int → [[(Int,Int)]] #-}
 {-# SPECIALIZE nqueensSolutions :: Int → Visitor [(Int,Int)] #-}
 -- }}}
 
 nqueensTrivial :: MonadPlus m ⇒ Int → m () -- {{{
-nqueensTrivial = nqueensGeneric () (const id) (const ())
+nqueensTrivial = nqueensGeneric $ NQueensCallbacks () (const id) (const ())
 {-# SPECIALIZE nqueensTrivial :: Int → [()] #-}
 -- }}}
 
