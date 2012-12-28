@@ -634,12 +634,13 @@ tests = -- {{{
                 [ testCase ("n = " ++ show n) $
                     let solutions = nqueensSolutions n in
                     forM_ solutions $ \solution →
-                        forM_ [(row1,row2) | row1 ← [0..n-2], row2 ← [row1+1..n-1]] $ \(row1,row2) → do
-                            let col1 = solution !! row1
-                                col2 = solution !! row2
-                            assertBool "columns conflict" (col1 /= col2)
-                            assertBool "negative diagonals conflict" ((row1+col1) /= (row2+col2))
-                            assertBool "positive diagonals conflict" ((row1-col1) /= (row2-col2))
+                        forM_ (zip [0..] solution) $ \(i,(row1,col1)) → do
+                            assertBool "row within bounds" $ row1 >= 0 && row1 < n
+                            assertBool "column within bounds" $ col1 >= 0 && col1 < n
+                            forM_ (drop (i+1) solution) $ \(row2,col2) → do
+                                assertBool "columns don't conflict" $ col1 /= col2
+                                assertBool "negative diagonals don't conflict" $ row1+col1 /= row2+col2
+                                assertBool "positive diagonals don't conflict" $ row1-col1 /= row2-col2
                 | n ← [2..10]
                 ]
              -- }}}
