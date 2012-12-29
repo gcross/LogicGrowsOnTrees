@@ -80,16 +80,22 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 
 -- Functions {{{
 
+
 getOpenings :: Int → Word64 → [(Int,Word64)] -- {{{
-getOpenings n blocked = go 0 1
+getOpenings = getOpeningsStartingFrom 0
+{-# INLINE getOpenings #-}
+-- }}}
+
+getOpeningsStartingFrom :: Int → Int → Word64 → [(Int,Word64)] -- {{{
+getOpeningsStartingFrom start end blocked = go start 1
   where
     go !i !b
-     | i == n               =       []
+     | i == end             =       []
      | (b .&. blocked == 0) = (i,b):next
      | otherwise            =       next
      where
        next = go (i+1) (b `unsafeShiftL` 1)
-{-# INLINE getOpenings #-}
+{-# INLINE getOpeningsStartingFrom #-}
 -- }}}
 
 nqueensCorrectCount :: Int → Int -- {{{
