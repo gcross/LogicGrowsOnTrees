@@ -80,6 +80,18 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 
 -- Functions {{{
 
+getOpenings :: Int → Word64 → [(Int,Word64)] -- {{{
+getOpenings n blocked = go 0 1
+  where
+    go !i !b
+     | i == n               =       []
+     | (b .&. blocked == 0) = (i,b):next
+     | otherwise            =       next
+     where
+       next = go (i+1) (b `unsafeShiftL` 1)
+{-# INLINE getOpenings #-}
+-- }}}
+
 nqueensCorrectCount :: Int → Int -- {{{
 nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 -- }}}
@@ -90,8 +102,10 @@ nqueensGeneric NQueensCallbacks{..} n =
   where
     go !value !(NQueensSearchState{number_of_rows_remaining=0}) = return (finalizeValue value)
     go !value !(NQueensSearchState{occupied=NQueensOccupiedState{..},..})
-      | row_bit .&. occupied_rows == 0 = do
-         allFromGreedy columns
+      | row_bit .&. occupied_rows == 0 =
+         (allFromGreedy . getOpenings n $
+            occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
+         )
          >>=
          \(column,column_bit) → go
             ((row,column) `updateValue` value)
@@ -119,16 +133,6 @@ nqueensGeneric NQueensCallbacks{..} n =
                     (occupied_positive_diagonals `rotateL` 1)
                 )
             )
-      where
-        blocked_columns = occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
-        columns = goColumns 0 1
-          where
-            goColumns !i !b
-             | i == n                         =       []
-             | (b .&. blocked_columns == 0)   = (i,b):next
-             | otherwise                      =       next
-             where
-               next = goColumns (i+1) (b `unsafeShiftL` 1)
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
