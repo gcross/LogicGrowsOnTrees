@@ -28,11 +28,16 @@ data NQueensCallbacks α β = NQueensCallbacks -- {{{
     }
 -- }}}
 
-data NQueensState = NQueensState -- {{{
+data NQueensSearchState = NQueensSearchState -- {{{
     {   number_of_rows_remaining :: {-# UNPACK #-} !Int
     ,   row :: {-# UNPACK #-} !Int
     ,   row_bit :: {-# UNPACK #-} !Word64
-    ,   occupied_rows :: {-# UNPACK #-} !Word64
+    ,   occupied :: {-# UNPACK #-} !NQueensOccupiedState
+    }
+-- }}}
+
+data NQueensOccupiedState = NQueensOccupiedState
+    {   occupied_rows :: {-# UNPACK #-} !Word64
     ,   occupied_columns :: {-# UNPACK #-} !Word64
     ,   occupied_negative_diagonals :: {-# UNPACK #-} !Word64
     ,   occupied_positive_diagonals :: {-# UNPACK #-} !Word64
@@ -81,34 +86,38 @@ nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 
 nqueensGeneric :: MonadPlus m ⇒ NQueensCallbacks α β → Int → m β -- {{{
 nqueensGeneric NQueensCallbacks{..} n =
-    go initial_value $ NQueensState n 0 1 0 0 0 0
+    go initial_value $ NQueensSearchState n 0 1 (NQueensOccupiedState 0 0 0 0)
   where
-    go !value !(NQueensState{number_of_rows_remaining=0}) = return (finalizeValue value)
-    go !value !(NQueensState{..})
+    go !value !(NQueensSearchState{number_of_rows_remaining=0}) = return (finalizeValue value)
+    go !value !(NQueensSearchState{occupied=NQueensOccupiedState{..},..})
       | row_bit .&. occupied_rows == 0 = do
          allFromGreedy columns
          >>=
          \(column,column_bit) → go
             ((row,column) `updateValue` value)
-            (NQueensState
+            (NQueensSearchState
                 (number_of_rows_remaining-1)
                 (row+1)
                 (row_bit `unsafeShiftL` 1)
-                (occupied_rows .|. row_bit)
-                (occupied_columns .|. column_bit)
-                ((occupied_negative_diagonals .|. column_bit) `rotateR` 1)
-                ((occupied_positive_diagonals .|. column_bit) `rotateL` 1)
+                (NQueensOccupiedState
+                    (occupied_rows .|. row_bit)
+                    (occupied_columns .|. column_bit)
+                    ((occupied_negative_diagonals .|. column_bit) `rotateR` 1)
+                    ((occupied_positive_diagonals .|. column_bit) `rotateL` 1)
+                )
             )
       | otherwise =
          go value
-            (NQueensState
+            (NQueensSearchState
                  number_of_rows_remaining
                 (row+1)
                 (row_bit `unsafeShiftL` 1)
-                 occupied_rows
-                 occupied_columns
-                (occupied_negative_diagonals `rotateR` 1)
-                (occupied_positive_diagonals `rotateL` 1)
+                (NQueensOccupiedState
+                     occupied_rows
+                     occupied_columns
+                    (occupied_negative_diagonals `rotateR` 1)
+                    (occupied_positive_diagonals `rotateL` 1)
+                )
             )
       where
         blocked_columns = occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
