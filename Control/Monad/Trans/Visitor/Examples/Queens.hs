@@ -79,9 +79,12 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 
 -- Functions {{{
 
-getOpenings :: Int → Int → Word64 → [(Int,Word64)] -- {{{
-getOpenings start end blocked = go start 1
+getOpenings :: MonadPlus m ⇒ Int → Int → Word64 → m (Int,Word64) -- {{{
+getOpenings start end blocked
+    | blocked .&. mask == mask = mzero
+    | otherwise = allFromGreedy $ go start 1
   where
+    mask = bit (end-start+1) - 1
     go !i !b
      | i > end              =       []
      | (b .&. blocked == 0) = (i,b):next
@@ -111,7 +114,7 @@ nqueensSearch NQueensCallbacks{..} value number_of_queens_remaining first last o
     go !value !(NQueensSearchState{s_number_of_queens_remaining=0}) = return (finalizeValue value)
     go !value !(NQueensSearchState{s_occupied=NQueensOccupied{..},..})
       | row_bit .&. occupied_rows == 0 =
-         (allFromGreedy . getOpenings first last $
+         (getOpenings first last $
             occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
          )
          >>=
