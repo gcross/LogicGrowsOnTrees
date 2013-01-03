@@ -638,9 +638,9 @@ tests = -- {{{
                             assertBool "row within bounds" $ row1 >= 0 && row1 < n
                             assertBool "column within bounds" $ col1 >= 0 && col1 < n
                             forM_ (drop (i+1) solution) $ \(row2,col2) → do
-                                assertBool "columns don't conflict" $ col1 /= col2
-                                assertBool "negative diagonals don't conflict" $ row1+col1 /= row2+col2
-                                assertBool "positive diagonals don't conflict" $ row1-col1 /= row2-col2
+                                assertBool ("columns conflict in " ++ show solution) $ col1 /= col2
+                                assertBool ("negative diagonals conflict in " ++ show solution) $ row1+col1 /= row2+col2
+                                assertBool ("positive diagonals conflict in " ++ show solution) $ row1-col1 /= row2-col2
                 | n ← [2..10]
                 ]
              -- }}}
