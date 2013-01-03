@@ -641,7 +641,7 @@ tests = -- {{{
                                 assertBool ("columns conflict in " ++ show solution) $ col1 /= col2
                                 assertBool ("negative diagonals conflict in " ++ show solution) $ row1+col1 /= row2+col2
                                 assertBool ("positive diagonals conflict in " ++ show solution) $ row1-col1 /= row2-col2
-                | n ← [1..10]
+                | n ← [2..10]
                 ]
              -- }}}
             ,testGroup "solutions are unique" $ -- {{{
@@ -649,7 +649,7 @@ tests = -- {{{
                     let solutions_as_list = nqueensSolutions n
                         solutions_as_set = Set.fromList solutions_as_list
                     in length solutions_as_list @?= Set.size solutions_as_set
-                | n ← [1..10]
+                | n ← [2..10]
                 ]
              -- }}}
             ,testGroup "solutions have correct size" -- {{{
@@ -663,7 +663,7 @@ tests = -- {{{
                     nqueensCount
                     $
                     n
-                | n ← [1..10]
+                | n ← [2..12]
                 , let correct_count = nqueensCorrectCount n
                 ]
              -- }}}
