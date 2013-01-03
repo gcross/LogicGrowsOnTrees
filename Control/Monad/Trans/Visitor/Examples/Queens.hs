@@ -43,6 +43,8 @@ data NQueensOccupied = NQueensOccupied -- {{{
     }
 -- }}}
 
+data PositionAndBit = PositionAndBit {-# UNPACK #-} !Int {-# UNPACK #-} !Word64
+
 -- }}}
 
 -- Values -- {{{
@@ -79,18 +81,18 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 
 -- Functions {{{
 
-getOpenings :: MonadPlus m ⇒ Int → Int → Word64 → m (Int,Word64) -- {{{
+getOpenings :: MonadPlus m ⇒ Int → Int → Word64 → m PositionAndBit -- {{{
 getOpenings start end blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = allFromGreedy $ go start 1
+    | otherwise = allFromGreedy $ go (PositionAndBit start 1)
   where
     mask = bit (end-start+1) - 1
-    go !i !b
-     | i > end              =       []
-     | (b .&. blocked == 0) = (i,b):next
-     | otherwise            =       next
+    go x@(PositionAndBit i b)
+     | i > end              =   []
+     | (b .&. blocked == 0) = x:next
+     | otherwise            =   next
      where
-       next = go (i+1) (b `unsafeShiftL` 1)
+       next = go $ PositionAndBit (i+1) (b `unsafeShiftL` 1)
 {-# INLINE getOpenings #-}
 -- }}}
 
@@ -118,7 +120,7 @@ nqueensSearch NQueensCallbacks{..} value number_of_queens_remaining first last o
             occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
          )
          >>=
-         \(column,column_bit) → go
+         \(PositionAndBit column column_bit) → go
             ((row,column) `updateValue` value)
             (NQueensSearchState
                 (s_number_of_queens_remaining-1)
