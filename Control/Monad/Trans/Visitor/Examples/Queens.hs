@@ -8,7 +8,7 @@ module Control.Monad.Trans.Visitor.Examples.Queens where
 
 -- Imports {{{
 import Control.Monad (MonadPlus(..))
-import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL)
+import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.List (sort)
@@ -29,17 +29,11 @@ data NQueensCallbacks α β = NQueensCallbacks -- {{{
 
 data NQueensSearchState = NQueensSearchState -- {{{
     {   s_number_of_queens_remaining :: {-# UNPACK #-} !Int
-    ,   row :: {-# UNPACK #-} !Int
-    ,   row_bit :: {-# UNPACK #-} !Word64
-    ,   s_occupied :: {-# UNPACK #-} !NQueensOccupied
-    }
--- }}}
-
-data NQueensOccupied = NQueensOccupied -- {{{
-    {   occupied_rows :: {-# UNPACK #-} !Word64
-    ,   occupied_columns :: {-# UNPACK #-} !Word64
-    ,   occupied_negative_diagonals :: {-# UNPACK #-} !Word64
-    ,   occupied_positive_diagonals :: {-# UNPACK #-} !Word64
+    ,   s_row :: {-# UNPACK #-} !Int
+    ,   s_occupied_rows :: {-# UNPACK #-} !Word64
+    ,   s_occupied_columns :: {-# UNPACK #-} !Word64
+    ,   s_occupied_negative_diagonals :: {-# UNPACK #-} !Word64
+    ,   s_occupied_positive_diagonals :: {-# UNPACK #-} !Word64
     }
 -- }}}
 
@@ -81,14 +75,14 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 
 -- Functions {{{
 
-getOpenings :: MonadPlus m ⇒ Int → Int → Word64 → m PositionAndBit -- {{{
-getOpenings start end blocked
+getOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBit -- {{{
+getOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = allFromGreedy $ go (PositionAndBit start 1)
+    | otherwise = allFromGreedy $ go (PositionAndBit 0 1)
   where
-    mask = bit (end-start+1) - 1
+    mask = bit size - 1
     go x@(PositionAndBit i b)
-     | i > end              =   []
+     | i >= size            =   []
      | (b .&. blocked == 0) = x:next
      | otherwise            =   next
      where
@@ -104,47 +98,47 @@ nqueensGeneric :: MonadPlus m ⇒ α → NQueensCallbacks α β → Int → m β
 nqueensGeneric initial_value NQueensCallbacks{..} 1 = return . finalizeValue . updateValue (0,0) $ initial_value
 nqueensGeneric initial_value NQueensCallbacks{..} 2 = mzero
 nqueensGeneric initial_value NQueensCallbacks{..} 3 = mzero
-nqueensGeneric initial_value callbacks@NQueensCallbacks{..} n =
-    nqueensSearch callbacks initial_value n 0 (n-1) (NQueensOccupied 0 0 0 0)
+nqueensGeneric initial_value callbacks n = nqueensSearch callbacks initial_value n $ NQueensSearchState n 0 0 0 0 0
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
-nqueensSearch :: MonadPlus m ⇒ NQueensCallbacks α β → α → Int → Int → Int → NQueensOccupied → m β -- {{{
-nqueensSearch NQueensCallbacks{..} value number_of_queens_remaining first last occupied =
-    go value $ NQueensSearchState number_of_queens_remaining first (bit first) occupied
+nqueensSearch :: MonadPlus m ⇒ NQueensCallbacks α β → α → Int → NQueensSearchState → m β -- {{{
+nqueensSearch NQueensCallbacks{..} initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
+    go initial_value initial_search_state
   where
-    go !value !(NQueensSearchState{s_number_of_queens_remaining=0}) = return (finalizeValue value)
-    go !value !(NQueensSearchState{s_occupied=NQueensOccupied{..},..})
-      | row_bit .&. occupied_rows == 0 =
-         (getOpenings first last $
+    go !value !(NQueensSearchState 0 _ _ _ _ _) = return (finalizeValue value)
+    go !value !(NQueensSearchState
+                    number_of_queens_remaining
+                    row
+                    occupied_rows
+                    occupied_columns
+                    occupied_negative_diagonals
+                    occupied_positive_diagonals
+               )
+      | occupied_rows .&. 1 == 0 =
+         (getOpenings size $
             occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
          )
          >>=
-         \(PositionAndBit column column_bit) → go
-            ((row,column) `updateValue` value)
+         \(PositionAndBit offset offset_bit) → go
+            ((row,window_start+offset) `updateValue` value)
             (NQueensSearchState
-                (s_number_of_queens_remaining-1)
+                (number_of_queens_remaining-1)
                 (row+1)
-                (row_bit `unsafeShiftL` 1)
-                (NQueensOccupied
-                    (occupied_rows .|. row_bit)
-                    (occupied_columns .|. column_bit)
-                    ((occupied_negative_diagonals .|. column_bit) `rotateR` 1)
-                    ((occupied_positive_diagonals .|. column_bit) `rotateL` 1)
-                )
+                (occupied_rows `unsafeShiftR` 1)
+                (occupied_columns .|. offset_bit)
+                ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
+                ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
             )
       | otherwise =
          go value
             (NQueensSearchState
-                 s_number_of_queens_remaining
+                 number_of_queens_remaining
                 (row+1)
-                (row_bit `unsafeShiftL` 1)
-                (NQueensOccupied
-                     occupied_rows
-                     occupied_columns
-                    (occupied_negative_diagonals `rotateR` 1)
-                    (occupied_positive_diagonals `rotateL` 1)
-                )
+                (occupied_rows `unsafeShiftR` 1)
+                 occupied_columns
+                (occupied_negative_diagonals `rotateR` 1)
+                (occupied_positive_diagonals `rotateL` 1)
             )
 {-# INLINE nqueensSearch #-}
 -- }}}
