@@ -7,10 +7,28 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor where
+module Control.Monad.Trans.Visitor
+    ( MonadVisitor(..)
+    , MonadVisitorTrans(..)
+    , VisitorTInstruction(..)
+    , VisitorInstruction
+    , Visitor
+    , VisitorIO
+    , VisitorT(..)
+    , allFrom
+    , allFromGreedy
+    , between
+    , endowVisitor
+    , msumBalanced
+    , msumBalancedGreedy
+    , runVisitor
+    , runVisitorT
+    , runVisitorTAndIgnoreResults
+    ) where
 
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
+import Data.List (foldl1)
 import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,view,viewT)
@@ -52,6 +70,7 @@ newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstructi
 type Visitor = VisitorT Identity
 type VisitorIO = VisitorT IO
 
+data StackEntry α = StackEntry {-# UNPACK #-} !Int α
 -- }}}
 
 -- Instances {{{
@@ -170,13 +189,16 @@ msumBalancedGreedy :: MonadPlus m ⇒ [m α] → m α -- {{{
 msumBalancedGreedy = go []
   where
     go [] [] = mzero
-    go stacks [] = foldr1 mplus . map snd $ stacks
-    go stacks (x:xs) = go (addToStacks stacks 1 x) xs
+    go (StackEntry _ top:rest) [] = mergeStacks top rest
       where
-        addToStacks [] i x = [(i,x)]
-        addToStacks stacks@((i',x'):rest) i x
-         | i == i' = addToStacks rest (i+1) (x' `mplus` x)
-         | otherwise = (i,x):stacks
+        mergeStacks x [] = x
+        mergeStacks x (StackEntry _ x':rest) = mergeStacks (x `mplus` x') rest
+    go stacks (x:xs) = go (addToStacks stacks (StackEntry 1 x)) xs
+      where
+        addToStacks [] entry = [entry]
+        addToStacks stacks@(StackEntry i' x':rest) entry@(StackEntry i x)
+         | i == i' = addToStacks rest (StackEntry (i+1) (x' `mplus` x))
+         | otherwise = entry:stacks
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
