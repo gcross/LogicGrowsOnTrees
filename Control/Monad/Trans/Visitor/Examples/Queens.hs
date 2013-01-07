@@ -29,8 +29,6 @@ data NQueensCallbacks α β = NQueensCallbacks -- {{{
 
 data NQueensSearchState = NQueensSearchState -- {{{
     {   s_number_of_queens_remaining :: {-# UNPACK #-} !Int
-    ,   s_window_start :: {-# UNPACK #-} !Int
-    ,   s_window_size :: {-# UNPACK #-} !Int
     ,   s_row :: {-# UNPACK #-} !Int
     ,   s_occupied_rows :: {-# UNPACK #-} !Word64
     ,   s_occupied_columns :: {-# UNPACK #-} !Word64
@@ -100,80 +98,42 @@ nqueensGeneric :: MonadPlus m ⇒ α → NQueensCallbacks α β → Int → m β
 nqueensGeneric initial_value NQueensCallbacks{..} 1 = return . finalizeValue . updateValue (0,0) $ initial_value
 nqueensGeneric initial_value NQueensCallbacks{..} 2 = mzero
 nqueensGeneric initial_value NQueensCallbacks{..} 3 = mzero
-nqueensGeneric initial_value callbacks n = nqueensSearch callbacks initial_value $ NQueensSearchState n 0 n 0 0 0 0 0
+nqueensGeneric initial_value callbacks n = nqueensSearch callbacks initial_value n $ NQueensSearchState n 0 0 0 0 0
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
-nqueensSearch :: MonadPlus m ⇒ NQueensCallbacks α β → α → NQueensSearchState → m β -- {{{
-nqueensSearch NQueensCallbacks{..} = go
+nqueensSearch :: MonadPlus m ⇒ NQueensCallbacks α β → α → Int → NQueensSearchState → m β -- {{{
+nqueensSearch NQueensCallbacks{..} initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
+    go initial_value initial_search_state
   where
-    go !value
-       !(NQueensSearchState
-            number_of_queens_remaining
-            window_start
-            window_size
-            row
-            occupied_rows
-            occupied_columns
-            occupied_negative_diagonals
-            occupied_positive_diagonals
-       )
+    go !value !(NQueensSearchState 0 _ _ _ _ _) = return (finalizeValue value)
+    go !value !(NQueensSearchState
+                    number_of_queens_remaining
+                    row
+                    occupied_rows
+                    occupied_columns
+                    occupied_negative_diagonals
+                    occupied_positive_diagonals
+               )
       | occupied_rows .&. 1 == 0 =
-         (getOpenings window_size $
+         (getOpenings size $
             occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
          )
          >>=
-         \(PositionAndBit offset offset_bit) →
-            if number_of_queens_remaining == 1
-                then return $ finalizeValue ((row,window_start+offset) `updateValue` value)
-                else go ((row,window_start+offset) `updateValue` value) $
-                    if offset == 0 || offset == (window_size-1)
-                        then if offset == 0
-                                then let !shift = go (PositionAndBit 1 2)
-                                           where
-                                             go !(PositionAndBit i b)
-                                               | b .&. occupied_columns == 0 = i
-                                               | otherwise = go $ PositionAndBit (i+1) (b `unsafeShiftL` 1)
-                                     in NQueensSearchState
-                                        (number_of_queens_remaining-1)
-                                        (window_start+shift)
-                                        (window_size-shift)
-                                        (row+1)
-                                        (occupied_rows `unsafeShiftR` 1)
-                                        ((occupied_columns .|. offset_bit) `unsafeShiftR` shift)
-                                        ((occupied_negative_diagonals .|. offset_bit) `unsafeShiftR` (shift+1))
-                                        ((occupied_positive_diagonals .|. offset_bit) `rotateR` (shift-1))
-                                else let !new_window_size
-                                           | offset == window_size-1 = go $ PositionAndBit (window_size-1) (bit (offset-1))
-                                           | otherwise = window_size
-                                           where
-                                             go !(PositionAndBit i b)
-                                               | b .&. occupied_columns == 0 = i
-                                               | otherwise = go $ PositionAndBit (i-1) (b `unsafeShiftR` 1)
-                                     in NQueensSearchState
-                                        (number_of_queens_remaining-1)
-                                         window_start
-                                         new_window_size
-                                        (row+1)
-                                        (occupied_rows `unsafeShiftR` 1)
-                                        (occupied_columns .|. offset_bit)
-                                        ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
-                                        ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
-                        else NQueensSearchState
-                                        (number_of_queens_remaining-1)
-                                         window_start
-                                         window_size
-                                        (row+1)
-                                        (occupied_rows `unsafeShiftR` 1)
-                                        (occupied_columns .|. offset_bit)
-                                        ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
-                                        ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
+         \(PositionAndBit offset offset_bit) → go
+            ((row,window_start+offset) `updateValue` value)
+            (NQueensSearchState
+                (number_of_queens_remaining-1)
+                (row+1)
+                (occupied_rows `unsafeShiftR` 1)
+                (occupied_columns .|. offset_bit)
+                ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
+                ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
+            )
       | otherwise =
          go value
             (NQueensSearchState
                  number_of_queens_remaining
-                 window_start
-                 window_size
                 (row+1)
                 (occupied_rows `unsafeShiftR` 1)
                  occupied_columns
