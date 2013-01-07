@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -37,6 +38,8 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Monoid (Monoid(..))
 import Data.Serialize (Serialize(),encode)
+
+import Control.Monad.Trans.Visitor.Utils.MonadStacks
 -- }}}
 
 -- Classes {{{
@@ -69,8 +72,6 @@ newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstructi
     deriving (Applicative,Functor,Monad,MonadIO)
 type Visitor = VisitorT Identity
 type VisitorIO = VisitorT IO
-
-data StackEntry α = StackEntry {-# UNPACK #-} !Int α
 -- }}}
 
 -- Instances {{{
@@ -186,19 +187,10 @@ msumBalanced x = go (length x) x
 -- }}}
 
 msumBalancedGreedy :: MonadPlus m ⇒ [m α] → m α -- {{{
-msumBalancedGreedy = go []
+msumBalancedGreedy = go emptyStacks
   where
-    go [] [] = mzero
-    go (StackEntry _ top:rest) [] = mergeStacks top rest
-      where
-        mergeStacks x [] = x
-        mergeStacks x (StackEntry _ x':rest) = mergeStacks (x `mplus` x') rest
-    go stacks (x:xs) = go (addToStacks stacks (StackEntry 1 x)) xs
-      where
-        addToStacks [] entry = [entry]
-        addToStacks stacks@(StackEntry i' x':rest) entry@(StackEntry i x)
-         | i == i' = addToStacks rest (StackEntry (i+1) (x' `mplus` x))
-         | otherwise = entry:stacks
+    go !stacks [] = mergeStacks stacks
+    go !stacks (x:xs) = go (addToStacks stacks x) xs
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
