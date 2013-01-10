@@ -16,10 +16,9 @@ import Control.Monad.Trans.Visitor.Workload
 -- }}}
 
 main = defaultMain
-    [bench "list of ()" $ nf (length . nqueensTrivial) n
-    ,bench "list of Sum 1" $ nf (length . nqueensCount) n
-    ,bench "visitor" $ nf (getSum . runVisitor . nqueensCount) n
-    ,bench "visitor w/ checkpointing" $ nf (getSum . runVisitorThroughCheckpoint Unexplored . nqueensCount) n
+    [bench "list of Sum" $ nf (getIntSum . mconcat . nqueensCount) n
+    ,bench "visitor" $ nf (getIntSum . runVisitor . nqueensCount) n
+    ,bench "visitor w/ checkpointing" $ nf (getIntSum . runVisitorThroughCheckpoint Unexplored . nqueensCount) n
     ,bench "visitor using worker" $ do
         result_mvar ← newEmptyMVar
         _ ← forkVisitorWorkerThread

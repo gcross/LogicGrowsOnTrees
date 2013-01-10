@@ -29,7 +29,7 @@ import Control.Monad.Trans.Reader (ReaderT(..),ask)
 import Control.Monad.Trans.State (StateT,evalStateT,get,modify)
 import Control.Monad.Trans.Writer
 
-import Data.Bits (xor)
+import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import qualified Data.DList as DList
@@ -60,6 +60,7 @@ import Data.Set (Set)
 import Data.Typeable
 import qualified Data.UUID as UUID
 import Data.UUID (UUID)
+import Data.Word
 
 import Debug.Trace (trace)
 
@@ -76,7 +77,7 @@ import Test.QuickCheck.Gen
 import Test.QuickCheck.Instances
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
-import Test.QuickCheck.Property
+import Test.QuickCheck.Property hiding ((.&.))
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
@@ -420,6 +421,7 @@ remdups (x : xx : xs)
  | x == xx   = remdups (x : xs)
  | otherwise = x : remdups (xx : xs)
 -- }}}
+
 -- }}}
 
 -- Values {{{
@@ -622,49 +624,6 @@ tests = -- {{{
                  -- }}}
                 ,testCase "mzero" $ walkVisitor (mzero :: Visitor [Int]) @?= [([],Explored)]
                 ,testCase "return" $ walkVisitor (return [0] :: Visitor [Int]) @?= [([0],Explored)]
-                ]
-             -- }}}
-            ]
-         -- }}}
-        ]
-     -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Examples" -- {{{
-        [testGroup "Queens" -- {{{
-            [testGroup "solutions are valid" -- {{{
-                [ testCase ("n = " ++ show n) $
-                    let solutions = nqueensSolutions n in
-                    forM_ solutions $ \solution →
-                        forM_ (zip [0..] solution) $ \(i,(row1,col1)) → do
-                            assertBool "row within bounds" $ row1 >= 0 && row1 < n
-                            assertBool "column within bounds" $ col1 >= 0 && col1 < n
-                            forM_ (drop (i+1) solution) $ \(row2,col2) → do
-                                assertBool ("columns conflict in " ++ show solution) $ col1 /= col2
-                                assertBool ("negative diagonals conflict in " ++ show solution) $ row1+col1 /= row2+col2
-                                assertBool ("positive diagonals conflict in " ++ show solution) $ row1-col1 /= row2-col2
-                | n ← [2..10]
-                ]
-             -- }}}
-            ,testGroup "solutions are unique" $ -- {{{
-                [ testCase ("n = " ++ show n) $
-                    let solutions_as_list = nqueensSolutions n
-                        solutions_as_set = Set.fromList solutions_as_list
-                    in length solutions_as_list @?= Set.size solutions_as_set
-                | n ← [2..10]
-                ]
-             -- }}}
-            ,testGroup "solutions have correct size" -- {{{
-                [ testCase ("n = " ++ show n) $
-                    (correct_count @=?)
-                    .
-                    getSum
-                    .
-                    runVisitor
-                    .
-                    nqueensCount
-                    $
-                    n
-                | n ← [2..12]
-                , let correct_count = nqueensCorrectCount n
                 ]
              -- }}}
             ]

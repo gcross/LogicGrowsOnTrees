@@ -12,6 +12,6 @@ import Control.Monad.Trans.Visitor.Examples.Queens
 -- }}}
 
 main =
-    getSum . runVisitor . nqueensCount . read . head <$> getArgs
+    getIntSum . runVisitor . nqueensCount . read . head <$> getArgs
     >>=
     print

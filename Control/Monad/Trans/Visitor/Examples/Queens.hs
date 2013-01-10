@@ -1,44 +1,18 @@
 -- Language extensions {{{
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
 module Control.Monad.Trans.Visitor.Examples.Queens where
 
 -- Imports {{{
-import Control.Monad (MonadPlus(..))
-import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
+import Control.Monad (MonadPlus)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Data.List (sort)
 import Data.Maybe (fromJust)
-import Data.Monoid
-import Data.Word (Word64)
 
-import Control.Monad.Trans.Visitor (Visitor,allFromGreedy)
--- }}}
-
--- Types {{{
-
-data NQueensCallbacks α β = NQueensCallbacks -- {{{
-    {   updateValue :: !((Int,Int) → α → α)
-    ,   finalizeValue :: !(α → β)
-    }
--- }}}
-
-data NQueensSearchState = NQueensSearchState -- {{{
-    {   s_number_of_queens_remaining :: {-# UNPACK #-} !Int
-    ,   s_row :: {-# UNPACK #-} !Int
-    ,   s_occupied_rows :: {-# UNPACK #-} !Word64
-    ,   s_occupied_columns :: {-# UNPACK #-} !Word64
-    ,   s_occupied_negative_diagonals :: {-# UNPACK #-} !Word64
-    ,   s_occupied_positive_diagonals :: {-# UNPACK #-} !Word64
-    }
--- }}}
-
-data PositionAndBit = PositionAndBit {-# UNPACK #-} !Int {-# UNPACK #-} !Word64
-
+import Control.Monad.Trans.Visitor (IntSum(IntSum),Visitor)
+import Control.Monad.Trans.Visitor.Examples.Queens.Implementation
 -- }}}
 
 -- Values -- {{{
@@ -75,89 +49,21 @@ nqueens_correct_counts = IntMap.fromDistinctAscList
 
 -- Functions {{{
 
-getOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBit -- {{{
-getOpenings size blocked
-    | blocked .&. mask == mask = mzero
-    | otherwise = allFromGreedy $ go (PositionAndBit 0 1)
-  where
-    mask = bit size - 1
-    go x@(PositionAndBit i b)
-     | i >= size            =   []
-     | (b .&. blocked == 0) = x:next
-     | otherwise            =   next
-     where
-       next = go $ PositionAndBit (i+1) (b `unsafeShiftL` 1)
-{-# INLINE getOpenings #-}
--- }}}
-
 nqueensCorrectCount :: Int → Int -- {{{
 nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 -- }}}
 
-nqueensGeneric :: MonadPlus m ⇒ α → NQueensCallbacks α β → Int → m β -- {{{
-nqueensGeneric initial_value NQueensCallbacks{..} 1 = return . finalizeValue . updateValue (0,0) $ initial_value
-nqueensGeneric initial_value NQueensCallbacks{..} 2 = mzero
-nqueensGeneric initial_value NQueensCallbacks{..} 3 = mzero
-nqueensGeneric initial_value callbacks n = nqueensSearch callbacks initial_value n $ NQueensSearchState n 0 0 0 0 0
-{-# INLINE nqueensGeneric #-}
+nqueensCount :: MonadPlus m ⇒ Int → m IntSum -- {{{
+nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . IntSum . multiplicityForSymmetry $ symmetry) ()
+{-# SPECIALIZE nqueensCount :: Int → [IntSum] #-}
+{-# SPECIALIZE nqueensCount :: Int → Visitor IntSum #-}
 -- }}}
 
-nqueensSearch :: MonadPlus m ⇒ NQueensCallbacks α β → α → Int → NQueensSearchState → m β -- {{{
-nqueensSearch NQueensCallbacks{..} initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
-    go initial_value initial_search_state
+nqueensSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{
+nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
   where
-    go !value !(NQueensSearchState 0 _ _ _ _ _) = return (finalizeValue value)
-    go !value !(NQueensSearchState
-                    number_of_queens_remaining
-                    row
-                    occupied_rows
-                    occupied_columns
-                    occupied_negative_diagonals
-                    occupied_positive_diagonals
-               )
-      | occupied_rows .&. 1 == 0 =
-         (getOpenings size $
-            occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
-         )
-         >>=
-         \(PositionAndBit offset offset_bit) → go
-            ((row,window_start+offset) `updateValue` value)
-            (NQueensSearchState
-                (number_of_queens_remaining-1)
-                (row+1)
-                (occupied_rows `unsafeShiftR` 1)
-                (occupied_columns .|. offset_bit)
-                ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
-                ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
-            )
-      | otherwise =
-         go value
-            (NQueensSearchState
-                 number_of_queens_remaining
-                (row+1)
-                (occupied_rows `unsafeShiftR` 1)
-                 occupied_columns
-                (occupied_negative_diagonals `rotateR` 1)
-                (occupied_positive_diagonals `rotateL` 1)
-            )
-{-# INLINE nqueensSearch #-}
--- }}}
-
-nqueensCount :: MonadPlus m ⇒ Int → m (Sum Int) -- {{{
-nqueensCount = nqueensGeneric () $ NQueensCallbacks (const id) (const (Sum 1))
-{-# SPECIALIZE nqueensCount :: Int → [Sum Int] #-}
-{-# SPECIALIZE nqueensCount :: Int → Visitor (Sum Int) #-}
--- }}}
-
-nqueensSolutions :: MonadPlus m ⇒ Int → m [(Int,Int)] -- {{{
-nqueensSolutions = nqueensGeneric [] $ NQueensCallbacks (:) sort
-{-# SPECIALIZE nqueensSolutions :: Int → [[(Int,Int)]] #-}
-{-# SPECIALIZE nqueensSolutions :: Int → Visitor [(Int,Int)] #-}
--- }}}
-
-nqueensTrivial :: MonadPlus m ⇒ Int → m () -- {{{
-nqueensTrivial = nqueensGeneric () $ NQueensCallbacks (const id) (const ())
-{-# SPECIALIZE nqueensTrivial :: Int → [()] #-}
+{-# SPECIALIZE nqueensSolutions :: Int → NQueensSolutions #-}
+{-# SPECIALIZE nqueensSolutions :: Int → Visitor NQueensSolution #-}
 -- }}}
 
 -- }}}

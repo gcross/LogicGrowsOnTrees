@@ -16,6 +16,7 @@ module Control.Monad.Trans.Visitor
     , Visitor
     , VisitorIO
     , VisitorT(..)
+    , IntSum(..)
     , allFrom
     , allFromGreedy
     , between
@@ -36,7 +37,7 @@ import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,vi
 import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.Functor.Identity (Identity(..),runIdentity)
-import Data.Monoid (Monoid(..))
+import Data.Monoid (Monoid(..),Sum())
 import Data.Serialize (Serialize(),encode)
 
 import Control.Monad.Trans.Visitor.Utils.MonadStacks
@@ -72,9 +73,20 @@ newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstructi
     deriving (Applicative,Functor,Monad,MonadIO)
 type Visitor = VisitorT Identity
 type VisitorIO = VisitorT IO
+
+data IntSum = IntSum { getIntSum :: {-# UNPACK #-} !Int } deriving (Eq,Ord,Read,Show)
 -- }}}
 
 -- Instances {{{
+
+instance Monoid IntSum where -- {{{
+    mempty = IntSum 0
+    mappend !(IntSum x) !(IntSum y) = IntSum (x+y)
+    mconcat = go 0
+      where
+        go !accum [] = IntSum accum
+        go !accum (IntSum x:xs) = go (accum+x) xs
+-- }}}
 
 instance Monad m ⇒ Alternative (VisitorT m) where -- {{{
     empty = mzero
@@ -194,21 +206,34 @@ msumBalancedGreedy = go emptyStacks
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
-runVisitor = runIdentity . runVisitorT
+runVisitor v =
+    case view (unwrapVisitorT v) of
+        Return !x → x
+        (Cache mx :>>= k) → maybe mempty (runVisitor . VisitorT . k) (runIdentity mx)
+        (Choice left right :>>= k) →
+            let !x = runVisitor $ left >>= VisitorT . k
+                !y = runVisitor $ right >>= VisitorT . k
+                !xy = mappend x y
+            in xy
+        (Null :>>= _) → mempty
+{-# SPECIALIZE runVisitor :: Visitor IntSum → IntSum #-}
+{-# INLINEABLE runVisitor #-}
 -- }}}
 
 runVisitorT :: (Monad m, Monoid α) ⇒ VisitorT m α → m α -- {{{
 runVisitorT = viewT . unwrapVisitorT >=> \view →
     case view of
-        Return x → return x
+        Return !x → return x
         (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorT . VisitorT . k)
         (Choice left right :>>= k) →
-            liftM2 mappend
+            liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
                 (runVisitorT $ left >>= VisitorT . k)
                 (runVisitorT $ right >>= VisitorT . k)
         (Null :>>= _) → return mempty
+{-# SPECIALIZE runVisitorT :: Visitor IntSum → Identity IntSum #-}
 {-# SPECIALIZE runVisitorT :: Monoid α ⇒ Visitor α → Identity α #-}
 {-# SPECIALIZE runVisitorT :: Monoid α ⇒ VisitorIO α → IO α #-}
+{-# INLINEABLE runVisitorT #-}
 -- }}}
 
 runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m () -- {{{
@@ -222,6 +247,7 @@ runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
         (Null :>>= _) → return ()
 {-# SPECIALIZE runVisitorTAndIgnoreResults :: Visitor α → Identity () #-}
 {-# SPECIALIZE runVisitorTAndIgnoreResults :: VisitorIO α → IO () #-}
+{-# INLINEABLE runVisitorTAndIgnoreResults #-}
 -- }}}
 
 -- }}}
