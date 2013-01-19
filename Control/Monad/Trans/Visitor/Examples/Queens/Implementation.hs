@@ -13,7 +13,7 @@ import Data.Function (on)
 import Data.List (sort)
 import Data.Word (Word64)
 
-import Control.Monad.Trans.Visitor (Visitor,IntSum(..),allFrom,allFromGreedy,between)
+import Control.Monad.Trans.Visitor (Visitor,IntSum(..),allFromBalancedGreedy,between)
 -- }}}
 
 -- Types {{{
@@ -85,7 +85,7 @@ extractExteriorFromSolution size layers = filter . uncurry $ ((||) `on` (liftA2 
 getOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBit -- {{{
 getOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = allFromGreedy $ go (PositionAndBit 0 1)
+    | otherwise = allFromBalancedGreedy $ go (PositionAndBit 0 1)
   where
     mask = bit size - 1
     go x@(PositionAndBit i b)
@@ -100,7 +100,7 @@ getOpenings size blocked
 getSymmetricOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBitWithReflection -- {{{
 getSymmetricOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = allFromGreedy $ go (PositionAndBitWithReflection 0 1 end end_bit)
+    | otherwise = allFromBalancedGreedy $ go (PositionAndBitWithReflection 0 1 end end_bit)
   where
     end = size-1
     end_bit = bit end

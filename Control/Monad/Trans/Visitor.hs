@@ -18,7 +18,8 @@ module Control.Monad.Trans.Visitor
     , VisitorT(..)
     , IntSum(..)
     , allFrom
-    , allFromGreedy
+    , allFromBalanced
+    , allFromBalancedGreedy
     , between
     , endowVisitor
     , msumBalanced
@@ -31,7 +32,7 @@ module Control.Monad.Trans.Visitor
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
 import Data.List (foldl1)
-import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2)
+import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -153,11 +154,18 @@ instance Show α ⇒ Show (Visitor α) where -- {{{
 -- Functions {{{
 
 allFrom :: MonadPlus m ⇒ [α] → m α -- {{{
-allFrom = msumBalanced . map return
+allFrom = msum . map return
+{-# INLINE allFrom #-}
 -- }}}
 
-allFromGreedy :: MonadPlus m ⇒ [α] → m α -- {{{
-allFromGreedy = msumBalancedGreedy . map return
+allFromBalanced :: MonadPlus m ⇒ [α] → m α -- {{{
+allFromBalanced = msumBalanced . map return
+{-# INLINE allFromBalanced #-}
+-- }}}
+
+allFromBalancedGreedy :: MonadPlus m ⇒ [α] → m α -- {{{
+allFromBalancedGreedy = msumBalancedGreedy . map return
+{-# INLINE allFromBalancedGreedy #-}
 -- }}}
 
 between :: (Enum n, MonadPlus m) ⇒ n → n → m n -- {{{
@@ -196,6 +204,7 @@ msumBalanced x = go (length x) x
       where
         (a,b) = splitAt i x
         i = n `div` 2
+{-# INLINE msumBalanced #-}
 -- }}}
 
 msumBalancedGreedy :: MonadPlus m ⇒ [m α] → m α -- {{{
@@ -203,6 +212,7 @@ msumBalancedGreedy = go emptyStacks
   where
     go !stacks [] = mergeStacks stacks
     go !stacks (x:xs) = go (addToStacks stacks x) xs
+{-# INLINE msumBalancedGreedy #-}
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
