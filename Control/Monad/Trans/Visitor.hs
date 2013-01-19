@@ -8,7 +8,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor
+module Control.Monad.Trans.Visitor -- {{{
     ( MonadVisitor(..)
     , MonadVisitorTrans(..)
     , VisitorTInstruction(..)
@@ -27,7 +27,7 @@ module Control.Monad.Trans.Visitor
     , runVisitor
     , runVisitorT
     , runVisitorTAndIgnoreResults
-    ) where
+    ) where -- }}}
 
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
