@@ -13,7 +13,8 @@ import Data.Function (on)
 import Data.List (sort)
 import Data.Word (Word64)
 
-import Control.Monad.Trans.Visitor (Visitor,IntSum(..),allFromBalancedGreedy,between)
+import Control.Monad.Trans.Visitor (Visitor,IntSum(..),between)
+import Control.Monad.Trans.Visitor.Utils.MonadStacks (addToStacks,emptyStacks,mergeStacks)
 -- }}}
 
 -- Types {{{
@@ -85,32 +86,32 @@ extractExteriorFromSolution size layers = filter . uncurry $ ((||) `on` (liftA2 
 getOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBit -- {{{
 getOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = allFromBalancedGreedy $ go (PositionAndBit 0 1)
+    | otherwise = go emptyStacks (PositionAndBit 0 1)
   where
     mask = bit size - 1
-    go x@(PositionAndBit i b)
-     | i >= size            =   []
-     | (b .&. blocked == 0) = x:next
-     | otherwise            =   next
+    go !stacks !x@(PositionAndBit i b)
+     | i >= size          = mergeStacks stacks
+     | b .&. blocked == 0 = go (addToStacks stacks (return x)) next_x
+     | otherwise          = go stacks next_x
      where
-       next = go $ PositionAndBit (i+1) (b `unsafeShiftL` 1)
+       next_x = PositionAndBit (i+1) (b `unsafeShiftL` 1)
 {-# INLINE getOpenings #-}
 -- }}}
 
 getSymmetricOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBitWithReflection -- {{{
 getSymmetricOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = allFromBalancedGreedy $ go (PositionAndBitWithReflection 0 1 end end_bit)
+    | otherwise = go emptyStacks (PositionAndBitWithReflection 0 1 end end_bit)
   where
     end = size-1
     end_bit = bit end
     mask = bit size - 1
-    go x@(PositionAndBitWithReflection i b ri rb)
-     | i >= ri              = []
-     | (b .&. blocked == 0) = x:(PositionAndBitWithReflection ri rb i b):next
-     | otherwise            = next
+    go stacks x@(PositionAndBitWithReflection i b ri rb)
+     | i >= ri            = mergeStacks stacks
+     | b .&. blocked == 0 = go (addToStacks (addToStacks stacks (return x)) (return $ PositionAndBitWithReflection ri rb i b)) next_bit
+     | otherwise          = go stacks next_bit
      where
-       next = go $ PositionAndBitWithReflection (i+1) (b `unsafeShiftL` 1) (ri-1) (rb `unsafeShiftR` 1)
+       next_bit = PositionAndBitWithReflection (i+1) (b `unsafeShiftL` 1) (ri-1) (rb `unsafeShiftR` 1)
 {-# INLINE getSymmetricOpenings #-}
 -- }}}
 
