@@ -46,7 +46,7 @@ Library
         Control.Monad.Trans.Visitor.Parallel.Threads
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Supervisor
-        Control.Monad.Trans.Visitor.Utils.MonoidStacks
+        Control.Monad.Trans.Visitor.Utils.MonadStacks
         Control.Monad.Trans.Visitor.Worker
         Control.Monad.Trans.Visitor.Workload
     Extensions:
