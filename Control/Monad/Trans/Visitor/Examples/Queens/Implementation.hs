@@ -341,7 +341,6 @@ nqueensBreak90
             (occupied_negative_diagonals `unsafeShiftR` 2)
              occupied_positive_diagonals
     -- }}}
-{-# INLINE nqueensBreak90 #-}
 -- }}}
 
 nqueensBreak180 :: -- {{{
@@ -677,7 +676,6 @@ nqueensBreak180
              occupied_positive_diagonals
              occupied_right_positive_diagonals
     -- }}}
-{-# INLINE nqueensBreak180 #-}
 -- }}}
 
 nqueensBruteForceGeneric :: MonadPlus m ⇒ ([(Int,Int)] → α → α) → (α → m β) → α → Int → m β -- {{{
@@ -716,7 +714,7 @@ nqueensGeneric updateValue finalizeValueWithSymmetry initial_value n =
   where
     break90 = nqueensBreak90 updateValue (finalizeValueWithSymmetry n AllRotations) break90 break180 search
     break180 = nqueensBreak180 updateValue (finalizeValueWithSymmetry n Rotate180Only) break180 search
-    search = nqueensSearch updateValue (finalizeValueWithSymmetry n NoSymmetries)
+    search value size state = nqueensSearch updateValue (finalizeValueWithSymmetry n NoSymmetries) value size state
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
@@ -909,7 +907,6 @@ nqueensStart
                  (top_column_bit .|. bit (last-left_row) .|. (1 `rotateR` right_row) .|. (bottom_column_bit `rotateR` last))
             )
     -- }}}
-{-# INLINE nqueensStart #-}
 -- }}}
 
 reflectBits :: Word64 → Word64 -- {{{
