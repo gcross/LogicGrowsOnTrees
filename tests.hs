@@ -321,22 +321,6 @@ addReceiveCurrentProgressAction actions = do
     })
 -- }}}
 
-checkSolutionIsValid :: Int → NQueensSolution → Assertion -- {{{
-checkSolutionIsValid n solution =
-    forM_ (zip [0..] solution) $ \(i,(row1,col1)) → do
-        assertBool "row within bounds" $ row1 >= 0 && row1 < n
-        assertBool "column within bounds" $ col1 >= 0 && col1 < n
-        forM_ (drop (i+1) solution) $ \(row2,col2) → do
-            assertBool ("rows conflict in " ++ show solution) $ row1 /= row2
-            assertBool ("columns conflict in " ++ show solution) $ col1 /= col2
-            assertBool ("negative diagonals conflict in " ++ show solution) $ row1+col1 /= row2+col2
-            assertBool ("positive diagonals conflict in " ++ show solution) $ row1-col1 /= row2-col2
--- }}}
-
-checkSolutionsAreValid :: Int → NQueensSolutions → Assertion -- {{{
-checkSolutionsAreValid = mapM_ . checkSolutionIsValid
--- }}}
-
 echo :: Show α ⇒ α → α -- {{{
 echo x = trace (show x) x
 -- }}}
@@ -642,51 +626,6 @@ tests = -- {{{
                 ,testCase "return" $ walkVisitor (return [0] :: Visitor [Int]) @?= [([0],Explored)]
                 ]
              -- }}}
-            ]
-         -- }}}
-        ]
-     -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Examples.Queens" -- {{{
-        [testGroup "solutions are valid" $ -- {{{
-            map (\n → testCase ("n = " ++ show n) $ checkSolutionsAreValid n (nqueensSolutions n))
-                [1..10]
-         -- }}}
-        ,testGroup "solutions are unique" $ -- {{{
-            [ testCase ("n = " ++ show n) $
-                let solutions_as_list = nqueensSolutions n
-                    solutions_as_set = Set.fromList solutions_as_list
-                in length solutions_as_list @?= Set.size solutions_as_set
-            | n ← [1..10]
-            ]
-         -- }}}
-        ,testGroup "solutions have correct size" -- {{{
-            [ testCase ("n = " ++ show n) $
-                (correct_count @=?)
-                .
-                getIntSum
-                .
-                runVisitor
-                .
-                nqueensCount
-                $
-                n
-            | n ← [1..14]
-            , let correct_count = nqueensCorrectCount n
-            ]
-         -- }}}
-        ,testGroup "solutions match count" -- {{{
-            [ testCase ("n = " ++ show n) $
-                ((getIntSum . runVisitor . nqueensCount $ n) @=?)
-                .
-                getIntSum
-                .
-                runVisitor
-                .
-                nqueensCount
-                $
-                n
-            | n ← [1..10]
-            , let correct_count = nqueensCorrectCount n
             ]
          -- }}}
         ]

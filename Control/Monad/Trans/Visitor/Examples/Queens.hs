@@ -3,15 +3,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Examples.Queens
-    ( IntSum
-    , NQueensSolution
-    , NQueensSolutions
-    , nqueens_correct_counts
-    , nqueensCorrectCount
-    , nqueensCount
-    , nqueensSolutions
-    ) where
+module Control.Monad.Trans.Visitor.Examples.Queens where
 
 -- Imports {{{
 import Control.Monad (MonadPlus)
@@ -62,13 +54,14 @@ nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 -- }}}
 
 nqueensCount :: MonadPlus m ⇒ Int → m IntSum -- {{{
-nqueensCount n = nqueensGeneric n
+nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . IntSum . multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensCount :: Int → [IntSum] #-}
 {-# SPECIALIZE nqueensCount :: Int → Visitor IntSum #-}
 -- }}}
 
 nqueensSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{
-nqueensSolutions n = nqueensGeneric n
+nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
+  where
 {-# SPECIALIZE nqueensSolutions :: Int → NQueensSolutions #-}
 {-# SPECIALIZE nqueensSolutions :: Int → Visitor NQueensSolution #-}
 -- }}}
