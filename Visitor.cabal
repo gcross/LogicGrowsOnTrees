@@ -63,13 +63,3 @@ Test-Suite tests
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
         uuid == 1.2.*
-
-Test-Suite test-nqueens
-    Type:       exitcode-stdio-1.0
-    Main-is:    test-nqueens.hs
-    Build-depends:
-        HUnit == 1.2.*,
-        QuickCheck >= 2.4 && < 2.6,
-        test-framework >= 0.6 && < 0.9,
-        test-framework-hunit >= 0.2 && < 0.4,
-        test-framework-quickcheck2 >= 0.2 && < 0.4
