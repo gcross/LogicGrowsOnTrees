@@ -364,30 +364,31 @@ shuffle items = do
 -- }}}
 
 randomCheckpointForVisitor :: Monoid α ⇒ Visitor α → Gen (α,VisitorCheckpoint) -- {{{
-randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
+randomCheckpointForVisitor = go1
   where
     go1 visitor = frequency
-        [(1,return (runVisitor (VisitorT visitor),Explored))
+        [(1,return (runVisitor visitor,Explored))
         ,(1,return (mempty,Unexplored))
         ,(3,go2 visitor)
         ]
-    go2 (view → Cache (Identity (Just x)) :>>= k) =
+    go2 (Deferred (Identity x) k) = go2 (k x)
+    go2 (Cache (Identity (Just x)) k) =
         fmap (second $ CacheCheckpoint (encode x)) (go1 (k x))
-    go2 (view → Choice (VisitorT x) (VisitorT y) :>>= k) =
+    go2 (Choice x y k) =
         liftM2 (\(left_result,left) (right_result,right) →
             (left_result `mappend` right_result, ChoiceCheckpoint left right)
         ) (go1 (x >>= k)) (go1 (y >>= k))
-    go2 visitor = elements [(runVisitor (VisitorT visitor),Explored),(mempty,Unexplored)]
+    go2 visitor = elements [(runVisitor visitor,Explored),(mempty,Unexplored)]
 -- }}}
 
 randomPathForVisitor :: Visitor α → Gen VisitorPath -- {{{
-randomPathForVisitor (VisitorT visitor) = go visitor
+randomPathForVisitor = go
   where
-    go (view → Cache (Identity (Just x)) :>>= k) = oneof
+    go (Cache (Identity (Just x)) k) = oneof
         [return Seq.empty
         ,fmap (CacheStep (encode x) <|) (go (k x))
         ]
-    go (view → Choice (VisitorT x) (VisitorT y) :>>= k) = oneof
+    go (Choice x y k) = oneof
         [return Seq.empty
         ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
         ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
@@ -761,7 +762,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor [Int])
+                            sendVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch :: VisitorStep)) (cache undefined :: Visitor [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
                      -- }}}
                     ]

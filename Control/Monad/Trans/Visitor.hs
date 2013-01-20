@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -11,8 +12,6 @@
 module Control.Monad.Trans.Visitor -- {{{
     ( MonadVisitor(..)
     , MonadVisitorTrans(..)
-    , VisitorTInstruction(..)
-    , VisitorInstruction
     , Visitor
     , VisitorIO
     , VisitorT(..)
@@ -30,13 +29,14 @@ module Control.Monad.Trans.Visitor -- {{{
     ) where -- }}}
 
 -- Imports {{{
-import Control.Applicative (Alternative(..),Applicative(..))
+import Control.Applicative (Alternative(..),Applicative(..),liftA2)
+import Control.Arrow ((***))
 import Data.List (foldl1)
 import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
+import Data.Functor ((<$>))
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Monoid (Monoid(..),Sum())
 import Data.Serialize (Serialize(),encode)
@@ -63,15 +63,13 @@ class MonadPlus m ⇒ MonadVisitorTrans m where -- {{{
 
 -- Types {{{
 
-data VisitorTInstruction m α where -- {{{
-    Cache :: Serialize α ⇒ m (Maybe α) → VisitorTInstruction m α
-    Choice :: VisitorT m α → VisitorT m α → VisitorTInstruction m α
-    Null :: VisitorTInstruction m α
+data VisitorT m α where -- {{{
+    Return :: m α → VisitorT m α
+    Deferred :: m β → (β → VisitorT m α) → VisitorT m α
+    Cache :: Serialize β ⇒ m (Maybe β) → (β → VisitorT m α) → VisitorT m α
+    Choice :: VisitorT m β → VisitorT m β → (β → VisitorT m α) → VisitorT m α
+    Null :: VisitorT m α
 -- }}}
-type VisitorInstruction = VisitorTInstruction Identity
-
-newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstruction m) m α }
-    deriving (Applicative,Functor,Monad,MonadIO)
 type Visitor = VisitorT Identity
 type VisitorIO = VisitorT IO
 
@@ -82,35 +80,79 @@ data IntSum = IntSum { getIntSum :: {-# UNPACK #-} !Int } deriving (Eq,Ord,Read,
 
 instance Monoid IntSum where -- {{{
     mempty = IntSum 0
+    {-# INLINE mempty #-}
     mappend !(IntSum x) !(IntSum y) = IntSum (x+y)
+    {-# INLINE mappend #-}
     mconcat = go 0
       where
         go !accum [] = IntSum accum
         go !accum (IntSum x:xs) = go (accum+x) xs
+    {-# INLINE mconcat #-}
 -- }}}
 
-instance Monad m ⇒ Alternative (VisitorT m) where -- {{{
-    empty = mzero
-    (<|>) = mplus
+instance Applicative m ⇒ Alternative (VisitorT m) where -- {{{
+    empty = Null
+    {-# INLINE empty #-}
+    x <|> y = Choice x y pure
+    {-# INLINE (<|>) #-}
+-- }}}
+
+instance Applicative m ⇒ Applicative (VisitorT m) where -- {{{
+    pure = Return . pure
+    {-# INLINE pure #-}
+
+    Null <*> _ = Null
+    _ <*> Null = Null
+    Return mx1 <*> Return mx2 = Return (mx1 <*> mx2)
+    Return mx <*> next = Deferred mx (<$> next)
+    Deferred m1 k <*> next = Deferred m1 ((<*> next) . k)
+    Cache m1 k <*> next = Cache m1 ((<*> next) . k)
+    Choice l r k <*> next = Choice l r ((<*> next) . k)
+    {-# INLINE (<*>) #-}
 -- }}}
 
 instance Eq α ⇒ Eq (Visitor α) where -- {{{
-    (VisitorT x) == (VisitorT y) = e x y
-      where
-        e x y = case (view x, view y) of
-            (Return x, Return y) → x == y
-            (Null :>>= _, Null :>>= _) → True
-            (Cache cx :>>= kx, Cache cy :>>= ky) →
-                case (runIdentity cx, runIdentity cy) of
-                    (Nothing, Nothing) → True
-                    (Just x, Just y) → e (kx x) (ky y)
-            (Choice (VisitorT ax) (VisitorT bx) :>>= kx, Choice (VisitorT ay) (VisitorT by) :>>= ky) →
-                e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
+    Return x == Return y = runIdentity x == runIdentity y
+    Deferred mx k == other = k (runIdentity mx) == other
+    other == Deferred mx k = other == k (runIdentity mx)
+    Null == Null = True
+    Cache cx kx == Cache cy ky =
+        case (runIdentity cx, runIdentity cy) of
+            (Nothing, Nothing) → True
+            (Just x, Just y) → kx x == ky y
+    Choice ax bx kx == Choice ay by ky =
+        (ax >>= kx) == (ay >>= ky) && (bx >>= kx) == (by >>= ky)
+    _ == _ = False
+-- }}}
+
+instance Functor m ⇒ Functor (VisitorT m) where -- {{{
+    fmap f (Return m) = Return (fmap f m)
+    fmap f (Deferred m k) = Deferred m (fmap f . k)
+    fmap f (Cache m k) = Cache m (fmap f . k)
+    fmap f (Choice l r k) = Choice l r (fmap f . k)
+    fmap _ Null = Null
+-- }}}
+
+instance Monad m ⇒ Monad (VisitorT m) where -- {{{
+    return = Return . return
+    {-# INLINE return #-}
+    Return mx >>= k = Deferred mx k
+    Deferred mx k >>= f = Deferred mx (k >=> f)
+    Cache mx k >>= f = Cache mx (k >=> f)
+    Choice l r k >>= f = Choice l r (k >=> f)
+    Null >>= _ = Null
+    {-# INLINE (>>=) #-}
+-- }}}
+
+instance MonadIO m ⇒ MonadIO (VisitorT m) where -- {{{
+    liftIO = Return . liftIO
 -- }}}
 
 instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
-    mzero = VisitorT . singleton $ Null
-    left `mplus` right = VisitorT . singleton $ Choice left right
+    mzero = Null
+    {-# INLINE mzero #-}
+    left `mplus` right = Choice left right return
+    {-# INLINE mplus #-}
 -- }}}
 
 instance Monad m ⇒ MonadVisitor (VisitorT m) where -- {{{
@@ -123,30 +165,31 @@ instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
     type NestedMonadInVisitor (VisitorT m) = m
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
-    runAndCacheMaybe = VisitorT . singleton . Cache
+    runAndCacheMaybe = flip Cache return
 -- }}}
 
 instance MonadTrans VisitorT where -- {{{
-    lift = VisitorT . lift
+    lift = Return
 -- }}}
 
 instance Monad m ⇒ Monoid (VisitorT m α) where -- {{{
     mempty = mzero
+    {-# INLINE mempty #-}
     mappend = mplus
+    {-# INLINE mappend #-}
     mconcat = msumBalanced
+    {-# INLINE mconcat #-}
 -- }}}
 
 instance Show α ⇒ Show (Visitor α) where -- {{{
-    show = s . unwrapVisitorT
-      where
-        s x = case view x of
-            Return x → show x
-            Null :>>= _ → "<NULL> >>= (...)"
-            Cache c :>>= k →
-                case runIdentity c of
-                    Nothing → "NullCache"
-                    Just x → "Cache[" ++ (show . encode $ x) ++ "] >>= " ++ (s (k x))
-            Choice (VisitorT a) (VisitorT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
+    show (Return x) = show (runIdentity x)
+    show (Deferred x k) = show (k . runIdentity $ x)
+    show Null = "<NULL>"
+    show (Cache c k) =
+        case runIdentity c of
+            Nothing → "NullCache"
+            Just x → "Cache[" ++ show (encode x) ++ "] >>= " ++ show (k x)
+    show (Choice a b k) = "(" ++ show (a >>= k) ++ ") | (" ++ show (b >>= k) ++ ")"
 -- }}}
 
 -- }}}
@@ -185,14 +228,11 @@ between x y =
 -- }}}
 
 endowVisitor :: Monad m ⇒ Visitor α → VisitorT m α -- {{{
-endowVisitor (view . unwrapVisitorT → Return x) = return x
-endowVisitor (view . unwrapVisitorT → Cache mx :>>= k) =
-    cacheMaybe (runIdentity mx) >>= endowVisitor . VisitorT . k
-endowVisitor (view . unwrapVisitorT → Choice left right :>>= k) =
-    mplus
-        (endowVisitor left >>= endowVisitor . VisitorT . k)
-        (endowVisitor right >>= endowVisitor . VisitorT . k)
-endowVisitor (view . unwrapVisitorT → Null :>>= k) = mzero
+endowVisitor (Return mx) = Return (return $ runIdentity mx)
+endowVisitor (Deferred mx k) = Deferred (return $ runIdentity mx) (endowVisitor . k)
+endowVisitor (Cache mx k) = Cache (return $ runIdentity mx) (endowVisitor . k)
+endowVisitor (Choice left right k) = Choice (endowVisitor left) (endowVisitor right) (endowVisitor . k)
+endowVisitor Null = Null
 -- }}}
 
 msumBalanced :: MonadPlus m ⇒ [m α] → m α -- {{{
@@ -216,48 +256,36 @@ msumBalancedGreedy = go emptyStacks
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
-runVisitor v =
-    case view (unwrapVisitorT v) of
-        Return !x → x
-        (Cache mx :>>= k) → maybe mempty (runVisitor . VisitorT . k) (runIdentity mx)
-        (Choice left right :>>= k) →
-            let !x = runVisitor $ left >>= VisitorT . k
-                !y = runVisitor $ right >>= VisitorT . k
-                !xy = mappend x y
-            in xy
-        (Null :>>= _) → mempty
-{-# SPECIALIZE runVisitor :: Visitor IntSum → IntSum #-}
-{-# INLINEABLE runVisitor #-}
+runVisitor = go
+  where
+    go (Return x) = runIdentity x
+    go (Deferred x k) = go (k (runIdentity x))
+    go (Cache mx k) = maybe mempty (go . k) (runIdentity mx)
+    go (Choice left right k) = go (left >>= k) `mappend` go (right >>= k)
+    go Null = mempty
+{-# INLINE runVisitor #-}
 -- }}}
 
 runVisitorT :: (Monad m, Monoid α) ⇒ VisitorT m α → m α -- {{{
-runVisitorT = viewT . unwrapVisitorT >=> \view →
-    case view of
-        Return !x → return x
-        (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorT . VisitorT . k)
-        (Choice left right :>>= k) →
-            liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
-                (runVisitorT $ left >>= VisitorT . k)
-                (runVisitorT $ right >>= VisitorT . k)
-        (Null :>>= _) → return mempty
-{-# SPECIALIZE runVisitorT :: Visitor IntSum → Identity IntSum #-}
-{-# SPECIALIZE runVisitorT :: Monoid α ⇒ Visitor α → Identity α #-}
-{-# SPECIALIZE runVisitorT :: Monoid α ⇒ VisitorIO α → IO α #-}
-{-# INLINEABLE runVisitorT #-}
+runVisitorT = go
+  where
+    go (Return mx) = mx
+    go (Deferred mx k) = mx >>= go . k
+    go (Cache mx k) = mx >>= maybe (return mempty) (go . k)
+    go (Choice left right k) = liftM2 mappend (go $ left >>= k) (go $ right >>= k)
+    go Null = return mempty
+{-# INLINE runVisitorT #-}
 -- }}}
 
 runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m () -- {{{
-runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
-    case view of
-        Return x → return ()
-        (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorTAndIgnoreResults . VisitorT . k)
-        (Choice left right :>>= k) → do
-            runVisitorTAndIgnoreResults $ left >>= VisitorT . k
-            runVisitorTAndIgnoreResults $ right >>= VisitorT . k
-        (Null :>>= _) → return ()
-{-# SPECIALIZE runVisitorTAndIgnoreResults :: Visitor α → Identity () #-}
-{-# SPECIALIZE runVisitorTAndIgnoreResults :: VisitorIO α → IO () #-}
-{-# INLINEABLE runVisitorTAndIgnoreResults #-}
+runVisitorTAndIgnoreResults = go
+  where
+    go (Return x) = return ()
+    go (Deferred mx k) = mx >>= go . k
+    go (Cache mx k) = mx >>= maybe (return ()) (go . k)
+    go (Choice left right k) = go (left >>= k) >> go (right >>= k)
+    go Null = return ()
+{-# INLINE runVisitorTAndIgnoreResults #-}
 -- }}}
 
 -- }}}
