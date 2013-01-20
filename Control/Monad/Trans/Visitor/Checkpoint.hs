@@ -15,6 +15,7 @@ module Control.Monad.Trans.Visitor.Checkpoint where
 -- Imports {{{
 import Control.Exception (Exception(),throw)
 import Control.Monad ((>=>),join,liftM)
+import Control.Monad.Operational (ProgramViewT(..),viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
@@ -269,48 +270,50 @@ stepVisitorTThroughCheckpoint :: -- {{{
     Monad m ⇒
     VisitorTState m α →
     m (Maybe α,Maybe (VisitorTState m α))
-stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint visitor) =
-    go checkpoint visitor
-  where
-    go checkpoint (Deferred mx k) = mx >>= go checkpoint . k
-    go Unexplored (Return mx) = mx >>= \x → return (Just x, moveUpContext)
-    go Unexplored Null = return (Nothing, moveUpContext)
-    go Unexplored (Cache mx k) =
-        mx >>= return . maybe
-            (Nothing, moveUpContext)
-            (\x → (Nothing, Just $
+stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint visitor) = case checkpoint of
+    Explored → return (Nothing, moveUpContext)
+    Unexplored → getView >>= \view → case view of
+        Return x → return (Just x, moveUpContext)
+        Null :>>= _ → return (Nothing, moveUpContext)
+        Cache mx :>>= k →
+            mx >>= return . maybe
+                (Nothing, moveUpContext)
+                (\x → (Nothing, Just $
+                    VisitorTState
+                        (context |> CacheContextStep (encode x))
+                        Unexplored
+                        (VisitorT . k $ x)
+                ))
+        Choice left right :>>= k → return
+            (Nothing, Just $
                 VisitorTState
-                    (context |> CacheContextStep (encode x))
+                    (context |> LeftBranchContextStep Unexplored (right >>= VisitorT . k))
                     Unexplored
-                    (k x)
-            ))
-    go Unexplored (Choice left right k) = return
-        (Nothing, Just $
-            VisitorTState
-                (context |> LeftBranchContextStep Unexplored (right >>= k))
-                Unexplored
-                (left >>= k)
-        )
-    go Explored _ = return (Nothing, moveUpContext)
-    go (CacheCheckpoint cache rest_checkpoint) (Cache mx k) = return
-        (Nothing, Just $
-            VisitorTState
-                (context |> CacheContextStep cache)
-                rest_checkpoint
-                (either error k . decode $ cache)
-        )
-    go (ChoiceCheckpoint left_checkpoint right_checkpoint) (Choice left right k) = return
-        (Nothing, Just $
-            VisitorTState
-                (context |> LeftBranchContextStep right_checkpoint (right >>= k))
-                left_checkpoint
-                (left >>= k)
-        )
-    go _ _ = throw PastVisitorIsInconsistentWithPresentVisitor
-
-    moveUpContext = goUp context
+                    (left >>= VisitorT . k)
+            )
+    CacheCheckpoint cache rest_checkpoint → getView >>= \view → case view of
+        Cache mx :>>= k → return
+            (Nothing, Just $
+                VisitorTState
+                    (context |> CacheContextStep cache)
+                    rest_checkpoint
+                    (either error (VisitorT . k) . decode $ cache)
+            )
+        _ → throw PastVisitorIsInconsistentWithPresentVisitor
+    ChoiceCheckpoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
+        Choice left right :>>= k → return
+            (Nothing, Just $
+                VisitorTState
+                    (context |> LeftBranchContextStep right_checkpoint (right >>= VisitorT . k))
+                    left_checkpoint
+                    (left >>= VisitorT . k)
+            )
+        _ → throw PastVisitorIsInconsistentWithPresentVisitor
+  where
+    getView = viewT . unwrapVisitorT $ visitor
+    moveUpContext = go context
       where
-        goUp context = case viewr context of
+        go context = case viewr context of
             EmptyR → Nothing
             rest_context :> LeftBranchContextStep right_checkpoint right_visitor →
                 Just (VisitorTState
@@ -318,7 +321,7 @@ stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint vi
                         right_checkpoint
                         right_visitor
                      )
-            rest_context :> _ → goUp rest_context
+            rest_context :> _ → go rest_context
 {-# INLINE stepVisitorTThroughCheckpoint #-}
 -- }}}
 

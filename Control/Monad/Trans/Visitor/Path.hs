@@ -10,6 +10,7 @@ module Control.Monad.Trans.Visitor.Path where
 -- Imports {{{
 import Control.Exception (Exception(),throw)
 import Control.Monad ((>=>))
+import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
 import Data.Derive.Serialize
@@ -65,16 +66,20 @@ sendVisitorDownPath path = runIdentity . sendVisitorTDownPath path
 -- }}}
 
 sendVisitorTDownPath :: Monad m ⇒ VisitorPath → VisitorT m α → m (VisitorT m α) -- {{{
-sendVisitorTDownPath = go
-  where
-    go (viewl → EmptyL) visitor = return visitor
-    go _ (Return _) = throw VisitorTerminatedBeforeEndOfWalk
-    go _ Null = throw VisitorTerminatedBeforeEndOfWalk
-    go path (Deferred mx k) = mx >>= go path . k
-    go (viewl → CacheStep cache :< tail) (Cache _ k) = either error (go tail . k) (decode cache)
-    go (viewl → ChoiceStep LeftBranch :< tail) (Choice l _ k) = go tail (l >>= k)
-    go (viewl → ChoiceStep RightBranch :< tail) (Choice _ r k) = go tail (r >>= k)
-    go _ _ = throw PastVisitorIsInconsistentWithPresentVisitor
+sendVisitorTDownPath (viewl → EmptyL) = return
+sendVisitorTDownPath path@(viewl → step :< tail) =
+    viewT . unwrapVisitorT >=> \view → case (view,step) of
+        (Return x,_) →
+            throw VisitorTerminatedBeforeEndOfWalk
+        (Null :>>= _,_) →
+            throw VisitorTerminatedBeforeEndOfWalk
+        (Cache _ :>>= k,CacheStep cache) →
+            sendVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
+        (Choice left _ :>>= k,ChoiceStep LeftBranch) →
+            sendVisitorTDownPath tail (left >>= VisitorT . k)
+        (Choice _ right :>>= k,ChoiceStep RightBranch) →
+            sendVisitorTDownPath tail (right >>= VisitorT . k)
+        _ → throw PastVisitorIsInconsistentWithPresentVisitor
 -- }}}
 
 -- }}}

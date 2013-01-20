@@ -12,6 +12,7 @@ import Control.Applicative (Alternative(..),Applicative(..))
 import Control.Exception (throw)
 import Control.Monad (MonadPlus(..),(>=>),liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Operational (ProgramViewT(..),viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
@@ -228,16 +229,16 @@ runVisitorTWithLabelsAndGatherResults = runVisitorTWithStartingLabel rootLabel
 -- }}}
 
 runVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m [VisitorSolution α] -- {{{
-runVisitorTWithStartingLabel label = go
-  where
-    go (Return mx) = mx >>= \x → return [VisitorSolution label x]
-    go (Deferred mx k) = mx >>= go . k
-    go (Cache mx k) = mx >>= maybe (return []) (go . k)
-    go (Choice left right k) =
-        liftM2 (++)
-            (runVisitorTWithStartingLabel (leftChildLabel label) $ left >>= k)
-            (runVisitorTWithStartingLabel (rightChildLabel label) $ right >>= k)
-    go Null = return []
+runVisitorTWithStartingLabel label =
+    viewT . unwrapVisitorT >=> \view →
+    case view of
+        Return x → return [VisitorSolution label x]
+        (Cache mx :>>= k) → mx >>= maybe (return []) (runVisitorTWithStartingLabel label . VisitorT . k)
+        (Choice left right :>>= k) →
+            liftM2 (++)
+                (runVisitorTWithStartingLabel (leftChildLabel label) $ left >>= VisitorT . k)
+                (runVisitorTWithStartingLabel (rightChildLabel label) $ right >>= VisitorT . k)
+        (Null :>>= _) → return []
 -- }}}
 
 runVisitorWithLabels :: Visitor α → [VisitorSolution α] -- {{{
@@ -255,14 +256,23 @@ sendVisitorDownLabel label = runIdentity . sendVisitorTDownLabel label
 sendVisitorTDownLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (VisitorT m α) -- {{{
 sendVisitorTDownLabel (VisitorLabel label) = go root
   where
-    go parent visitor | parent == label = return visitor
-    go parent (Return _) = throw VisitorTerminatedBeforeEndOfWalk
-    go parent Null = throw VisitorTerminatedBeforeEndOfWalk
-    go parent (Deferred mx k) = mx >>= go parent . k
-    go parent (Cache mx k) = mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . k)
-    go parent (Choice left right k)
-      | parent > label = go (fromJust . leftChild $ parent) (left >>= k)
-      | otherwise      = go (fromJust . rightChild $ parent) (right >>= k)
+    go parent visitor
+      | parent == label = return visitor
+      | otherwise =
+          (viewT . unwrapVisitorT) visitor >>= \view → case view of
+            Return x → throw VisitorTerminatedBeforeEndOfWalk
+            Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
+            Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . VisitorT . k)
+            Choice left right :>>= k →
+                if parent > label
+                then
+                    go
+                        (fromJust . leftChild $ parent)
+                        (left >>= VisitorT . k)
+                else
+                    go
+                        (fromJust . rightChild $ parent)
+                        (right >>= VisitorT . k)
 -- }}}
 
 solutionsToMap :: Foldable t ⇒ t (VisitorSolution α) → Map VisitorLabel α -- {{{
