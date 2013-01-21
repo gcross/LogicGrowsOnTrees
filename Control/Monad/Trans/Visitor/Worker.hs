@@ -38,7 +38,6 @@ import qualified Data.Sequence as Seq
 
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Label
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
@@ -167,8 +166,7 @@ genericForkVisitorTWorkerThread
     (VisitorWorkload initial_path initial_checkpoint)
   = do
     pending_requests_ref ← newIORef []
-    let initial_label = labelFromPath initial_path
-        loop1 result cursor visitor_state =
+    let loop1 result cursor visitor_state =
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
                 [] → loop3 result cursor visitor_state
