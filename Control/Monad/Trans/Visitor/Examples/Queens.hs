@@ -10,8 +10,9 @@ import Control.Monad (MonadPlus)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust)
+import Data.Monoid (Sum(..))
 
-import Control.Monad.Trans.Visitor (IntSum(IntSum),Visitor)
+import Control.Monad.Trans.Visitor (Visitor)
 import Control.Monad.Trans.Visitor.Examples.Queens.Implementation
 -- }}}
 
@@ -53,10 +54,10 @@ nqueensCorrectCount :: Int → Int -- {{{
 nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 -- }}}
 
-nqueensCount :: MonadPlus m ⇒ Int → m IntSum -- {{{
-nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . IntSum . multiplicityForSymmetry $ symmetry) ()
-{-# SPECIALIZE nqueensCount :: Int → [IntSum] #-}
-{-# SPECIALIZE nqueensCount :: Int → Visitor IntSum #-}
+nqueensCount :: MonadPlus m ⇒ Int → m (Sum Int) -- {{{
+nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . Sum . multiplicityForSymmetry $ symmetry) ()
+{-# SPECIALIZE nqueensCount :: Int → [Sum Int] #-}
+{-# SPECIALIZE nqueensCount :: Int → Visitor (Sum Int) #-}
 -- }}}
 
 nqueensSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{

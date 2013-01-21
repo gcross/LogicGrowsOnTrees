@@ -16,7 +16,6 @@ module Control.Monad.Trans.Visitor -- {{{
     , Visitor
     , VisitorIO
     , VisitorT(..)
-    , IntSum(..)
     , allFrom
     , allFromBalanced
     , allFromBalancedGreedy
@@ -75,19 +74,9 @@ newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstructi
 type Visitor = VisitorT Identity
 type VisitorIO = VisitorT IO
 
-data IntSum = IntSum { getIntSum :: {-# UNPACK #-} !Int } deriving (Eq,Ord,Read,Show)
 -- }}}
 
 -- Instances {{{
-
-instance Monoid IntSum where -- {{{
-    mempty = IntSum 0
-    mappend !(IntSum x) !(IntSum y) = IntSum (x+y)
-    mconcat = go 0
-      where
-        go !accum [] = IntSum accum
-        go !accum (IntSum x:xs) = go (accum+x) xs
--- }}}
 
 instance Monad m ⇒ Alternative (VisitorT m) where -- {{{
     empty = mzero
@@ -226,7 +215,6 @@ runVisitor v =
                 !xy = mappend x y
             in xy
         (Null :>>= _) → mempty
-{-# SPECIALIZE runVisitor :: Visitor IntSum → IntSum #-}
 {-# INLINEABLE runVisitor #-}
 -- }}}
 
@@ -240,7 +228,6 @@ runVisitorT = viewT . unwrapVisitorT >=> \view →
                 (runVisitorT $ left >>= VisitorT . k)
                 (runVisitorT $ right >>= VisitorT . k)
         (Null :>>= _) → return mempty
-{-# SPECIALIZE runVisitorT :: Visitor IntSum → Identity IntSum #-}
 {-# SPECIALIZE runVisitorT :: Monoid α ⇒ Visitor α → Identity α #-}
 {-# SPECIALIZE runVisitorT :: Monoid α ⇒ VisitorIO α → IO α #-}
 {-# INLINEABLE runVisitorT #-}

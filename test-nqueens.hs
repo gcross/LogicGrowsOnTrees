@@ -884,7 +884,7 @@ tests = -- {{{
             [ testCase ("n = " ++ show n) $
                 (correct_count @=?)
                 .
-                getIntSum
+                getSum
                 .
                 runVisitor
                 .
@@ -897,9 +897,9 @@ tests = -- {{{
          -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getIntSum . runVisitor . nqueensBruteForceCount $ n) @=?)
+                ((getSum . runVisitor . nqueensBruteForceCount $ n) @=?)
                 .
-                getIntSum
+                getSum
                 .
                 runVisitor
                 .
@@ -929,7 +929,7 @@ tests = -- {{{
             [ testCase ("n = " ++ show n) $
                 (correct_count @=?)
                 .
-                getIntSum
+                getSum
                 .
                 runVisitor
                 .
@@ -942,9 +942,9 @@ tests = -- {{{
          -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getIntSum . runVisitor . nqueensCount $ n) @=?)
+                ((getSum . runVisitor . nqueensCount $ n) @=?)
                 .
-                getIntSum
+                getSum
                 .
                 runVisitor
                 .

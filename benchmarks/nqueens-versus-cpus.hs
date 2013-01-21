@@ -10,7 +10,7 @@ import Control.Monad
 import Data.Bits
 import Data.Monoid
 
-import Control.Monad.Trans.Visitor (Visitor,IntSum(..))
+import Control.Monad.Trans.Visitor (Visitor)
 import Control.Monad.Trans.Visitor.Examples.Queens
 import Control.Monad.Trans.Visitor.Parallel.Threads
 
@@ -24,7 +24,7 @@ runWithCPUs n number_of_workers = do
     controller ← runVisitor (putMVar result_mvar) (nqueensCount n)
     changeNumberOfWorkersAsync (const (return number_of_workers)) controller (void . return)
     takeMVar result_mvar >>= \x → case x of
-        Completed (getIntSum → result) → if result == correct_count then return () else error $ "result == " ++ show result ++ ", but should be " ++ show correct_count
+        Completed (getSum → result) → if result == correct_count then return () else error $ "result == " ++ show result ++ ", but should be " ++ show correct_count
         Aborted progress → error $ "aborted with progress " ++ show progress
         Failure message → error message
     return ()

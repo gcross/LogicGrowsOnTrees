@@ -8,13 +8,13 @@ import Control.Concurrent.MVar
 import Control.Monad
 
 import Data.Functor
+import Data.Monoid (getSum)
 
 import GHC.Conc
 
 import System.Environment
 import System.Log.Logger
 
-import Control.Monad.Trans.Visitor (IntSum(..))
 import Control.Monad.Trans.Visitor.Examples.Queens
 import Control.Monad.Trans.Visitor.Parallel.Threads
 -- }}}
@@ -27,6 +27,6 @@ main = do
     controller ← runVisitor (putMVar result_mvar) (nqueensCount n)
     changeNumberOfWorkersAsync (const (return number_of_workers)) controller (void . return)
     takeMVar result_mvar >>= \x → case x of
-        Completed (getIntSum → result) → print result
+        Completed (getSum → result) → print result
         Aborted progress → error $ "aborted with progress " ++ show progress
         Failure message → error message

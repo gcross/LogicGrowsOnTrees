@@ -11,9 +11,10 @@ import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum,void)
 import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
 import Data.List (sort)
+import Data.Monoid (Sum(..))
 import Data.Word (Word64)
 
-import Control.Monad.Trans.Visitor (Visitor,IntSum(..),between)
+import Control.Monad.Trans.Visitor (Visitor,between)
 import Control.Monad.Trans.Visitor.Utils.MonadStacks (addToStacks,emptyStacks,mergeStacks)
 -- }}}
 
@@ -687,10 +688,10 @@ nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSear
 {-# INLINE nqueensBruteForceGeneric #-}
 -- }}}
 
-nqueensBruteForceCount :: MonadPlus m ⇒ Int → m IntSum -- {{{
-nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ IntSum 1) ()
-{-# SPECIALIZE nqueensBruteForceCount :: Int → [IntSum] #-}
-{-# SPECIALIZE nqueensBruteForceCount :: Int → Visitor IntSum #-}
+nqueensBruteForceCount :: MonadPlus m ⇒ Int → m (Sum Int) -- {{{
+nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ Sum 1) ()
+{-# SPECIALIZE nqueensBruteForceCount :: Int → [Sum Int] #-}
+{-# SPECIALIZE nqueensBruteForceCount :: Int → Visitor (Sum Int) #-}
 -- }}}
 
 nqueensBruteForceSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{
