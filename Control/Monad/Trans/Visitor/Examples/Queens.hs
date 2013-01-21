@@ -61,7 +61,6 @@ nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . IntSum . mu
 
 nqueensSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{
 nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
-  where
 {-# SPECIALIZE nqueensSolutions :: Int → NQueensSolutions #-}
 {-# SPECIALIZE nqueensSolutions :: Int → Visitor NQueensSolution #-}
 -- }}}
