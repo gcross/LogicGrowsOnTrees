@@ -25,8 +25,9 @@ module Control.Monad.Trans.Visitor.Supervisor.RequestQueue -- {{{
 import Prelude hiding (catch)
 
 import Control.Arrow ((&&&))
-import Control.Concurrent.Chan (Chan,newChan,readChan,writeChan)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
+import Control.Concurrent.STM (atomically)
+import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,writeTChan)
 import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad (join,liftM,liftM2)
@@ -45,7 +46,7 @@ import Control.Monad.Trans.Visitor.Supervisor (VisitorSupervisorMonad)
 -- Types {{{
 type Request result worker_id m = VisitorSupervisorMonad result worker_id m ()
 data RequestQueue result worker_id m = RequestQueue -- {{{
-    {   requests :: !(Chan (Request result worker_id m))
+    {   requests :: !(TChan (Request result worker_id m))
     ,   receivers :: !(IORef [VisitorProgress result → IO ()])
     }
 -- }}}
@@ -81,9 +82,9 @@ enqueueRequest :: -- {{{
     Request result worker_id m →
     m' ()
 enqueueRequest =
-    liftIO
+    (liftIO . atomically)
     .*
-    (writeChan . requests)
+    (writeTChan . requests)
 -- }}}
 
 getCurrentProgress :: -- {{{
@@ -129,7 +130,7 @@ getNumberOfWorkersAsync = getQuantityAsync Supervisor.getNumberOfWorkers
 newRequestQueue ::  -- {{{
     MonadIO m' ⇒
     m' (RequestQueue result worker_id m)
-newRequestQueue = liftIO $ liftM2 RequestQueue newChan (newIORef [])
+newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
 -- }}}
 
 processRequest :: -- {{{
@@ -141,7 +142,9 @@ processRequest =
     .
     liftIO
     .
-    readChan
+    atomically
+    .
+    readTChan
     .
     requests
 -- }}}
