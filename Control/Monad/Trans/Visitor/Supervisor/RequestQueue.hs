@@ -10,7 +10,7 @@ import Prelude hiding (catch)
 import Control.Arrow ((&&&))
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Concurrent.STM (atomically)
-import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,writeTChan)
+import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,tryReadTChan,writeTChan)
 import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad (join,liftM,liftM2)
@@ -118,6 +118,18 @@ newRequestQueue ::  -- {{{
     MonadIO m' ⇒
     m' (RequestQueue result worker_id m)
 newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
+-- }}}
+
+processAllRequests :: -- {{{
+    MonadIO m ⇒
+    RequestQueue result worker_id m →
+    VisitorSupervisorMonad result worker_id m ()
+processAllRequests (RequestQueue requests _) = go
+  where
+    go =
+        (liftIO . atomically . tryReadTChan) requests
+        >>=
+        maybe (return ()) (>> go)
 -- }}}
 
 processRequest :: -- {{{
