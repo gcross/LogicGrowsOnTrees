@@ -2,24 +2,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Supervisor.RequestQueue -- {{{
-    ( Request
-    , RequestQueue
-    , abort
-    , addProgressReceiver
-    , enqueueRequest
-    , getCurrentProgress
-    , getCurrentProgressAsync
-    , getNumberOfWorkers
-    , getNumberOfWorkersAsync
-    , getQuantityAsync
-    , newRequestQueue
-    , processRequest
-    , receiveProgress
-    , requestProgressUpdate
-    , requestProgressUpdateAsync
-    , syncAsync
-    ) where -- }}}
+module Control.Monad.Trans.Visitor.Supervisor.RequestQueue where
 
 -- Imports {{{
 import Prelude hiding (catch)
@@ -32,6 +15,7 @@ import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad (join,liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Reader (ReaderT)
 
 import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,newIORef)
@@ -44,12 +28,15 @@ import Control.Monad.Trans.Visitor.Supervisor (VisitorSupervisorMonad)
 -- }}}
 
 -- Types {{{
+
 type Request result worker_id m = VisitorSupervisorMonad result worker_id m ()
 data RequestQueue result worker_id m = RequestQueue -- {{{
     {   requests :: !(TChan (Request result worker_id m))
     ,   receivers :: !(IORef [VisitorProgress result → IO ()])
     }
 -- }}}
+type RequestQueueReader result worker_id m  = ReaderT (RequestQueue result worker_id m) IO
+
 -- }}}
 
 -- Functions {{{

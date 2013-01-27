@@ -88,7 +88,7 @@ import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Supervisor
-import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
+import Control.Monad.Trans.Visitor.Supervisor.RequestQueue.Monad
 -- }}}
 
 -- Helpers {{{
@@ -693,21 +693,23 @@ tests = -- {{{
                 termination_reason_ivar ← IVar.new
                 token_mvar ← newEmptyMVar
                 request_mvar ← newEmptyMVar
-                controller ←
+                progresses_ref ← newIORef []
+                let receiveProgress (VisitorProgress Unexplored _) = return ()
+                    receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
+                token_manager_thread_id ← forkIO $
                     Threads.runVisitorIO
                         (IVar.write termination_reason_ivar)
                         (do value ← endowVisitor visitor
                             liftIO $ putMVar request_mvar () >> takeMVar token_mvar
                             return value
                         )
-                progresses_ref ← newIORef []
-                let receiveProgress (VisitorProgress Unexplored _) = return ()
-                    receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
-                token_manager_thread_id ← forkIO . forever $ do
-                    takeMVar request_mvar
-                    generateNoise receiveProgress controller
-                    putMVar token_mvar ()
-                Threads.changeNumberOfWorkers (const $ return 1) controller
+                        .
+                        forever
+                        $
+                        do Threads.changeNumberOfWorkers (const $ return 1)
+                           liftIO $ takeMVar request_mvar
+                           generateNoise receiveProgress
+                           liftIO $ putMVar token_mvar ()
                 termination_reason ← IVar.blocking . IVar.read $ termination_reason_ivar
                 killThread token_manager_thread_id
                 result ← case termination_reason of
@@ -722,18 +724,18 @@ tests = -- {{{
                  )
                 return True
       in
-      [testProperty "one thread" . runTest $ \receiveProgress controller → randomRIO (0,1::Int) >>= \i → case i of
+      [testProperty "one thread" . runTest $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
           0 → void $ do
-                  Threads.changeNumberOfWorkers (return . (\i → 0)) controller
-                  Threads.changeNumberOfWorkers (return . (\i → 1)) controller
-          1 → void $ requestProgressUpdateAsync controller receiveProgress
-      ,testProperty "two threads" . runTest $ \receiveProgress controller → randomRIO (0,1::Int) >>= \i → case i of
-          0 → void $ Threads.changeNumberOfWorkers (return . (\i → 3-i)) controller
-          1 → void $ requestProgressUpdateAsync controller receiveProgress
-      ,testProperty "many threads" . runTest $ \receiveProgress controller → randomRIO (0,2::Int) >>= \i → case i of
-          0 → void $ Threads.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i)) controller
-          1 → void $ Threads.changeNumberOfWorkers (return . (+1)) controller
-          2 → void $ requestProgressUpdateAsync controller receiveProgress
+                  Threads.changeNumberOfWorkers (return . (\i → 0))
+                  Threads.changeNumberOfWorkers (return . (\i → 1))
+          1 → void $ requestProgressUpdateAsync receiveProgress
+      ,testProperty "two threads" . runTest $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
+          0 → void $ Threads.changeNumberOfWorkers (return . (\i → 3-i))
+          1 → void $ requestProgressUpdateAsync receiveProgress
+      ,testProperty "many threads" . runTest $ \receiveProgress → liftIO (randomRIO (0,2::Int)) >>= \i → case i of
+          0 → void $ Threads.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
+          1 → void $ Threads.changeNumberOfWorkers (return . (+1))
+          2 → void $ requestProgressUpdateAsync receiveProgress
       ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Path" -- {{{

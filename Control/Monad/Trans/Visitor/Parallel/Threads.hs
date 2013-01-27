@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -9,11 +10,12 @@
 module Control.Monad.Trans.Visitor.Parallel.Threads where
 
 -- Imports {{{
-import Control.Applicative ((<$>))
+import Control.Applicative (Applicative,(<$>))
 import Control.Concurrent (forkIO,killThread)
 import Control.Monad (forever,forM_,mapM_,replicateM_)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.State.Class (MonadState,StateType)
+import Control.Monad.Trans.Reader (ask,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 
 import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
@@ -33,6 +35,7 @@ import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
+import qualified Control.Monad.Trans.Visitor.Supervisor.RequestQueue.Monad as RQM
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
@@ -64,25 +67,36 @@ data TerminationReason result = -- {{{
   | Failure String
 -- }}}
 
+newtype WorkgroupControllerMonad result α = C { unwrapC :: RequestQueueReader result WorkerId (WorkgroupStateMonad result) α} deriving (Applicative,Functor,Monad,MonadIO)
+-- }}}
+
+-- Instances {{{
+
+instance Monoid result ⇒ RQM.RequestQueueMonad (WorkgroupControllerMonad result) where -- {{{
+    type RequestQueueMonadResult (WorkgroupControllerMonad result) = result
+    abort = C ask >>= abort
+    getCurrentProgressAsync callback = C (ask >>= flip getCurrentProgressAsync callback)
+    getNumberOfWorkersAsync callback = C (ask >>= flip getNumberOfWorkersAsync callback)
+    requestProgressUpdateAsync callback = C (ask >>= flip requestProgressUpdateAsync callback)
+-- }}}
+
 -- }}}
 
 -- Exposed Functions {{{
 
 changeNumberOfWorkers :: -- {{{
-    (MonadIO m, Monoid result) ⇒
+    Monoid result ⇒
     (Int → IO Int) →
-    WorkgroupRequestQueue result →
-    m Int
-changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
+    WorkgroupControllerMonad result Int
+changeNumberOfWorkers = RQM.syncAsync . changeNumberOfWorkersAsync
 -- }}}
 
 changeNumberOfWorkersAsync :: -- {{{
-    (MonadIO m, Monoid result) ⇒
+    Monoid result ⇒
     (Int → IO Int) →
-    WorkgroupRequestQueue result →
     (Int → IO ()) →
-    m ()
-changeNumberOfWorkersAsync computeNewNumberOfWorkers queue receiveNewNumberOfWorkers = enqueueRequest queue $ do
+    WorkgroupControllerMonad result ()
+changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (flip enqueueRequest $ do
     old_number_of_workers ← numberOfWorkers
     new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
     case new_number_of_workers `compare` old_number_of_workers of
@@ -90,13 +104,15 @@ changeNumberOfWorkersAsync computeNewNumberOfWorkers queue receiveNewNumberOfWor
         LT → replicateM_ (old_number_of_workers - new_number_of_workers) fireAWorker
         EQ → return ()
     liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
+ )
 -- }}}
 
 runVisitorIO :: -- {{{
     Monoid result ⇒
     (TerminationReason result → IO ()) →
     VisitorIO result →
-    IO (WorkgroupRequestQueue result)
+    WorkgroupControllerMonad result α →
+    IO α
 runVisitorIO = runVisitorIOStartingFrom mempty
 -- }}}
 
@@ -105,7 +121,8 @@ runVisitorIOStartingFrom :: -- {{{
     VisitorProgress result →
     (TerminationReason result → IO ()) →
     VisitorIO result →
-    IO (WorkgroupRequestQueue result)
+    WorkgroupControllerMonad result α →
+    IO α
 runVisitorIOStartingFrom starting_progress notifyFinished =
     genericRunVisitorStartingFrom starting_progress notifyFinished
     .
@@ -117,7 +134,8 @@ runVisitorT :: -- {{{
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →
     VisitorT m result →
-    IO (WorkgroupRequestQueue result)
+    WorkgroupControllerMonad result α →
+    IO α
 runVisitorT = runVisitorTStartingFrom mempty
 -- }}}
 
@@ -127,7 +145,8 @@ runVisitorTStartingFrom :: -- {{{
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →
     VisitorT m result →
-    IO (WorkgroupRequestQueue result)
+    WorkgroupControllerMonad result α →
+    IO α
 runVisitorTStartingFrom starting_progress runMonad notifyFinished =
     genericRunVisitorStartingFrom starting_progress notifyFinished
     .
@@ -138,7 +157,8 @@ runVisitor :: -- {{{
     Monoid result ⇒
     (TerminationReason result → IO ()) →
     Visitor result →
-    IO (WorkgroupRequestQueue result)
+    WorkgroupControllerMonad result α →
+    IO α
 runVisitor = runVisitorStartingFrom mempty
 -- }}}
 
@@ -147,7 +167,8 @@ runVisitorStartingFrom :: -- {{{
     VisitorProgress result →
     (TerminationReason result → IO ()) →
     Visitor result →
-    IO (WorkgroupRequestQueue result)
+    WorkgroupControllerMonad result α →
+    IO α
 runVisitorStartingFrom starting_progress notifyFinished =
     genericRunVisitorStartingFrom starting_progress notifyFinished
     .
@@ -251,8 +272,9 @@ genericRunVisitorStartingFrom :: -- {{{
     VisitorProgress result →
     (TerminationReason result → IO ()) →
     ((VisitorWorkerTerminationReason result → IO ()) → VisitorWorkload → IO (VisitorWorkerEnvironment result)) →
-    IO (WorkgroupRequestQueue result)
-genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker = do
+    WorkgroupControllerMonad result α →
+    IO α
+genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker (C controller) = do
     request_queue ← newRequestQueue
     forkIO $
         (flip evalStateT initial_state $ do
@@ -268,7 +290,7 @@ genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker = do
                 SupervisorFailure worker_id message →
                     Failure $ "Thread " ++ show worker_id ++ " failed with message: " ++ message
         ) >>= notifyFinished
-    return request_queue
+    runReaderT controller request_queue 
   where
     initial_state =
         WorkgroupState
