@@ -12,6 +12,7 @@ import Prelude hiding (catch)
 
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
+import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO(..))
 import Data.Monoid (Monoid)
 
@@ -19,7 +20,7 @@ import Control.Monad.Trans.Visitor.Checkpoint (VisitorProgress)
 -- }}}
 
 -- Classes {{{
-class (Monoid (RequestQueueMonadResult m), MonadIO m) ⇒ RequestQueueMonad m where
+class (Monoid (RequestQueueMonadResult m), MonadCatchIO m) ⇒ RequestQueueMonad m where
     type RequestQueueMonadResult m :: *
     abort :: m ()
     getCurrentProgressAsync :: (VisitorProgress (RequestQueueMonadResult m) → IO ()) → m ()

@@ -13,6 +13,7 @@ module Control.Monad.Trans.Visitor.Parallel.Threads where
 import Control.Applicative (Applicative,(<$>))
 import Control.Concurrent (forkIO,killThread)
 import Control.Monad (forever,forM_,mapM_,replicateM_)
+import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.State.Class (MonadState,StateType)
 import Control.Monad.Trans.Reader (ask,runReaderT)
@@ -67,7 +68,7 @@ data TerminationReason result = -- {{{
   | Failure String
 -- }}}
 
-newtype WorkgroupControllerMonad result α = C { unwrapC :: RequestQueueReader result WorkerId (WorkgroupStateMonad result) α} deriving (Applicative,Functor,Monad,MonadIO)
+newtype WorkgroupControllerMonad result α = C { unwrapC :: RequestQueueReader result WorkerId (WorkgroupStateMonad result) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO)
 -- }}}
 
 -- Instances {{{
