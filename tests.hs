@@ -88,6 +88,7 @@ import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Supervisor
+import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 -- }}}
 
 -- Helpers {{{
@@ -725,14 +726,14 @@ tests = -- {{{
           0 → void $ do
                   Threads.changeNumberOfWorkers (return . (\i → 0)) controller
                   Threads.changeNumberOfWorkers (return . (\i → 1)) controller
-          1 → void $ Threads.requestProgressUpdateAsync controller receiveProgress
+          1 → void $ requestProgressUpdateAsync controller receiveProgress
       ,testProperty "two threads" . runTest $ \receiveProgress controller → randomRIO (0,1::Int) >>= \i → case i of
           0 → void $ Threads.changeNumberOfWorkers (return . (\i → 3-i)) controller
-          1 → void $ Threads.requestProgressUpdateAsync controller receiveProgress
+          1 → void $ requestProgressUpdateAsync controller receiveProgress
       ,testProperty "many threads" . runTest $ \receiveProgress controller → randomRIO (0,2::Int) >>= \i → case i of
           0 → void $ Threads.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i)) controller
           1 → void $ Threads.changeNumberOfWorkers (return . (+1)) controller
-          2 → void $ Threads.requestProgressUpdateAsync controller receiveProgress
+          2 → void $ requestProgressUpdateAsync controller receiveProgress
       ]
      -- }}}
     ,testGroup "Control.Monad.Trans.Visitor.Path" -- {{{

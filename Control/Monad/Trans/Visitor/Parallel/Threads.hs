@@ -16,7 +16,7 @@ import Control.Arrow ((&&&),(***))
 import Control.Concurrent (forkIO,killThread,yield)
 import Control.Concurrent.Chan (Chan,newChan,readChan,writeChan)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
-import Control.Exception (BlockedIndefinitelyOnMVar(..),SomeException,assert,catch,evaluate)
+import Control.Exception (SomeException,assert,catch,evaluate)
 import Control.Monad (forever,forM_,join,mapM_,replicateM_,unless,when)
 import Control.Monad.CatchIO (throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
@@ -44,7 +44,7 @@ import qualified System.Log.Logger as Logger
 import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor
-import qualified Control.Monad.Trans.Visitor.Supervisor as Supervisor
+import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
@@ -59,7 +59,6 @@ data WorkgroupState result = WorkgroupState -- {{{
     {   active_workers_ :: !(IntMap (VisitorWorkerEnvironment result))
     ,   next_worker_id_ :: !WorkerId
     ,   next_priority_ :: !RemovalPriority
-    ,   progress_receivers_ :: ![VisitorProgress result → IO ()]
     ,   removal_queue_ :: !(PSQ WorkerId RemovalPriority)
     }
 $( deriveAccessors ''WorkgroupState )
@@ -67,11 +66,9 @@ $( deriveAccessors ''WorkgroupState )
 
 type WorkgroupStateMonad result = StateT (WorkgroupState result) IO
 
+type WorkgroupRequestQueue result = RequestQueue result WorkerId (WorkgroupStateMonad result)
+
 type WorkgroupMonad result = VisitorSupervisorMonad result WorkerId (WorkgroupStateMonad result)
-
-type Controller result = Chan (WorkgroupMonad result ())
-
-newtype WorkgroupController result = C { unwrapWorkgroupController :: Controller result }
 
 data TerminationReason result = -- {{{
     Completed result
@@ -83,28 +80,21 @@ data TerminationReason result = -- {{{
 
 -- Exposed Functions {{{
 
-abort :: -- {{{
-    Monoid result ⇒
-    WorkgroupController result →
-    IO ()
-abort = flip writeChan abortSupervisor . unwrapWorkgroupController
--- }}}
-
 changeNumberOfWorkers :: -- {{{
-    Monoid result ⇒
+    (MonadIO m, Monoid result) ⇒
     (Int → IO Int) →
-    WorkgroupController result →
-    IO Int
+    WorkgroupRequestQueue result →
+    m Int
 changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 -- }}}
 
 changeNumberOfWorkersAsync :: -- {{{
-    Monoid result ⇒
+    (MonadIO m, Monoid result) ⇒
     (Int → IO Int) →
-    WorkgroupController result →
+    WorkgroupRequestQueue result →
     (Int → IO ()) →
-    IO ()
-changeNumberOfWorkersAsync computeNewNumberOfWorkers (C controller) receiveNewNumberOfWorkers = writeChan controller $ do
+    m ()
+changeNumberOfWorkersAsync computeNewNumberOfWorkers queue receiveNewNumberOfWorkers = enqueueRequest queue $ do
     old_number_of_workers ← numberOfWorkers
     new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
     case new_number_of_workers `compare` old_number_of_workers of
@@ -114,58 +104,11 @@ changeNumberOfWorkersAsync computeNewNumberOfWorkers (C controller) receiveNewNu
     liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
 -- }}}
 
-getCurrentProgress :: -- {{{
-    Monoid result ⇒
-    WorkgroupController result →
-    IO (VisitorProgress result)
-getCurrentProgress = syncAsync getCurrentProgressAsync
--- }}}
-
-getCurrentProgressAsync :: -- {{{
-    Monoid result ⇒
-    WorkgroupController result →
-    (VisitorProgress result → IO ()) →
-    IO ()
-getCurrentProgressAsync = getQuantityAsync Supervisor.getCurrentProgress
--- }}}
-
-getNumberOfWorkers :: -- {{{
-    Monoid result ⇒
-    WorkgroupController result →
-    IO Int
-getNumberOfWorkers = syncAsync getNumberOfWorkersAsync
--- }}}
-
-getNumberOfWorkersAsync :: -- {{{
-    Monoid result ⇒
-    WorkgroupController result →
-    (Int → IO ()) →
-    IO ()
-getNumberOfWorkersAsync = getQuantityAsync numberOfWorkers
--- }}}
-
-requestProgressUpdate :: -- {{{
-    Monoid result ⇒
-    WorkgroupController result →
-    IO (VisitorProgress result)
-requestProgressUpdate = syncAsync $ requestProgressUpdateAsync
--- }}}
-
-requestProgressUpdateAsync :: -- {{{
-    Monoid result ⇒
-    WorkgroupController result →
-    (VisitorProgress result → IO ()) →
-    IO ()
-requestProgressUpdateAsync (C controller) receiveUpdatedProgress = writeChan controller $ do
-    progress_receivers %: (receiveUpdatedProgress:)
-    performGlobalProgressUpdate
--- }}}
-
 runVisitorIO :: -- {{{
     Monoid result ⇒
     (TerminationReason result → IO ()) →
     VisitorIO result →
-    IO (WorkgroupController result)
+    IO (WorkgroupRequestQueue result)
 runVisitorIO = runVisitorIOStartingFrom mempty
 -- }}}
 
@@ -174,7 +117,7 @@ runVisitorIOStartingFrom :: -- {{{
     VisitorProgress result →
     (TerminationReason result → IO ()) →
     VisitorIO result →
-    IO (WorkgroupController result)
+    IO (WorkgroupRequestQueue result)
 runVisitorIOStartingFrom starting_progress notifyFinished =
     genericRunVisitorStartingFrom starting_progress notifyFinished
     .
@@ -186,7 +129,7 @@ runVisitorT :: -- {{{
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →
     VisitorT m result →
-    IO (WorkgroupController result)
+    IO (WorkgroupRequestQueue result)
 runVisitorT = runVisitorTStartingFrom mempty
 -- }}}
 
@@ -196,7 +139,7 @@ runVisitorTStartingFrom :: -- {{{
     (∀ α. m α → IO α) →
     (TerminationReason result → IO ()) →
     VisitorT m result →
-    IO (WorkgroupController result)
+    IO (WorkgroupRequestQueue result)
 runVisitorTStartingFrom starting_progress runMonad notifyFinished =
     genericRunVisitorStartingFrom starting_progress notifyFinished
     .
@@ -207,7 +150,7 @@ runVisitor :: -- {{{
     Monoid result ⇒
     (TerminationReason result → IO ()) →
     Visitor result →
-    IO (WorkgroupController result)
+    IO (WorkgroupRequestQueue result)
 runVisitor = runVisitorStartingFrom mempty
 -- }}}
 
@@ -216,7 +159,7 @@ runVisitorStartingFrom :: -- {{{
     VisitorProgress result →
     (TerminationReason result → IO ()) →
     Visitor result →
-    IO (WorkgroupController result)
+    IO (WorkgroupRequestQueue result)
 runVisitorStartingFrom starting_progress notifyFinished =
     genericRunVisitorStartingFrom starting_progress notifyFinished
     .
@@ -256,22 +199,20 @@ bumpWorkerRemovalPriority worker_id =
 
 constructWorkgroupActions :: -- {{{
     Monoid result ⇒
-    Controller result →
+    WorkgroupRequestQueue result →
     ((VisitorWorkerTerminationReason result → IO ()) → VisitorWorkload → IO (VisitorWorkerEnvironment result)) →
     VisitorSupervisorActions result WorkerId (WorkgroupStateMonad result)
-constructWorkgroupActions messages spawnWorker = VisitorSupervisorActions
+constructWorkgroupActions request_queue spawnWorker = VisitorSupervisorActions
     {   broadcast_progress_update_to_workers_action =
             applyToSelectedActiveWorkers $ \worker_id (VisitorWorkerEnvironment{workerPendingRequests}) → liftIO $
-                sendProgressUpdateRequest workerPendingRequests $ writeChan messages . receiveProgressUpdate worker_id
+                sendProgressUpdateRequest workerPendingRequests $ enqueueRequest request_queue . receiveProgressUpdate worker_id
     ,   broadcast_workload_steal_to_workers_action =
             applyToSelectedActiveWorkers $ \worker_id (VisitorWorkerEnvironment{workerPendingRequests}) → liftIO $
-                sendWorkloadStealRequest workerPendingRequests $ writeChan messages . receiveStolenWorkload worker_id
-    ,   receive_current_progress_action = \progress → do
-            get progress_receivers >>= mapM_ (liftIO . ($ progress))
-            progress_receivers %= []
+                sendWorkloadStealRequest workerPendingRequests $ enqueueRequest request_queue . receiveStolenWorkload worker_id
+    ,   receive_current_progress_action = receiveProgress request_queue
     ,   send_workload_to_worker_action = \workload worker_id → do
             infoM $ "Spawning worker " ++ show worker_id ++ " with workload " ++ show workload
-            environment ← liftIO $ spawnWorker (writeChan messages . receiveTerminationReason worker_id) workload
+            environment ← liftIO $ spawnWorker (enqueueRequest request_queue . receiveTerminationReason worker_id) workload
             active_workers %: IntMap.insert worker_id environment
             bumpWorkerRemovalPriority worker_id
     }
@@ -322,15 +263,15 @@ genericRunVisitorStartingFrom :: -- {{{
     VisitorProgress result →
     (TerminationReason result → IO ()) →
     ((VisitorWorkerTerminationReason result → IO ()) → VisitorWorkload → IO (VisitorWorkerEnvironment result)) →
-    IO (WorkgroupController result)
+    IO (WorkgroupRequestQueue result)
 genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker = do
-    messages ← newChan
+    request_queue ← newRequestQueue
     forkIO $
         (flip evalStateT initial_state $ do
             VisitorSupervisorResult termination_reason _ ←
-                runVisitorSupervisor (constructWorkgroupActions messages spawnWorker) $
+                runVisitorSupervisor (constructWorkgroupActions request_queue spawnWorker) $
                     -- enableSupervisorDebugMode >>
-                    forever (join . liftIO . readChan $ messages)
+                    forever (processRequest request_queue)
             (IntMap.elems <$> get active_workers)
                 >>= mapM_ (liftIO . killThread . workerThreadId)
             return $ case termination_reason of
@@ -339,26 +280,15 @@ genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker = do
                 SupervisorFailure worker_id message →
                     Failure $ "Thread " ++ show worker_id ++ " failed with message: " ++ message
         ) >>= notifyFinished
-    return $ C messages
+    return request_queue
   where
     initial_state =
         WorkgroupState
             {   active_workers_ = mempty
             ,   next_worker_id_ = 0
             ,   next_priority_ = maxBound
-            ,   progress_receivers_ = []
             ,   removal_queue_ = PSQ.empty
             }
--- }}}
-
-getQuantityAsync :: -- {{{
-    Monoid result ⇒
-    WorkgroupMonad result α →
-    WorkgroupController result →
-    (α → IO ()) →
-    IO ()
-getQuantityAsync getQuantity (C controller) receiveQuantity =
-    writeChan controller $ getQuantity >>= liftIO . receiveQuantity
 -- }}}
 
 hireAWorker :: -- {{{
@@ -377,19 +307,6 @@ numberOfWorkers = PSQ.size <$> get removal_queue
 
 removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad result () -- {{{
 removeWorkerFromRemovalQueue = (removal_queue %:) . PSQ.delete
--- }}}
-
-syncAsync :: -- {{{
-    Monoid result ⇒
-    (WorkgroupController result → (α → IO ()) → IO ()) →
-    WorkgroupController result →
-    IO α
-syncAsync runCommandAsync controller = do
-    result_mvar ← newEmptyMVar
-    runCommandAsync controller (putMVar result_mvar)
-    (takeMVar result_mvar)
-     `catch`
-      (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for controller to respond to request")
 -- }}}
 
 -- }}}
