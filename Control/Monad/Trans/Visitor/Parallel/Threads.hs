@@ -9,35 +9,23 @@
 module Control.Monad.Trans.Visitor.Parallel.Threads where
 
 -- Imports {{{
-import Prelude hiding (catch)
-
-import Control.Applicative ((<$>),(<*>))
-import Control.Arrow ((&&&),(***))
-import Control.Concurrent (forkIO,killThread,yield)
-import Control.Concurrent.Chan (Chan,newChan,readChan,writeChan)
-import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
-import Control.Exception (SomeException,assert,catch,evaluate)
-import Control.Monad (forever,forM_,join,mapM_,replicateM_,unless,when)
-import Control.Monad.CatchIO (throw)
+import Control.Applicative ((<$>))
+import Control.Concurrent (forkIO,killThread)
+import Control.Monad (forever,forM_,mapM_,replicateM_)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.State.Class (MonadState,StateType)
-import Control.Monad.STM (atomically)
-import Control.Monad.Tools (unlessM)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 
 import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
 import Data.Accessor.Template (deriveAccessors)
-import Data.Int (Int64)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Data.IORef (atomicModifyIORef)
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
 import Data.PSQueue (Binding((:->)),PSQ)
 import qualified Data.PSQueue as PSQ
 import qualified Data.Set as Set
-import Data.Sequence ((|>))
-import Data.Word
+import Data.Word (Word64)
 
 import qualified System.Log.Logger as Logger
 
