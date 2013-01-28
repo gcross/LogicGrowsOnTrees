@@ -1,4 +1,8 @@
 -- Language extensions {{{
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
@@ -7,6 +11,7 @@ module Control.Monad.Trans.Visitor.Supervisor.RequestQueue where
 -- Imports {{{
 import Prelude hiding (catch)
 
+import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Concurrent.STM (atomically)
@@ -15,7 +20,7 @@ import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad (join,liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Trans.Reader (ReaderT)
+import Control.Monad.Trans.Reader (ReaderT,ask)
 
 import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,newIORef)
@@ -25,6 +30,18 @@ import Data.Typeable (Typeable)
 import Control.Monad.Trans.Visitor.Checkpoint (VisitorProgress)
 import qualified Control.Monad.Trans.Visitor.Supervisor as Supervisor
 import Control.Monad.Trans.Visitor.Supervisor (VisitorSupervisorMonad)
+-- }}}
+
+-- Classes {{{
+
+class (Monoid (RequestQueueMonadResult m), MonadCatchIO m) ⇒ RequestQueueMonad m where -- {{{
+    type RequestQueueMonadResult m :: *
+    abort :: m ()
+    getCurrentProgressAsync :: (VisitorProgress (RequestQueueMonadResult m) → IO ()) → m ()
+    getNumberOfWorkersAsync :: (Int → IO ()) → m ()
+    requestProgressUpdateAsync :: (VisitorProgress (RequestQueueMonadResult m) → IO ()) → m ()
+-- }}}
+
 -- }}}
 
 -- Types {{{
@@ -39,79 +56,68 @@ type RequestQueueReader result worker_id m  = ReaderT (RequestQueue result worke
 
 -- }}}
 
--- Functions {{{
+-- Instances {{{
 
-abort :: -- {{{
-    (MonadIO m', Functor m, Monad m) ⇒
-    RequestQueue result worker_id m →
-    m' ()
-abort = flip enqueueRequest Supervisor.abortSupervisor
+instance (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader result worker_id m) where -- {{{
+    type RequestQueueMonadResult (RequestQueueReader result worker_id m) = result
+    abort = ask >>= enqueueRequest Supervisor.abortSupervisor
+    getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
+    getNumberOfWorkersAsync = (ask >>=) . getQuantityAsync Supervisor.getNumberOfWorkers
+    requestProgressUpdateAsync receiveUpdatedProgress = -- {{{
+        ask
+        >>=
+        liftIO
+        .
+        liftA2 (>>)
+            (addProgressReceiver receiveUpdatedProgress)
+            (enqueueRequest Supervisor.performGlobalProgressUpdate)
+    -- }}}
 -- }}}
+
+-- }}}
+
+-- Functions {{{
 
 addProgressReceiver :: -- {{{
     MonadIO m' ⇒
-    RequestQueue result worker_id m →
     (VisitorProgress result → IO ()) →
+    RequestQueue result worker_id m →
     m' ()
-addProgressReceiver queue receiver =
+addProgressReceiver receiver =
     liftIO
     .
     flip atomicModifyIORef ((receiver:) &&& const ())
     .
     receivers
-    $
-    queue
 -- }}}
 
 enqueueRequest :: -- {{{
     MonadIO m' ⇒
-    RequestQueue result worker_id m →
     Request result worker_id m →
+    RequestQueue result worker_id m →
     m' ()
-enqueueRequest =
+enqueueRequest = flip $
     (liftIO . atomically)
     .*
     (writeTChan . requests)
 -- }}}
 
-getCurrentProgress :: -- {{{
-    (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    RequestQueue result worker_id m →
-    m' (VisitorProgress result)
+getCurrentProgress :: RequestQueueMonad m ⇒ m (VisitorProgress (RequestQueueMonadResult m)) -- {{{
 getCurrentProgress = syncAsync getCurrentProgressAsync
--- }}}
-
-getCurrentProgressAsync :: -- {{{
-    (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    RequestQueue result worker_id m →
-    (VisitorProgress result → IO ()) →
-    m' ()
-getCurrentProgressAsync = getQuantityAsync Supervisor.getCurrentProgress
 -- }}}
 
 getQuantityAsync :: -- {{{
     (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m α →
-    RequestQueue result worker_id m →
     (α → IO ()) →
+    RequestQueue result worker_id m →
     m' ()
-getQuantityAsync getQuantity request_queue receiveQuantity =
-    enqueueRequest request_queue $ getQuantity >>= liftIO . receiveQuantity
+getQuantityAsync getQuantity receiveQuantity =
+    enqueueRequest $ getQuantity >>= liftIO . receiveQuantity
 -- }}}
 
-getNumberOfWorkers :: -- {{{
-    (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    RequestQueue result worker_id m →
-    m' Int
+getNumberOfWorkers :: RequestQueueMonad m ⇒ m Int -- {{{
 getNumberOfWorkers = syncAsync getNumberOfWorkersAsync
--- }}}
-
-getNumberOfWorkersAsync :: -- {{{
-    (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    RequestQueue result worker_id m →
-    (Int → IO ()) →
-    m' ()
-getNumberOfWorkersAsync = getQuantityAsync Supervisor.getNumberOfWorkers
 -- }}}
 
 newRequestQueue ::  -- {{{
@@ -167,34 +173,18 @@ receiveProgress queue progress =
     queue
 -- }}}
 
-requestProgressUpdate :: -- {{{
-    (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    RequestQueue result worker_id m →
-    m' (VisitorProgress result)
-requestProgressUpdate = syncAsync $ requestProgressUpdateAsync
+requestProgressUpdate :: RequestQueueMonad m ⇒ m (VisitorProgress (RequestQueueMonadResult m)) -- {{{
+requestProgressUpdate = syncAsync requestProgressUpdateAsync
 -- }}}
 
-requestProgressUpdateAsync :: -- {{{
-    (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    RequestQueue result worker_id m →
-    (VisitorProgress result → IO ()) →
-    m' ()
-requestProgressUpdateAsync queue receiveUpdatedProgress = liftIO $ do
-    addProgressReceiver queue receiveUpdatedProgress
-    enqueueRequest queue Supervisor.performGlobalProgressUpdate
--- }}}
-
-syncAsync :: -- {{{
-    MonadIO m' ⇒
-    (RequestQueue result worker_id m → (α → IO ()) → IO ()) →
-    RequestQueue result worker_id m →
-    m' α
-syncAsync runCommandAsync queue = liftIO $ do
-    result_mvar ← newEmptyMVar
-    runCommandAsync queue (putMVar result_mvar)
-    (takeMVar result_mvar)
-     `catch`
-      (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for controller to respond to request")
+syncAsync :: MonadIO m ⇒ ((α → IO ()) → m ()) → m α -- {{{
+syncAsync runCommandAsync = do
+    result_mvar ← liftIO newEmptyMVar
+    runCommandAsync (putMVar result_mvar)
+    liftIO $
+        takeMVar result_mvar
+        `catch`
+        (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for controller to respond to request")
 -- }}}
 
 -- }}}

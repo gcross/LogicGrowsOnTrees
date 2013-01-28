@@ -88,7 +88,7 @@ import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Supervisor
-import Control.Monad.Trans.Visitor.Supervisor.RequestQueue.Monad
+import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 -- }}}
 
 -- Helpers {{{

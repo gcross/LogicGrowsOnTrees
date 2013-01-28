@@ -36,7 +36,6 @@ import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
-import qualified Control.Monad.Trans.Visitor.Supervisor.RequestQueue.Monad as RQM
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
@@ -72,15 +71,12 @@ newtype WorkgroupControllerMonad result α = C { unwrapC :: RequestQueueReader r
 -- }}}
 
 -- Instances {{{
-
-instance Monoid result ⇒ RQM.RequestQueueMonad (WorkgroupControllerMonad result) where -- {{{
+instance Monoid result ⇒ RequestQueueMonad (WorkgroupControllerMonad result) where
     type RequestQueueMonadResult (WorkgroupControllerMonad result) = result
-    abort = C ask >>= abort
-    getCurrentProgressAsync callback = C (ask >>= flip getCurrentProgressAsync callback)
-    getNumberOfWorkersAsync callback = C (ask >>= flip getNumberOfWorkersAsync callback)
-    requestProgressUpdateAsync callback = C (ask >>= flip requestProgressUpdateAsync callback)
--- }}}
-
+    abort = C abort
+    getCurrentProgressAsync = C . getCurrentProgressAsync
+    getNumberOfWorkersAsync = C . getNumberOfWorkersAsync
+    requestProgressUpdateAsync = C . requestProgressUpdateAsync
 -- }}}
 
 -- Exposed Functions {{{
@@ -89,7 +85,7 @@ changeNumberOfWorkers :: -- {{{
     Monoid result ⇒
     (Int → IO Int) →
     WorkgroupControllerMonad result Int
-changeNumberOfWorkers = RQM.syncAsync . changeNumberOfWorkersAsync
+changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 -- }}}
 
 changeNumberOfWorkersAsync :: -- {{{
@@ -97,7 +93,7 @@ changeNumberOfWorkersAsync :: -- {{{
     (Int → IO Int) →
     (Int → IO ()) →
     WorkgroupControllerMonad result ()
-changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (flip enqueueRequest $ do
+changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
     old_number_of_workers ← numberOfWorkers
     new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
     case new_number_of_workers `compare` old_number_of_workers of
@@ -215,14 +211,14 @@ constructWorkgroupActions :: -- {{{
 constructWorkgroupActions request_queue spawnWorker = VisitorSupervisorActions
     {   broadcast_progress_update_to_workers_action =
             applyToSelectedActiveWorkers $ \worker_id (VisitorWorkerEnvironment{workerPendingRequests}) → liftIO $
-                sendProgressUpdateRequest workerPendingRequests $ enqueueRequest request_queue . receiveProgressUpdate worker_id
+                sendProgressUpdateRequest workerPendingRequests $ flip enqueueRequest request_queue . receiveProgressUpdate worker_id
     ,   broadcast_workload_steal_to_workers_action =
             applyToSelectedActiveWorkers $ \worker_id (VisitorWorkerEnvironment{workerPendingRequests}) → liftIO $
-                sendWorkloadStealRequest workerPendingRequests $ enqueueRequest request_queue . receiveStolenWorkload worker_id
+                sendWorkloadStealRequest workerPendingRequests $  flip enqueueRequest request_queue . receiveStolenWorkload worker_id
     ,   receive_current_progress_action = receiveProgress request_queue
     ,   send_workload_to_worker_action = \workload worker_id → do
             infoM $ "Spawning worker " ++ show worker_id ++ " with workload " ++ show workload
-            environment ← liftIO $ spawnWorker (enqueueRequest request_queue . receiveTerminationReason worker_id) workload
+            environment ← liftIO $ spawnWorker (flip enqueueRequest request_queue . receiveTerminationReason worker_id) workload
             active_workers %: IntMap.insert worker_id environment
             bumpWorkerRemovalPriority worker_id
     }
