@@ -82,14 +82,12 @@ instance Monoid result ⇒ RequestQueueMonad (WorkgroupControllerMonad result) w
 -- Exposed Functions {{{
 
 changeNumberOfWorkers :: -- {{{
-    Monoid result ⇒
     (Int → IO Int) →
     WorkgroupControllerMonad result Int
 changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 -- }}}
 
 changeNumberOfWorkersAsync :: -- {{{
-    Monoid result ⇒
     (Int → IO Int) →
     (Int → IO ()) →
     WorkgroupControllerMonad result ()
@@ -237,7 +235,6 @@ constructWorkgroupActions request_queue spawnWorker = VisitorSupervisorActions
 -- }}}
 
 fireAWorker :: -- {{{
-    Monoid result ⇒
     WorkgroupMonad result ()
 fireAWorker =
     Set.minView <$> getWaitingWorkers
@@ -299,7 +296,6 @@ genericRunVisitorStartingFrom starting_progress notifyFinished spawnWorker (C co
 -- }}}
 
 hireAWorker :: -- {{{
-    Monoid result ⇒
     WorkgroupMonad result ()
 hireAWorker = do
     worker_id ← getAndModify next_worker_id succ

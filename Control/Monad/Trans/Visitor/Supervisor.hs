@@ -220,7 +220,7 @@ abortSupervisor = VisitorSupervisorMonad $
 -- }}}
 
 addWorker :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
 addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
@@ -231,38 +231,38 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . VisitorSup
 -- }}}
 
 disableSupervisorDebugMode :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m ()
 disableSupervisorDebugMode = setSupervisorDebugMode False
 -- }}}
 
 enableSupervisorDebugMode :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m ()
 enableSupervisorDebugMode = setSupervisorDebugMode True
 -- }}}
 
 getCurrentProgress :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m (VisitorProgress result)
 getCurrentProgress = VisitorSupervisorMonad . lift . get $ current_progress
 -- }}}
 
 getNumberOfWorkers :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m Int
 getNumberOfWorkers = VisitorSupervisorMonad . lift . (Set.size <$>) . get $ known_workers
 -- }}}
 
 getWaitingWorkers :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m (Set worker_id)
 getWaitingWorkers = VisitorSupervisorMonad . lift $
     either id (const Set.empty) <$> get waiting_workers_or_available_workloads
 -- }}}
 
 performGlobalProgressUpdate :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m ()
 performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . VisitorSupervisorMonad . lift $ do
     infoM $ "Performing global progress update."
@@ -359,7 +359,7 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
 -- }}}
 
 removeWorker :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorMonad result worker_id m ()
 removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
@@ -423,7 +423,7 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
 -- }}}
 
 setSupervisorDebugMode :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     Bool →
     VisitorSupervisorMonad result worker_id m ()
 setSupervisorDebugMode = VisitorSupervisorMonad . lift . (debug_mode %=)
@@ -453,7 +453,7 @@ abortSupervisorWithReason reason =
 -- }}}
 
 checkWhetherMoreStealsAreNeeded :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorContext result worker_id m ()
 checkWhetherMoreStealsAreNeeded = do
     number_of_waiting_workers ← either Set.size (const 0) <$> get waiting_workers_or_available_workloads
@@ -490,7 +490,7 @@ checkWhetherMoreStealsAreNeeded = do
 -- }}}
 
 clearPendingProgressUpdate :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorContext result worker_id m ()
 clearPendingProgressUpdate worker_id =
@@ -505,7 +505,7 @@ clearPendingProgressUpdate worker_id =
 -- }}}
 
 deactivateWorker :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     Bool →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
@@ -526,7 +526,7 @@ deactivateWorker reenqueue_workload worker_id = do
 -- }}}
 
 dequeueWorkerForSteal :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorContext result worker_id m ()
 dequeueWorkerForSteal worker_id =
@@ -540,7 +540,7 @@ dequeueWorkerForSteal worker_id =
 -- }}}
 
 enqueueWorkerForSteal :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorContext result worker_id m ()
 enqueueWorkerForSteal worker_id =
@@ -552,7 +552,7 @@ enqueueWorkerForSteal worker_id =
 -- }}}
 
 enqueueWorkload :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorWorkload →
     VisitorSupervisorContext result worker_id m ()
 enqueueWorkload workload =
@@ -569,7 +569,7 @@ enqueueWorkload workload =
 -- }}}
 
 getWorkerDepth :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorContext result worker_id m Int
 getWorkerDepth worker_id =
@@ -587,7 +587,7 @@ liftUserToContext = lift . lift
 -- }}}
 
 postValidate :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     String →
     VisitorSupervisorMonad result worker_id m α →
     VisitorSupervisorMonad result worker_id m α
@@ -630,7 +630,7 @@ postValidate label action = action >>= \result → VisitorSupervisorMonad . lift
 -- }}}
 
 receiveCurrentProgress :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorContext result worker_id m ()
 receiveCurrentProgress = do
     callback ← asks receive_current_progress_action
@@ -639,7 +639,7 @@ receiveCurrentProgress = do
 -- }}}
 
 sendWorkloadToWorker :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorWorkload →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
@@ -654,7 +654,7 @@ sendWorkloadToWorker workload worker_id = do
 -- }}}
 
 tryToObtainWorkloadFor :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
     VisitorSupervisorContext result worker_id m ()
 tryToObtainWorkloadFor worker_id =
@@ -673,7 +673,7 @@ tryToObtainWorkloadFor worker_id =
 -- }}}
 
 validateWorkerKnown :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     String →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
@@ -683,7 +683,7 @@ validateWorkerKnown action worker_id =
 -- }}}
 
 validateWorkerKnownAndActive :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     String →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
@@ -694,7 +694,7 @@ validateWorkerKnownAndActive action worker_id = do
 -- }}}
 
 validateWorkerNotKnown :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     String →
     worker_id →
     VisitorSupervisorContext result worker_id m ()
@@ -704,7 +704,7 @@ validateWorkerNotKnown action worker_id = do
 -- }}}
 
 whenDebugging :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorContext result worker_id m () →
     VisitorSupervisorContext result worker_id m ()
 whenDebugging action = get debug_mode >>= flip when action
