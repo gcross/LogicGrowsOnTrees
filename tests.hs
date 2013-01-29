@@ -15,7 +15,6 @@ import Prelude hiding (catch)
 import Control.Applicative
 import Control.Arrow ((&&&),second)
 import Control.Concurrent
-import Control.Concurrent.QSem
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM.TVar
@@ -997,13 +996,13 @@ tests = -- {{{
         [testGroup "forkVisitor(X)WorkerThread" -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new
-                semaphore ← newQSem 0
+                semaphore ← newEmptyMVar
                 VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
                     (IVar.write termination_result_ivar)
-                    (liftIO (waitQSem semaphore) `mplus` error "should never get here")
+                    (liftIO (takeMVar semaphore) `mplus` error "should never get here")
                     entire_workload
                 sendAbortRequest workerPendingRequests
-                signalQSem semaphore
+                putMVar semaphore ()
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
                     VisitorWorkerFinished _ → assertFailure "worker faled to abort"
@@ -1189,13 +1188,13 @@ tests = -- {{{
                         return True
                 in -- }}}
                 [testProperty "single steal" $ \(UniqueVisitor visitor :: UniqueVisitor) → unsafePerformIO $ do -- {{{
-                    reached_position_qsem ← newQSem 0
+                    reached_position_mvar ← newEmptyMVar
                     blocking_value_ivar ← IVar.new
                     let visitor_with_blocking_value =
                             mplus
                                 (mplus
                                     (liftIO $ do
-                                        signalQSem reached_position_qsem
+                                        tryPutMVar reached_position_mvar ()
                                         IVar.blocking . IVar.read $ blocking_value_ivar
                                     )
                                     (return (IntSet.singleton 101010101))
@@ -1207,7 +1206,7 @@ tests = -- {{{
                         visitor_with_blocking_value
                         entire_workload
                     maybe_workload_ref ← newIORef Nothing
-                    waitQSem reached_position_qsem
+                    takeMVar reached_position_mvar
                     sendWorkloadStealRequest workerPendingRequests $ writeIORef maybe_workload_ref
                     IVar.write blocking_value_ivar (IntSet.singleton 202020202)
                     final_progress@(VisitorProgress checkpoint remaining_solutions) ←
