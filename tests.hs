@@ -88,6 +88,7 @@ import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Supervisor
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
+import Control.Monad.Trans.Visitor.Supervisor.Driver (TerminationReason(..))
 -- }}}
 
 -- Helpers {{{
@@ -712,9 +713,9 @@ tests = -- {{{
                 termination_reason ← IVar.blocking . IVar.read $ termination_reason_ivar
                 killThread token_manager_thread_id
                 result ← case termination_reason of
-                    Threads.Completed result → return result
-                    Threads.Aborted _ → error "prematurely aborted"
-                    Threads.Failure message → error message
+                    Aborted _ → error "prematurely aborted"
+                    Completed result → return result
+                    Failure message → error message
                 let correct_result = runVisitor visitor
                 result @?= correct_result
                 (remdups <$> readIORef progresses_ref) >>= mapM_ (\(VisitorProgress checkpoint result) → do

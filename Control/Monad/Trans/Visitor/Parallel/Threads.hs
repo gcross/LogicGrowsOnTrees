@@ -11,8 +11,8 @@ module Control.Monad.Trans.Visitor.Parallel.Threads where
 
 -- Imports {{{
 import Control.Applicative (Applicative,(<$>))
-import Control.Concurrent (forkIO,killThread)
-import Control.Monad (forever,forM_,mapM_,replicateM_)
+import Control.Concurrent (forkIO,getNumCapabilities,killThread)
+import Control.Monad (forever,forM_,mapM_,replicateM_,void)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.State.Class (MonadState,StateType)
@@ -32,9 +32,10 @@ import Data.Word (Word64)
 
 import qualified System.Log.Logger as Logger
 
-import Control.Monad.Trans.Visitor
+import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor
+import Control.Monad.Trans.Visitor.Supervisor.Driver (Driver(Driver),TerminationReason(..))
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
@@ -61,12 +62,6 @@ type WorkgroupRequestQueue result = RequestQueue result WorkerId (WorkgroupState
 
 type WorkgroupMonad result = VisitorSupervisorMonad result WorkerId (WorkgroupStateMonad result)
 
-data TerminationReason result = -- {{{
-    Completed result
-  | Aborted (VisitorProgress result)
-  | Failure String
--- }}}
-
 newtype WorkgroupControllerMonad result α = C { unwrapC :: RequestQueueReader result WorkerId (WorkgroupStateMonad result) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO)
 -- }}}
 
@@ -77,6 +72,26 @@ instance Monoid result ⇒ RequestQueueMonad (WorkgroupControllerMonad result) w
     getCurrentProgressAsync = C . getCurrentProgressAsync
     getNumberOfWorkersAsync = C . getNumberOfWorkersAsync
     requestProgressUpdateAsync = C . requestProgressUpdateAsync
+-- }}}
+
+-- Driver {{{
+driver :: Driver result () IO (WorkgroupControllerMonad result)
+driver = Driver
+    (\getMaybeStartingPoint notifyTerminated visitor managerLoop →
+        fmap (maybe runVisitor runVisitorStartingFrom) getMaybeStartingPoint
+        >>=
+        \f → f notifyTerminated visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop)
+    )
+    (\getMaybeStartingPoint notifyTerminated visitor managerLoop →
+        fmap (maybe runVisitorIO runVisitorIOStartingFrom) getMaybeStartingPoint
+        >>=
+        \f → f notifyTerminated visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop)
+    )
+    (\getMaybeStartingPoint runInIO notifyTerminated visitor managerLoop →
+        fmap (maybe runVisitorT runVisitorTStartingFrom) getMaybeStartingPoint
+        >>=
+        \f → f runInIO notifyTerminated visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop)
+    )
 -- }}}
 
 -- Exposed Functions {{{
@@ -100,6 +115,11 @@ changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers =
         EQ → return ()
     liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
  )
+-- }}}
+
+changeNumberOfWorkersToMatchCPUs :: WorkgroupControllerMonad result () -- {{{
+changeNumberOfWorkersToMatchCPUs =
+    liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
 -- }}}
 
 runVisitorIO :: -- {{{
