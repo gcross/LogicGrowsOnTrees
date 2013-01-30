@@ -69,6 +69,7 @@ newtype WorkgroupControllerMonad result α = C { unwrapC :: RequestQueueReader r
 instance Monoid result ⇒ RequestQueueMonad (WorkgroupControllerMonad result) where
     type RequestQueueMonadResult (WorkgroupControllerMonad result) = result
     abort = C abort
+    fork = C . fork . unwrapC
     getCurrentProgressAsync = C . getCurrentProgressAsync
     getNumberOfWorkersAsync = C . getNumberOfWorkersAsync
     requestProgressUpdateAsync = C . requestProgressUpdateAsync

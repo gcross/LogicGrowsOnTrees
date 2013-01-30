@@ -13,6 +13,7 @@ import Prelude hiding (catch)
 
 import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
+import Control.Concurrent (ThreadId,forkIO)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,tryReadTChan,writeTChan)
@@ -20,7 +21,7 @@ import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad (join,liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Trans.Reader (ReaderT,ask)
+import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,newIORef)
@@ -37,6 +38,7 @@ import Control.Monad.Trans.Visitor.Supervisor (VisitorSupervisorMonad)
 class (Monoid (RequestQueueMonadResult m), MonadCatchIO m) ⇒ RequestQueueMonad m where -- {{{
     type RequestQueueMonadResult m :: *
     abort :: m ()
+    fork :: m () → m ThreadId
     getCurrentProgressAsync :: (VisitorProgress (RequestQueueMonadResult m) → IO ()) → m ()
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
     requestProgressUpdateAsync :: (VisitorProgress (RequestQueueMonadResult m) → IO ()) → m ()
@@ -61,6 +63,7 @@ type RequestQueueReader result worker_id m  = ReaderT (RequestQueue result worke
 instance (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader result worker_id m) where -- {{{
     type RequestQueueMonadResult (RequestQueueReader result worker_id m) = result
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
+    fork m = ask >>= liftIO . forkIO . runReaderT m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
     getNumberOfWorkersAsync = (ask >>=) . getQuantityAsync Supervisor.getNumberOfWorkers
     requestProgressUpdateAsync receiveUpdatedProgress = -- {{{
