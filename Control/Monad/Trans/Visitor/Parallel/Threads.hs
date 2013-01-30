@@ -66,7 +66,7 @@ newtype WorkgroupControllerMonad result α = C { unwrapC :: RequestQueueReader r
 -- }}}
 
 -- Instances {{{
-instance Monoid result ⇒ RequestQueueMonad (WorkgroupControllerMonad result) where
+instance RequestQueueMonad (WorkgroupControllerMonad result) where
     type RequestQueueMonadResult (WorkgroupControllerMonad result) = result
     abort = C abort
     fork = C . fork . unwrapC
@@ -76,7 +76,7 @@ instance Monoid result ⇒ RequestQueueMonad (WorkgroupControllerMonad result) w
 -- }}}
 
 -- Driver {{{
-driver :: Driver result () IO (WorkgroupControllerMonad result)
+driver :: Driver IO result
 driver = Driver
     (\getMaybeStartingPoint notifyTerminated visitor managerLoop →
         fmap (maybe runVisitor runVisitorStartingFrom) getMaybeStartingPoint
@@ -88,7 +88,7 @@ driver = Driver
         >>=
         \f → f notifyTerminated visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop)
     )
-    (\getMaybeStartingPoint runInIO notifyTerminated visitor managerLoop →
+    (\runInIO getMaybeStartingPoint notifyTerminated visitor managerLoop →
         fmap (maybe runVisitorT runVisitorTStartingFrom) getMaybeStartingPoint
         >>=
         \f → f runInIO notifyTerminated visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop)
