@@ -35,7 +35,7 @@ import Control.Monad.Trans.Visitor.Supervisor (VisitorSupervisorMonad)
 
 -- Classes {{{
 
-class (Monoid (RequestQueueMonadResult m), MonadCatchIO m) ⇒ RequestQueueMonad m where -- {{{
+class MonadCatchIO m ⇒ RequestQueueMonad m where -- {{{
     type RequestQueueMonadResult m :: *
     abort :: m ()
     fork :: m () → m ThreadId
@@ -60,7 +60,7 @@ type RequestQueueReader result worker_id m  = ReaderT (RequestQueue result worke
 
 -- Instances {{{
 
-instance (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader result worker_id m) where -- {{{
+instance (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader result worker_id m) where -- {{{
     type RequestQueueMonadResult (RequestQueueReader result worker_id m) = result
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
     fork m = ask >>= liftIO . forkIO . runReaderT m
@@ -110,7 +110,7 @@ getCurrentProgress = syncAsync getCurrentProgressAsync
 -- }}}
 
 getQuantityAsync :: -- {{{
-    (MonadIO m', Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    (MonadIO m', Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     VisitorSupervisorMonad result worker_id m α →
     (α → IO ()) →
     RequestQueue result worker_id m →
