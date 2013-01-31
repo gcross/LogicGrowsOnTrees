@@ -4,6 +4,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
@@ -27,10 +28,12 @@ import Control.Monad.Tools (ifM)
 import Data.ByteString.Lazy (readFile,writeFile)
 import Data.Char (toUpper)
 import Data.Composition ((.*))
+import Data.Derive.Serialize
+import Data.DeriveTH
 import Data.Either.Unwrap (mapRight)
 import Data.Maybe (catMaybes)
 import Data.Monoid (Monoid(..))
-import Data.Serialize (Serialize,decodeLazy,encodeLazy)
+import Data.Serialize
 
 import Options.Applicative
 
@@ -44,6 +47,30 @@ import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor.Driver
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
+-- }}}
+
+-- Types {{{
+data CheckpointConfiguration = CheckpointConfiguration -- {{{
+    {   checkpoint_path :: FilePath
+    ,   checkpoint_interval :: Float
+    } deriving (Eq,Show)
+$( derive makeSerialize ''CheckpointConfiguration )
+-- }}}
+
+data LoggingConfiguration = LoggingConfiguration -- {{{
+    {   log_level :: Priority
+    } deriving (Eq,Show)
+instance Serialize LoggingConfiguration where
+    put = put . show . log_level
+    get = LoggingConfiguration . read <$> get
+-- }}}
+
+data Configuration = Configuration -- {{{
+    {   maybe_configuration_checkpoint :: Maybe CheckpointConfiguration
+    ,   configuration_logging :: LoggingConfiguration
+    } deriving (Eq,Show)
+$( derive makeSerialize ''Configuration )
+-- }}}
 -- }}}
 
 -- Exposed {{{
@@ -77,29 +104,6 @@ mainVisitorT :: -- {{{
     (visitor_configuration → VisitorT m result) →
     result_monad ()
 mainVisitorT Driver{..} = genericMain . driverRunVisitorT
--- }}}
-
--- }}}
-
--- Internal {{{
-
--- Types {{{
-data CheckpointConfiguration = CheckpointConfiguration -- {{{
-    {   checkpoint_path :: FilePath
-    ,   checkpoint_interval :: Float
-    } deriving (Eq,Show)
--- }}}
-
-data LoggingConfiguration = LoggingConfiguration -- {{{
-    {   log_level :: Priority
-    } deriving (Eq,Show)
--- }}}
-
-data Configuration = Configuration -- {{{
-    {   maybe_configuration_checkpoint :: Maybe CheckpointConfiguration
-    ,   configuration_logging :: LoggingConfiguration
-    } deriving (Eq,Show)
--- }}}
 -- }}}
 
 -- Options {{{
@@ -246,8 +250,6 @@ genericMain run visitor_configuration_options notifyTerminated constructVisitor 
         )
         (constructVisitor . snd)
         (managerLoop . fst)
--- }}}
-
 -- }}}
 
 -- }}}
