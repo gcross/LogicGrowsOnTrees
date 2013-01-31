@@ -25,6 +25,7 @@ Library
         data-accessor-monads-tf == 0.2.*,
         data-ivar == 0.30.*,
         derive >= 2.5.11 && < 2.6,
+        directory == 1.1.*,
         dlist == 0.5.*,
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,
@@ -32,6 +33,7 @@ Library
         MonadCatchIO-transformers == 0.3.*,
         monads-tf == 0.1.*,
         operational == 0.2.*,
+        optparse-applicative == 0.5.*,
         PSQueue == 1.1.*,
         sequential-index == 0.2.*,
         stm >= 2.3 && < 2.5,
@@ -43,6 +45,7 @@ Library
         Control.Monad.Trans.Visitor.Examples.Queens
         Control.Monad.Trans.Visitor.Examples.Queens.Implementation
         Control.Monad.Trans.Visitor.Label
+        Control.Monad.Trans.Visitor.Main
         Control.Monad.Trans.Visitor.Parallel.Threads
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Supervisor
@@ -52,6 +55,18 @@ Library
         Control.Monad.Trans.Visitor.Worker
         Control.Monad.Trans.Visitor.Workload
     Extensions:
+
+Flag build-nqueens-executables
+    Description: Enable building the n-queens executables.
+    Default:     False
+
+Executable count-all-nqueens-solutions
+    Main-is: count-all-nqueens-solutions.hs
+    if flag(build-nqueens-executables)
+        Buildable: True
+    else
+        Buildable: False
+    GHC-Options: -threaded
 
 Test-Suite tests
     Type:       exitcode-stdio-1.0
