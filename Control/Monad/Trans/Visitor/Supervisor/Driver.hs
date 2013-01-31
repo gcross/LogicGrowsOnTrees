@@ -33,7 +33,7 @@ data Driver result_monad result =  -- {{{
     , RequestQueueMonadResult (manager_monad result) ~ result
     ) ⇒
     Driver
-    {   runVisitor ::
+    {   driverRunVisitor ::
             ( Monoid result
             , Serialize result
             , MonadIO result_monad
@@ -43,7 +43,7 @@ data Driver result_monad result =  -- {{{
             Visitor result →
             manager_monad result () →
             result_monad ()
-    ,   runVisitorIO ::
+    ,   driverRunVisitorIO ::
             ( Monoid result
             , Serialize result
             , MonadIO result_monad
@@ -53,7 +53,7 @@ data Driver result_monad result =  -- {{{
             VisitorIO result →
             manager_monad result () →
             result_monad ()
-    ,   runVisitorT ::
+    ,   driverRunVisitorT ::
             ( Monoid result
             , Serialize result
             , MonadIO result_monad
