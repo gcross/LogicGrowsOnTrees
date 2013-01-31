@@ -303,7 +303,11 @@ fireAWorker =
 genericRunVisitorStartingFrom :: -- {{{
     Monoid result ⇒
     Maybe (VisitorProgress result) →
-    ((VisitorWorkerTerminationReason result → IO ()) → VisitorWorkload → IO (VisitorWorkerEnvironment result)) →
+    (
+        (VisitorWorkerTerminationReason result → IO ()) →
+        VisitorWorkload →
+        IO (VisitorWorkerEnvironment result)
+    ) →
     WorkgroupControllerMonad result () →
     IO (TerminationReason result)
 genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller) = do
