@@ -27,7 +27,7 @@ data TerminationReason result = -- {{{
   deriving (Eq,Show)
 -- }}}
 
-data Driver result_monad result =  -- {{{
+data Driver result_monad configuration result =  -- {{{
     ∀ manager_monad.
     ( RequestQueueMonad (manager_monad result)
     , RequestQueueMonadResult (manager_monad result) ~ result
@@ -38,20 +38,22 @@ data Driver result_monad result =  -- {{{
             , Serialize result
             , MonadIO result_monad
             ) ⇒
-            IO (Maybe (VisitorProgress result)) →
-            (TerminationReason result → IO ()) →
-            Visitor result →
-            manager_monad result () →
+            IO configuration →
+            (configuration → IO (Maybe (VisitorProgress result))) →
+            (configuration → TerminationReason result → IO ()) →
+            (configuration → Visitor result) →
+            (configuration → manager_monad result ()) →
             result_monad ()
     ,   driverRunVisitorIO ::
             ( Monoid result
             , Serialize result
             , MonadIO result_monad
             ) ⇒
-            IO (Maybe (VisitorProgress result)) →
-            (TerminationReason result → IO ()) →
-            VisitorIO result →
-            manager_monad result () →
+            IO configuration →
+            (configuration → IO (Maybe (VisitorProgress result))) →
+            (configuration → TerminationReason result → IO ()) →
+            (configuration → VisitorIO result) →
+            (configuration → manager_monad result ()) →
             result_monad ()
     ,   driverRunVisitorT ::
             ( Monoid result
@@ -61,10 +63,11 @@ data Driver result_monad result =  -- {{{
             , MonadIO m
             ) ⇒
             (∀ α. m α → IO α) →
-            IO (Maybe (VisitorProgress result)) →
-            (TerminationReason result → IO ()) →
-            VisitorT m result →
-            manager_monad result () →
+            IO configuration →
+            (configuration → IO (Maybe (VisitorProgress result))) →
+            (configuration → TerminationReason result → IO ()) →
+            (configuration → VisitorT m result) →
+            (configuration → manager_monad result ()) →
             result_monad ()
     } -- }}}
 

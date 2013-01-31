@@ -50,31 +50,31 @@ import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 
 mainVisitor :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad result →
-    Parser α →
-    (TerminationReason result → IO ()) →
-    (α → Visitor result) →
+    Driver result_monad (Configuration,visitor_configuration) result →
+    Parser visitor_configuration →
+    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → Visitor result) →
     result_monad ()
 mainVisitor Driver{..} = genericMain driverRunVisitor
 -- }}}
 
 mainVisitorIO :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad result →
-    Parser α →
-    (TerminationReason result → IO ()) →
-    (α → VisitorIO result) →
+    Driver result_monad (Configuration,visitor_configuration) result →
+    Parser visitor_configuration →
+    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → VisitorIO result) →
     result_monad ()
 mainVisitorIO Driver{..} = genericMain driverRunVisitorIO
 -- }}}
 
 mainVisitorT :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    Driver result_monad result →
+    Driver result_monad (Configuration,visitor_configuration) result →
     (∀ β. m β → IO β) →
-    Parser α →
-    (TerminationReason result → IO ()) →
-    (α → VisitorT m result) →
+    Parser visitor_configuration →
+    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → VisitorT m result) →
     result_monad ()
 mainVisitorT Driver{..} = genericMain . driverRunVisitorT
 -- }}}
@@ -206,46 +206,46 @@ managerLoop Configuration{..} = do
 -- Main functions {{{
 
 genericMain :: -- {{{
-    ( result ~ RequestQueueMonadResult manager_monad
-    , RequestQueueMonad manager_monad
+    ( result ~ RequestQueueMonadResult (manager_monad result)
+    , RequestQueueMonad (manager_monad result)
     , Serialize result
     , MonadIO result_monad
     ) ⇒
     (
-        IO (Maybe (VisitorProgress result)) →
-        (TerminationReason result → IO ()) →
-        visitor →
-        manager_monad () →
+        IO (Configuration,visitor_configuration) →
+        ((Configuration,visitor_configuration) → IO (Maybe (VisitorProgress result))) →
+        ((Configuration,visitor_configuration) → TerminationReason result → IO ()) →
+        ((Configuration,visitor_configuration) → visitor) →
+        ((Configuration,visitor_configuration) → manager_monad result ()) →
         result_monad ()
     ) →
-    Parser α →
-    (TerminationReason result → IO ()) →
-    (α → visitor) →
+    Parser visitor_configuration →
+    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → visitor) →
     result_monad ()
-genericMain run visitor_configuration_options notifyTerminated constructVisitorFromConfiguration =
-    liftIO (execParser (info (liftA2 (,) configuration_options visitor_configuration_options) mempty))
-    >>=
-    \(configuration@Configuration{..},visitor_configuration) → do
-        let LoggingConfiguration{..} = configuration_logging
-        liftIO $ updateGlobalLogger rootLoggerName (setLevel log_level)
-        case maybe_configuration_checkpoint of
-            Nothing → do
-                infoM $ "Checkpointing is NOT enabled"
-                run (return Nothing)
-                    notifyTerminated
-                    (constructVisitorFromConfiguration visitor_configuration)
-                    (managerLoop configuration)
-            Just CheckpointConfiguration{..} → do
-                noticeM $ "Checkpointing enabled"
-                noticeM $ "Checkpoint file is " ++ checkpoint_path
-                noticeM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
-                run (ifM (doesFileExist checkpoint_path)
+genericMain run visitor_configuration_options notifyTerminated constructVisitor =
+    run (execParser (info (liftA2 (,) configuration_options visitor_configuration_options) mempty))
+        (\(Configuration{..},_) →
+            case maybe_configuration_checkpoint of
+                Nothing → (infoM "Checkpointing is NOT enabled") >> return Nothing
+                Just CheckpointConfiguration{..} → do
+                    noticeM $ "Checkpointing enabled"
+                    noticeM $ "Checkpoint file is " ++ checkpoint_path
+                    noticeM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
+                    ifM (doesFileExist checkpoint_path)
                         (noticeM "Loading existing checkpoint file" >> either error Just . decodeLazy <$> readFile checkpoint_path)
                         (return Nothing)
-                    )
-                    ((>> (noticeM "Deleting checkpoint file" >> removeFileIfExists checkpoint_path)) . notifyTerminated)
-                    (constructVisitorFromConfiguration visitor_configuration)
-                    (managerLoop configuration)
+        )
+        (\(Configuration{..},visitor_configuration) termination_reason → do
+            notifyTerminated visitor_configuration termination_reason 
+            case maybe_configuration_checkpoint of
+                Nothing → return ()
+                Just CheckpointConfiguration{..} → do
+                    noticeM "Deleting any remaining checkpoint file"
+                    removeFileIfExists checkpoint_path
+        )
+        (constructVisitor . snd)
+        (managerLoop . fst)
 -- }}}
 
 -- }}}

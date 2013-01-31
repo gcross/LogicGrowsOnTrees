@@ -76,23 +76,19 @@ instance RequestQueueMonad (WorkgroupControllerMonad result) where
 -- }}}
 
 -- Driver {{{
-driver :: Driver IO result
+driver :: Driver IO configuration result
 driver = Driver
-    (\getMaybeStartingPoint notifyTerminated visitor managerLoop →
-        fmap (maybe runVisitor runVisitorStartingFrom) getMaybeStartingPoint
-        >>=
-        \f → f visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop) >>= notifyTerminated
-    )
-    (\getMaybeStartingPoint notifyTerminated visitor managerLoop →
-        fmap (maybe runVisitorIO runVisitorIOStartingFrom) getMaybeStartingPoint
-        >>=
-        \f → f visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop) >>= notifyTerminated
-    )
-    (\runInIO getMaybeStartingPoint notifyTerminated visitor managerLoop →
-        fmap (maybe runVisitorT runVisitorTStartingFrom) getMaybeStartingPoint
-        >>=
-        \f → f runInIO visitor (changeNumberOfWorkersToMatchCPUs >> managerLoop) >>= notifyTerminated
-    )
+    (genericDriver runVisitorMaybeStartingFrom)
+    (genericDriver runVisitorIOMaybeStartingFrom)
+    (genericDriver . runVisitorTMaybeStartingFrom)
+  where
+    genericDriver run getConfiguration getMaybeStartingProgress notifyTerminated constructVisitor constructManager = do
+        configuration ← getConfiguration
+        maybe_starting_progress ← getMaybeStartingProgress configuration
+        run  maybe_starting_progress
+            (constructVisitor configuration)
+            (changeNumberOfWorkersToMatchCPUs >> constructManager configuration)
+         >>= notifyTerminated configuration
 -- }}}
 
 -- Exposed Functions {{{
@@ -123,54 +119,24 @@ changeNumberOfWorkersToMatchCPUs =
     liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
 -- }}}
 
-runVisitorIO :: -- {{{
-    Monoid result ⇒
-    VisitorIO result →
-    WorkgroupControllerMonad result () →
-    IO (TerminationReason result)
-runVisitorIO = runVisitorIOStartingFrom mempty
--- }}}
-
-runVisitorIOStartingFrom :: -- {{{
-    Monoid result ⇒
-    VisitorProgress result →
-    VisitorIO result →
-    WorkgroupControllerMonad result () →
-    IO (TerminationReason result)
-runVisitorIOStartingFrom starting_progress =
-    genericRunVisitorStartingFrom starting_progress
-    .
-    flip forkVisitorIOWorkerThread
--- }}}
-
-runVisitorT :: -- {{{
-    (Monoid result, MonadIO m) ⇒
-    (∀ α. m α → IO α) →
-    VisitorT m result →
-    WorkgroupControllerMonad result () →
-    IO (TerminationReason result)
-runVisitorT = runVisitorTStartingFrom mempty
--- }}}
-
-runVisitorTStartingFrom :: -- {{{
-    (Monoid result, MonadIO m) ⇒
-    VisitorProgress result →
-    (∀ α. m α → IO α) →
-    VisitorT m result →
-    WorkgroupControllerMonad result () →
-    IO (TerminationReason result)
-runVisitorTStartingFrom starting_progress runMonad =
-    genericRunVisitorStartingFrom starting_progress
-    .
-    flip (forkVisitorTWorkerThread runMonad)
--- }}}
-
 runVisitor :: -- {{{
     Monoid result ⇒
     Visitor result →
     WorkgroupControllerMonad result () →
     IO (TerminationReason result)
-runVisitor = runVisitorStartingFrom mempty
+runVisitor = runVisitorMaybeStartingFrom Nothing
+-- }}}
+
+runVisitorMaybeStartingFrom :: -- {{{
+    Monoid result ⇒
+    Maybe (VisitorProgress result) →
+    Visitor result →
+    WorkgroupControllerMonad result () →
+    IO (TerminationReason result)
+runVisitorMaybeStartingFrom maybe_starting_progress =
+    genericRunVisitorStartingFrom maybe_starting_progress
+    .
+    flip forkVisitorWorkerThread
 -- }}}
 
 runVisitorStartingFrom :: -- {{{
@@ -179,10 +145,68 @@ runVisitorStartingFrom :: -- {{{
     Visitor result →
     WorkgroupControllerMonad result () →
     IO (TerminationReason result)
-runVisitorStartingFrom starting_progress =
-    genericRunVisitorStartingFrom starting_progress
+runVisitorStartingFrom = runVisitorMaybeStartingFrom . Just
+-- }}}
+
+runVisitorIO :: -- {{{
+    Monoid result ⇒
+    VisitorIO result →
+    WorkgroupControllerMonad result () →
+    IO (TerminationReason result)
+runVisitorIO = runVisitorIOMaybeStartingFrom Nothing
+-- }}}
+
+runVisitorIOMaybeStartingFrom :: -- {{{
+    Monoid result ⇒
+    Maybe (VisitorProgress result) →
+    VisitorIO result →
+    WorkgroupControllerMonad result () →
+    IO (TerminationReason result)
+runVisitorIOMaybeStartingFrom maybe_starting_progress =
+    genericRunVisitorStartingFrom maybe_starting_progress
     .
-    flip forkVisitorWorkerThread
+    flip forkVisitorIOWorkerThread
+-- }}}
+
+runVisitorIOStartingFrom :: -- {{{
+    Monoid result ⇒
+    VisitorProgress result →
+    VisitorIO result →
+    WorkgroupControllerMonad result () →
+    IO (TerminationReason result)
+runVisitorIOStartingFrom = runVisitorIOMaybeStartingFrom . Just
+-- }}}
+
+runVisitorT :: -- {{{
+    (Monoid result, MonadIO m) ⇒
+    (∀ α. m α → IO α) →
+    VisitorT m result →
+    WorkgroupControllerMonad result () →
+    IO (TerminationReason result)
+runVisitorT = flip runVisitorTMaybeStartingFrom Nothing
+-- }}}
+
+runVisitorTMaybeStartingFrom :: -- {{{
+    (Monoid result, MonadIO m) ⇒
+    (∀ α. m α → IO α) →
+    Maybe (VisitorProgress result) →
+    VisitorT m result →
+    WorkgroupControllerMonad result () →
+    IO (TerminationReason result)
+runVisitorTMaybeStartingFrom runMonad maybe_starting_progress =
+    genericRunVisitorStartingFrom maybe_starting_progress
+    .
+    flip (forkVisitorTWorkerThread runMonad)
+-- }}}
+
+runVisitorTStartingFrom :: -- {{{
+    (Monoid result, MonadIO m) ⇒
+    (∀ α. m α → IO α) →
+    VisitorProgress result →
+    VisitorT m result →
+    WorkgroupControllerMonad result () →
+    IO (TerminationReason result)
+runVisitorTStartingFrom runInIO = runVisitorTMaybeStartingFrom runInIO . Just
 -- }}}
 
 -- }}}
@@ -278,11 +302,12 @@ fireAWorker =
 
 genericRunVisitorStartingFrom :: -- {{{
     Monoid result ⇒
-    VisitorProgress result →
+    Maybe (VisitorProgress result) →
     ((VisitorWorkerTerminationReason result → IO ()) → VisitorWorkload → IO (VisitorWorkerEnvironment result)) →
     WorkgroupControllerMonad result () →
     IO (TerminationReason result)
-genericRunVisitorStartingFrom starting_progress spawnWorker (C controller) = do
+genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller) = do
+    let starting_progress = fromMaybe mempty maybe_starting_progress
     request_queue ← newRequestQueue
     manager_thread_id ← forkIO $ runReaderT controller request_queue
     termination_reason ←
