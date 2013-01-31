@@ -288,7 +288,10 @@ genericRunVisitorStartingFrom starting_progress spawnWorker (C controller) = do
     termination_reason ←
         flip evalStateT initial_state $ do
             VisitorSupervisorResult termination_reason _ ←
-                runVisitorSupervisor (constructWorkgroupActions request_queue spawnWorker) $
+                runVisitorSupervisorStartingFrom
+                    starting_progress
+                    (constructWorkgroupActions request_queue spawnWorker)
+                    $
                     -- enableSupervisorDebugMode >>
                     forever (processRequest request_queue)
             (IntMap.elems <$> get active_workers)
