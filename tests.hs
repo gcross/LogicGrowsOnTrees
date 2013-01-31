@@ -696,9 +696,8 @@ tests = -- {{{
                 progresses_ref ← newIORef []
                 let receiveProgress (VisitorProgress Unexplored _) = return ()
                     receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
-                token_manager_thread_id ← forkIO $
+                termination_reason ←
                     Threads.runVisitorIO
-                        (IVar.write termination_reason_ivar)
                         (do value ← endowVisitor visitor
                             liftIO $ putMVar request_mvar () >> takeMVar token_mvar
                             return value
@@ -710,8 +709,6 @@ tests = -- {{{
                            liftIO $ takeMVar request_mvar
                            generateNoise receiveProgress
                            liftIO $ putMVar token_mvar ()
-                termination_reason ← IVar.blocking . IVar.read $ termination_reason_ivar
-                killThread token_manager_thread_id
                 result ← case termination_reason of
                     Aborted _ → error "prematurely aborted"
                     Completed result → return result
