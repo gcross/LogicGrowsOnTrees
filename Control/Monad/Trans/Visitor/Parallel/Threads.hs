@@ -2,6 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -29,6 +30,8 @@ import Data.PSQueue (Binding((:->)),PSQ)
 import qualified Data.PSQueue as PSQ
 import qualified Data.Set as Set
 import Data.Word (Word64)
+
+import Options.Applicative (InfoMod,execParser,info)
 
 import qualified System.Log.Logger as Logger
 
@@ -82,8 +85,8 @@ driver = Driver
     (genericDriver runVisitorIOMaybeStartingFrom)
     (genericDriver . runVisitorTMaybeStartingFrom)
   where
-    genericDriver run getConfiguration getMaybeStartingProgress notifyTerminated constructVisitor constructManager = do
-        configuration ← getConfiguration
+    genericDriver run configuration_parser (infomod :: ∀ α. InfoMod α) getMaybeStartingProgress notifyTerminated constructVisitor constructManager = do
+        configuration ← execParser (info configuration_parser infomod)
         maybe_starting_progress ← getMaybeStartingProgress configuration
         run  maybe_starting_progress
             (constructVisitor configuration)

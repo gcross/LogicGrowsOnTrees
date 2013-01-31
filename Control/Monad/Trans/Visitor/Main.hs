@@ -3,7 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -79,6 +79,7 @@ mainVisitor :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (Configuration,visitor_configuration) result →
     Parser visitor_configuration →
+    (∀ α. InfoMod α) →
     (visitor_configuration → TerminationReason result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
@@ -89,6 +90,7 @@ mainVisitorIO :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (Configuration,visitor_configuration) result →
     Parser visitor_configuration →
+    (∀ α. InfoMod α) →
     (visitor_configuration → TerminationReason result → IO ()) →
     (visitor_configuration → VisitorIO result) →
     result_monad ()
@@ -100,6 +102,7 @@ mainVisitorT :: -- {{{
     Driver result_monad (Configuration,visitor_configuration) result →
     (∀ β. m β → IO β) →
     Parser visitor_configuration →
+    (∀ α. InfoMod α) →
     (visitor_configuration → TerminationReason result → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
@@ -216,7 +219,8 @@ genericMain :: -- {{{
     , MonadIO result_monad
     ) ⇒
     (
-        IO (Configuration,visitor_configuration) →
+        Parser (Configuration,visitor_configuration) →
+        (∀ α. InfoMod α) →
         ((Configuration,visitor_configuration) → IO (Maybe (VisitorProgress result))) →
         ((Configuration,visitor_configuration) → TerminationReason result → IO ()) →
         ((Configuration,visitor_configuration) → visitor) →
@@ -224,11 +228,13 @@ genericMain :: -- {{{
         result_monad ()
     ) →
     Parser visitor_configuration →
+    (∀ α. InfoMod α) →
     (visitor_configuration → TerminationReason result → IO ()) →
     (visitor_configuration → visitor) →
     result_monad ()
-genericMain run visitor_configuration_options notifyTerminated constructVisitor =
-    run (execParser (info (liftA2 (,) configuration_options visitor_configuration_options) mempty))
+genericMain run visitor_configuration_options infomod notifyTerminated constructVisitor =
+    run (liftA2 (,) configuration_options visitor_configuration_options)
+         infomod
         (\(Configuration{..},_) →
             case maybe_configuration_checkpoint of
                 Nothing → (infoM "Checkpointing is NOT enabled") >> return Nothing

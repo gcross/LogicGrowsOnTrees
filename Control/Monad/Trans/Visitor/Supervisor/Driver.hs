@@ -12,6 +12,7 @@ module Control.Monad.Trans.Visitor.Supervisor.Driver where
 import Control.Monad.IO.Class (MonadIO)
 import Data.Monoid (Monoid)
 import Data.Serialize (Serialize)
+import Options.Applicative (InfoMod,Parser)
 
 import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint (VisitorProgress)
@@ -38,7 +39,8 @@ data Driver result_monad configuration result =  -- {{{
             , Serialize result
             , MonadIO result_monad
             ) ⇒
-            IO configuration →
+            Parser configuration →
+            (∀ α. InfoMod α) →
             (configuration → IO (Maybe (VisitorProgress result))) →
             (configuration → TerminationReason result → IO ()) →
             (configuration → Visitor result) →
@@ -49,7 +51,8 @@ data Driver result_monad configuration result =  -- {{{
             , Serialize result
             , MonadIO result_monad
             ) ⇒
-            IO configuration →
+            Parser configuration →
+            (∀ α. InfoMod α) →
             (configuration → IO (Maybe (VisitorProgress result))) →
             (configuration → TerminationReason result → IO ()) →
             (configuration → VisitorIO result) →
@@ -63,7 +66,8 @@ data Driver result_monad configuration result =  -- {{{
             , MonadIO m
             ) ⇒
             (∀ α. m α → IO α) →
-            IO configuration →
+            Parser configuration →
+            (∀ α. InfoMod α) →
             (configuration → IO (Maybe (VisitorProgress result))) →
             (configuration → TerminationReason result → IO ()) →
             (configuration → VisitorT m result) →
