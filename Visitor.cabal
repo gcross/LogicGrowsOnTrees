@@ -47,6 +47,7 @@ Library
         Control.Monad.Trans.Visitor.Label
         Control.Monad.Trans.Visitor.Main
         Control.Monad.Trans.Visitor.Parallel.Threads
+        Control.Monad.Trans.Visitor.Parallel.Workgroup
         Control.Monad.Trans.Visitor.Path
         Control.Monad.Trans.Visitor.Supervisor
         Control.Monad.Trans.Visitor.Supervisor.Driver

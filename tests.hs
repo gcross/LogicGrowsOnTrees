@@ -83,6 +83,7 @@ import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Examples.Queens
 import Control.Monad.Trans.Visitor.Label
 import qualified Control.Monad.Trans.Visitor.Parallel.Threads as Threads
+import qualified Control.Monad.Trans.Visitor.Parallel.Workgroup as Workgroup
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
@@ -705,7 +706,7 @@ tests = -- {{{
                         .
                         forever
                         $
-                        do Threads.changeNumberOfWorkers (const $ return 1)
+                        do Workgroup.changeNumberOfWorkers (const $ return 1)
                            liftIO $ takeMVar request_mvar
                            generateNoise receiveProgress
                            liftIO $ putMVar token_mvar ()
@@ -723,15 +724,15 @@ tests = -- {{{
       in
       [testProperty "one thread" . runTest $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
           0 → void $ do
-                  Threads.changeNumberOfWorkers (return . (\i → 0))
-                  Threads.changeNumberOfWorkers (return . (\i → 1))
+                  Workgroup.changeNumberOfWorkers (return . (\i → 0))
+                  Workgroup.changeNumberOfWorkers (return . (\i → 1))
           1 → void $ requestProgressUpdateAsync receiveProgress
       ,testProperty "two threads" . runTest $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
-          0 → void $ Threads.changeNumberOfWorkers (return . (\i → 3-i))
+          0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → 3-i))
           1 → void $ requestProgressUpdateAsync receiveProgress
       ,testProperty "many threads" . runTest $ \receiveProgress → liftIO (randomRIO (0,2::Int)) >>= \i → case i of
-          0 → void $ Threads.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
-          1 → void $ Threads.changeNumberOfWorkers (return . (+1))
+          0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
+          1 → void $ Workgroup.changeNumberOfWorkers (return . (+1))
           2 → void $ requestProgressUpdateAsync receiveProgress
       ]
      -- }}}

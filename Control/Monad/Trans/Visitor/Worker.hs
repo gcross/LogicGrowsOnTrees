@@ -17,7 +17,7 @@ import Prelude hiding (catch)
 
 import Control.Arrow ((&&&))
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
-import Control.Exception (AsyncException(ThreadKilled),SomeException,catch,evaluate,fromException)
+import Control.Exception (AsyncException(ThreadKilled),catch,evaluate,fromException)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class
 
@@ -76,7 +76,7 @@ data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
 
 data VisitorWorkerTerminationReason α = -- {{{
     VisitorWorkerFinished (VisitorProgress α)
-  | VisitorWorkerFailed SomeException
+  | VisitorWorkerFailed String
   | VisitorWorkerAborted
   deriving (Show)
 -- }}}
@@ -227,7 +227,7 @@ genericForkVisitorTWorkerThread
                 `catch`
                 (\e → case fromException e of
                     Just ThreadKilled → return VisitorWorkerAborted
-                    _ → return $ VisitorWorkerFailed e
+                    _ → return $ VisitorWorkerFailed (show e)
                 )
         IVar.write finished_flag ()
         finishedCallback termination_reason
