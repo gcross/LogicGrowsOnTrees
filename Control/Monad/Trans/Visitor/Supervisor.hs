@@ -42,14 +42,15 @@ import Control.Exception (Exception(..),assert)
 import Control.Monad (liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
+import qualified Control.Monad.Reader.Class as MonadsTF
 import qualified Control.Monad.State.Class as MonadsTF
-import Control.Monad.Reader (asks)
+import Control.Monad.Reader (ask,asks)
 import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad.Trans.Abort (AbortT,abort,runAbortT)
+import Control.Monad.Trans.Abort (AbortT,abort,runAbortT,unwrapAbortT)
 import Control.Monad.Trans.Abort.Instances.MonadsTF
 import Control.Monad.Trans.Reader (ReaderT,runReaderT)
-import Control.Monad.Trans.State.Strict (StateT,evalStateT)
+import Control.Monad.Trans.State.Strict (StateT,evalStateT,runStateT)
 
 import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
 import Data.Accessor.Template (deriveAccessors)
@@ -202,6 +203,34 @@ newtype VisitorSupervisorMonad result worker_id m α = -- {{{
 
 instance MonadTrans (VisitorSupervisorMonad result worker_id) where -- {{{
     lift = VisitorSupervisorMonad . lift . liftUserToContext
+-- }}}
+
+instance MonadsTF.MonadReader m ⇒ MonadsTF.MonadReader (VisitorSupervisorMonad result worker_id m) where -- {{{
+    type EnvType (VisitorSupervisorMonad result worker_id m) = MonadsTF.EnvType m
+    ask = lift MonadsTF.ask
+    local f m = VisitorSupervisorMonad $ do
+        actions ← MonadsTF.ask
+        old_state ← MonadsTF.get
+        (result,new_state) ←
+            lift
+            .
+            lift
+            .
+            lift
+            .
+            MonadsTF.local f
+            .
+            flip runReaderT actions
+            .
+            flip runStateT old_state
+            .
+            unwrapAbortT
+            .
+            unwrapVisitorSupervisorMonad
+            $
+            m
+        MonadsTF.put new_state
+        either abort return result
 -- }}}
 
 instance MonadsTF.MonadState m ⇒ MonadsTF.MonadState (VisitorSupervisorMonad result worker_id m) where -- {{{
