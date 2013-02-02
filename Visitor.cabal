@@ -54,6 +54,7 @@ Library
         Control.Monad.Trans.Visitor.Supervisor.RequestQueue
         Control.Monad.Trans.Visitor.Utils.MonadStacks
         Control.Monad.Trans.Visitor.Worker
+        Control.Monad.Trans.Visitor.Worker.Process
         Control.Monad.Trans.Visitor.Workload
     Extensions:
 
