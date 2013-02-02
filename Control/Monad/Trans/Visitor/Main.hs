@@ -147,7 +147,6 @@ logging_configuration_options =
             )
 -- }}}
 
-
 configuration_options :: Parser Configuration -- {{{
 configuration_options =
     Configuration
