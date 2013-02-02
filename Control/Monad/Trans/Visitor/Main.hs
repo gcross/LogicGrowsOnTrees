@@ -66,8 +66,8 @@ instance Serialize LoggingConfiguration where
 -- }}}
 
 data Configuration = Configuration -- {{{
-    {   maybe_configuration_checkpoint :: Maybe CheckpointConfiguration
-    ,   configuration_logging :: LoggingConfiguration
+    {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
+    ,   logging_configuration :: LoggingConfiguration
     } deriving (Eq,Show)
 $( derive makeSerialize ''Configuration )
 -- }}}
@@ -199,7 +199,7 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
 
 managerLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ Configuration → m () -- {{{
 managerLoop Configuration{..} = do
-    maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_configuration_checkpoint
+    maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration
     case catMaybes
         [maybe_checkpoint_thread_id
         ]
@@ -222,6 +222,7 @@ genericMain :: -- {{{
     (
         Parser (Configuration,visitor_configuration) →
         (∀ α. InfoMod α) →
+        ((Configuration,visitor_configuration) → IO ()) →
         ((Configuration,visitor_configuration) → IO (Maybe (VisitorProgress result))) →
         ((Configuration,visitor_configuration) → TerminationReason result → IO ()) →
         ((Configuration,visitor_configuration) → visitor) →
@@ -236,8 +237,11 @@ genericMain :: -- {{{
 genericMain run visitor_configuration_options infomod notifyTerminated constructVisitor =
     run (liftA2 (,) configuration_options visitor_configuration_options)
          infomod
+        (\(Configuration{logging_configuration=LoggingConfiguration{..}},_) →
+            updateGlobalLogger rootLoggerName (setLevel log_level)
+        )
         (\(Configuration{..},_) →
-            case maybe_configuration_checkpoint of
+            case maybe_checkpoint_configuration of
                 Nothing → (infoM "Checkpointing is NOT enabled") >> return Nothing
                 Just CheckpointConfiguration{..} → do
                     noticeM $ "Checkpointing enabled"
@@ -249,7 +253,7 @@ genericMain run visitor_configuration_options infomod notifyTerminated construct
         )
         (\(Configuration{..},visitor_configuration) termination_reason → do
             notifyTerminated visitor_configuration termination_reason 
-            case maybe_configuration_checkpoint of
+            case maybe_checkpoint_configuration of
                 Nothing → return ()
                 Just CheckpointConfiguration{..} → do
                     noticeM "Deleting any remaining checkpoint file"

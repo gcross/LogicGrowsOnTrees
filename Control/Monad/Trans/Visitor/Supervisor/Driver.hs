@@ -41,6 +41,7 @@ data Driver result_monad configuration result =  -- {{{
             ) ⇒
             Parser configuration →
             (∀ α. InfoMod α) →
+            (configuration → IO ()) →
             (configuration → IO (Maybe (VisitorProgress result))) →
             (configuration → TerminationReason result → IO ()) →
             (configuration → Visitor result) →
@@ -53,6 +54,7 @@ data Driver result_monad configuration result =  -- {{{
             ) ⇒
             Parser configuration →
             (∀ α. InfoMod α) →
+            (configuration → IO ()) →
             (configuration → IO (Maybe (VisitorProgress result))) →
             (configuration → TerminationReason result → IO ()) →
             (configuration → VisitorIO result) →
@@ -68,6 +70,7 @@ data Driver result_monad configuration result =  -- {{{
             (∀ α. m α → IO α) →
             Parser configuration →
             (∀ α. InfoMod α) →
+            (configuration → IO ()) →
             (configuration → IO (Maybe (VisitorProgress result))) →
             (configuration → TerminationReason result → IO ()) →
             (configuration → VisitorT m result) →

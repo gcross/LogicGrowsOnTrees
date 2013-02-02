@@ -57,8 +57,9 @@ driver = Driver
     (genericDriver runVisitorIOMaybeStartingFrom)
     (genericDriver . runVisitorTMaybeStartingFrom)
   where
-    genericDriver run configuration_parser (infomod :: ∀ α. InfoMod α) getMaybeStartingProgress notifyTerminated constructVisitor constructManager = do
+    genericDriver run configuration_parser (infomod :: ∀ α. InfoMod α) initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager = do
         configuration ← execParser (info configuration_parser infomod)
+        initializeGlobalState configuration
         maybe_starting_progress ← getMaybeStartingProgress configuration
         run  maybe_starting_progress
             (constructVisitor configuration)
