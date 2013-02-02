@@ -109,6 +109,8 @@ mainVisitorT :: -- {{{
 mainVisitorT Driver{..} = genericMain . driverRunVisitorT
 -- }}}
 
+-- }}}
+
 -- Options {{{
 checkpoint_configuration_options :: Parser (Maybe CheckpointConfiguration) -- {{{
 checkpoint_configuration_options =
