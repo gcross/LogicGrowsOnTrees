@@ -60,24 +60,6 @@ infoM = Logger.infoM "Worker"
 
 -- Functions {{{
 
-processServerMessage ::
-    (Ord worker_id, Show worker_id, Typeable worker_id, Monoid result, Functor m, MonadCatchIO m) ⇒
-    worker_id →
-    MessageForSupervisor result →
-    VisitorSupervisorMonad result worker_id m ()
-processServerMessage worker_id message =
-    case message of
-        Failed description →
-            receiveWorkerFailure worker_id description
-        Finished final_progress →
-            receiveWorkerFinished worker_id final_progress
-        ProgressUpdate progress_update →
-            receiveProgressUpdate worker_id progress_update
-        StolenWorkload maybe_stolen_workload →
-            receiveStolenWorkload worker_id maybe_stolen_workload
-        WorkerQuit →
-            error $ "Worker " ++ show worker_id ++ " quit prematurely."
-
 runWorker :: -- {{{
     IO (MessageForWorker result) →
     (MessageForSupervisor result → IO ()) →
