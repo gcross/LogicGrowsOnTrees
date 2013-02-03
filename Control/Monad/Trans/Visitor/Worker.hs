@@ -17,7 +17,7 @@ import Prelude hiding (catch)
 
 import Control.Arrow ((&&&))
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
-import Control.Exception (AsyncException(ThreadKilled),catch,evaluate,fromException)
+import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catch,evaluate,fromException)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class
 
@@ -227,6 +227,7 @@ genericForkVisitorTWorkerThread
                 `catch`
                 (\e → case fromException e of
                     Just ThreadKilled → return VisitorWorkerAborted
+                    Just UserInterrupt → return VisitorWorkerAborted
                     _ → return $ VisitorWorkerFailed (show e)
                 )
         IVar.write finished_flag ()
