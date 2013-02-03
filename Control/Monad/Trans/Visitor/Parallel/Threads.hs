@@ -193,7 +193,7 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
         mempty
         (\WorkgroupReceivers{..} →
             let createWorker _ = return ()
-                destroyWorker _ False = return ()
+                destroyWorker worker_id False = return ()
                 destroyWorker worker_id True = do -- {{{
                     get >>=
                         liftIO
@@ -240,7 +240,15 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
                         IntMap.lookup worker_id
                 -- }}}
                 sendWorkloadToWorker worker_id workload = -- {{{
-                    (liftIO $ spawnWorker (receiveWorkerTerminationReasonWithRemovalFlag worker_id) workload)
+                    (liftIO $ spawnWorker (\termination_reason →
+                        case termination_reason of
+                            VisitorWorkerFinished final_progress →
+                                receiveFinishedFromWorker worker_id final_progress
+                            VisitorWorkerFailed message →
+                                receiveFailureFromWorker worker_id message
+                            VisitorWorkerAborted →
+                                receiveQuitFromWorker worker_id
+                    ) workload)
                     >>=
                     modify
                     .

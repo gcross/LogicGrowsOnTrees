@@ -73,7 +73,9 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
 data WorkgroupReceivers result = WorkgroupReceivers -- {{{
     {   receiveProgressUpdateFromWorker :: WorkerId → VisitorWorkerProgressUpdate result → IO ()
     ,   receiveStolenWorkloadFromWorker :: WorkerId → Maybe (VisitorWorkerStolenWorkload result) → IO ()
-    ,   receiveWorkerTerminationReasonWithRemovalFlag :: WorkerId → (VisitorWorkerTerminationReason result) → IO ()
+    ,   receiveFailureFromWorker :: WorkerId → String → IO ()
+    ,   receiveFinishedFromWorker :: WorkerId → (VisitorProgress result) → IO ()
+    ,   receiveQuitFromWorker :: WorkerId → IO ()
     }
 -- }}}
 
@@ -143,21 +145,21 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
     request_queue ← newRequestQueue
     let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
-        receiveWorkerTerminationReasonWithRemovalFlag worker_id termination_reason = flip enqueueRequest request_queue $ do
+        receiveFailureFromWorker = flip enqueueRequest request_queue .* receiveWorkerFailure
+        receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do -- {{{
             removal_flag ← IntSet.member worker_id <$> getAndModify pending_removal (IntSet.delete worker_id)
-            case termination_reason of
-                VisitorWorkerFinished final_progress → do
-                    infoM $ if removal_flag
-                        then "Worker " ++ show worker_id ++ " has finished, and will be removed."
-                        else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
-                    receiveWorkerFinishedWithRemovalFlag removal_flag worker_id final_progress
-                VisitorWorkerFailed message →
-                    receiveWorkerFailure worker_id message
-                VisitorWorkerAborted
-                  | removal_flag → do
-                     infoM $ "Worker " ++ show worker_id ++ " has been aborted."
-                     removeWorker worker_id
-                  | otherwise → error $ "Worker " ++ show worker_id ++ " aborted prematurely."
+            infoM $ if removal_flag
+                then "Worker " ++ show worker_id ++ " has finished, and will be removed."
+                else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
+            receiveWorkerFinishedWithRemovalFlag removal_flag worker_id final_progress
+        -- }}}
+        receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do -- {{{
+            infoM $ "Worker " ++ show worker_id ++ " has quit."
+            removal_flag ← IntSet.member worker_id <$> getAndModify pending_removal (IntSet.delete worker_id)
+            if removal_flag
+                then removeWorker worker_id
+                else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
+        -- }}}
     manager_thread_id ← forkIO $ runReaderT controller request_queue
     termination_reason ←
         flip evalStateT initial_inner_state
@@ -255,7 +257,6 @@ hireAWorker :: -- {{{
     WorkgroupMonad inner_state result ()
 hireAWorker = do
     worker_id ← getAndModify next_worker_id succ
-    infoM $ "Adding worker " ++ show worker_id
     bumpWorkerRemovalPriority worker_id
     asks createWorker >>= liftInnerToSupervisor . ($ worker_id)
     addWorker worker_id
