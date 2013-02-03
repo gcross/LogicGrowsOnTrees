@@ -190,7 +190,7 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
         (do writeFile checkpoint_temp_path (encodeLazy checkpoint)
             renameFile checkpoint_temp_path checkpoint_path
         ) `onException` (
-            removeFileIfExists checkpoint_path
+            removeFileIfExists checkpoint_temp_path
         )
   where
     checkpoint_temp_path = checkpoint_path ++ ".tmp"
