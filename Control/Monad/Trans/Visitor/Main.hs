@@ -178,13 +178,9 @@ removeFileIfExists path =
         (\_ → return ())
         (removeFile path)
 -- }}}
--- }}}
 
--- Loops {{{
-checkpointLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ CheckpointConfiguration → m α -- {{{
-checkpointLoop CheckpointConfiguration{..} = forever $ do
-    liftIO $ threadDelay delay
-    checkpoint ← requestProgressUpdate
+writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → VisitorProgress result → m () -- {{{
+writeCheckpointFile checkpoint_path checkpoint = do
     noticeM $ "Writing checkpoint file"
     liftIO $
         (do writeFile checkpoint_temp_path (encodeLazy checkpoint)
@@ -194,6 +190,15 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
         )
   where
     checkpoint_temp_path = checkpoint_path ++ ".tmp"
+-- }}}
+-- }}}
+
+-- Loops {{{
+checkpointLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ CheckpointConfiguration → m α -- {{{
+checkpointLoop CheckpointConfiguration{..} = forever $ do
+    liftIO $ threadDelay delay
+    requestProgressUpdate >>= writeCheckpointFile checkpoint_path
+  where
     delay = round $ checkpoint_interval * 1000000
 -- }}}
 
@@ -251,13 +256,19 @@ genericMain run visitor_configuration_options infomod notifyTerminated construct
                         (noticeM "Loading existing checkpoint file" >> either error Just . decodeLazy <$> readFile checkpoint_path)
                         (return Nothing)
         )
-        (\(Configuration{..},visitor_configuration) termination_reason → do
-            notifyTerminated visitor_configuration termination_reason 
+        (\(Configuration{..},visitor_configuration) termination_reason →
+            notifyTerminated visitor_configuration termination_reason
+            `finally`
             case maybe_checkpoint_configuration of
                 Nothing → return ()
-                Just CheckpointConfiguration{..} → do
-                    noticeM "Deleting any remaining checkpoint file"
-                    removeFileIfExists checkpoint_path
+                Just CheckpointConfiguration{checkpoint_path} →
+                    let deleteCheckpointFile = do
+                            noticeM "Deleting any remaining checkpoint file"
+                            removeFileIfExists checkpoint_path
+                    in case termination_reason of
+                        Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
+                        Completed _ → deleteCheckpointFile
+                        Failure _ → deleteCheckpointFile
         )
         (constructVisitor . snd)
         (managerLoop . fst)

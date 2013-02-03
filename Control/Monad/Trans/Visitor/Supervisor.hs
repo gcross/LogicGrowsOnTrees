@@ -36,18 +36,20 @@ module Control.Monad.Trans.Visitor.Supervisor -- {{{
     ) where -- }}}
 
 -- Imports {{{
+import Prelude hiding (catch)
+
 import Control.Applicative ((<$>),(<*>),Applicative)
 import Control.Arrow (first,second)
-import Control.Exception (Exception(..),assert)
+import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
 import Control.Monad (liftM2,mplus,unless,when)
-import Control.Monad.CatchIO (MonadCatchIO,throw)
+import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import qualified Control.Monad.Reader.Class as MonadsTF
 import qualified Control.Monad.State.Class as MonadsTF
 import Control.Monad.Reader (ask,asks)
 import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad.Trans.Abort (AbortT,abort,runAbortT,unwrapAbortT)
+import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
 import Control.Monad.Trans.Abort.Instances.MonadsTF
 import Control.Monad.Trans.Reader (ReaderT,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT,runStateT)
@@ -443,6 +445,20 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
         )
     .
     runAbortT
+    .
+    (
+        AbortT
+        .
+        (flip catch $ \e →
+            let abortIt = unwrapAbortT . unwrapVisitorSupervisorMonad $ abortSupervisor
+            in case fromException e of
+                Just ThreadKilled → abortIt
+                Just UserInterrupt → abortIt
+                _ → throw e
+        )
+        .
+        unwrapAbortT
+    )
     .
     unwrapVisitorSupervisorMonad
     $
