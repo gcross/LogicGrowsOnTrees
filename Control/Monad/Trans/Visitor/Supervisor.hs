@@ -446,9 +446,7 @@ runVisitorSupervisorStartingFrom starting_progress actions loop =
     .
     unwrapVisitorSupervisorMonad
     $
-    loop'
-  where
-    loop' = loop
+    loop
 -- }}}
 
 setSupervisorDebugMode :: -- {{{
