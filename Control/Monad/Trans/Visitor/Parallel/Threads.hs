@@ -215,30 +215,20 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
                         .
                         IntMap.elems
                 -- }}}
-                sendProgressUpdateRequest worker_id = -- {{{
+                sendRequestToWorker request receiver worker_id = -- {{{
                     get >>=
                         liftIO
                         .
                         maybe (return ()) (
-                            flip Worker.sendProgressUpdateRequest (receiveProgressUpdateFromWorker worker_id)
+                            flip request (receiver worker_id)
                             .
                             workerPendingRequests
                         )
                         .
                         IntMap.lookup worker_id
                 -- }}}
-                sendWorkloadStealRequest worker_id = -- {{{
-                    get >>=
-                        liftIO
-                        .
-                        maybe (return ()) (
-                            flip Worker.sendWorkloadStealRequest (receiveStolenWorkloadFromWorker worker_id)
-                            .
-                            workerPendingRequests
-                        )
-                        .
-                        IntMap.lookup worker_id
-                -- }}}
+                sendProgressUpdateRequest = sendRequestToWorker Worker.sendProgressUpdateRequest receiveProgressUpdateFromWorker
+                sendWorkloadStealRequest = sendRequestToWorker Worker.sendWorkloadStealRequest receiveStolenWorkloadFromWorker
                 sendWorkloadToWorker worker_id workload = -- {{{
                     (liftIO $ spawnWorker (\termination_reason →
                         case termination_reason of
