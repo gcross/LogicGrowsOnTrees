@@ -160,6 +160,15 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
                 then removeWorker worker_id
                 else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
         -- }}}
+        broadcast_progress_update_to_workers_action = \worker_ids →
+            asks sendProgressUpdateRequest >>= liftInner . forM_ worker_ids
+        broadcast_workload_steal_to_workers_action = \worker_ids →
+            asks sendWorkloadStealRequest >>= liftInner . forM_ worker_ids
+        receive_current_progress_action = receiveProgress request_queue
+        send_workload_to_worker_action = \workload worker_id → do
+            infoM $ "Activating worker " ++ show worker_id ++ " with workload " ++ show workload
+            asks sendWorkloadToWorker >>= liftInner . ($ workload) . ($ worker_id)
+            bumpWorkerRemovalPriority worker_id
     manager_thread_id ← forkIO $ runReaderT controller request_queue
     termination_reason ←
         flip evalStateT initial_inner_state
@@ -171,7 +180,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         do  VisitorSupervisorResult termination_reason worker_ids ←
                 runVisitorSupervisorMaybeStartingFrom
                     maybe_starting_progress
-                    (constructWorkgroupActions request_queue)
+                    VisitorSupervisorActions{..}
                     $
                     -- enableSupervisorDebugMode >>
                     forever (processRequest request_queue)
@@ -211,23 +220,6 @@ bumpWorkerRemovalPriority :: -- {{{
     m ()
 bumpWorkerRemovalPriority worker_id =
     getAndModify next_priority pred >>= (removal_queue %:) . PSQ.insert worker_id
--- }}}
-
-constructWorkgroupActions :: -- {{{
-    Monoid result ⇒
-    WorkgroupRequestQueue inner_state  result →
-    VisitorSupervisorActions result WorkerId (WorkgroupStateMonad inner_state result)
-constructWorkgroupActions request_queue = VisitorSupervisorActions
-    {   broadcast_progress_update_to_workers_action = \worker_ids →
-            asks sendProgressUpdateRequest >>= liftInner . forM_ worker_ids
-    ,   broadcast_workload_steal_to_workers_action = \worker_ids →
-            asks sendWorkloadStealRequest >>= liftInner . forM_ worker_ids
-    ,   receive_current_progress_action = receiveProgress request_queue
-    ,   send_workload_to_worker_action = \workload worker_id → do
-            infoM $ "Activating worker " ++ show worker_id ++ " with workload " ++ show workload
-            asks sendWorkloadToWorker >>= liftInner . ($ workload) . ($ worker_id)
-            bumpWorkerRemovalPriority worker_id
-    }
 -- }}}
 
 fireAWorker :: -- {{{
