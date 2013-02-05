@@ -3,10 +3,15 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Worker.Process where
+module Control.Monad.Trans.Visitor.Worker.Process
+    ( MessageForSupervisor(..)
+    , MessageForWorker(..)
+    , runWorker
+    ) where
 
 -- Imports {{{
 import Control.Concurrent (killThread)
+import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class
 
@@ -110,7 +115,14 @@ runWorker receiveMessage sendMessage forkWorkerThread =
                         readIORef worker_environment
                         >>=
                         maybe (return ()) (killThread . workerThreadId)
-    in processNextMessage
+    in catchJust
+        (\e → case e of
+            ThreadKilled → Just ()
+            UserInterrupt → Just ()
+            _ → Nothing
+        )
+        processNextMessage
+        (const $ return ())
 -- }}}
 
 -- }}}
