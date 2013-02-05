@@ -723,6 +723,7 @@ tests = -- {{{
                  Processes.runSupervisor
                      filepath
                      ["nqueens","13"]
+                     (const $ return ())
                      Nothing
                      (forever $ requestProgressUpdate >>= (liftIO . modifyIORef progresses_ref . (:)) >> generateNoise)
              result ← case termination_reason of

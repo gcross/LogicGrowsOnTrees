@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -9,8 +10,13 @@
 -- }}}
 
 module Control.Monad.Trans.Visitor.Parallel.Processes
-    ( getProgFilepath
+    ( ProcessesControllerMonad
+    , driver
+    , getProgFilepath
     , runSupervisor
+    , runVisitor
+    , runVisitorIO
+    , runVisitorT
     , runWorkerWithVisitor
     , runWorkerWithVisitorIO
     , runWorkerWithVisitorT
@@ -19,7 +25,7 @@ module Control.Monad.Trans.Visitor.Parallel.Processes
 -- Imports {{{
 import Prelude hiding (catch)
 
-import Control.Applicative (Applicative)
+import Control.Applicative (Applicative,liftA2)
 import Control.Concurrent (ThreadId,forkIO,getNumCapabilities,killThread)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),SomeException,catch,catchJust,fromException)
 import Control.Monad (forever,liftM2,unless,void)
@@ -37,12 +43,12 @@ import Data.Maybe (fromJust,fromMaybe)
 import Data.Monoid (Monoid(mempty))
 import Data.Serialize (Serialize,encode,decode)
 
-import Options.Applicative (InfoMod,execParser,info)
+import Options.Applicative
 
-import System.Environment (getProgName)
+import System.Environment (getArgs,getProgName)
 import System.Environment.FindBin (getProgPath)
 import System.FilePath ((</>))
-import System.IO (Handle,hFlush,hGetLine,hPrint)
+import System.IO (Handle,hFlush,hGetLine,hPrint,stdin,stdout)
 import System.IO.Error (isEOFError)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO,ERROR))
@@ -87,6 +93,34 @@ instance RequestQueueMonad (ProcessesControllerMonad result) where
     requestProgressUpdateAsync = C . requestProgressUpdateAsync
 -- }}}
 
+-- Drivers {{{
+driver :: Serialize configuration ⇒ Driver IO configuration result -- {{{
+driver = Driver
+    (genericDriver runVisitor)
+    (genericDriver runVisitorIO)
+    (genericDriver . runVisitorT)
+  where
+    genericDriver run configuration_parser (infomod :: ∀ α. InfoMod α) initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager =
+        run (execParser (info (liftA2 (,) number_of_processes_options configuration_parser) infomod))
+            (initializeGlobalState . snd)
+            (getMaybeStartingProgress . snd)
+            (\(number_of_processes,configuration) → do
+                changeNumberOfWorkers (const $ return number_of_processes)
+                constructManager configuration
+            )
+            (constructVisitor . snd)
+        >>=
+        maybe (return ()) (uncurry $ notifyTerminated . snd)
+    number_of_processes_options =
+        option
+        (   long "number-of-processes"
+         <> short 'n'
+         <> help "Number of worker processes to spawn."
+         <> noArgError (ErrorMsg "You need to specify the number of processes using either -n or (equivalently) --number-of-processes.")
+        )
+-- }}}
+-- }}}
+
 -- Exposed Functions {{{
 
 getProgFilepath :: IO String -- {{{
@@ -97,10 +131,11 @@ runSupervisor :: -- {{{
     (Monoid result, Serialize result) ⇒
     String →
     [String] →
+    (Handle → IO ()) →
     Maybe (VisitorProgress result) →
     ProcessesControllerMonad result () →
     IO (TerminationReason result)
-runSupervisor worker_filepath worker_arguments maybe_starting_progress (C controller) = do
+runSupervisor worker_filepath worker_arguments sendConfigurationTo maybe_starting_progress (C controller) = do
     request_queue ← newRequestQueue
     runWorkgroup
         mempty
@@ -118,33 +153,34 @@ runSupervisor worker_filepath worker_arguments maybe_starting_progress (C contro
                         ,   close_fds = True
                         ,   create_group = True
                         }
-                    _ ← liftIO . forkIO $
-                        catchJust
-                            (\e → if isEOFError e then Just () else Nothing)
-                            (forever $ hGetLine error_handle >>= \line → debugM $ "[" ++ show worker_id ++ "] " ++ line)
-                            (const $ return ())
-                         `catch`
-                            (\(e::SomeException) → errorM $ "Error reading stderr for worker " ++ show worker_id ++ ": " ++ show e)
-                    _ ← liftIO . forkIO $ (
-                        (fix $ \receiveNextMessage → receive read_handle >>= (\message →
-                            case message of
-                                Failed message → do
-                                    receiveFailureFromWorker worker_id message
-                                    receiveNextMessage
-                                Finished final_progress → do
-                                    receiveFinishedFromWorker worker_id final_progress
-                                    receiveNextMessage
-                                ProgressUpdate progress_update → do
-                                    receiveProgressUpdateFromWorker worker_id progress_update
-                                    receiveNextMessage
-                                StolenWorkload stolen_workload → do
-                                    receiveStolenWorkloadFromWorker worker_id stolen_workload
-                                    receiveNextMessage
-                                WorkerQuit →
-                                    receiveQuitFromWorker worker_id
-                        ))
-                        `catch`
-                        (\(e::SomeException) →
+                    liftIO $ do
+                        _ ← forkIO $
+                            catchJust
+                                (\e → if isEOFError e then Just () else Nothing)
+                                (forever $ hGetLine error_handle >>= \line → debugM $ "[" ++ show worker_id ++ "] " ++ line)
+                                (const $ return ())
+                             `catch`
+                                (\(e::SomeException) → errorM $ "Error reading stderr for worker " ++ show worker_id ++ ": " ++ show e)
+                        _ ← forkIO $ (
+                            (fix $ \receiveNextMessage → receive read_handle >>= (\message →
+                                case message of
+                                    Failed message → do
+                                        receiveFailureFromWorker worker_id message
+                                        receiveNextMessage
+                                    Finished final_progress → do
+                                        receiveFinishedFromWorker worker_id final_progress
+                                        receiveNextMessage
+                                    ProgressUpdate progress_update → do
+                                        receiveProgressUpdateFromWorker worker_id progress_update
+                                        receiveNextMessage
+                                    StolenWorkload stolen_workload → do
+                                        receiveStolenWorkloadFromWorker worker_id stolen_workload
+                                        receiveNextMessage
+                                    WorkerQuit →
+                                        receiveQuitFromWorker worker_id
+                            ))
+                            `catch`
+                            (\(e::SomeException) →
                             case fromException e of
                                 Just ThreadKilled → return ()
                                 Just UserInterrupt → return ()
@@ -152,8 +188,9 @@ runSupervisor worker_filepath worker_arguments maybe_starting_progress (C contro
                                     debugM $ "Worker " ++ show worker_id ++ " failed with exception: " ++ show e
                                     interruptProcessGroupOf process_handle
                                     receiveFailureFromWorker worker_id (show e)
-                        )
-                     )
+                            )
+                         )
+                        sendConfigurationTo write_handle
                     modify . IntMap.insert worker_id $ Worker{..}
                 -- }}}
                 destroyWorker worker_id worker_is_active = do -- {{{
@@ -195,6 +232,61 @@ runSupervisor worker_filepath worker_arguments maybe_starting_progress (C contro
         ) -- }}}
         maybe_starting_progress
         controller
+-- }}}
+
+runVisitor :: -- {{{
+    (Serialize configuration, Monoid result, Serialize result) ⇒
+    IO configuration →
+    (configuration → IO ()) →
+    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → ProcessesControllerMonad result ()) →
+    (configuration → Visitor result) →
+    IO (Maybe (configuration,TerminationReason result))
+runVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+    genericRunVisitor
+        getConfiguration
+        initializeGlobalState
+        getStartingProgress
+        constructManager
+        constructVisitor
+        forkVisitorWorkerThread
+-- }}}
+
+runVisitorIO :: -- {{{
+    (Serialize configuration, Monoid result, Serialize result) ⇒
+    IO configuration →
+    (configuration → IO ()) →
+    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → ProcessesControllerMonad result ()) →
+    (configuration → VisitorIO result) →
+    IO (Maybe (configuration,TerminationReason result))
+runVisitorIO getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+    genericRunVisitor
+        getConfiguration
+        initializeGlobalState
+        getStartingProgress
+        constructManager
+        constructVisitor
+        forkVisitorIOWorkerThread
+-- }}}
+
+runVisitorT :: -- {{{
+    (Serialize configuration, Monoid result, Serialize result, Functor m, MonadIO m) ⇒
+    (∀ α. m α → IO α) →
+    IO configuration →
+    (configuration → IO ()) →
+    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → ProcessesControllerMonad result ()) →
+    (configuration → VisitorT m result) →
+    IO (Maybe (configuration,TerminationReason result))
+runVisitorT runInBase getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+    genericRunVisitor
+        getConfiguration
+        initializeGlobalState
+        getStartingProgress
+        constructManager
+        constructVisitor
+        (forkVisitorTWorkerThread runInBase)
 -- }}}
 
 runWorkerWithVisitor :: -- {{{
@@ -241,6 +333,45 @@ send handle value = do
     hPrint handle . BS.length $ encoded_value
     hPut handle encoded_value
     hFlush handle
+-- }}}
+
+genericRunVisitor :: -- {{{
+    (Serialize configuration, Monoid result, Serialize result) ⇒
+    IO configuration →
+    (configuration → IO ()) →
+    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → ProcessesControllerMonad result ()) →
+    (configuration → visitor) →
+    (
+        (VisitorWorkerTerminationReason result → IO ()) →
+        visitor →
+        VisitorWorkload →
+        IO (VisitorWorkerEnvironment result)
+    ) →
+    IO (Maybe (configuration,TerminationReason result))
+genericRunVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor forkWorkerThread =
+    getArgs >>= \args →
+    if args == sentinel
+        then do
+            configuration ← receive stdin
+            initializeGlobalState configuration
+            genericRunWorker (flip forkWorkerThread . constructVisitor $ configuration) stdin stdout
+            return Nothing
+        else do
+            configuration ← getConfiguration
+            initializeGlobalState configuration
+            program_filepath ← getProgFilepath
+            maybe_starting_progress ← getStartingProgress configuration
+            termination_result ←
+                runSupervisor
+                    program_filepath
+                    sentinel
+                    (flip send configuration)
+                    maybe_starting_progress
+                    (constructManager configuration)
+            return $ Just (configuration,termination_result)
+  where
+    sentinel = ["visitor-worker-bee"]
 -- }}}
 
 genericRunWorker :: -- {{{
