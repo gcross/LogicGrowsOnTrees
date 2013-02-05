@@ -29,6 +29,7 @@ module Control.Monad.Trans.Visitor.Supervisor -- {{{
     , receiveWorkerFinishedAndRemoved
     , receiveWorkerFinishedWithRemovalFlag
     , removeWorker
+    , removeWorkerIfPresent
     , runVisitorSupervisor
     , runVisitorSupervisorMaybeStartingFrom
     , runVisitorSupervisorStartingFrom
@@ -400,6 +401,19 @@ removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) . Visi
     ifM (isJust . Map.lookup worker_id <$> get active_workers)
         (deactivateWorker True worker_id)
         (waiting_workers_or_available_workloads %: either (Left . Set.delete worker_id) Right)
+-- }}}
+
+removeWorkerIfPresent :: -- {{{
+    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    worker_id →
+    VisitorSupervisorMonad result worker_id m ()
+removeWorkerIfPresent worker_id = postValidate ("removeWorker " ++ show worker_id) . VisitorSupervisorMonad . lift $ do
+    whenM (Set.member worker_id <$> get known_workers) $ do
+        infoM $ "Removing worker " ++ show worker_id
+        known_workers %: Set.delete worker_id
+        ifM (isJust . Map.lookup worker_id <$> get active_workers)
+            (deactivateWorker True worker_id)
+            (waiting_workers_or_available_workloads %: either (Left . Set.delete worker_id) Right)
 -- }}}
 
 runVisitorSupervisor :: -- {{{
