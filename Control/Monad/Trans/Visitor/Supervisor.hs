@@ -172,27 +172,30 @@ data VisitorSupervisorState result worker_id = -- {{{
 $( deriveAccessors ''VisitorSupervisorState )
 -- }}}
 
-data VisitorSupervisorTerminationReason result worker_id =
+data VisitorSupervisorTerminationReason result worker_id = -- {{{
     SupervisorAborted (VisitorProgress result)
   | SupervisorCompleted result
   | SupervisorFailure worker_id String
   deriving (Eq,Show)
+-- }}}
 
-data VisitorSupervisorResult result worker_id =
+data VisitorSupervisorResult result worker_id = -- {{{
     VisitorSupervisorResult
     {   visitorSupervisorTerminationReason :: VisitorSupervisorTerminationReason result worker_id
     ,   visitorSupervisorRemainingWorkers :: [worker_id]
     } deriving (Eq,Show)
+-- }}}
 
 type VisitorSupervisorContext result worker_id m = -- {{{
     StateT (VisitorSupervisorState result worker_id)
         (ReaderT (VisitorSupervisorActions result worker_id m) m)
 -- }}}
 
-type VisitorSupervisorAbortMonad result worker_id m =
+type VisitorSupervisorAbortMonad result worker_id m = -- {{{
     AbortT
         (VisitorSupervisorResult result worker_id)
         (VisitorSupervisorContext result worker_id m)
+-- }}}
 
 newtype VisitorSupervisorMonad result worker_id m α = -- {{{
     VisitorSupervisorMonad {
