@@ -51,12 +51,12 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 
 import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
+import qualified Control.Monad.Trans.Visitor.Parallel.Process as Process
+import Control.Monad.Trans.Visitor.Parallel.Process
 import Control.Monad.Trans.Visitor.Parallel.Workgroup
 import Control.Monad.Trans.Visitor.Supervisor.Driver (Driver(Driver),TerminationReason)
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker as Worker
-import qualified Control.Monad.Trans.Visitor.Worker.Process as Process
-import Control.Monad.Trans.Visitor.Worker.Process
 import Control.Monad.Trans.Visitor.Workload
 -- }}}
 

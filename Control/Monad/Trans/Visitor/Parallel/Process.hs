@@ -3,7 +3,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Worker.Process
+module Control.Monad.Trans.Visitor.Parallel.Process
     ( MessageForSupervisor(..)
     , MessageForWorker(..)
     , runWorker

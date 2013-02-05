@@ -50,6 +50,7 @@ Library
         Control.Monad.Trans.Visitor.Examples.Queens.Implementation
         Control.Monad.Trans.Visitor.Label
         Control.Monad.Trans.Visitor.Main
+        Control.Monad.Trans.Visitor.Parallel.Process
         Control.Monad.Trans.Visitor.Parallel.Processes
         Control.Monad.Trans.Visitor.Parallel.Threads
         Control.Monad.Trans.Visitor.Parallel.Workgroup
@@ -59,7 +60,6 @@ Library
         Control.Monad.Trans.Visitor.Supervisor.RequestQueue
         Control.Monad.Trans.Visitor.Utils.MonadStacks
         Control.Monad.Trans.Visitor.Worker
-        Control.Monad.Trans.Visitor.Worker.Process
         Control.Monad.Trans.Visitor.Workload
     Extensions:
 
