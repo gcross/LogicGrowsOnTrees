@@ -195,7 +195,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
                 SupervisorAborted remaining_progress → Aborted remaining_progress
                 SupervisorCompleted result → Completed result
                 SupervisorFailure worker_id message →
-                    Failure $ "Thread " ++ show worker_id ++ " failed with message: " ++ message
+                    Failure $ "Worker " ++ show worker_id ++ " failed with message: " ++ message
     killThread manager_thread_id
     return termination_reason
   where
