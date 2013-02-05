@@ -30,6 +30,7 @@ Library
         either-unwrap == 1.1.*,
         higherorder == 0.0.*,
         hslogger == 1.2.*,
+        hslogger-template == 2.0.*,
         MonadCatchIO-transformers == 0.3.*,
         monads-tf == 0.1.*,
         operational == 0.2.*,

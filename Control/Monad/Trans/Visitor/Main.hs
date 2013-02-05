@@ -39,14 +39,18 @@ import Options.Applicative
 
 import System.Directory (doesFileExist,removeFile,renameFile)
 import System.IO.Error (isDoesNotExistError)
-import System.Log (Priority(WARNING))
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (setLevel,rootLoggerName,updateGlobalLogger)
+import System.Log.Logger (Priority(DEBUG,INFO,NOTICE,WARNING),setLevel,rootLoggerName,updateGlobalLogger)
+import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor.Driver
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG,INFO,NOTICE]
 -- }}}
 
 -- Types {{{
@@ -153,17 +157,6 @@ configuration_options =
         <$> checkpoint_configuration_options
         <*> logging_configuration_options
 -- }}}
--- }}}
-
--- Logging {{{
-debugM :: MonadIO m ⇒ String → m ()
-debugM = liftIO . Logger.debugM "Main"
-
-infoM :: MonadIO m ⇒ String → m ()
-infoM = liftIO . Logger.infoM "Main"
-
-noticeM :: MonadIO m ⇒ String → m ()
-noticeM = liftIO . Logger.noticeM "Main"
 -- }}}
 
 -- Utilities {{{

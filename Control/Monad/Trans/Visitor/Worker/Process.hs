@@ -25,11 +25,17 @@ import Data.Typeable (Typeable)
 import Data.Serialize
 
 import qualified System.Log.Logger as Logger
+import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Types {{{
@@ -53,14 +59,6 @@ data MessageForWorker result = -- {{{
 $(derive makeSerialize ''MessageForWorker)
 -- }}}
 
--- }}}
-
--- Logging Functions {{{
-debugM :: String → IO ()
-debugM = Logger.debugM "Worker"
-
-infoM :: String → IO ()
-infoM = Logger.infoM "Worker"
 -- }}}
 
 -- Functions {{{

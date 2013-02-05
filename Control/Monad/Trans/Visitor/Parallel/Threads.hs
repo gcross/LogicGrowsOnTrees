@@ -26,6 +26,8 @@ import Data.Monoid (Monoid(mempty))
 import Options.Applicative (InfoMod,execParser,info)
 
 import qualified System.Log.Logger as Logger
+import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
@@ -34,6 +36,10 @@ import Control.Monad.Trans.Visitor.Supervisor.Driver (Driver(Driver),Termination
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker as Worker
 import Control.Monad.Trans.Visitor.Workload
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Types {{{
@@ -164,14 +170,6 @@ runVisitorTStartingFrom :: -- {{{
 runVisitorTStartingFrom runInIO = runVisitorTMaybeStartingFrom runInIO . Just
 -- }}}
 
--- }}}
-
--- Logging Functions {{{
-logger_name = "Threads"
-
-debugM, infoM :: MonadIO m ⇒ String → m ()
-debugM = liftIO . Logger.debugM logger_name
-infoM = liftIO . Logger.infoM logger_name
 -- }}}
 
 -- Internal Functions {{{

@@ -43,6 +43,8 @@ import qualified Data.Set as Set
 import Data.Word (Word64)
 
 import qualified System.Log.Logger as Logger
+import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Supervisor
@@ -50,6 +52,10 @@ import Control.Monad.Trans.Visitor.Supervisor.Driver (TerminationReason(..))
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker (VisitorWorkerProgressUpdate(..),VisitorWorkerStolenWorkload(..),VisitorWorkerTerminationReason(..))
 import Control.Monad.Trans.Visitor.Workload
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Types {{{
@@ -202,14 +208,6 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
             }
 -- }}}
 
--- }}}
-
--- Logging Functions {{{
-logger_name = "Workgroup"
-
-debugM, infoM :: MonadIO m ⇒ String → m ()
-debugM = liftIO . Logger.debugM logger_name
-infoM = liftIO . Logger.infoM logger_name
 -- }}}
 
 -- Internal Functions {{{

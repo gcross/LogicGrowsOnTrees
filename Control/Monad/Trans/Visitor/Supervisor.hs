@@ -73,11 +73,17 @@ import qualified Data.Sequence as Seq
 import Data.Typeable (Typeable)
 
 import qualified System.Log.Logger as Logger
+import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Path
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Workload
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Exceptions {{{
@@ -489,14 +495,6 @@ setSupervisorDebugMode :: -- {{{
 setSupervisorDebugMode = VisitorSupervisorMonad . lift . (debug_mode %=)
 -- }}}
 
--- }}}
-
--- Logging Functions {{{
-debugM :: MonadIO m ⇒ String → m ()
-debugM = liftIO . Logger.debugM "Supervisor"
-
-infoM :: MonadIO m ⇒ String → m ()
-infoM = liftIO . Logger.infoM "Supervisor"
 -- }}}
 
 -- Internal Functions {{{
