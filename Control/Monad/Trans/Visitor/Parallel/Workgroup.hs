@@ -80,7 +80,7 @@ data WorkgroupReceivers result = WorkgroupReceivers -- {{{
 -- }}}
 
 data WorkgroupState result = WorkgroupState -- {{{
-    {   pending_removal_ :: !IntSet
+    {   pending_quit_ :: !IntSet
     ,   next_worker_id_ :: !WorkerId
     ,   next_priority_ :: !RemovalPriority
     ,   removal_queue_ :: !(PSQ WorkerId RemovalPriority)
@@ -147,7 +147,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
         receiveFailureFromWorker = flip enqueueRequest request_queue .* receiveWorkerFailure
         receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do -- {{{
-            removal_flag ← IntSet.member worker_id <$> getAndModify pending_removal (IntSet.delete worker_id)
+            removal_flag ← IntSet.member worker_id <$> get pending_quit
             infoM $ if removal_flag
                 then "Worker " ++ show worker_id ++ " has finished, and will be removed."
                 else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
@@ -155,9 +155,9 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         -- }}}
         receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do -- {{{
             infoM $ "Worker " ++ show worker_id ++ " has quit."
-            removal_flag ← IntSet.member worker_id <$> getAndModify pending_removal (IntSet.delete worker_id)
-            if removal_flag
-                then removeWorker worker_id
+            quitting ← IntSet.member worker_id <$> getAndModify pending_quit (IntSet.delete worker_id)
+            if quitting
+                then removeWorkerIfPresent worker_id
                 else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
         -- }}}
         broadcast_progress_update_to_workers_action = \worker_ids →
@@ -195,7 +195,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
   where
     initial_state =
         WorkgroupState
-            {   pending_removal_ = mempty
+            {   pending_quit_ = mempty
             ,   next_worker_id_ = 0
             ,   next_priority_ = maxBound
             ,   removal_queue_ = PSQ.empty
@@ -231,6 +231,7 @@ fireAWorker =
             infoM $ "Removing waiting worker " ++ show worker_id ++ "."
             removeWorker worker_id
             removeWorkerFromRemovalQueue worker_id
+            pending_quit %: IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ False) . ($ worker_id)
         Nothing → do
             (worker_id,new_removal_queue) ← do
@@ -240,7 +241,7 @@ fireAWorker =
                         Just (worker_id :-> _,rest_queue) → return (worker_id,rest_queue)
             infoM $ "Removing active worker " ++ show worker_id ++ "."
             removal_queue %= new_removal_queue
-            pending_removal %: IntSet.insert worker_id
+            pending_quit %: IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ True) . ($ worker_id)
 
 -- }}}

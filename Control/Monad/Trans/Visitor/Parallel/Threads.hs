@@ -193,7 +193,7 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
         mempty
         (\WorkgroupReceivers{..} →
             let createWorker _ = return ()
-                destroyWorker worker_id False = return ()
+                destroyWorker worker_id False = liftIO $ receiveQuitFromWorker worker_id
                 destroyWorker worker_id True = do -- {{{
                     get >>=
                         liftIO
