@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
@@ -11,6 +12,7 @@ module Control.Monad.Trans.Visitor.Parallel.Process
 
 -- Imports {{{
 import Control.Concurrent (killThread)
+import Control.Concurrent.MVar (isEmptyMVar,newEmptyMVar,putMVar,takeMVar,tryTakeMVar)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class
@@ -18,8 +20,6 @@ import Control.Monad.IO.Class
 import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Functor ((<$>))
-import Data.IORef (IORef,newIORef,readIORef,writeIORef)
-import Data.Maybe (isJust)
 import Data.Monoid (Monoid)
 import Data.Typeable (Typeable)
 import Data.Serialize
@@ -73,11 +73,14 @@ runWorker :: -- {{{
     ) →
     IO ()
 runWorker receiveMessage sendMessage forkWorkerThread =
-    newIORef Nothing >>= \worker_environment →
+    newEmptyMVar >>= \worker_environment_mvar →
     let processRequest sendRequest constructResponse =
-            readIORef worker_environment
+            tryTakeMVar worker_environment_mvar
             >>=
-            maybe (return ()) (flip sendRequest (sendMessage . constructResponse) . workerPendingRequests)
+            maybe (return ()) (\worker_environment@VisitorWorkerEnvironment{workerPendingRequests} → do
+                sendRequest workerPendingRequests (sendMessage . constructResponse)
+                putMVar worker_environment_mvar worker_environment
+            )
         processNextMessage = receiveMessage >>= \message →
             case message of
                 RequestProgressUpdate → do
@@ -89,12 +92,12 @@ runWorker receiveMessage sendMessage forkWorkerThread =
                 Workload workload → do
                     infoM "Received workload."
                     debugM $ "Workload is: " ++ show workload
-                    worker_is_running ← isJust <$> readIORef worker_environment
+                    worker_is_running ← not <$> isEmptyMVar worker_environment_mvar
                     if worker_is_running
                         then sendMessage $ Failed "received a workload when the worker was already running"
                         else forkWorkerThread
                                 (\termination_reason → do
-                                    writeIORef worker_environment Nothing
+                                    _ ← takeMVar worker_environment_mvar
                                     case termination_reason of
                                         VisitorWorkerFinished final_progress →
                                             sendMessage $ Finished final_progress
@@ -105,12 +108,12 @@ runWorker receiveMessage sendMessage forkWorkerThread =
                                 )
                                 workload
                              >>=
-                             writeIORef worker_environment . Just
+                             putMVar worker_environment_mvar
                     processNextMessage
                 QuitWorker → do
                     sendMessage WorkerQuit
                     liftIO $
-                        readIORef worker_environment
+                        tryTakeMVar worker_environment_mvar
                         >>=
                         maybe (return ()) (killThread . workerThreadId)
     in catchJust
