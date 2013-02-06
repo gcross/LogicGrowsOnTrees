@@ -73,7 +73,7 @@ runWorker :: -- {{{
         IO (WorkerEnvironment result)
     ) →
     IO ()
-runWorker receiveMessage sendMessage forkWorkerThread =
+runWorker receiveMessage sendMessage forkVisitorWorkerThread =
     newEmptyMVar >>= \worker_environment_mvar →
     let processRequest sendRequest constructResponse =
             tryTakeMVar worker_environment_mvar
@@ -96,7 +96,7 @@ runWorker receiveMessage sendMessage forkWorkerThread =
                     worker_is_running ← not <$> isEmptyMVar worker_environment_mvar
                     if worker_is_running
                         then sendMessage $ Failed "received a workload when the worker was already running"
-                        else forkWorkerThread
+                        else forkVisitorWorkerThread
                                 (\termination_reason → do
                                     _ ← takeMVar worker_environment_mvar
                                     case termination_reason of

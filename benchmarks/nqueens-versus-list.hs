@@ -21,7 +21,7 @@ main = defaultMain
     ,bench "visitor w/ checkpointing" $ nf (getSum . runVisitorThroughCheckpoint Unexplored . nqueensCount) n
     ,bench "visitor using worker" $ do
         result_mvar ← newEmptyMVar
-        _ ← forkWorkerThread
+        _ ← forkVisitorWorkerThread
             (putMVar result_mvar)
             (nqueensCount n)
             entire_workload

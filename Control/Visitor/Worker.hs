@@ -113,6 +113,19 @@ computeProgressUpdate result initial_path cursor context checkpoint =
         )
 -- }}}
 
+forkVisitorWorkerThread :: -- {{{
+    Monoid α ⇒
+    (WorkerTerminationReason α → IO ()) →
+    Visitor α →
+    Workload →
+    IO (WorkerEnvironment α)
+forkVisitorWorkerThread =
+    genericForkVisitorTWorkerThread
+        (return .* sendVisitorDownPath)
+        (return . stepVisitorThroughCheckpoint)
+        id
+-- }}}
+
 forkVisitorIOWorkerThread :: -- {{{
     Monoid α ⇒
     (WorkerTerminationReason α → IO ()) →
@@ -133,19 +146,6 @@ forkVisitorTWorkerThread =
     genericForkVisitorTWorkerThread
         sendVisitorTDownPath
         stepVisitorTThroughCheckpoint
--- }}}
-
-forkWorkerThread :: -- {{{
-    Monoid α ⇒
-    (WorkerTerminationReason α → IO ()) →
-    Visitor α →
-    Workload →
-    IO (WorkerEnvironment α)
-forkWorkerThread =
-    genericForkVisitorTWorkerThread
-        (return .* sendVisitorDownPath)
-        (return . stepVisitorThroughCheckpoint)
-        id
 -- }}}
 
 genericForkVisitorTWorkerThread :: -- {{{

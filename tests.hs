@@ -1072,7 +1072,7 @@ tests = -- {{{
                 [testProperty "with no initial path" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     worker_environment ←
-                        forkWorkerThread
+                        forkVisitorWorkerThread
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
@@ -1089,7 +1089,7 @@ tests = -- {{{
                 ,testProperty "with an initial path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     worker_environment ←
-                        forkWorkerThread
+                        forkVisitorWorkerThread
                             (IVar.write solutions_ivar)
                             visitor
                             (Workload path Unexplored)
@@ -1182,7 +1182,7 @@ tests = -- {{{
             ,testCase "terminates successfully with null visitor" $ do -- {{{
                 termination_result_ivar ← IVar.new
                 WorkerEnvironment{..} ←
-                    forkWorkerThread
+                    forkVisitorWorkerThread
                         (IVar.write termination_result_ivar)
                         (mzero :: Visitor [Int])
                         entire_workload

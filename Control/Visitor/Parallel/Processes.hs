@@ -95,9 +95,9 @@ instance RequestQueueMonad (ProcessesControllerMonad result) where
 
 -- Drivers {{{
 driver :: Serialize configuration ⇒ Driver IO configuration visitor result -- {{{
-driver = Driver $ \forkWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
+driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
     genericRunVisitor
-        forkWorkerThread
+        forkVisitorWorkerThread
         (execParser (info (liftA2 (,) number_of_processes_options configuration_parser) infomod))
         (initializeGlobalState . snd)
         (getMaybeStartingProgress . snd)
@@ -242,7 +242,7 @@ runVisitor :: -- {{{
     IO (Maybe (configuration,TerminationReason result))
 runVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
-        forkWorkerThread
+        forkVisitorWorkerThread
         getConfiguration
         initializeGlobalState
         getStartingProgress
@@ -293,7 +293,7 @@ runWorkerWithVisitor :: -- {{{
     Handle →
     Handle →
     IO ()
-runWorkerWithVisitor = genericRunWorker . flip forkWorkerThread
+runWorkerWithVisitor = genericRunWorker . flip forkVisitorWorkerThread
 -- }}}
 
 runWorkerWithVisitorIO :: -- {{{
@@ -347,13 +347,13 @@ genericRunVisitor :: -- {{{
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → visitor result) →
     IO (Maybe (configuration,TerminationReason result))
-genericRunVisitor forkWorkerThread getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+genericRunVisitor forkVisitorWorkerThread getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     getArgs >>= \args →
     if args == sentinel
         then do
             configuration ← receive stdin
             initializeGlobalState configuration
-            genericRunWorker (flip forkWorkerThread . constructVisitor $ configuration) stdin stdout
+            genericRunWorker (flip forkVisitorWorkerThread . constructVisitor $ configuration) stdin stdout
             return Nothing
         else do
             configuration ← getConfiguration

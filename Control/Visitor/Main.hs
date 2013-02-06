@@ -176,7 +176,7 @@ mainVisitor :: -- {{{
     (visitor_configuration → TerminationReason result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
-mainVisitor (Driver runDriver) = genericMain . runDriver $ forkWorkerThread
+mainVisitor (Driver runDriver) = genericMain . runDriver $ forkVisitorWorkerThread
 -- }}}
 
 mainVisitorIO :: -- {{{

@@ -58,13 +58,13 @@ instance RequestQueueMonad (ThreadsControllerMonad result) where
 
 -- Driver {{{
 driver :: Driver IO configuration visitor result
-driver = Driver $ \forkWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
+driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
     configuration ← execParser (info configuration_parser infomod)
     initializeGlobalState configuration
     maybe_starting_progress ← getMaybeStartingProgress configuration
     genericRunVisitorStartingFrom
          maybe_starting_progress
-        (flip forkWorkerThread . constructVisitor $ configuration)
+        (flip forkVisitorWorkerThread . constructVisitor $ configuration)
         (changeNumberOfWorkersToMatchCPUs >> constructManager configuration)
      >>= notifyTerminated configuration
 -- }}}
@@ -93,7 +93,7 @@ runVisitorMaybeStartingFrom :: -- {{{
 runVisitorMaybeStartingFrom maybe_starting_progress =
     genericRunVisitorStartingFrom maybe_starting_progress
     .
-    flip forkWorkerThread
+    flip forkVisitorWorkerThread
 -- }}}
 
 runVisitorStartingFrom :: -- {{{
