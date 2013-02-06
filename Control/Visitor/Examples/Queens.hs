@@ -3,7 +3,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Examples.Queens where
+module Control.Visitor.Examples.Queens where
 
 -- Imports {{{
 import Control.Monad (MonadPlus)
@@ -13,8 +13,8 @@ import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust)
 import Data.Monoid (Sum(..))
 
-import Control.Monad.Trans.Visitor (Visitor)
-import Control.Monad.Trans.Visitor.Examples.Queens.Implementation
+import Control.Visitor (Visitor)
+import Control.Visitor.Examples.Queens.Implementation
 -- }}}
 
 -- Values -- {{{

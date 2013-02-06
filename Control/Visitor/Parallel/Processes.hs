@@ -9,7 +9,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Parallel.Processes
+module Control.Visitor.Parallel.Processes
     ( ProcessesControllerMonad
     , driver
     , getProgFilepath
@@ -55,15 +55,15 @@ import System.Log.Logger (Priority(DEBUG,INFO,ERROR))
 import System.Log.Logger.TH
 import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),ProcessHandle,createProcess,interruptProcessGroupOf)
 
-import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Main (Driver(Driver),TerminationReason)
-import qualified Control.Monad.Trans.Visitor.Parallel.Process as Process
-import Control.Monad.Trans.Visitor.Parallel.Process
-import Control.Monad.Trans.Visitor.Parallel.Workgroup
-import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
-import Control.Monad.Trans.Visitor.Worker as Worker
-import Control.Monad.Trans.Visitor.Workload
+import Control.Visitor (Visitor,VisitorIO,VisitorT)
+import Control.Visitor.Checkpoint
+import Control.Visitor.Main (Driver(Driver),TerminationReason)
+import qualified Control.Visitor.Parallel.Process as Process
+import Control.Visitor.Parallel.Process
+import Control.Visitor.Parallel.Workgroup
+import Control.Visitor.Supervisor.RequestQueue
+import Control.Visitor.Worker as Worker
+import Control.Visitor.Workload
 -- }}}
 
 -- Logging Functions {{{

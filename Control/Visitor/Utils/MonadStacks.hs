@@ -2,7 +2,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Utils.MonadStacks
+module Control.Visitor.Utils.MonadStacks
     ( MonadStacks
     , emptyStacks
     , addToStacks

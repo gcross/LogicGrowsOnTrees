@@ -5,7 +5,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Label where
+module Control.Visitor.Label where
 
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
@@ -28,9 +28,9 @@ import Data.Functor.Identity (Identity,runIdentity)
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import Data.SequentialIndex (SequentialIndex,root,leftChild,rightChild)
 
-import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Path
+import Control.Visitor
+import Control.Visitor.Checkpoint
+import Control.Visitor.Path
 -- }}}
 
 -- Classes {{{

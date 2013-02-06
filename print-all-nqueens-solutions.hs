@@ -7,7 +7,7 @@ import Data.Functor
 import Data.List (sort)
 import System.Environment
 
-import Control.Monad.Trans.Visitor.Examples.Queens
+import Control.Visitor.Examples.Queens
 -- }}}
 
 main =

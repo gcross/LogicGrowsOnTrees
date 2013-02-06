@@ -5,7 +5,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Path where
+module Control.Visitor.Path where
 
 -- Imports {{{
 import Control.Exception (Exception(),throw)
@@ -20,7 +20,7 @@ import Data.Sequence (Seq,viewl,ViewL(..))
 import Data.Serialize
 import Data.Typeable (Typeable)
 
-import Control.Monad.Trans.Visitor
+import Control.Visitor
 -- }}}
 
 -- Exceptions {{{

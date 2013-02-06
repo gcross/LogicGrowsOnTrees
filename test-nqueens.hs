@@ -26,9 +26,9 @@ import Test.QuickCheck hiding ((.&.))
 
 import Text.Printf
 
-import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Examples.Queens
-import Control.Monad.Trans.Visitor.Examples.Queens.Implementation
+import Control.Visitor
+import Control.Visitor.Examples.Queens
+import Control.Visitor.Examples.Queens.Implementation
 -- }}}
 
 -- Functions {{{

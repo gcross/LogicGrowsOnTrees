@@ -8,7 +8,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor -- {{{
+module Control.Visitor -- {{{
     ( MonadVisitor(..)
     , MonadVisitorTrans(..)
     , VisitorTInstruction(..)
@@ -40,7 +40,7 @@ import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Monoid (Monoid(..),Sum())
 import Data.Serialize (Serialize(),encode)
 
-import Control.Monad.Trans.Visitor.Utils.MonadStacks
+import Control.Visitor.Utils.MonadStacks
 -- }}}
 
 -- Classes {{{

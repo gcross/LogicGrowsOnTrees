@@ -2,7 +2,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.______ where
+module Control.Visitor.______ where
 
 -- Imports {{{
 -- }}}

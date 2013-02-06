@@ -4,7 +4,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Parallel.Process
+module Control.Visitor.Parallel.Process
     ( MessageForSupervisor(..)
     , MessageForWorker(..)
     , runWorker
@@ -28,10 +28,10 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Supervisor
-import Control.Monad.Trans.Visitor.Worker
-import Control.Monad.Trans.Visitor.Workload
+import Control.Visitor.Checkpoint
+import Control.Visitor.Supervisor
+import Control.Visitor.Worker
+import Control.Visitor.Workload
 -- }}}
 
 -- Logging Functions {{{

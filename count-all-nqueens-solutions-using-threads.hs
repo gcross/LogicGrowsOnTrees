@@ -12,9 +12,9 @@ import Options.Applicative
 
 import System.Environment
 
-import Control.Monad.Trans.Visitor.Main
-import Control.Monad.Trans.Visitor.Parallel.Threads
-import Control.Monad.Trans.Visitor.Examples.Queens
+import Control.Visitor.Main
+import Control.Visitor.Parallel.Threads
+import Control.Visitor.Examples.Queens
 -- }}}
 
 instance Serialize (Sum Int) where

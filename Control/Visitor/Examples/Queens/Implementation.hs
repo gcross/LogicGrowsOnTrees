@@ -3,7 +3,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Examples.Queens.Implementation where
+module Control.Visitor.Examples.Queens.Implementation where
 
 -- Imports {{{
 import Control.Applicative (liftA2)
@@ -14,8 +14,8 @@ import Data.List (sort)
 import Data.Monoid (Sum(..))
 import Data.Word (Word64)
 
-import Control.Monad.Trans.Visitor (Visitor,between)
-import Control.Monad.Trans.Visitor.Utils.MonadStacks (addToStacks,emptyStacks,mergeStacks)
+import Control.Visitor (Visitor,between)
+import Control.Visitor.Utils.MonadStacks (addToStacks,emptyStacks,mergeStacks)
 -- }}}
 
 -- Types {{{

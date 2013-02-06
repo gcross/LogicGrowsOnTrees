@@ -8,10 +8,10 @@ import Control.Monad
 import Criterion.Main
 import Data.Monoid
 
-import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Worker
-import Control.Monad.Trans.Visitor.Workload
+import Control.Visitor
+import Control.Visitor.Checkpoint
+import Control.Visitor.Worker
+import Control.Visitor.Workload
 -- }}}
 
 sumtree :: MonadPlus m ⇒ Int → m (Sum Int)

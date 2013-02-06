@@ -10,7 +10,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Worker where
+module Control.Visitor.Worker where
 
 -- Imports {{{
 import Prelude hiding (catch)
@@ -36,10 +36,10 @@ import Data.Sequence ((|>),(><),Seq,viewl,ViewL(..))
 import Data.Serialize
 import qualified Data.Sequence as Seq
 
-import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Path
-import Control.Monad.Trans.Visitor.Workload
+import Control.Visitor
+import Control.Visitor.Checkpoint
+import Control.Visitor.Path
+import Control.Visitor.Workload
 -- }}}
 
 -- Types {{{

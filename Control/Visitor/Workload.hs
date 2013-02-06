@@ -4,7 +4,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Workload where
+module Control.Visitor.Workload where
 
 -- Imports {{{
 import Control.Monad (join)
@@ -17,10 +17,10 @@ import Data.Monoid (Monoid(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
 
-import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Label
-import Control.Monad.Trans.Visitor.Path
+import Control.Visitor
+import Control.Visitor.Checkpoint
+import Control.Visitor.Label
+import Control.Visitor.Path
 -- }}}
 
 -- Types {{{

@@ -6,7 +6,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Supervisor.RequestQueue where
+module Control.Visitor.Supervisor.RequestQueue where
 
 -- Imports {{{
 import Prelude hiding (catch)
@@ -28,9 +28,9 @@ import Data.IORef (IORef,atomicModifyIORef,newIORef)
 import Data.Monoid (Monoid)
 import Data.Typeable (Typeable)
 
-import Control.Monad.Trans.Visitor.Checkpoint (VisitorProgress)
-import qualified Control.Monad.Trans.Visitor.Supervisor as Supervisor
-import Control.Monad.Trans.Visitor.Supervisor (VisitorSupervisorMonad)
+import Control.Visitor.Checkpoint (VisitorProgress)
+import qualified Control.Visitor.Supervisor as Supervisor
+import Control.Visitor.Supervisor (VisitorSupervisorMonad)
 -- }}}
 
 -- Classes {{{

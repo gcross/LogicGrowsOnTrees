@@ -6,7 +6,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Parallel.Workgroup
+module Control.Visitor.Parallel.Workgroup
     ( WorkerId
     , WorkgroupCallbacks(..)
     , WorkgroupControllerMonad
@@ -46,12 +46,12 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Main (TerminationReason(..))
-import Control.Monad.Trans.Visitor.Supervisor
-import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
-import Control.Monad.Trans.Visitor.Worker (VisitorWorkerProgressUpdate(..),VisitorWorkerStolenWorkload(..),VisitorWorkerTerminationReason(..))
-import Control.Monad.Trans.Visitor.Workload
+import Control.Visitor.Checkpoint
+import Control.Visitor.Main (TerminationReason(..))
+import Control.Visitor.Supervisor
+import Control.Visitor.Supervisor.RequestQueue
+import Control.Visitor.Worker (VisitorWorkerProgressUpdate(..),VisitorWorkerStolenWorkload(..),VisitorWorkerTerminationReason(..))
+import Control.Visitor.Workload
 -- }}}
 
 -- Logging Functions {{{

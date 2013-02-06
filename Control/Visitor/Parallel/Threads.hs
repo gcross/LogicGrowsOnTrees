@@ -8,7 +8,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Parallel.Threads where
+module Control.Visitor.Parallel.Threads where
 
 -- Imports {{{
 import Control.Applicative (Applicative)
@@ -29,13 +29,13 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
-import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Main (Driver(Driver),TerminationReason)
-import Control.Monad.Trans.Visitor.Parallel.Workgroup
-import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
-import Control.Monad.Trans.Visitor.Worker as Worker
-import Control.Monad.Trans.Visitor.Workload
+import Control.Visitor (Visitor,VisitorIO,VisitorT)
+import Control.Visitor.Checkpoint
+import Control.Visitor.Main (Driver(Driver),TerminationReason)
+import Control.Visitor.Parallel.Workgroup
+import Control.Visitor.Supervisor.RequestQueue
+import Control.Visitor.Worker as Worker
+import Control.Visitor.Workload
 -- }}}
 
 -- Logging Functions {{{

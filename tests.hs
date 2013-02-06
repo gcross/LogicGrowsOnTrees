@@ -83,19 +83,19 @@ import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
 import Test.QuickCheck.Property hiding ((.&.))
 
-import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Examples.Queens
-import Control.Monad.Trans.Visitor.Label
-import Control.Monad.Trans.Visitor.Main (TerminationReason(..))
-import qualified Control.Monad.Trans.Visitor.Parallel.Processes as Processes
-import qualified Control.Monad.Trans.Visitor.Parallel.Threads as Threads
-import qualified Control.Monad.Trans.Visitor.Parallel.Workgroup as Workgroup
-import Control.Monad.Trans.Visitor.Path
-import Control.Monad.Trans.Visitor.Workload
-import Control.Monad.Trans.Visitor.Worker
-import Control.Monad.Trans.Visitor.Supervisor
-import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
+import Control.Visitor
+import Control.Visitor.Checkpoint
+import Control.Visitor.Examples.Queens
+import Control.Visitor.Label
+import Control.Visitor.Main (TerminationReason(..))
+import qualified Control.Visitor.Parallel.Processes as Processes
+import qualified Control.Visitor.Parallel.Threads as Threads
+import qualified Control.Visitor.Parallel.Workgroup as Workgroup
+import Control.Visitor.Path
+import Control.Visitor.Workload
+import Control.Visitor.Worker
+import Control.Visitor.Supervisor
+import Control.Visitor.Supervisor.RequestQueue
 -- }}}
 
 -- Helpers {{{
@@ -479,7 +479,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor" -- {{{
+    ,testGroup "Control.Visitor" -- {{{
         [testGroup "Eq instance" -- {{{
             [testProperty "self" $ \(v :: Visitor [()]) → v == v
             ]
@@ -531,7 +531,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Checkpoint" -- {{{
+    ,testGroup "Control.Visitor.Checkpoint" -- {{{
         [testGroup "contextFromCheckpoint" -- {{{
             [testProperty "cache" $ \(checkpoint :: VisitorCheckpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
@@ -657,7 +657,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Label" -- {{{
+    ,testGroup "Control.Visitor.Label" -- {{{
         [testProperty "branchingFromLabel . labelFromBranching = id" $ -- {{{
             liftA2 (==)
                 (branchingFromLabel . labelFromBranching)
@@ -714,7 +714,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Parallel.Processes" $ -- {{{
+    ,testGroup "Control.Visitor.Parallel.Processes" $ -- {{{
       let runTest generateNoise = do
              let visitor = nqueensCount 13
              progresses_ref ← newIORef []
@@ -747,7 +747,7 @@ tests = -- {{{
           1 → Workgroup.changeNumberOfWorkers (return . (+1))
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Parallel.Threads" $ -- {{{
+    ,testGroup "Control.Visitor.Parallel.Threads" $ -- {{{
         let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
                 termination_reason_ivar ← IVar.new
                 token_mvar ← newEmptyMVar
@@ -794,7 +794,7 @@ tests = -- {{{
           2 → void $ requestProgressUpdateAsync receiveProgress
       ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Path" -- {{{
+    ,testGroup "Control.Visitor.Path" -- {{{
         [testGroup "sendVisitorDownPath" -- {{{
             [testCase "null path" $ (runVisitor . sendVisitorDownPath Seq.empty) (return [42]) @?= [42]
             ,testCase "cache" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
@@ -872,7 +872,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Supervisor" -- {{{
+    ,testGroup "Control.Visitor.Supervisor" -- {{{
         [testCase "immediately abort" $ -- {{{
             runVisitorSupervisor bad_test_supervisor_actions abortSupervisor
             >>= (@?= VisitorSupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([] :: [Int]))
@@ -1049,7 +1049,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Monad.Trans.Visitor.Worker" -- {{{
+    ,testGroup "Control.Visitor.Worker" -- {{{
         [testGroup "forkVisitor(X)WorkerThread" -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new

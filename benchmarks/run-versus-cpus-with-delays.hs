@@ -13,8 +13,8 @@ import Control.Monad.IO.Class
 import Data.Bits
 import Data.Monoid
 
-import Control.Monad.Trans.Visitor (VisitorIO)
-import Control.Monad.Trans.Visitor.Parallel.Threads
+import Control.Visitor (VisitorIO)
+import Control.Visitor.Parallel.Threads
 
 import System.Log.Logger
 

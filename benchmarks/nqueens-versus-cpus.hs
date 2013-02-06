@@ -10,9 +10,9 @@ import Control.Monad
 import Data.Bits
 import Data.Monoid
 
-import Control.Monad.Trans.Visitor (Visitor)
-import Control.Monad.Trans.Visitor.Examples.Queens
-import Control.Monad.Trans.Visitor.Parallel.Threads
+import Control.Visitor (Visitor)
+import Control.Visitor.Examples.Queens
+import Control.Visitor.Parallel.Threads
 
 import Criterion.Main
 -- }}}

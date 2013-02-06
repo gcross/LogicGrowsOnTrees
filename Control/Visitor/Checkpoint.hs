@@ -10,7 +10,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Monad.Trans.Visitor.Checkpoint where
+module Control.Visitor.Checkpoint where
 
 -- Imports {{{
 import Control.Exception (Exception(),throw)
@@ -31,8 +31,8 @@ import qualified Data.Sequence as Seq
 import Data.Serialize
 import Data.Typeable (Typeable)
 
-import Control.Monad.Trans.Visitor
-import Control.Monad.Trans.Visitor.Path
+import Control.Visitor
+import Control.Visitor.Path
 -- }}}
 
 -- Types {{{
