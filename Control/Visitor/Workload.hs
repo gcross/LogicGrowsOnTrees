@@ -27,7 +27,7 @@ import Control.Visitor.Path
 
 data VisitorWorkload = VisitorWorkload -- {{{
     {   visitorWorkloadPath :: VisitorPath
-    ,   visitorWorkloadCheckpoint :: VisitorCheckpoint
+    ,   visitorWorkloadCheckpoint :: Checkpoint
     } deriving (Eq,Show)
 $( derive makeSerialize ''VisitorWorkload )
 -- }}}
@@ -75,7 +75,7 @@ walkVisitorThroughWorkload :: -- {{{
     Monoid α ⇒
     VisitorWorkload →
     Visitor α →
-    [(α,VisitorCheckpoint)]
+    [(α,Checkpoint)]
 walkVisitorThroughWorkload VisitorWorkload{..} =
     walkVisitorThroughCheckpoint visitorWorkloadCheckpoint
     .
@@ -86,14 +86,14 @@ walkVisitorTThroughWorkload :: -- {{{
     (Functor m, Monad m, Monoid α) ⇒
     VisitorWorkload →
     VisitorT m α →
-    VisitorTResultFetcher m α
+    ResultFetcher m α
 walkVisitorTThroughWorkload VisitorWorkload{..} =
-    VisitorTResultFetcher
+    ResultFetcher
     .
     join
     .
     fmap (
-        fetchVisitorTResult
+        fetchResult
         .
         walkVisitorTThroughCheckpoint visitorWorkloadCheckpoint
     )

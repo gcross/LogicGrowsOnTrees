@@ -42,7 +42,7 @@ deriveLoggers "Logger" [DEBUG,INFO]
 
 data MessageForSupervisor result = -- {{{
     Failed String
-  | Finished (VisitorProgress result)
+  | Finished (Progress result)
   | ProgressUpdate (VisitorWorkerProgressUpdate result)
   | StolenWorkload (Maybe (VisitorWorkerStolenWorkload result))
   | WorkerQuit

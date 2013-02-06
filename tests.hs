@@ -184,7 +184,7 @@ instance Monad m ⇒ Arbitrary (UniqueVisitorT m) where -- {{{
             fmap (construct . xor x >=>) $ next new_intermediate
 -- }}}
 
-instance Arbitrary VisitorCheckpoint where -- {{{
+instance Arbitrary Checkpoint where -- {{{
     arbitrary = sized arb
       where
         arb 0 = elements [Explored,Unexplored]
@@ -209,8 +209,8 @@ instance Arbitrary α ⇒ Arbitrary (VisitorSolution α) where -- {{{
     arbitrary = VisitorSolution <$> arbitrary <*> arbitrary
 -- }}}
 
-instance Arbitrary α ⇒ Arbitrary (VisitorProgress α) where -- {{{
-    arbitrary = VisitorProgress <$> arbitrary <*> arbitrary
+instance Arbitrary α ⇒ Arbitrary (Progress α) where -- {{{
+    arbitrary = Progress <$> arbitrary <*> arbitrary
 -- }}}
 
 instance Arbitrary α ⇒ Arbitrary (VisitorWorkerProgressUpdate α) where -- {{{
@@ -321,9 +321,9 @@ addAppendProgressBroadcastIdsAction actions = do
 
 addReceiveCurrentProgressAction :: -- {{{
     SupervisorActions result worker_id IO →
-    IO (IORef (Maybe (VisitorProgress result)),SupervisorActions result worker_id IO)
+    IO (IORef (Maybe (Progress result)),SupervisorActions result worker_id IO)
 addReceiveCurrentProgressAction actions = do
-    maybe_progress_ref ← newIORef (Nothing :: Maybe (VisitorProgress result))
+    maybe_progress_ref ← newIORef (Nothing :: Maybe (Progress result))
     return (maybe_progress_ref, actions {
         receive_current_progress_action = \progress → do
             maybe_old_progress ← readIORef maybe_progress_ref
@@ -376,7 +376,7 @@ shuffle items = do
     return (hd:tl)
 -- }}}
 
-randomCheckpointForVisitor :: Monoid α ⇒ Visitor α → Gen (α,VisitorCheckpoint) -- {{{
+randomCheckpointForVisitor :: Monoid α ⇒ Visitor α → Gen (α,Checkpoint) -- {{{
 randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
   where
     go1 visitor = frequency
@@ -533,22 +533,22 @@ tests = -- {{{
      -- }}}
     ,testGroup "Control.Visitor.Checkpoint" -- {{{
         [testGroup "contextFromCheckpoint" -- {{{
-            [testProperty "cache" $ \(checkpoint :: VisitorCheckpoint) (i :: Int) → -- {{{
+            [testProperty "cache" $ \(checkpoint :: Checkpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
                 ==
                 (mergeCheckpointRoot $ CacheCheckpoint (encode i) checkpoint)
              -- }}}
-            ,testProperty "left branch" $ \(inner_checkpoint :: VisitorCheckpoint) (other_visitor :: Visitor [()]) (other_checkpoint :: VisitorCheckpoint) → -- {{{
+            ,testProperty "left branch" $ \(inner_checkpoint :: Checkpoint) (other_visitor :: Visitor [()]) (other_checkpoint :: Checkpoint) → -- {{{
                 (checkpointFromContext (Seq.singleton (LeftBranchContextStep other_checkpoint other_visitor)) inner_checkpoint)
                 ==
                 (mergeCheckpointRoot $ ChoiceCheckpoint inner_checkpoint other_checkpoint)
              -- }}}
-            ,testProperty "right branch" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
+            ,testProperty "right branch" $ \(checkpoint :: Checkpoint) → -- {{{
                 checkpointFromContext (Seq.singleton RightBranchContextStep) checkpoint
                 ==
                 (mergeCheckpointRoot $ ChoiceCheckpoint Explored checkpoint)
              -- }}}
-            ,testProperty "empty" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
+            ,testProperty "empty" $ \(checkpoint :: Checkpoint) → -- {{{
                 checkpointFromContext Seq.empty checkpoint == checkpoint
              -- }}}
             ]
@@ -581,7 +581,7 @@ tests = -- {{{
                 ,((ChoiceCheckpoint Unexplored Unexplored),CacheCheckpoint (encode (42 :: Int)) Unexplored)
                 ]
              -- }}}
-            ,testProperty "unit element laws" $ \(checkpoint :: VisitorCheckpoint) → -- {{{
+            ,testProperty "unit element laws" $ \(checkpoint :: Checkpoint) → -- {{{
                 (mempty `mappend` checkpoint == checkpoint) && (checkpoint `mappend` mempty == checkpoint)
              -- }}}
             ]
@@ -734,7 +734,7 @@ tests = -- {{{
              result @?= correct_result
              progresses ← remdups <$> readIORef progresses_ref
              replicateM_ 4 $ randomRIO (0,length progresses-1) >>= \i → do
-                 let VisitorProgress checkpoint result = progresses !! i
+                 let Progress checkpoint result = progresses !! i
                  result @=? runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
                  correct_result @=? mappend result (runVisitorThroughCheckpoint checkpoint visitor)
       in [testCase "one process" . runTest . void $ do
@@ -753,7 +753,7 @@ tests = -- {{{
                 token_mvar ← newEmptyMVar
                 request_mvar ← newEmptyMVar
                 progresses_ref ← newIORef []
-                let receiveProgress (VisitorProgress Unexplored _) = return ()
+                let receiveProgress (Progress Unexplored _) = return ()
                     receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
                 termination_reason ←
                     Threads.runVisitorIO
@@ -774,7 +774,7 @@ tests = -- {{{
                     Failure message → error message
                 let correct_result = runVisitor visitor
                 result @?= correct_result
-                (remdups <$> readIORef progresses_ref) >>= mapM_ (\(VisitorProgress checkpoint result) → do
+                (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
                     result @=? runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
                     correct_result @=? mappend result (runVisitorThroughCheckpoint checkpoint visitor)
                  )
@@ -875,7 +875,7 @@ tests = -- {{{
     ,testGroup "Control.Visitor.Supervisor" -- {{{
         [testCase "immediately abort" $ -- {{{
             runSupervisor bad_test_supervisor_actions abortSupervisor
-            >>= (@?= SupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([] :: [Int]))
+            >>= (@?= SupervisorResult (SupervisorAborted (Progress Unexplored ())) ([] :: [Int]))
          -- }}}
         ,testCase "failure" $ -- {{{
             runSupervisor bad_test_supervisor_actions (receiveWorkerFailure () "FAIL" :: ∀ α. SupervisorMonad () () IO α)
@@ -888,7 +888,7 @@ tests = -- {{{
                     enableSupervisorDebugMode
                     addWorker ()
                     abortSupervisor
-                 ) >>= (@?= SupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) [()])
+                 ) >>= (@?= SupervisorResult (SupervisorAborted (Progress Unexplored ())) [()])
                 readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
              -- }}}
             ,testCase "add then remove one worker then abort" $ do -- {{{
@@ -898,7 +898,7 @@ tests = -- {{{
                     addWorker ()
                     removeWorker ()
                     abortSupervisor
-                 ) >>= (@?= SupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) [])
+                 ) >>= (@?= SupervisorResult (SupervisorAborted (Progress Unexplored ())) [])
                 readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
              -- }}}
             ,testCase "add then remove then add one worker then abort" $ do -- {{{
@@ -909,7 +909,7 @@ tests = -- {{{
                     removeWorker 1
                     addWorker 2
                     abortSupervisor
-                 ) >>= (@?= SupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([2::Int]))
+                 ) >>= (@?= SupervisorResult (SupervisorAborted (Progress Unexplored ())) ([2::Int]))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
              -- }}}
             ,testCase "add two workers then remove first worker then abort" $ do -- {{{
@@ -921,7 +921,7 @@ tests = -- {{{
                     addWorker 2
                     removeWorker 1
                     abortSupervisor
-                 ) >>= (@?= SupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([2::Int]))
+                 ) >>= (@?= SupervisorResult (SupervisorAborted (Progress Unexplored ())) ([2::Int]))
                 readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
                 readIORef broadcast_ids_list_ref >>= (@?= [[1]])
              -- }}}
@@ -948,7 +948,7 @@ tests = -- {{{
                         mapM_ addWorker worker_ids_to_add
                         mapM_ removeWorker worker_ids_to_remove
                         abortSupervisor
-                    progress @?= SupervisorAborted (VisitorProgress Unexplored ())
+                    progress @?= SupervisorAborted (Progress Unexplored ())
                     worker_ids_left @?= sort remaining_worker_ids
                     readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
                     readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
@@ -962,8 +962,8 @@ tests = -- {{{
                     enableSupervisorDebugMode
                     performGlobalProgressUpdate
                     abortSupervisor
-                 ) >>= (@?= SupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) ([]::[()]))
-                readIORef maybe_progress_ref >>= (@?= Just (VisitorProgress Unexplored ()))
+                 ) >>= (@?= SupervisorResult (SupervisorAborted (Progress Unexplored ())) ([]::[()]))
+                readIORef maybe_progress_ref >>= (@?= Just (Progress Unexplored ()))
              -- }}}
             ,testProperty "request progress update when all active workers present leave" $ do -- {{{
                 number_of_active_workers ← choose (1,10 :: Int)
@@ -974,7 +974,7 @@ tests = -- {{{
                     (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                     (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                     let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                    let progress = VisitorProgress Unexplored (Sum 0)
+                    let progress = Progress Unexplored (Sum 0)
                     (runSupervisor actions3 $ do
                         addWorker 0
                         forM_ (zip [0..] (tail active_workers)) $ \(prefix_count,worker_id) → do
@@ -994,7 +994,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction actions2
-                let progress = VisitorProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 (runSupervisor actions3 $ do
                     enableSupervisorDebugMode
                     addWorker ()
@@ -1009,7 +1009,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                let progress = VisitorProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 (runSupervisor actions3 $ do
                     enableSupervisorDebugMode
                     addWorker (1 :: Int)
@@ -1032,7 +1032,7 @@ tests = -- {{{
                     addWorker 2
                     receiveStolenWorkload 1 Nothing
                     abortSupervisor
-                 ) >>= (@?= SupervisorResult (SupervisorAborted (VisitorProgress Unexplored ())) [1,2])
+                 ) >>= (@?= SupervisorResult (SupervisorAborted (Progress Unexplored ())) [1,2])
                 readIORef broadcast_ids_list_ref >>= (@?= [[1],[1]])
              -- }}}
             ]
@@ -1040,7 +1040,7 @@ tests = -- {{{
         ,testCase "starting from previous checkpoint" $ do -- {{{
             (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
             let checkpoint = ChoiceCheckpoint Unexplored Unexplored
-                progress = VisitorProgress checkpoint (Sum 1)
+                progress = Progress checkpoint (Sum 1)
             (runSupervisorStartingFrom progress actions $ do
                 addWorker ()
                 abortSupervisor
@@ -1076,7 +1076,7 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
-                    VisitorProgress checkpoint solutions ←
+                    Progress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
@@ -1093,7 +1093,7 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             (VisitorWorkload path Unexplored)
-                    VisitorProgress checkpoint solutions ←
+                    Progress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
@@ -1109,13 +1109,13 @@ tests = -- {{{
                 let runAnalysis visitor termination_flag termination_result_ivar progress_updates_ref = do -- {{{
                         termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                         remaining_solutions ← case termination_result of
-                            VisitorWorkerFinished (visitorResult → solutions) → return solutions
+                            VisitorWorkerFinished (progressResult → solutions) → return solutions
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                         (IVar.nonblocking . IVar.read) termination_flag >>= assertBool "is the termination flag set?" . isJust
                         progress_updates ← reverse <$> readIORef progress_updates_ref
                         let correct_solutions = runVisitor visitor
-                            update_solutions = map (visitorResult . visitorWorkerProgressUpdate) progress_updates
+                            update_solutions = map (progressResult . visitorWorkerProgressUpdate) progress_updates
                             all_solutions = remaining_solutions:update_solutions
                         forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
                             forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
@@ -1129,7 +1129,7 @@ tests = -- {{{
                             total_solutions
                         let accumulated_update_solutions = scanl1 mappend update_solutions
                         sequence_ $
-                            zipWith (\accumulated_solutions (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) → do
+                            zipWith (\accumulated_solutions (VisitorWorkerProgressUpdate (Progress checkpoint _) remaining_workload) → do
                                 let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
                                 assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
                                     (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
@@ -1188,7 +1188,7 @@ tests = -- {{{
                         entire_workload
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
-                    VisitorWorkerFinished (visitorResult → solutions) → solutions @?= mempty
+                    VisitorWorkerFinished (progressResult → solutions) → solutions @?= mempty
                     VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
                     VisitorWorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
@@ -1197,7 +1197,7 @@ tests = -- {{{
             ,testGroup "work stealing correctly preserves total workload" $ -- {{{
                 let runManyStealsAnalysis visitor termination_flag termination_result_ivar steals_ref = do -- {{{
                         termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                        (VisitorProgress checkpoint remaining_solutions) ← case termination_result of
+                        (Progress checkpoint remaining_solutions) ← case termination_result of
                             VisitorWorkerFinished final_progress → return final_progress
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
@@ -1206,7 +1206,7 @@ tests = -- {{{
                         let correct_solutions = runVisitor visitor
                             prestolen_solutions =
                                 map (
-                                    visitorResult
+                                    progressResult
                                     .
                                     visitorWorkerProgressUpdate
                                     .
@@ -1230,7 +1230,7 @@ tests = -- {{{
                             total_solutions
                         let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
                             accumulated_stolen_solutions = scanl1 mappend stolen_solutions
-                        sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint _) remaining_workload) _) → do
+                        sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (Progress checkpoint _) remaining_workload) _) → do
                             let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
                                 accumulated_solutions = acc_prestolen `mappend` acc_stolen
                             assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
@@ -1266,7 +1266,7 @@ tests = -- {{{
                     takeMVar reached_position_mvar
                     sendWorkloadStealRequest workerPendingRequests $ writeIORef maybe_workload_ref
                     IVar.write blocking_value_ivar (IntSet.singleton 202020202)
-                    final_progress@(VisitorProgress checkpoint remaining_solutions) ←
+                    final_progress@(Progress checkpoint remaining_solutions) ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of
@@ -1274,7 +1274,7 @@ tests = -- {{{
                             VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             VisitorWorkerAborted → error "worker aborted prematurely"
                     (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
-                    VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (VisitorProgress checkpoint prestolen_solutions) remaining_workload) stolen_workload ←
+                    VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (Progress checkpoint prestolen_solutions) remaining_workload) stolen_workload ←
                         fmap (fromMaybe (error "stolen workload not available"))
                         $
                         readIORef maybe_workload_ref

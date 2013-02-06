@@ -28,7 +28,7 @@ import Data.IORef (IORef,atomicModifyIORef,newIORef)
 import Data.Monoid (Monoid)
 import Data.Typeable (Typeable)
 
-import Control.Visitor.Checkpoint (VisitorProgress)
+import Control.Visitor.Checkpoint (Progress)
 import qualified Control.Visitor.Supervisor as Supervisor
 import Control.Visitor.Supervisor (SupervisorMonad)
 -- }}}
@@ -39,9 +39,9 @@ class MonadCatchIO m ⇒ RequestQueueMonad m where -- {{{
     type RequestQueueMonadResult m :: *
     abort :: m ()
     fork :: m () → m ThreadId
-    getCurrentProgressAsync :: (VisitorProgress (RequestQueueMonadResult m) → IO ()) → m ()
+    getCurrentProgressAsync :: (Progress (RequestQueueMonadResult m) → IO ()) → m ()
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
-    requestProgressUpdateAsync :: (VisitorProgress (RequestQueueMonadResult m) → IO ()) → m ()
+    requestProgressUpdateAsync :: (Progress (RequestQueueMonadResult m) → IO ()) → m ()
 -- }}}
 
 -- }}}
@@ -51,7 +51,7 @@ class MonadCatchIO m ⇒ RequestQueueMonad m where -- {{{
 type Request result worker_id m = SupervisorMonad result worker_id m ()
 data RequestQueue result worker_id m = RequestQueue -- {{{
     {   requests :: !(TChan (Request result worker_id m))
-    ,   receivers :: !(IORef [VisitorProgress result → IO ()])
+    ,   receivers :: !(IORef [Progress result → IO ()])
     }
 -- }}}
 type RequestQueueReader result worker_id m  = ReaderT (RequestQueue result worker_id m) IO
@@ -83,7 +83,7 @@ instance (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Funct
 
 addProgressReceiver :: -- {{{
     MonadIO m' ⇒
-    (VisitorProgress result → IO ()) →
+    (Progress result → IO ()) →
     RequestQueue result worker_id m →
     m' ()
 addProgressReceiver receiver =
@@ -105,7 +105,7 @@ enqueueRequest = flip $
     (writeTChan . requests)
 -- }}}
 
-getCurrentProgress :: RequestQueueMonad m ⇒ m (VisitorProgress (RequestQueueMonadResult m)) -- {{{
+getCurrentProgress :: RequestQueueMonad m ⇒ m (Progress (RequestQueueMonadResult m)) -- {{{
 getCurrentProgress = syncAsync getCurrentProgressAsync
 -- }}}
 
@@ -160,7 +160,7 @@ processRequest =
 receiveProgress :: -- {{{
     MonadIO m' ⇒
     RequestQueue result worker_id m →
-    VisitorProgress result →
+    Progress result →
     m' ()
 receiveProgress queue progress =
     liftIO
@@ -176,7 +176,7 @@ receiveProgress queue progress =
     queue
 -- }}}
 
-requestProgressUpdate :: RequestQueueMonad m ⇒ m (VisitorProgress (RequestQueueMonadResult m)) -- {{{
+requestProgressUpdate :: RequestQueueMonad m ⇒ m (Progress (RequestQueueMonadResult m)) -- {{{
 requestProgressUpdate = syncAsync requestProgressUpdateAsync
 -- }}}
 

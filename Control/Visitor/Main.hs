@@ -101,7 +101,7 @@ data Driver result_monad configuration visitor result =  -- {{{
         Parser configuration →
         (∀ α. InfoMod α) →
         (configuration → IO ()) →
-        (configuration → IO (Maybe (VisitorProgress result))) →
+        (configuration → IO (Maybe (Progress result))) →
         (configuration → TerminationReason result → IO ()) →
         (configuration → visitor result) →
         (configuration → manager_monad result ()) →
@@ -109,7 +109,7 @@ data Driver result_monad configuration visitor result =  -- {{{
     )
 
 data TerminationReason result = -- {{{
-    Aborted (VisitorProgress result)
+    Aborted (Progress result)
   | Completed result
   | Failure String
   deriving (Eq,Show)
@@ -236,7 +236,7 @@ genericMain :: -- {{{
         Parser (Configuration,visitor_configuration) →
         (∀ α. InfoMod α) →
         ((Configuration,visitor_configuration) → IO ()) →
-        ((Configuration,visitor_configuration) → IO (Maybe (VisitorProgress result))) →
+        ((Configuration,visitor_configuration) → IO (Maybe (Progress result))) →
         ((Configuration,visitor_configuration) → TerminationReason result → IO ()) →
         ((Configuration,visitor_configuration) → visitor) →
         ((Configuration,visitor_configuration) → manager_monad result ()) →
@@ -294,7 +294,7 @@ removeFileIfExists path =
         (removeFile path)
 -- }}}
 
-writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → VisitorProgress result → m () -- {{{
+writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{
 writeCheckpointFile checkpoint_path checkpoint = do
     noticeM $ "Writing checkpoint file"
     liftIO $

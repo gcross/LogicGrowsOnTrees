@@ -80,7 +80,7 @@ data WorkgroupReceivers result = WorkgroupReceivers -- {{{
     {   receiveProgressUpdateFromWorker :: WorkerId → VisitorWorkerProgressUpdate result → IO ()
     ,   receiveStolenWorkloadFromWorker :: WorkerId → Maybe (VisitorWorkerStolenWorkload result) → IO ()
     ,   receiveFailureFromWorker :: WorkerId → String → IO ()
-    ,   receiveFinishedFromWorker :: WorkerId → (VisitorProgress result) → IO ()
+    ,   receiveFinishedFromWorker :: WorkerId → (Progress result) → IO ()
     ,   receiveQuitFromWorker :: WorkerId → IO ()
     }
 -- }}}
@@ -144,7 +144,7 @@ runWorkgroup :: -- {{{
     Monoid result ⇒
     inner_state →
     (WorkgroupReceivers result → WorkgroupCallbacks inner_state) →
-    Maybe (VisitorProgress result) →
+    Maybe (Progress result) →
     WorkgroupControllerMonad inner_state result () →
     IO (TerminationReason result)
 runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C controller) = do

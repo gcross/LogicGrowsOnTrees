@@ -45,7 +45,7 @@ import Control.Visitor.Workload
 -- Types {{{
 
 data VisitorWorkerProgressUpdate α = VisitorWorkerProgressUpdate -- {{{
-    {   visitorWorkerProgressUpdate :: VisitorProgress α
+    {   visitorWorkerProgressUpdate :: Progress α
     ,   visitorWorkerRemainingWorkload :: VisitorWorkload
     } deriving (Eq,Show)
 $( derive makeSerialize ''VisitorWorkerProgressUpdate )
@@ -75,7 +75,7 @@ data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
 -- }}}
 
 data VisitorWorkerTerminationReason α = -- {{{
-    VisitorWorkerFinished (VisitorProgress α)
+    VisitorWorkerFinished (Progress α)
   | VisitorWorkerFailed String
   | VisitorWorkerAborted
   deriving (Show)
@@ -88,13 +88,13 @@ data VisitorWorkerTerminationReason α = -- {{{
 computeProgressUpdate :: -- {{{
     α →
     VisitorPath →
-    VisitorCheckpointCursor →
-    VisitorTContext m α →
-    VisitorCheckpoint →
+    CheckpointCursor →
+    Context m α →
+    Checkpoint →
     VisitorWorkerProgressUpdate α
 computeProgressUpdate result initial_path cursor context checkpoint =
     VisitorWorkerProgressUpdate
-        (VisitorProgress
+        (Progress
             (checkpointFromInitialPath initial_path
              .
              checkpointFromCursor cursor
@@ -206,7 +206,7 @@ genericForkVisitorTWorkerThread
                     .
                     VisitorWorkerFinished
                     .
-                    flip VisitorProgress new_result
+                    flip Progress new_result
                     .
                     checkpointFromInitialPath initial_path
                     .
@@ -265,9 +265,9 @@ sendWorkloadStealRequest queue = sendRequest queue . WorkloadStealRequested
 
 tryStealWorkload :: -- {{{
     VisitorPath →
-    VisitorCheckpointCursor →
-    VisitorTContext m α →
-    Maybe (VisitorCheckpointCursor,VisitorTContext m α,VisitorWorkload)
+    CheckpointCursor →
+    Context m α →
+    Maybe (CheckpointCursor,Context m α,VisitorWorkload)
 tryStealWorkload initial_path = go
   where
     go _      (viewl → EmptyL) = Nothing

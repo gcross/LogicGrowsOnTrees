@@ -130,7 +130,7 @@ runSupervisor :: -- {{{
     String →
     [String] →
     (Handle → IO ()) →
-    Maybe (VisitorProgress result) →
+    Maybe (Progress result) →
     ProcessesControllerMonad result () →
     IO (TerminationReason result)
 runSupervisor worker_filepath worker_arguments sendConfigurationTo maybe_starting_progress (C controller) = do
@@ -236,7 +236,7 @@ runVisitor :: -- {{{
     (Serialize configuration, Monoid result, Serialize result) ⇒
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → Visitor result) →
     IO (Maybe (configuration,TerminationReason result))
@@ -254,7 +254,7 @@ runVisitorIO :: -- {{{
     (Serialize configuration, Monoid result, Serialize result) ⇒
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → VisitorIO result) →
     IO (Maybe (configuration,TerminationReason result))
@@ -273,7 +273,7 @@ runVisitorT :: -- {{{
     (∀ α. m α → IO α) →
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → VisitorT m result) →
     IO (Maybe (configuration,TerminationReason result))
@@ -343,7 +343,7 @@ genericRunVisitor :: -- {{{
     ) →
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (VisitorProgress result))) →
+    (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → visitor result) →
     IO (Maybe (configuration,TerminationReason result))

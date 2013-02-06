@@ -86,7 +86,7 @@ runVisitor = runVisitorMaybeStartingFrom Nothing
 
 runVisitorMaybeStartingFrom :: -- {{{
     Monoid result ⇒
-    Maybe (VisitorProgress result) →
+    Maybe (Progress result) →
     Visitor result →
     ThreadsControllerMonad result () →
     IO (TerminationReason result)
@@ -98,7 +98,7 @@ runVisitorMaybeStartingFrom maybe_starting_progress =
 
 runVisitorStartingFrom :: -- {{{
     Monoid result ⇒
-    VisitorProgress result →
+    Progress result →
     Visitor result →
     ThreadsControllerMonad result () →
     IO (TerminationReason result)
@@ -115,7 +115,7 @@ runVisitorIO = runVisitorIOMaybeStartingFrom Nothing
 
 runVisitorIOMaybeStartingFrom :: -- {{{
     Monoid result ⇒
-    Maybe (VisitorProgress result) →
+    Maybe (Progress result) →
     VisitorIO result →
     ThreadsControllerMonad result () →
     IO (TerminationReason result)
@@ -127,7 +127,7 @@ runVisitorIOMaybeStartingFrom maybe_starting_progress =
 
 runVisitorIOStartingFrom :: -- {{{
     Monoid result ⇒
-    VisitorProgress result →
+    Progress result →
     VisitorIO result →
     ThreadsControllerMonad result () →
     IO (TerminationReason result)
@@ -146,7 +146,7 @@ runVisitorT = flip runVisitorTMaybeStartingFrom Nothing
 runVisitorTMaybeStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
-    Maybe (VisitorProgress result) →
+    Maybe (Progress result) →
     VisitorT m result →
     ThreadsControllerMonad result () →
     IO (TerminationReason result)
@@ -159,7 +159,7 @@ runVisitorTMaybeStartingFrom runMonad maybe_starting_progress =
 runVisitorTStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
-    VisitorProgress result →
+    Progress result →
     VisitorT m result →
     ThreadsControllerMonad result () →
     IO (TerminationReason result)
@@ -174,7 +174,7 @@ fromJustOrBust message = fromMaybe (error message)
 
 genericRunVisitorStartingFrom :: -- {{{
     Monoid result ⇒
-    Maybe (VisitorProgress result) →
+    Maybe (Progress result) →
     (
         (VisitorWorkerTerminationReason result → IO ()) →
         VisitorWorkload →

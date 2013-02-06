@@ -90,7 +90,7 @@ deriveLoggers "Logger" [DEBUG,INFO]
 
 -- InconsistencyError {{{
 data InconsistencyError = -- {{{
-    IncompleteWorkspace VisitorCheckpoint
+    IncompleteWorkspace Checkpoint
   | OutOfSourcesForNewWorkloads
   | SpaceFullyExploredButSearchNotTerminated
   deriving (Eq,Typeable)
@@ -158,7 +158,7 @@ data SupervisorActions result worker_id m = -- {{{
     SupervisorActions
     {   broadcast_progress_update_to_workers_action :: [worker_id] → m ()
     ,   broadcast_workload_steal_to_workers_action :: [worker_id] → m ()
-    ,   receive_current_progress_action :: VisitorProgress result → m ()
+    ,   receive_current_progress_action :: Progress result → m ()
     ,   send_workload_to_worker_action :: VisitorWorkload → worker_id → m ()
     }
 -- }}}
@@ -172,14 +172,14 @@ data SupervisorState result worker_id = -- {{{
     ,   available_workers_for_steal_ :: !(IntMap (Set worker_id))
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
     ,   workers_pending_progress_update_ :: !(Set worker_id)
-    ,   current_progress_ :: !(VisitorProgress result)
+    ,   current_progress_ :: !(Progress result)
     ,   debug_mode_ :: !Bool
     }
 $( deriveAccessors ''SupervisorState )
 -- }}}
 
 data SupervisorTerminationReason result worker_id = -- {{{
-    SupervisorAborted (VisitorProgress result)
+    SupervisorAborted (Progress result)
   | SupervisorCompleted result
   | SupervisorFailure worker_id String
   deriving (Eq,Show)
@@ -285,7 +285,7 @@ enableSupervisorDebugMode = setSupervisorDebugMode True
 
 getCurrentProgress :: -- {{{
     (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    SupervisorMonad result worker_id m (VisitorProgress result)
+    SupervisorMonad result worker_id m (Progress result)
 getCurrentProgress = SupervisorMonad . lift . get $ current_progress
 -- }}}
 
@@ -360,7 +360,7 @@ receiveWorkerFailure =
 receiveWorkerFinished :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
-    VisitorProgress result →
+    Progress result →
     SupervisorMonad result worker_id m ()
 receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
 -- }}}
@@ -368,7 +368,7 @@ receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
 receiveWorkerFinishedAndRemoved :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
-    VisitorProgress result →
+    Progress result →
     SupervisorMonad result worker_id m ()
 receiveWorkerFinishedAndRemoved = receiveWorkerFinishedWithRemovalFlag True
 -- }}}
@@ -377,16 +377,16 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     Bool →
     worker_id →
-    VisitorProgress result →
+    Progress result →
     SupervisorMonad result worker_id m ()
-receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (visitorCheckpoint final_progress)) . SupervisorMonad $ do
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (progressCheckpoint final_progress)) . SupervisorMonad $ do
     infoM $ if remove_worker
         then "Worker " ++ show worker_id ++ " finished and removed."
         else "Worker " ++ show worker_id ++ " finished."
     lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
     current_progress %: (`mappend` final_progress)
     when remove_worker $ known_workers %: Set.delete worker_id
-    VisitorProgress checkpoint new_results ← get current_progress
+    Progress checkpoint new_results ← get current_progress
     case checkpoint of
         Explored → do
             active_worker_ids ← Map.keys . Map.delete worker_id <$> get active_workers
@@ -435,7 +435,7 @@ runSupervisor = runSupervisorStartingFrom mempty
 
 runSupervisorMaybeStartingFrom :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Maybe (VisitorProgress result) →
+    Maybe (Progress result) →
     SupervisorActions result worker_id m →
     (∀ a. SupervisorMonad result worker_id m a) →
     m (SupervisorResult result worker_id)
@@ -445,7 +445,7 @@ runSupervisorMaybeStartingFrom (Just progress) = runSupervisorStartingFrom progr
 
 runSupervisorStartingFrom :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorProgress result →
+    Progress result →
     SupervisorActions result worker_id m →
     (∀ α. SupervisorMonad result worker_id m α) →
     m (SupervisorResult result worker_id)
@@ -455,7 +455,7 @@ runSupervisorStartingFrom starting_progress actions loop =
     flip evalStateT
         (SupervisorState
             {   waiting_workers_or_available_workloads_ =
-                    Right . Set.singleton $ VisitorWorkload Seq.empty (visitorCheckpoint starting_progress)
+                    Right . Set.singleton $ VisitorWorkload Seq.empty (progressCheckpoint starting_progress)
             ,   known_workers_ = mempty
             ,   active_workers_ = mempty
             ,   current_steal_depth_ = 0
@@ -655,7 +655,7 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
     get known_workers >>= debugM . ("Known workers is now " ++) . show
     get active_workers >>= debugM . ("Active workers is now " ++) . show
     get waiting_workers_or_available_workloads >>= debugM . ("Waiting/Available queue is now " ++) . show
-    get current_progress >>= debugM . ("Current checkpoint is now " ++) . show . visitorCheckpoint
+    get current_progress >>= debugM . ("Current checkpoint is now " ++) . show . progressCheckpoint
     workers_and_workloads ←
         liftM2 (++)
             (map (Nothing,) . Set.toList . either (const (Set.empty)) id <$> get waiting_workers_or_available_workloads)
@@ -668,7 +668,7 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
                     throw $ ConflictingWorkloads maybe_worker_id initial_path maybe_other_worker_id other_initial_path
           where initial_path_as_list = Fold.toList initial_path
     go workers_and_workloads Map.empty
-    VisitorProgress checkpoint _ ← get current_progress
+    Progress checkpoint _ ← get current_progress
     let total_workspace =
             mappend checkpoint
             .
@@ -678,7 +678,7 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
             $
             workers_and_workloads
     unless (total_workspace == Explored) $ throw $ IncompleteWorkspace total_workspace
-    VisitorProgress checkpoint _ ← get current_progress
+    Progress checkpoint _ ← get current_progress
     when (checkpoint == Explored) $
         if null workers_and_workloads
             then throw $ SpaceFullyExploredButSearchNotTerminated

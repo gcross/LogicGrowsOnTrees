@@ -131,7 +131,7 @@ instance MonadPlus m ⇒ Monoid (LabeledT m α) where -- {{{
 
 -- Functions {{{
 
-applyCheckpointCursorToLabel :: VisitorCheckpointCursor → VisitorLabel → VisitorLabel -- {{{
+applyCheckpointCursorToLabel :: CheckpointCursor → VisitorLabel → VisitorLabel -- {{{
 applyCheckpointCursorToLabel (viewl → EmptyL) = id
 applyCheckpointCursorToLabel (viewl → step :< rest) =
     applyCheckpointCursorToLabel rest
@@ -141,7 +141,7 @@ applyCheckpointCursorToLabel (viewl → step :< rest) =
         ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
 -- }}}
 
-applyContextToLabel :: VisitorTContext m α → VisitorLabel → VisitorLabel -- {{{
+applyContextToLabel :: Context m α → VisitorLabel → VisitorLabel -- {{{
 applyContextToLabel (viewl → EmptyL) = id
 applyContextToLabel (viewl → step :< rest) =
     applyContextToLabel rest
@@ -175,7 +175,7 @@ labelFromBranching :: Foldable t ⇒ t Branch → VisitorLabel -- {{{
 labelFromBranching = Fold.foldl' (flip labelTransformerForBranch) rootLabel
 -- }}}
 
-labelFromContext :: VisitorTContext m α → VisitorLabel -- {{{
+labelFromContext :: Context m α → VisitorLabel -- {{{
 labelFromContext = flip applyContextToLabel rootLabel
 -- }}}
 
