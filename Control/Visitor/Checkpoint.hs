@@ -139,7 +139,7 @@ checkpointFromCursor = checkpointFromSequence $
         ChoiceCheckpointD RightBranch left_checkpoint → ChoiceCheckpoint left_checkpoint
 -- }}}
 
-checkpointFromInitialPath :: VisitorPath → Checkpoint → Checkpoint -- {{{
+checkpointFromInitialPath :: Path → Checkpoint → Checkpoint -- {{{
 checkpointFromInitialPath = checkpointFromSequence $
     \step → case step of
         CacheStep c → CacheCheckpoint c
@@ -161,7 +161,7 @@ checkpointFromSequence processStep (viewr → rest :> step) =
     processStep step
 -- }}}
 
-checkpointFromUnexploredPath :: VisitorPath → Checkpoint -- {{{
+checkpointFromUnexploredPath :: Path → Checkpoint -- {{{
 checkpointFromUnexploredPath path = checkpointFromSequence
     (\step → case step of
         CacheStep c → CacheCheckpoint c
@@ -212,21 +212,21 @@ mergeCheckpointRoot (CacheCheckpoint _ Explored) = Explored
 mergeCheckpointRoot checkpoint = checkpoint
 -- }}}
 
-pathFromContext :: Context m α → VisitorPath -- {{{
+pathFromContext :: Context m α → Path -- {{{
 pathFromContext = fmap pathStepFromContextStep
 -- }}}
 
-pathFromCursor :: CheckpointCursor → VisitorPath -- {{{
+pathFromCursor :: CheckpointCursor → Path -- {{{
 pathFromCursor = fmap pathStepFromCursorDifferential
 -- }}}
 
-pathStepFromContextStep :: ContextStep m α → VisitorStep -- {{{
+pathStepFromContextStep :: ContextStep m α → Step -- {{{
 pathStepFromContextStep (CacheContextStep cache) = CacheStep cache
 pathStepFromContextStep (LeftBranchContextStep _ _) = ChoiceStep LeftBranch
 pathStepFromContextStep (RightBranchContextStep) = ChoiceStep RightBranch
 -- }}}
 
-pathStepFromCursorDifferential :: CheckpointDifferential → VisitorStep -- {{{
+pathStepFromCursorDifferential :: CheckpointDifferential → Step -- {{{
 pathStepFromCursorDifferential (CacheCheckpointD cache) = CacheStep cache
 pathStepFromCursorDifferential (ChoiceCheckpointD active_branch _) = ChoiceStep active_branch
 -- }}}

@@ -106,7 +106,7 @@ instance Exception InconsistencyError
 -- WorkerManagementError {{{
 data WorkerManagementError worker_id = -- {{{
     ActiveWorkersRemainedAfterSpaceFullyExplored [worker_id]
-  | ConflictingWorkloads (Maybe worker_id) VisitorPath (Maybe worker_id) VisitorPath
+  | ConflictingWorkloads (Maybe worker_id) Path (Maybe worker_id) Path
   | SpaceFullyExploredButWorkloadsRemain [(Maybe worker_id,VisitorWorkload)]
   | WorkerAlreadyKnown String worker_id
   | WorkerAlreadyHasWorkload worker_id

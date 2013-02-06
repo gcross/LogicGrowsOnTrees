@@ -152,7 +152,7 @@ applyContextToLabel (viewl → step :< rest) =
         RightBranchContextStep → rightChildLabel
 -- }}}
 
-applyPathToLabel :: VisitorPath → VisitorLabel → VisitorLabel -- {{{
+applyPathToLabel :: Path → VisitorLabel → VisitorLabel -- {{{
 applyPathToLabel (viewl → EmptyL) = id
 applyPathToLabel (viewl → step :< rest) =
     applyPathToLabel rest
@@ -179,7 +179,7 @@ labelFromContext :: Context m α → VisitorLabel -- {{{
 labelFromContext = flip applyContextToLabel rootLabel
 -- }}}
 
-labelFromPath :: VisitorPath → VisitorLabel -- {{{
+labelFromPath :: Path → VisitorLabel -- {{{
 labelFromPath = flip applyPathToLabel rootLabel
 -- }}}
 

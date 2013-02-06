@@ -67,7 +67,7 @@ data VisitorWorkerRequest α = -- {{{
 type VisitorWorkerRequestQueue α = IORef [VisitorWorkerRequest α]
 
 data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
-    {   workerInitialPath :: VisitorPath
+    {   workerInitialPath :: Path
     ,   workerThreadId :: ThreadId
     ,   workerPendingRequests :: VisitorWorkerRequestQueue α
     ,   workerTerminationFlag :: IVar ()
@@ -87,7 +87,7 @@ data VisitorWorkerTerminationReason α = -- {{{
 
 computeProgressUpdate :: -- {{{
     α →
-    VisitorPath →
+    Path →
     CheckpointCursor →
     Context m α →
     Checkpoint →
@@ -150,7 +150,7 @@ forkVisitorWorkerThread =
 
 genericForkVisitorTWorkerThread :: -- {{{
     (MonadIO n, Monoid α) ⇒
-    (VisitorPath → VisitorT m α → n (VisitorT m α)) →
+    (Path → VisitorT m α → n (VisitorT m α)) →
     (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
     (∀ β. n β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
@@ -264,7 +264,7 @@ sendWorkloadStealRequest queue = sendRequest queue . WorkloadStealRequested
 -- }}}
 
 tryStealWorkload :: -- {{{
-    VisitorPath →
+    Path →
     CheckpointCursor →
     Context m α →
     Maybe (CheckpointCursor,Context m α,VisitorWorkload)

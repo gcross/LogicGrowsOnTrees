@@ -26,7 +26,7 @@ import Control.Visitor.Path
 -- Types {{{
 
 data VisitorWorkload = VisitorWorkload -- {{{
-    {   visitorWorkloadPath :: VisitorPath
+    {   visitorWorkloadPath :: Path
     ,   visitorWorkloadCheckpoint :: Checkpoint
     } deriving (Eq,Show)
 $( derive makeSerialize ''VisitorWorkload )

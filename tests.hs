@@ -75,7 +75,7 @@ import System.Random
 import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
-import Test.HUnit
+import Test.HUnit hiding (Path)
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen
 import Test.QuickCheck.Instances
@@ -198,7 +198,7 @@ instance Arbitrary Checkpoint where -- {{{
 
 instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
 
-instance Arbitrary VisitorStep where -- {{{
+instance Arbitrary Step where -- {{{
     arbitrary = oneof
         [CacheStep <$> arbitrary
         ,ChoiceStep <$> arbitrary
@@ -393,7 +393,7 @@ randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
     go2 visitor = elements [(runVisitor (VisitorT visitor),Explored),(mempty,Unexplored)]
 -- }}}
 
-randomPathForVisitor :: Visitor α → Gen VisitorPath -- {{{
+randomPathForVisitor :: Visitor α → Gen Path -- {{{
 randomPathForVisitor (VisitorT visitor) = go visitor
   where
     go (view → Cache (Identity (Just x)) :>>= k) = oneof
@@ -811,7 +811,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (CacheStep undefined :: VisitorStep)) (undefined `mplus` undefined :: Visitor [Int])
+                            sendVisitorDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: Visitor [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
                      -- }}}
                     ,testCase "choice step with cache" $ -- {{{
@@ -820,7 +820,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: VisitorStep)) (cache undefined :: Visitor [Int])
+                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: Visitor [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
                      -- }}}
                     ]
@@ -832,7 +832,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (mzero :: Visitor [Int])
+                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (mzero :: Visitor [Int])
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
                      -- }}}
                     ,testCase "return" $ -- {{{
@@ -841,7 +841,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (undefined :: VisitorStep)) (return (undefined :: [Int]))
+                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (return (undefined :: [Int]))
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
                      -- }}}
                     ]

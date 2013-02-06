@@ -25,12 +25,12 @@ import Control.Visitor
 
 -- Exceptions {{{
 
-data VisitorWalkError =
+data WalkError =
     VisitorTerminatedBeforeEndOfWalk
   | PastVisitorIsInconsistentWithPresentVisitor
   deriving (Eq,Show,Typeable)
 
-instance Exception VisitorWalkError
+instance Exception WalkError
 
 -- }}}
 
@@ -43,14 +43,14 @@ data Branch = -- {{{
 $( derive makeSerialize ''Branch )
 -- }}}
 
-data VisitorStep = -- {{{
+data Step = -- {{{
     CacheStep ByteString
  |  ChoiceStep Branch
  deriving (Eq,Ord,Show)
-$( derive makeSerialize ''VisitorStep )
+$( derive makeSerialize ''Step )
 -- }}}
 
-type VisitorPath = Seq VisitorStep
+type Path = Seq Step
 
 -- }}}
 
@@ -61,11 +61,11 @@ oppositeBranchOf LeftBranch = RightBranch
 oppositeBranchOf RightBranch = LeftBranch
 -- }}}
 
-sendVisitorDownPath :: VisitorPath → Visitor α → Visitor α -- {{{
+sendVisitorDownPath :: Path → Visitor α → Visitor α -- {{{
 sendVisitorDownPath path = runIdentity . sendVisitorTDownPath path
 -- }}}
 
-sendVisitorTDownPath :: Monad m ⇒ VisitorPath → VisitorT m α → m (VisitorT m α) -- {{{
+sendVisitorTDownPath :: Monad m ⇒ Path → VisitorT m α → m (VisitorT m α) -- {{{
 sendVisitorTDownPath (viewl → EmptyL) = return
 sendVisitorTDownPath path@(viewl → step :< tail) =
     viewT . unwrapVisitorT >=> \view → case (view,step) of
