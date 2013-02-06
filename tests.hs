@@ -205,8 +205,8 @@ instance Arbitrary VisitorStep where -- {{{
         ]
 -- }}}
 
-instance Arbitrary α ⇒ Arbitrary (VisitorSolution α) where -- {{{
-    arbitrary = VisitorSolution <$> arbitrary <*> arbitrary
+instance Arbitrary α ⇒ Arbitrary (Solution α) where -- {{{
+    arbitrary = Solution <$> arbitrary <*> arbitrary
 -- }}}
 
 instance Arbitrary α ⇒ Arbitrary (Progress α) where -- {{{
@@ -686,7 +686,7 @@ tests = -- {{{
          -- }}}
         ,testGroup "runVisitorWithLabels" -- {{{
             [testProperty "same result as runVisitor" $ \(visitor :: Visitor [()]) →
-                 runVisitor ((:[]) <$> visitor) == (visitorSolutionResult <$> runVisitorWithLabels visitor)
+                 runVisitor ((:[]) <$> visitor) == (solutionResult <$> runVisitorWithLabels visitor)
             ]
          -- }}}
         ,testGroup "sendVisitorDownLabel" -- {{{

@@ -49,9 +49,9 @@ type LabeledVisitor = LabeledVisitorT Identity
 
 newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq)
 
-data VisitorSolution α = VisitorSolution
-    {   visitorSolutionLabel :: VisitorLabel
-    ,   visitorSolutionResult :: α
+data Solution α = Solution
+    {   solutionLabel :: VisitorLabel
+    ,   solutionResult :: α
     } deriving (Eq,Ord,Show)
 
 -- }}}
@@ -224,15 +224,15 @@ runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledVisitorT m α → m () 
 runLabeledVisitorTAndIgnoreResults = runVisitorTAndIgnoreResults . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ VisitorT m α → m [VisitorSolution α] -- {{{
+runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ VisitorT m α → m [Solution α] -- {{{
 runVisitorTWithLabelsAndGatherResults = runVisitorTWithStartingLabel rootLabel
 -- }}}
 
-runVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m [VisitorSolution α] -- {{{
+runVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m [Solution α] -- {{{
 runVisitorTWithStartingLabel label =
     viewT . unwrapVisitorT >=> \view →
     case view of
-        Return x → return [VisitorSolution label x]
+        Return x → return [Solution label x]
         (Cache mx :>>= k) → mx >>= maybe (return []) (runVisitorTWithStartingLabel label . VisitorT . k)
         (Choice left right :>>= k) →
             liftM2 (++)
@@ -241,11 +241,11 @@ runVisitorTWithStartingLabel label =
         (Null :>>= _) → return []
 -- }}}
 
-runVisitorWithLabels :: Visitor α → [VisitorSolution α] -- {{{
+runVisitorWithLabels :: Visitor α → [Solution α] -- {{{
 runVisitorWithLabels = runIdentity . runVisitorTWithLabelsAndGatherResults
 -- }}}
 
-runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [VisitorSolution α] -- {{{
+runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [Solution α] -- {{{
 runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel
 -- }}}
 
@@ -275,8 +275,8 @@ sendVisitorTDownLabel (VisitorLabel label) = go root
                         (right >>= VisitorT . k)
 -- }}}
 
-solutionsToMap :: Foldable t ⇒ t (VisitorSolution α) → Map VisitorLabel α -- {{{
-solutionsToMap = Fold.foldl' (flip $ \(VisitorSolution label solution) → Map.insert label solution) Map.empty
+solutionsToMap :: Foldable t ⇒ t (Solution α) → Map VisitorLabel α -- {{{
+solutionsToMap = Fold.foldl' (flip $ \(Solution label solution) → Map.insert label solution) Map.empty
 -- }}}
 
 -- }}}
