@@ -47,8 +47,8 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Main (TerminationReason(..))
 import Control.Monad.Trans.Visitor.Supervisor
-import Control.Monad.Trans.Visitor.Supervisor.Driver (TerminationReason(..))
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker (VisitorWorkerProgressUpdate(..),VisitorWorkerStolenWorkload(..),VisitorWorkerTerminationReason(..))
 import Control.Monad.Trans.Visitor.Workload

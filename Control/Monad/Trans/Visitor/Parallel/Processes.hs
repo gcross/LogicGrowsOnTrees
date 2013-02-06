@@ -57,10 +57,10 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 
 import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Main (Driver(Driver),TerminationReason)
 import qualified Control.Monad.Trans.Visitor.Parallel.Process as Process
 import Control.Monad.Trans.Visitor.Parallel.Process
 import Control.Monad.Trans.Visitor.Parallel.Workgroup
-import Control.Monad.Trans.Visitor.Supervisor.Driver (Driver(Driver),TerminationReason)
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker as Worker
 import Control.Monad.Trans.Visitor.Workload
@@ -94,23 +94,21 @@ instance RequestQueueMonad (ProcessesControllerMonad result) where
 -- }}}
 
 -- Drivers {{{
-driver :: Serialize configuration ⇒ Driver IO configuration result -- {{{
-driver = Driver
-    (genericDriver runVisitor)
-    (genericDriver runVisitorIO)
-    (genericDriver . runVisitorT)
+driver :: Serialize configuration ⇒ Driver IO configuration visitor result -- {{{
+driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
+    genericRunVisitor
+        forkVisitorWorkerThread
+        (execParser (info (liftA2 (,) number_of_processes_options configuration_parser) infomod))
+        (initializeGlobalState . snd)
+        (getMaybeStartingProgress . snd)
+        (\(number_of_processes,configuration) → do
+            changeNumberOfWorkers (const $ return number_of_processes)
+            constructManager configuration
+        )
+        (constructVisitor . snd)
+    >>=
+    maybe (return ()) (uncurry $ notifyTerminated . snd)
   where
-    genericDriver run configuration_parser (infomod :: ∀ α. InfoMod α) initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager =
-        run (execParser (info (liftA2 (,) number_of_processes_options configuration_parser) infomod))
-            (initializeGlobalState . snd)
-            (getMaybeStartingProgress . snd)
-            (\(number_of_processes,configuration) → do
-                changeNumberOfWorkers (const $ return number_of_processes)
-                constructManager configuration
-            )
-            (constructVisitor . snd)
-        >>=
-        maybe (return ()) (uncurry $ notifyTerminated . snd)
     number_of_processes_options =
         option
         (   long "number-of-processes"
@@ -244,12 +242,12 @@ runVisitor :: -- {{{
     IO (Maybe (configuration,TerminationReason result))
 runVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
+        forkVisitorWorkerThread
         getConfiguration
         initializeGlobalState
         getStartingProgress
         constructManager
         constructVisitor
-        forkVisitorWorkerThread
 -- }}}
 
 runVisitorIO :: -- {{{
@@ -262,12 +260,12 @@ runVisitorIO :: -- {{{
     IO (Maybe (configuration,TerminationReason result))
 runVisitorIO getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
+        forkVisitorIOWorkerThread
         getConfiguration
         initializeGlobalState
         getStartingProgress
         constructManager
         constructVisitor
-        forkVisitorIOWorkerThread
 -- }}}
 
 runVisitorT :: -- {{{
@@ -281,12 +279,12 @@ runVisitorT :: -- {{{
     IO (Maybe (configuration,TerminationReason result))
 runVisitorT runInBase getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
+        (forkVisitorTWorkerThread runInBase)
         getConfiguration
         initializeGlobalState
         getStartingProgress
         constructManager
         constructVisitor
-        (forkVisitorTWorkerThread runInBase)
 -- }}}
 
 runWorkerWithVisitor :: -- {{{
@@ -337,19 +335,19 @@ send handle value = do
 
 genericRunVisitor :: -- {{{
     (Serialize configuration, Monoid result, Serialize result) ⇒
+    (
+        (VisitorWorkerTerminationReason result → IO ()) →
+        visitor result →
+        VisitorWorkload →
+        IO (VisitorWorkerEnvironment result)
+    ) →
     IO configuration →
     (configuration → IO ()) →
     (configuration → IO (Maybe (VisitorProgress result))) →
     (configuration → ProcessesControllerMonad result ()) →
-    (configuration → visitor) →
-    (
-        (VisitorWorkerTerminationReason result → IO ()) →
-        visitor →
-        VisitorWorkload →
-        IO (VisitorWorkerEnvironment result)
-    ) →
+    (configuration → visitor result) →
     IO (Maybe (configuration,TerminationReason result))
-genericRunVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor forkWorkerThread =
+genericRunVisitor forkWorkerThread getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     getArgs >>= \args →
     if args == sentinel
         then do

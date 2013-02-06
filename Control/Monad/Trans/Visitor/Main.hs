@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -10,7 +11,8 @@
 -- }}}
 
 module Control.Monad.Trans.Visitor.Main -- {{{
-    ( TerminationReason(..)
+    ( Driver(..)
+    , TerminationReason(..)
     , mainVisitor
     , mainVisitorIO
     , mainVisitorT
@@ -45,8 +47,9 @@ import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
-import Control.Monad.Trans.Visitor.Supervisor.Driver
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
+import Control.Monad.Trans.Visitor.Worker
+import Control.Monad.Trans.Visitor.Workload
 -- }}}
 
 -- Logging Functions {{{
@@ -54,6 +57,8 @@ deriveLoggers "Logger" [DEBUG,INFO,NOTICE]
 -- }}}
 
 -- Types {{{
+
+-- Configuration {{{
 data CheckpointConfiguration = CheckpointConfiguration -- {{{
     {   checkpoint_path :: FilePath
     ,   checkpoint_interval :: Float
@@ -77,44 +82,42 @@ $( derive makeSerialize ''Configuration )
 -- }}}
 -- }}}
 
--- Exposed {{{
+data Driver result_monad configuration visitor result =  -- {{{
+    ∀ manager_monad.
+    ( RequestQueueMonad (manager_monad result)
+    , RequestQueueMonadResult (manager_monad result) ~ result
+    ) ⇒
+    Driver (
+        ( Monoid result
+        , Serialize result
+        , MonadIO result_monad
+        ) ⇒
+        (
+            (VisitorWorkerTerminationReason result → IO ()) →
+            visitor result →
+            VisitorWorkload →
+            IO (VisitorWorkerEnvironment result)
+        ) →
+        Parser configuration →
+        (∀ α. InfoMod α) →
+        (configuration → IO ()) →
+        (configuration → IO (Maybe (VisitorProgress result))) →
+        (configuration → TerminationReason result → IO ()) →
+        (configuration → visitor result) →
+        (configuration → manager_monad result ()) →
+        result_monad ()
+    )
 
-mainVisitor :: -- {{{
-    (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (Configuration,visitor_configuration) result →
-    Parser visitor_configuration →
-    (∀ α. InfoMod α) →
-    (visitor_configuration → TerminationReason result → IO ()) →
-    (visitor_configuration → Visitor result) →
-    result_monad ()
-mainVisitor Driver{..} = genericMain driverRunVisitor
--- }}}
-
-mainVisitorIO :: -- {{{
-    (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (Configuration,visitor_configuration) result →
-    Parser visitor_configuration →
-    (∀ α. InfoMod α) →
-    (visitor_configuration → TerminationReason result → IO ()) →
-    (visitor_configuration → VisitorIO result) →
-    result_monad ()
-mainVisitorIO Driver{..} = genericMain driverRunVisitorIO
--- }}}
-
-mainVisitorT :: -- {{{
-    (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    Driver result_monad (Configuration,visitor_configuration) result →
-    (∀ β. m β → IO β) →
-    Parser visitor_configuration →
-    (∀ α. InfoMod α) →
-    (visitor_configuration → TerminationReason result → IO ()) →
-    (visitor_configuration → VisitorT m result) →
-    result_monad ()
-mainVisitorT Driver{..} = genericMain . driverRunVisitorT
+data TerminationReason result = -- {{{
+    Aborted (VisitorProgress result)
+  | Completed result
+  | Failure String
+  deriving (Eq,Show)
 -- }}}
 
 -- }}}
 
+-- Values {{{
 -- Options {{{
 checkpoint_configuration_options :: Parser (Maybe CheckpointConfiguration) -- {{{
 checkpoint_configuration_options =
@@ -158,33 +161,47 @@ configuration_options =
         <*> logging_configuration_options
 -- }}}
 -- }}}
-
--- Utilities {{{
-maybeForkIO :: RequestQueueMonad m ⇒ (α → m ()) → Maybe α → m (Maybe ThreadId) -- {{{
-maybeForkIO loop = maybe (return Nothing) (liftM Just . fork . loop)
 -- }}}
 
-removeFileIfExists :: FilePath → IO () -- {{{
-removeFileIfExists path =
-    handleJust
-        (\e → if isDoesNotExistError e then Nothing else Just ())
-        (\_ → return ())
-        (removeFile path)
+-- Exposed Functions {{{
+
+mainVisitor :: -- {{{
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (Configuration,visitor_configuration) Visitor result →
+    Parser visitor_configuration →
+    (∀ α. InfoMod α) →
+    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → Visitor result) →
+    result_monad ()
+mainVisitor (Driver runDriver) = genericMain . runDriver $ forkVisitorWorkerThread
 -- }}}
 
-writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → VisitorProgress result → m () -- {{{
-writeCheckpointFile checkpoint_path checkpoint = do
-    noticeM $ "Writing checkpoint file"
-    liftIO $
-        (do writeFile checkpoint_temp_path (encodeLazy checkpoint)
-            renameFile checkpoint_temp_path checkpoint_path
-        ) `onException` (
-            removeFileIfExists checkpoint_temp_path
-        )
-  where
-    checkpoint_temp_path = checkpoint_path ++ ".tmp"
+mainVisitorIO :: -- {{{
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (Configuration,visitor_configuration) VisitorIO result →
+    Parser visitor_configuration →
+    (∀ α. InfoMod α) →
+    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → VisitorIO result) →
+    result_monad ()
+mainVisitorIO (Driver runDriver) = genericMain . runDriver $ forkVisitorIOWorkerThread
 -- }}}
+
+mainVisitorT :: -- {{{
+    (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    Driver result_monad (Configuration,visitor_configuration) (VisitorT m) result →
+    (∀ β. m β → IO β) →
+    Parser visitor_configuration →
+    (∀ α. InfoMod α) →
+    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → VisitorT m result) →
+    result_monad ()
+mainVisitorT (Driver runDriver) = genericMain . runDriver . forkVisitorTWorkerThread
 -- }}}
+
+-- }}}
+
+-- Internal Functions {{{
 
 -- Loops {{{
 checkpointLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ CheckpointConfiguration → m α -- {{{
@@ -208,8 +225,6 @@ managerLoop Configuration{..} = do
             (mapM_ killThread thread_ids)
 -- }}}
 -- }}}
-
--- Main functions {{{
 
 genericMain :: -- {{{
     ( result ~ RequestQueueMonadResult (manager_monad result)
@@ -265,6 +280,31 @@ genericMain run visitor_configuration_options infomod notifyTerminated construct
         )
         (constructVisitor . snd)
         (managerLoop . fst)
+-- }}}
+
+maybeForkIO :: RequestQueueMonad m ⇒ (α → m ()) → Maybe α → m (Maybe ThreadId) -- {{{
+maybeForkIO loop = maybe (return Nothing) (liftM Just . fork . loop)
+-- }}}
+
+removeFileIfExists :: FilePath → IO () -- {{{
+removeFileIfExists path =
+    handleJust
+        (\e → if isDoesNotExistError e then Nothing else Just ())
+        (\_ → return ())
+        (removeFile path)
+-- }}}
+
+writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → VisitorProgress result → m () -- {{{
+writeCheckpointFile checkpoint_path checkpoint = do
+    noticeM $ "Writing checkpoint file"
+    liftIO $
+        (do writeFile checkpoint_temp_path (encodeLazy checkpoint)
+            renameFile checkpoint_temp_path checkpoint_path
+        ) `onException` (
+            removeFileIfExists checkpoint_temp_path
+        )
+  where
+    checkpoint_temp_path = checkpoint_path ++ ".tmp"
 -- }}}
 
 -- }}}

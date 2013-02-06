@@ -31,8 +31,8 @@ import System.Log.Logger.TH
 
 import Control.Monad.Trans.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Monad.Trans.Visitor.Checkpoint
+import Control.Monad.Trans.Visitor.Main (Driver(Driver),TerminationReason)
 import Control.Monad.Trans.Visitor.Parallel.Workgroup
-import Control.Monad.Trans.Visitor.Supervisor.Driver (Driver(Driver),TerminationReason)
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
 import Control.Monad.Trans.Visitor.Worker as Worker
 import Control.Monad.Trans.Visitor.Workload
@@ -57,20 +57,16 @@ instance RequestQueueMonad (ThreadsControllerMonad result) where
 -- }}}
 
 -- Driver {{{
-driver :: Driver IO configuration result
-driver = Driver
-    (genericDriver runVisitorMaybeStartingFrom)
-    (genericDriver runVisitorIOMaybeStartingFrom)
-    (genericDriver . runVisitorTMaybeStartingFrom)
-  where
-    genericDriver run configuration_parser (infomod :: ∀ α. InfoMod α) initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager = do
-        configuration ← execParser (info configuration_parser infomod)
-        initializeGlobalState configuration
-        maybe_starting_progress ← getMaybeStartingProgress configuration
-        run  maybe_starting_progress
-            (constructVisitor configuration)
-            (changeNumberOfWorkersToMatchCPUs >> constructManager configuration)
-         >>= notifyTerminated configuration
+driver :: Driver IO configuration visitor result
+driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
+    configuration ← execParser (info configuration_parser infomod)
+    initializeGlobalState configuration
+    maybe_starting_progress ← getMaybeStartingProgress configuration
+    genericRunVisitorStartingFrom
+         maybe_starting_progress
+        (flip forkVisitorWorkerThread . constructVisitor $ configuration)
+        (changeNumberOfWorkersToMatchCPUs >> constructManager configuration)
+     >>= notifyTerminated configuration
 -- }}}
 
 -- Exposed Functions {{{

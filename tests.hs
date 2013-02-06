@@ -87,6 +87,7 @@ import Control.Monad.Trans.Visitor
 import Control.Monad.Trans.Visitor.Checkpoint
 import Control.Monad.Trans.Visitor.Examples.Queens
 import Control.Monad.Trans.Visitor.Label
+import Control.Monad.Trans.Visitor.Main (TerminationReason(..))
 import qualified Control.Monad.Trans.Visitor.Parallel.Processes as Processes
 import qualified Control.Monad.Trans.Visitor.Parallel.Threads as Threads
 import qualified Control.Monad.Trans.Visitor.Parallel.Workgroup as Workgroup
@@ -95,7 +96,6 @@ import Control.Monad.Trans.Visitor.Workload
 import Control.Monad.Trans.Visitor.Worker
 import Control.Monad.Trans.Visitor.Supervisor
 import Control.Monad.Trans.Visitor.Supervisor.RequestQueue
-import Control.Monad.Trans.Visitor.Supervisor.Driver (TerminationReason(..))
 -- }}}
 
 -- Helpers {{{
