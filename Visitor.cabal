@@ -11,6 +11,16 @@ Cabal-version:       >=1.6
 Build-type:          Simple
 Category:	     
 
+Source-Repository head
+  Type:                git
+  Location:            git://github.com/gcross/Visitor.git
+
+Source-Repository this
+    Type:                git
+    Location:            git://github.com/gcross/Visitor.git
+--    Tag:                 
+
+
 Library
     Build-depends:
         AbortT-transformers == 1.0.*,
