@@ -107,12 +107,15 @@ data Driver result_monad configuration visitor result =  -- {{{
         (configuration → manager_monad result ()) →
         result_monad ()
     )
+-- }}}
 
 data TerminationReason result = -- {{{
     Aborted (Progress result)
   | Completed result
   | Failure String
   deriving (Eq,Show)
+-- }}}
+
 -- }}}
 
 -- }}}
