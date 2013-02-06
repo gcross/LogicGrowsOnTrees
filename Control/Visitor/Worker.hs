@@ -46,14 +46,14 @@ import Control.Visitor.Workload
 
 data VisitorWorkerProgressUpdate α = VisitorWorkerProgressUpdate -- {{{
     {   visitorWorkerProgressUpdate :: Progress α
-    ,   visitorWorkerRemainingWorkload :: VisitorWorkload
+    ,   visitorWorkerRemainingWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''VisitorWorkerProgressUpdate )
 -- }}}
 
 data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload -- {{{
     {   visitorWorkerStolenWorkerProgressUpdate :: VisitorWorkerProgressUpdate α
-    ,   visitorWorkerStolenWorkload :: VisitorWorkload
+    ,   visitorWorkerStolenWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''VisitorWorkerStolenWorkload )
 -- }}}
@@ -105,7 +105,7 @@ computeProgressUpdate result initial_path cursor context checkpoint =
             )
             result
         )
-        (VisitorWorkload (initial_path >< pathFromCursor cursor)
+        (Workload (initial_path >< pathFromCursor cursor)
          .
          checkpointFromContext context
          $
@@ -117,7 +117,7 @@ forkVisitorIOWorkerThread :: -- {{{
     Monoid α ⇒
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorIO α →
-    VisitorWorkload →
+    Workload →
     IO (VisitorWorkerEnvironment α)
 forkVisitorIOWorkerThread = forkVisitorTWorkerThread id
 -- }}}
@@ -127,7 +127,7 @@ forkVisitorTWorkerThread :: -- {{{
     (∀ β. m β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorT m α →
-    VisitorWorkload →
+    Workload →
     IO (VisitorWorkerEnvironment α)
 forkVisitorTWorkerThread =
     genericForkVisitorTWorkerThread
@@ -139,7 +139,7 @@ forkVisitorWorkerThread :: -- {{{
     Monoid α ⇒
     (VisitorWorkerTerminationReason α → IO ()) →
     Visitor α →
-    VisitorWorkload →
+    Workload →
     IO (VisitorWorkerEnvironment α)
 forkVisitorWorkerThread =
     genericForkVisitorTWorkerThread
@@ -155,7 +155,7 @@ genericForkVisitorTWorkerThread :: -- {{{
     (∀ β. n β → IO β) →
     (VisitorWorkerTerminationReason α → IO ()) →
     VisitorT m α →
-    VisitorWorkload →
+    Workload →
     IO (VisitorWorkerEnvironment α)
 genericForkVisitorTWorkerThread
     walk
@@ -163,7 +163,7 @@ genericForkVisitorTWorkerThread
     run
     finishedCallback
     visitor
-    (VisitorWorkload initial_path initial_checkpoint)
+    (Workload initial_path initial_checkpoint)
   = do
     pending_requests_ref ← newIORef []
     let loop1 result cursor visitor_state =
@@ -267,7 +267,7 @@ tryStealWorkload :: -- {{{
     Path →
     CheckpointCursor →
     Context m α →
-    Maybe (CheckpointCursor,Context m α,VisitorWorkload)
+    Maybe (CheckpointCursor,Context m α,Workload)
 tryStealWorkload initial_path = go
   where
     go _      (viewl → EmptyL) = Nothing
@@ -278,7 +278,7 @@ tryStealWorkload initial_path = go
             Just
                 (cursor |> ChoiceCheckpointD LeftBranch Unexplored
                 ,rest_context
-                ,VisitorWorkload
+                ,Workload
                     ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
                     other_checkpoint
                 )

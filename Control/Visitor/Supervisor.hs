@@ -107,7 +107,7 @@ instance Exception InconsistencyError
 data WorkerManagementError worker_id = -- {{{
     ActiveWorkersRemainedAfterSpaceFullyExplored [worker_id]
   | ConflictingWorkloads (Maybe worker_id) Path (Maybe worker_id) Path
-  | SpaceFullyExploredButWorkloadsRemain [(Maybe worker_id,VisitorWorkload)]
+  | SpaceFullyExploredButWorkloadsRemain [(Maybe worker_id,Workload)]
   | WorkerAlreadyKnown String worker_id
   | WorkerAlreadyHasWorkload worker_id
   | WorkerNotKnown String worker_id
@@ -159,15 +159,15 @@ data SupervisorActions result worker_id m = -- {{{
     {   broadcast_progress_update_to_workers_action :: [worker_id] → m ()
     ,   broadcast_workload_steal_to_workers_action :: [worker_id] → m ()
     ,   receive_current_progress_action :: Progress result → m ()
-    ,   send_workload_to_worker_action :: VisitorWorkload → worker_id → m ()
+    ,   send_workload_to_worker_action :: Workload → worker_id → m ()
     }
 -- }}}
 
 data SupervisorState result worker_id = -- {{{
     SupervisorState
-    {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) (Set VisitorWorkload))
+    {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) (Set Workload))
     ,   known_workers_ :: !(Set worker_id)
-    ,   active_workers_ :: !(Map worker_id VisitorWorkload)
+    ,   active_workers_ :: !(Map worker_id Workload)
     ,   current_steal_depth_ :: !Int
     ,   available_workers_for_steal_ :: !(IntMap (Set worker_id))
     ,   workers_pending_workload_steal_ :: !(Set worker_id)
@@ -455,7 +455,7 @@ runSupervisorStartingFrom starting_progress actions loop =
     flip evalStateT
         (SupervisorState
             {   waiting_workers_or_available_workloads_ =
-                    Right . Set.singleton $ VisitorWorkload Seq.empty (progressCheckpoint starting_progress)
+                    Right . Set.singleton $ Workload Seq.empty (progressCheckpoint starting_progress)
             ,   known_workers_ = mempty
             ,   active_workers_ = mempty
             ,   current_steal_depth_ = 0
@@ -611,7 +611,7 @@ enqueueWorkerForSteal worker_id =
 
 enqueueWorkload :: -- {{{
     (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorWorkload →
+    Workload →
     SupervisorContext result worker_id m ()
 enqueueWorkload workload =
     get waiting_workers_or_available_workloads
@@ -661,7 +661,7 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
             (map (Nothing,) . Set.toList . either (const (Set.empty)) id <$> get waiting_workers_or_available_workloads)
             (map (first Just) . Map.assocs <$> get active_workers)
     let go [] _ = return ()
-        go ((maybe_worker_id,VisitorWorkload initial_path _):rest_workloads) known_prefixes =
+        go ((maybe_worker_id,Workload initial_path _):rest_workloads) known_prefixes =
             case Map.lookup initial_path_as_list known_prefixes of
                 Nothing → go rest_workloads . mappend known_prefixes . Map.fromList . map (,(maybe_worker_id,initial_path)) . inits $ initial_path_as_list
                 Just (maybe_other_worker_id,other_initial_path) →
@@ -674,7 +674,7 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
             .
             mconcat
             .
-            map (flip checkpointFromInitialPath Explored . visitorWorkloadPath . snd)
+            map (flip checkpointFromInitialPath Explored . workloadPath . snd)
             $
             workers_and_workloads
     unless (total_workspace == Explored) $ throw $ IncompleteWorkspace total_workspace
@@ -698,7 +698,7 @@ receiveCurrentProgress = do
 
 sendWorkloadToWorker :: -- {{{
     (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorWorkload →
+    Workload →
     worker_id →
     SupervisorContext result worker_id m ()
 sendWorkloadToWorker workload worker_id = do

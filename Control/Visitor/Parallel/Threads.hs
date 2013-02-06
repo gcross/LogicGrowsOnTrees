@@ -177,7 +177,7 @@ genericRunVisitorStartingFrom :: -- {{{
     Maybe (Progress result) →
     (
         (VisitorWorkerTerminationReason result → IO ()) →
-        VisitorWorkload →
+        Workload →
         IO (VisitorWorkerEnvironment result)
     ) →
     ThreadsControllerMonad result () →

@@ -72,7 +72,7 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
     ,   killAllWorkers :: [WorkerId] → InnerMonad inner_state ()
     ,   sendProgressUpdateRequest :: WorkerId → InnerMonad inner_state ()
     ,   sendWorkloadStealRequest :: WorkerId → InnerMonad inner_state ()
-    ,   sendWorkloadToWorker :: WorkerId → VisitorWorkload → InnerMonad inner_state ()
+    ,   sendWorkloadToWorker :: WorkerId → Workload → InnerMonad inner_state ()
     }
 -- }}}
 

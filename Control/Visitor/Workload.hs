@@ -25,28 +25,28 @@ import Control.Visitor.Path
 
 -- Types {{{
 
-data VisitorWorkload = VisitorWorkload -- {{{
-    {   visitorWorkloadPath :: Path
-    ,   visitorWorkloadCheckpoint :: Checkpoint
+data Workload = Workload -- {{{
+    {   workloadPath :: Path
+    ,   workloadCheckpoint :: Checkpoint
     } deriving (Eq,Show)
-$( derive makeSerialize ''VisitorWorkload )
+$( derive makeSerialize ''Workload )
 -- }}}
 
 -- }}}
 
 -- Instances {{{
-instance Ord VisitorWorkload where
+instance Ord Workload where
     x `compare` y =
         case (compare `on` workloadDepth) x y of
-            EQ → case (compare `on` visitorWorkloadPath) x y of
-                EQ → (compare `on` visitorWorkloadCheckpoint) x y
+            EQ → case (compare `on` workloadPath) x y of
+                EQ → (compare `on` workloadCheckpoint) x y
                 c → c
             c → c
 -- }}}
 
 -- Values {{{
 
-entire_workload = VisitorWorkload Seq.empty Unexplored
+entire_workload = Workload Seq.empty Unexplored
 
 -- }}}
 
@@ -54,7 +54,7 @@ entire_workload = VisitorWorkload Seq.empty Unexplored
 
 runVisitorThroughWorkload :: -- {{{
     Monoid α ⇒
-    VisitorWorkload →
+    Workload →
     Visitor α →
     α
 runVisitorThroughWorkload =
@@ -65,7 +65,7 @@ runVisitorThroughWorkload =
 
 runVisitorTThroughWorkload :: -- {{{
     (Functor m, Monad m, Monoid α) ⇒
-    VisitorWorkload →
+    Workload →
     VisitorT m α →
     m α
 runVisitorTThroughWorkload = gatherResults .* walkVisitorTThroughWorkload
@@ -73,21 +73,21 @@ runVisitorTThroughWorkload = gatherResults .* walkVisitorTThroughWorkload
 
 walkVisitorThroughWorkload :: -- {{{
     Monoid α ⇒
-    VisitorWorkload →
+    Workload →
     Visitor α →
     [(α,Checkpoint)]
-walkVisitorThroughWorkload VisitorWorkload{..} =
-    walkVisitorThroughCheckpoint visitorWorkloadCheckpoint
+walkVisitorThroughWorkload Workload{..} =
+    walkVisitorThroughCheckpoint workloadCheckpoint
     .
-    sendVisitorDownPath visitorWorkloadPath
+    sendVisitorDownPath workloadPath
 -- }}}
 
 walkVisitorTThroughWorkload :: -- {{{
     (Functor m, Monad m, Monoid α) ⇒
-    VisitorWorkload →
+    Workload →
     VisitorT m α →
     ResultFetcher m α
-walkVisitorTThroughWorkload VisitorWorkload{..} =
+walkVisitorTThroughWorkload Workload{..} =
     ResultFetcher
     .
     join
@@ -95,13 +95,13 @@ walkVisitorTThroughWorkload VisitorWorkload{..} =
     fmap (
         fetchResult
         .
-        walkVisitorTThroughCheckpoint visitorWorkloadCheckpoint
+        walkVisitorTThroughCheckpoint workloadCheckpoint
     )
     .
-    sendVisitorTDownPath visitorWorkloadPath
+    sendVisitorTDownPath workloadPath
 -- }}}
 
-workloadDepth :: VisitorWorkload → Int -- {{{
-workloadDepth = Seq.length . visitorWorkloadPath -- }}}
+workloadDepth :: Workload → Int -- {{{
+workloadDepth = Seq.length . workloadPath -- }}}
 
 -- }}}

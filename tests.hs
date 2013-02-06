@@ -221,8 +221,8 @@ instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStolenWorkload α) where -- {{
     arbitrary = VisitorWorkerStolenWorkload <$> arbitrary <*> arbitrary
 -- }}}
 
-instance Arbitrary VisitorWorkload where -- {{{
-    arbitrary = VisitorWorkload <$> arbitrary <*> arbitrary
+instance Arbitrary Workload where -- {{{
+    arbitrary = Workload <$> arbitrary <*> arbitrary
 -- }}}
 -- }}}
 
@@ -271,9 +271,9 @@ type UniqueVisitor = UniqueVisitorT Identity
 -- Functions {{{
 addAcceptOneWorkloadAction :: -- {{{
     SupervisorActions result worker_id IO →
-    IO (IORef (Maybe (worker_id,VisitorWorkload)),SupervisorActions result worker_id IO)
+    IO (IORef (Maybe (worker_id,Workload)),SupervisorActions result worker_id IO)
 addAcceptOneWorkloadAction actions = do
-    maybe_worker_and_workload_ref ← newIORef (Nothing :: Maybe (worker_id,VisitorWorkload))
+    maybe_worker_and_workload_ref ← newIORef (Nothing :: Maybe (worker_id,Workload))
     return (maybe_worker_and_workload_ref, actions {
         send_workload_to_worker_action = \workload worker_id → do
             maybe_old_workload ← readIORef maybe_worker_and_workload_ref
@@ -286,7 +286,7 @@ addAcceptOneWorkloadAction actions = do
 
 addAcceptMultipleWorkloadsAction :: -- {{{
     SupervisorActions result worker_id IO →
-    IO (IORef [(worker_id,VisitorWorkload)],SupervisorActions result worker_id IO)
+    IO (IORef [(worker_id,Workload)],SupervisorActions result worker_id IO)
 addAcceptMultipleWorkloadsAction actions = do
     workers_and_workloads_ref ← newIORef []
     return (workers_and_workloads_ref, actions {
@@ -979,8 +979,8 @@ tests = -- {{{
                         addWorker 0
                         forM_ (zip [0..] (tail active_workers)) $ \(prefix_count,worker_id) → do
                             addWorker worker_id
-                            let remaining_workload = VisitorWorkload (Seq.replicate (prefix_count+1) (ChoiceStep LeftBranch)) Unexplored
-                            let stolen_workload = VisitorWorkload (Seq.replicate (prefix_count) (ChoiceStep LeftBranch) |> (ChoiceStep RightBranch)) Unexplored
+                            let remaining_workload = Workload (Seq.replicate (prefix_count+1) (ChoiceStep LeftBranch)) Unexplored
+                            let stolen_workload = Workload (Seq.replicate (prefix_count) (ChoiceStep LeftBranch) |> (ChoiceStep RightBranch)) Unexplored
                             receiveStolenWorkload 0 $ Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty remaining_workload) stolen_workload)
                         mapM_ addWorker inactive_workers
                         performGlobalProgressUpdate
@@ -1045,7 +1045,7 @@ tests = -- {{{
                 addWorker ()
                 abortSupervisor
              ) >>= (@?= SupervisorResult (SupervisorAborted progress) [()])
-            readIORef maybe_workload_ref >>= (@?= Just ((),(VisitorWorkload Seq.empty checkpoint)))
+            readIORef maybe_workload_ref >>= (@?= Just ((),(Workload Seq.empty checkpoint)))
          -- }}}
         ]
      -- }}}
@@ -1092,7 +1092,7 @@ tests = -- {{{
                         forkVisitorWorkerThread
                             (IVar.write solutions_ivar)
                             visitor
-                            (VisitorWorkload path Unexplored)
+                            (Workload path Unexplored)
                     Progress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=

@@ -225,7 +225,7 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo maybe_startin
                 -- }}}
                 sendProgressUpdateRequest = sendMessageToWorker RequestProgressUpdate
                 sendWorkloadStealRequest = sendMessageToWorker RequestWorkloadSteal
-                sendWorkloadToWorker worker_id workload = sendMessageToWorker (Workload workload) worker_id
+                sendWorkloadToWorker worker_id workload = sendMessageToWorker (StartWorkload workload) worker_id
             in WorkgroupCallbacks{..}
         ) -- }}}
         maybe_starting_progress
@@ -338,7 +338,7 @@ genericRunVisitor :: -- {{{
     (
         (VisitorWorkerTerminationReason result → IO ()) →
         visitor result →
-        VisitorWorkload →
+        Workload →
         IO (VisitorWorkerEnvironment result)
     ) →
     IO configuration →
@@ -376,7 +376,7 @@ genericRunWorker :: -- {{{
     (Monoid result, Serialize result) ⇒
     (
         (VisitorWorkerTerminationReason result → IO ()) →
-        VisitorWorkload →
+        Workload →
         IO (VisitorWorkerEnvironment result)
     ) →
     Handle →

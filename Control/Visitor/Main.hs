@@ -95,7 +95,7 @@ data Driver result_monad configuration visitor result =  -- {{{
         (
             (VisitorWorkerTerminationReason result → IO ()) →
             visitor result →
-            VisitorWorkload →
+            Workload →
             IO (VisitorWorkerEnvironment result)
         ) →
         Parser configuration →

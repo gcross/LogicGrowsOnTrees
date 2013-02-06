@@ -53,7 +53,7 @@ $(derive makeSerialize ''MessageForSupervisor)
 data MessageForWorker result = -- {{{
     RequestProgressUpdate
   | RequestWorkloadSteal
-  | Workload VisitorWorkload
+  | StartWorkload Workload
   | QuitWorker
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForWorker)
@@ -68,7 +68,7 @@ runWorker :: -- {{{
     (MessageForSupervisor result → IO ()) →
     (
         (VisitorWorkerTerminationReason result → IO ()) →
-        VisitorWorkload →
+        Workload →
         IO (VisitorWorkerEnvironment result)
     ) →
     IO ()
@@ -89,7 +89,7 @@ runWorker receiveMessage sendMessage forkWorkerThread =
                 RequestWorkloadSteal → do
                     processRequest sendWorkloadStealRequest StolenWorkload
                     processNextMessage
-                Workload workload → do
+                StartWorkload workload → do
                     infoM "Received workload."
                     debugM $ "Workload is: " ++ show workload
                     worker_is_running ← not <$> isEmptyMVar worker_environment_mvar
