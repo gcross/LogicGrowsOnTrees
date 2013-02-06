@@ -270,12 +270,12 @@ type UniqueVisitor = UniqueVisitorT Identity
 
 -- Functions {{{
 addAcceptOneWorkloadAction :: -- {{{
-    SupervisorActions result worker_id IO →
-    IO (IORef (Maybe (worker_id,Workload)),SupervisorActions result worker_id IO)
+    SupervisorCallbacks result worker_id IO →
+    IO (IORef (Maybe (worker_id,Workload)),SupervisorCallbacks result worker_id IO)
 addAcceptOneWorkloadAction actions = do
     maybe_worker_and_workload_ref ← newIORef (Nothing :: Maybe (worker_id,Workload))
     return (maybe_worker_and_workload_ref, actions {
-        send_workload_to_worker_action = \workload worker_id → do
+        sendWorkloadToWorker = \workload worker_id → do
             maybe_old_workload ← readIORef maybe_worker_and_workload_ref
             case maybe_old_workload of
                 Nothing → return ()
@@ -285,12 +285,12 @@ addAcceptOneWorkloadAction actions = do
 -- }}}
 
 addAcceptMultipleWorkloadsAction :: -- {{{
-    SupervisorActions result worker_id IO →
-    IO (IORef [(worker_id,Workload)],SupervisorActions result worker_id IO)
+    SupervisorCallbacks result worker_id IO →
+    IO (IORef [(worker_id,Workload)],SupervisorCallbacks result worker_id IO)
 addAcceptMultipleWorkloadsAction actions = do
     workers_and_workloads_ref ← newIORef []
     return (workers_and_workloads_ref, actions {
-        send_workload_to_worker_action = \workload worker_id →
+        sendWorkloadToWorker = \workload worker_id →
             readIORef workers_and_workloads_ref
             >>=
             writeIORef workers_and_workloads_ref . (++ [(worker_id,workload)])
@@ -298,34 +298,34 @@ addAcceptMultipleWorkloadsAction actions = do
 -- }}}
 
 addAppendWorkloadStealBroadcastIdsAction :: -- {{{
-    SupervisorActions result worker_id IO →
-    IO (IORef [[worker_id]],SupervisorActions result worker_id IO)
+    SupervisorCallbacks result worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks result worker_id IO)
 addAppendWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
-        broadcast_workload_steal_to_workers_action = \worker_ids →
+        broadcastWorkloadStealToWorkers = \worker_ids →
             modifyIORef broadcasts_ref (++ [worker_ids])
     })
 -- }}}
 
 addAppendProgressBroadcastIdsAction :: -- {{{
-    SupervisorActions result worker_id IO →
-    IO (IORef [[worker_id]],SupervisorActions result worker_id IO)
+    SupervisorCallbacks result worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks result worker_id IO)
 addAppendProgressBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
-        broadcast_progress_update_to_workers_action = \worker_ids →
+        broadcastProgressUpdateToWorkers = \worker_ids →
             modifyIORef broadcasts_ref (++ [worker_ids])
     })
 -- }}}
 
 addReceiveCurrentProgressAction :: -- {{{
-    SupervisorActions result worker_id IO →
-    IO (IORef (Maybe (Progress result)),SupervisorActions result worker_id IO)
+    SupervisorCallbacks result worker_id IO →
+    IO (IORef (Maybe (Progress result)),SupervisorCallbacks result worker_id IO)
 addReceiveCurrentProgressAction actions = do
     maybe_progress_ref ← newIORef (Nothing :: Maybe (Progress result))
     return (maybe_progress_ref, actions {
-        receive_current_progress_action = \progress → do
+        receiveCurrentProgress = \progress → do
             maybe_old_progress ← readIORef maybe_progress_ref
             case maybe_old_progress of
                 Nothing → return ()
@@ -343,15 +343,15 @@ echoWithLabel label x = trace (label ++ " " ++ show x) x
 -- }}}
 
 ignoreAcceptWorkloadAction :: -- {{{
-    SupervisorActions result worker_id IO →
-    SupervisorActions result worker_id IO
-ignoreAcceptWorkloadAction actions = actions { send_workload_to_worker_action = \_ _ → return () }
+    SupervisorCallbacks result worker_id IO →
+    SupervisorCallbacks result worker_id IO
+ignoreAcceptWorkloadAction actions = actions { sendWorkloadToWorker = \_ _ → return () }
 -- }}}
 
 ignoreWorkloadStealAction :: -- {{{
-    SupervisorActions result worker_id IO →
-    SupervisorActions result worker_id IO
-ignoreWorkloadStealAction actions = actions { broadcast_workload_steal_to_workers_action = \_ → return () }
+    SupervisorCallbacks result worker_id IO →
+    SupervisorCallbacks result worker_id IO
+ignoreWorkloadStealAction actions = actions { broadcastWorkloadStealToWorkers = \_ → return () }
 -- }}}
 
 frequencyT :: (MonadTrans t, Monad (t Gen)) ⇒ [(Int, t Gen a)] → t Gen a -- {{{
@@ -438,17 +438,17 @@ remdups (x : xx : xs)
 -- }}}
 
 -- Values {{{
-bad_test_supervisor_actions :: SupervisorActions result worker_id m -- {{{
+bad_test_supervisor_actions :: SupervisorCallbacks result worker_id m -- {{{
 bad_test_supervisor_actions =
-    SupervisorActions
-    {   broadcast_progress_update_to_workers_action =
-            error "broadcast_progress_update_to_workers_action called! :-/"
-    ,   broadcast_workload_steal_to_workers_action =
-            error "broadcast_workload_steal_to_workers_action called! :-/"
-    ,   receive_current_progress_action =
-            error "receive_current_progress_action called! :-/"
-    ,   send_workload_to_worker_action =
-            error "send_workload_to_worker_action called! :-/"
+    SupervisorCallbacks
+    {   broadcastProgressUpdateToWorkers =
+            error "broadcastProgressUpdateToWorkers called! :-/"
+    ,   broadcastWorkloadStealToWorkers =
+            error "broadcastWorkloadStealToWorkers called! :-/"
+    ,   receiveCurrentProgress =
+            error "receiveCurrentProgress called! :-/"
+    ,   sendWorkloadToWorker =
+            error "sendWorkloadToWorker called! :-/"
     }
 -- }}}
 -- }}}

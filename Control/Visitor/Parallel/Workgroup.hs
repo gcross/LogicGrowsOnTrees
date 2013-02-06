@@ -70,9 +70,9 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
     {   createWorker :: WorkerId → InnerMonad inner_state ()
     ,   destroyWorker :: WorkerId → Bool → InnerMonad inner_state ()
     ,   killAllWorkers :: [WorkerId] → InnerMonad inner_state ()
-    ,   sendProgressUpdateRequest :: WorkerId → InnerMonad inner_state ()
-    ,   sendWorkloadStealRequest :: WorkerId → InnerMonad inner_state ()
-    ,   sendWorkloadToWorker :: WorkerId → Workload → InnerMonad inner_state ()
+    ,   sendProgressUpdateRequestTo :: WorkerId → InnerMonad inner_state ()
+    ,   sendWorkloadStealRequestTo :: WorkerId → InnerMonad inner_state ()
+    ,   sendWorkloadTo :: WorkerId → Workload → InnerMonad inner_state ()
     }
 -- }}}
 
@@ -166,14 +166,14 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
                 then removeWorkerIfPresent worker_id
                 else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
         -- }}}
-        broadcast_progress_update_to_workers_action = \worker_ids →
-            asks sendProgressUpdateRequest >>= liftInner . forM_ worker_ids
-        broadcast_workload_steal_to_workers_action = \worker_ids →
-            asks sendWorkloadStealRequest >>= liftInner . forM_ worker_ids
-        receive_current_progress_action = receiveProgress request_queue
-        send_workload_to_worker_action = \workload worker_id → do
+        broadcastProgressUpdateToWorkers = \worker_ids →
+            asks sendProgressUpdateRequestTo >>= liftInner . forM_ worker_ids
+        broadcastWorkloadStealToWorkers = \worker_ids →
+            asks sendWorkloadStealRequestTo >>= liftInner . forM_ worker_ids
+        receiveCurrentProgress = receiveProgress request_queue
+        sendWorkloadToWorker = \workload worker_id → do
             infoM $ "Activating worker " ++ show worker_id ++ " with workload " ++ show workload
-            asks sendWorkloadToWorker >>= liftInner . ($ workload) . ($ worker_id)
+            asks sendWorkloadTo >>= liftInner . ($ workload) . ($ worker_id)
             bumpWorkerRemovalPriority worker_id
     manager_thread_id ← forkIO $ runReaderT controller request_queue
     termination_reason ←
@@ -186,7 +186,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         do  SupervisorResult termination_reason worker_ids ←
                 runSupervisorMaybeStartingFrom
                     maybe_starting_progress
-                    SupervisorActions{..}
+                    SupervisorCallbacks{..}
                     $
                     -- enableSupervisorDebugMode >>
                     forever (processRequest request_queue)

@@ -221,9 +221,9 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
                         .
                         IntMap.lookup worker_id
                 -- }}}
-                sendProgressUpdateRequest = sendRequestToWorker Worker.sendProgressUpdateRequest receiveProgressUpdateFromWorker
-                sendWorkloadStealRequest = sendRequestToWorker Worker.sendWorkloadStealRequest receiveStolenWorkloadFromWorker
-                sendWorkloadToWorker worker_id workload = -- {{{
+                sendProgressUpdateRequestTo = sendRequestToWorker Worker.sendProgressUpdateRequest receiveProgressUpdateFromWorker
+                sendWorkloadStealRequestTo = sendRequestToWorker Worker.sendWorkloadStealRequest receiveStolenWorkloadFromWorker
+                sendWorkloadTo worker_id workload = -- {{{
                     (liftIO $ spawnWorker (\termination_reason →
                         case termination_reason of
                             WorkerFinished final_progress →

@@ -223,9 +223,9 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo maybe_startin
                         .
                         IntMap.lookup worker_id
                 -- }}}
-                sendProgressUpdateRequest = sendMessageToWorker RequestProgressUpdate
-                sendWorkloadStealRequest = sendMessageToWorker RequestWorkloadSteal
-                sendWorkloadToWorker worker_id workload = sendMessageToWorker (StartWorkload workload) worker_id
+                sendProgressUpdateRequestTo = sendMessageToWorker RequestProgressUpdate
+                sendWorkloadStealRequestTo = sendMessageToWorker RequestWorkloadSteal
+                sendWorkloadTo worker_id workload = sendMessageToWorker (StartWorkload workload) worker_id
             in WorkgroupCallbacks{..}
         ) -- }}}
         maybe_starting_progress
