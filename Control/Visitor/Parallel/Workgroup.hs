@@ -50,7 +50,7 @@ import Control.Visitor.Checkpoint
 import Control.Visitor.Main (TerminationReason(..))
 import Control.Visitor.Supervisor
 import Control.Visitor.Supervisor.RequestQueue
-import Control.Visitor.Worker (VisitorWorkerProgressUpdate(..),VisitorWorkerStolenWorkload(..),VisitorWorkerTerminationReason(..))
+import Control.Visitor.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
 import Control.Visitor.Workload
 -- }}}
 
@@ -77,8 +77,8 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
 -- }}}
 
 data WorkgroupReceivers result = WorkgroupReceivers -- {{{
-    {   receiveProgressUpdateFromWorker :: WorkerId → VisitorWorkerProgressUpdate result → IO ()
-    ,   receiveStolenWorkloadFromWorker :: WorkerId → Maybe (VisitorWorkerStolenWorkload result) → IO ()
+    {   receiveProgressUpdateFromWorker :: WorkerId → ProgressUpdate result → IO ()
+    ,   receiveStolenWorkloadFromWorker :: WorkerId → Maybe (StolenWorkload result) → IO ()
     ,   receiveFailureFromWorker :: WorkerId → String → IO ()
     ,   receiveFinishedFromWorker :: WorkerId → (Progress result) → IO ()
     ,   receiveQuitFromWorker :: WorkerId → IO ()

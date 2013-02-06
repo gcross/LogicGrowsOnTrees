@@ -213,12 +213,12 @@ instance Arbitrary α ⇒ Arbitrary (Progress α) where -- {{{
     arbitrary = Progress <$> arbitrary <*> arbitrary
 -- }}}
 
-instance Arbitrary α ⇒ Arbitrary (VisitorWorkerProgressUpdate α) where -- {{{
-    arbitrary = VisitorWorkerProgressUpdate <$> arbitrary <*> arbitrary
+instance Arbitrary α ⇒ Arbitrary (ProgressUpdate α) where -- {{{
+    arbitrary = ProgressUpdate <$> arbitrary <*> arbitrary
 -- }}}
 
-instance Arbitrary α ⇒ Arbitrary (VisitorWorkerStolenWorkload α) where -- {{{
-    arbitrary = VisitorWorkerStolenWorkload <$> arbitrary <*> arbitrary
+instance Arbitrary α ⇒ Arbitrary (StolenWorkload α) where -- {{{
+    arbitrary = StolenWorkload <$> arbitrary <*> arbitrary
 -- }}}
 
 instance Arbitrary Workload where -- {{{
@@ -981,7 +981,7 @@ tests = -- {{{
                             addWorker worker_id
                             let remaining_workload = Workload (Seq.replicate (prefix_count+1) (ChoiceStep LeftBranch)) Unexplored
                             let stolen_workload = Workload (Seq.replicate (prefix_count) (ChoiceStep LeftBranch) |> (ChoiceStep RightBranch)) Unexplored
-                            receiveStolenWorkload 0 $ Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate mempty remaining_workload) stolen_workload)
+                            receiveStolenWorkload 0 $ Just (StolenWorkload (ProgressUpdate mempty remaining_workload) stolen_workload)
                         mapM_ addWorker inactive_workers
                         performGlobalProgressUpdate
                         mapM_ removeWorker active_workers
@@ -999,7 +999,7 @@ tests = -- {{{
                     enableSupervisorDebugMode
                     addWorker ()
                     performGlobalProgressUpdate
-                    receiveProgressUpdate () $ VisitorWorkerProgressUpdate progress entire_workload
+                    receiveProgressUpdate () $ ProgressUpdate progress entire_workload
                     abortSupervisor
                  ) >>= (@?= SupervisorResult (SupervisorAborted progress) [()])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
@@ -1015,7 +1015,7 @@ tests = -- {{{
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     performGlobalProgressUpdate
-                    receiveProgressUpdate 1 $ VisitorWorkerProgressUpdate progress entire_workload
+                    receiveProgressUpdate 1 $ ProgressUpdate progress entire_workload
                     abortSupervisor
                  ) >>= (@?= SupervisorResult (SupervisorAborted progress) [1,2])
                 readIORef maybe_progress_ref >>= (@?= Just progress)
@@ -1054,7 +1054,7 @@ tests = -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new
                 semaphore ← newEmptyMVar
-                VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                WorkerEnvironment{..} ← forkVisitorIOWorkerThread
                     (IVar.write termination_result_ivar)
                     (liftIO (takeMVar semaphore) `mplus` error "should never get here")
                     entire_workload
@@ -1062,9 +1062,9 @@ tests = -- {{{
                 putMVar semaphore ()
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
-                    VisitorWorkerFinished _ → assertFailure "worker faled to abort"
-                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
-                    VisitorWorkerAborted → return ()
+                    WorkerFinished _ → assertFailure "worker faled to abort"
+                    WorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
+                    WorkerAborted → return ()
                 workerInitialPath @?= Seq.empty
                 (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
@@ -1072,7 +1072,7 @@ tests = -- {{{
                 [testProperty "with no initial path" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     worker_environment ←
-                        forkVisitorWorkerThread
+                        forkWorkerThread
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
@@ -1080,7 +1080,7 @@ tests = -- {{{
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
-                            VisitorWorkerFinished final_progress → return final_progress
+                            WorkerFinished final_progress → return final_progress
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= Explored
                     solutions @?= runVisitor visitor
@@ -1089,7 +1089,7 @@ tests = -- {{{
                 ,testProperty "with an initial path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     worker_environment ←
-                        forkVisitorWorkerThread
+                        forkWorkerThread
                             (IVar.write solutions_ivar)
                             visitor
                             (Workload path Unexplored)
@@ -1097,7 +1097,7 @@ tests = -- {{{
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
-                            VisitorWorkerFinished final_progress → return final_progress
+                            WorkerFinished final_progress → return final_progress
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= checkpointFromInitialPath path Explored
                     solutions @?= (runVisitor . sendVisitorDownPath path $ visitor)
@@ -1109,13 +1109,13 @@ tests = -- {{{
                 let runAnalysis visitor termination_flag termination_result_ivar progress_updates_ref = do -- {{{
                         termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                         remaining_solutions ← case termination_result of
-                            VisitorWorkerFinished (progressResult → solutions) → return solutions
-                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                            VisitorWorkerAborted → error "worker aborted prematurely"
+                            WorkerFinished (progressResult → solutions) → return solutions
+                            WorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            WorkerAborted → error "worker aborted prematurely"
                         (IVar.nonblocking . IVar.read) termination_flag >>= assertBool "is the termination flag set?" . isJust
                         progress_updates ← reverse <$> readIORef progress_updates_ref
                         let correct_solutions = runVisitor visitor
-                            update_solutions = map (progressResult . visitorWorkerProgressUpdate) progress_updates
+                            update_solutions = map (progressResult . progressUpdateProgress) progress_updates
                             all_solutions = remaining_solutions:update_solutions
                         forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
                             forM_ (zip [0..] all_solutions) $ \(j,solutions_2) →
@@ -1129,7 +1129,7 @@ tests = -- {{{
                             total_solutions
                         let accumulated_update_solutions = scanl1 mappend update_solutions
                         sequence_ $
-                            zipWith (\accumulated_solutions (VisitorWorkerProgressUpdate (Progress checkpoint _) remaining_workload) → do
+                            zipWith (\accumulated_solutions (ProgressUpdate (Progress checkpoint _) remaining_workload) → do
                                 let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
                                 assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
                                     (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
@@ -1148,7 +1148,7 @@ tests = -- {{{
                 [testProperty "continuous progress update requests" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     starting_flag ← IVar.new
                     termination_result_ivar ← IVar.new
-                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                    WorkerEnvironment{..} ← forkVisitorIOWorkerThread
                         (IVar.write termination_result_ivar)
                         ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
                         entire_workload
@@ -1164,7 +1164,7 @@ tests = -- {{{
                 ,testProperty "progress update requests at random leaves" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     termination_result_ivar ← IVar.new
                     progress_updates_ref ← newIORef []
-                    rec VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                    rec WorkerEnvironment{..} ← forkVisitorIOWorkerThread
                             (IVar.write termination_result_ivar)
                             (do value ← endowVisitor visitor
                                 liftIO $ randomIO >>= flip when submitMyProgressUpdateRequest
@@ -1181,16 +1181,16 @@ tests = -- {{{
              -- }}}
             ,testCase "terminates successfully with null visitor" $ do -- {{{
                 termination_result_ivar ← IVar.new
-                VisitorWorkerEnvironment{..} ←
-                    forkVisitorWorkerThread
+                WorkerEnvironment{..} ←
+                    forkWorkerThread
                         (IVar.write termination_result_ivar)
                         (mzero :: Visitor [Int])
                         entire_workload
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
-                    VisitorWorkerFinished (progressResult → solutions) → solutions @?= mempty
-                    VisitorWorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
-                    VisitorWorkerAborted → assertFailure "worker prematurely aborted"
+                    WorkerFinished (progressResult → solutions) → solutions @?= mempty
+                    WorkerFailed exception → assertFailure ("worker threw exception: " ++ show exception)
+                    WorkerAborted → assertFailure "worker prematurely aborted"
                 workerInitialPath @?= Seq.empty
                 (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
@@ -1198,9 +1198,9 @@ tests = -- {{{
                 let runManyStealsAnalysis visitor termination_flag termination_result_ivar steals_ref = do -- {{{
                         termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                         (Progress checkpoint remaining_solutions) ← case termination_result of
-                            VisitorWorkerFinished final_progress → return final_progress
-                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                            VisitorWorkerAborted → error "worker aborted prematurely"
+                            WorkerFinished final_progress → return final_progress
+                            WorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            WorkerAborted → error "worker aborted prematurely"
                         (IVar.nonblocking . IVar.read) termination_flag >>= assertBool "is the termination flag set?" . isJust
                         steals ← reverse <$> readIORef steals_ref
                         let correct_solutions = runVisitor visitor
@@ -1208,15 +1208,15 @@ tests = -- {{{
                                 map (
                                     progressResult
                                     .
-                                    visitorWorkerProgressUpdate
+                                    progressUpdateProgress
                                     .
-                                    visitorWorkerStolenWorkerProgressUpdate
+                                    stolenWorkloadProgressUpdate
                                 ) steals
                             stolen_solutions =
                                 map (
                                     flip runVisitorThroughWorkload visitor
                                     .
-                                    visitorWorkerStolenWorkload
+                                    stolenWorkload
                                 ) steals
                             all_solutions = remaining_solutions:(prestolen_solutions ++ stolen_solutions)
                             total_solutions = mconcat all_solutions
@@ -1230,7 +1230,7 @@ tests = -- {{{
                             total_solutions
                         let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
                             accumulated_stolen_solutions = scanl1 mappend stolen_solutions
-                        sequence_ $ zipWith3 (\acc_prestolen acc_stolen (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (Progress checkpoint _) remaining_workload) _) → do
+                        sequence_ $ zipWith3 (\acc_prestolen acc_stolen (StolenWorkload (ProgressUpdate (Progress checkpoint _) remaining_workload) _) → do
                             let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
                                 accumulated_solutions = acc_prestolen `mappend` acc_stolen
                             assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
@@ -1258,7 +1258,7 @@ tests = -- {{{
                                 )
                                 (endowVisitor visitor)
                     termination_result_ivar ← IVar.new
-                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                    WorkerEnvironment{..} ← forkVisitorIOWorkerThread
                         (IVar.write termination_result_ivar)
                         visitor_with_blocking_value
                         entire_workload
@@ -1270,11 +1270,11 @@ tests = -- {{{
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of
-                            VisitorWorkerFinished final_progress → return final_progress
-                            VisitorWorkerFailed exception → error ("worker threw exception: " ++ show exception)
-                            VisitorWorkerAborted → error "worker aborted prematurely"
+                            WorkerFinished final_progress → return final_progress
+                            WorkerFailed exception → error ("worker threw exception: " ++ show exception)
+                            WorkerAborted → error "worker aborted prematurely"
                     (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
-                    VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate (Progress checkpoint prestolen_solutions) remaining_workload) stolen_workload ←
+                    StolenWorkload (ProgressUpdate (Progress checkpoint prestolen_solutions) remaining_workload) stolen_workload ←
                         fmap (fromMaybe (error "stolen workload not available"))
                         $
                         readIORef maybe_workload_ref
@@ -1298,7 +1298,7 @@ tests = -- {{{
                 ,testProperty "continuous stealing" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     starting_flag ← IVar.new
                     termination_result_ivar ← IVar.new
-                    VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                    WorkerEnvironment{..} ← forkVisitorIOWorkerThread
                         (IVar.write termination_result_ivar)
                         ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
                         entire_workload
@@ -1315,7 +1315,7 @@ tests = -- {{{
                 ,testProperty "stealing at random leaves" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     termination_result_ivar ← IVar.new
                     steals_ref ← newIORef []
-                    rec VisitorWorkerEnvironment{..} ← forkVisitorIOWorkerThread
+                    rec WorkerEnvironment{..} ← forkVisitorIOWorkerThread
                             (IVar.write termination_result_ivar)
                             (do value ← endowVisitor visitor
                                 liftIO $ randomIO >>= flip when submitMyWorkloadStealRequest

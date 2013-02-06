@@ -43,7 +43,7 @@ deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Types {{{
-newtype ThreadsControllerMonad result α = C { unwrapC :: WorkgroupControllerMonad (IntMap (VisitorWorkerEnvironment result)) result α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,WorkgroupRequestQueueMonad)
+newtype ThreadsControllerMonad result α = C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment result)) result α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,WorkgroupRequestQueueMonad)
 -- }}}
 
 -- Instances {{{
@@ -58,13 +58,13 @@ instance RequestQueueMonad (ThreadsControllerMonad result) where
 
 -- Driver {{{
 driver :: Driver IO configuration visitor result
-driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
+driver = Driver $ \forkWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
     configuration ← execParser (info configuration_parser infomod)
     initializeGlobalState configuration
     maybe_starting_progress ← getMaybeStartingProgress configuration
     genericRunVisitorStartingFrom
          maybe_starting_progress
-        (flip forkVisitorWorkerThread . constructVisitor $ configuration)
+        (flip forkWorkerThread . constructVisitor $ configuration)
         (changeNumberOfWorkersToMatchCPUs >> constructManager configuration)
      >>= notifyTerminated configuration
 -- }}}
@@ -93,7 +93,7 @@ runVisitorMaybeStartingFrom :: -- {{{
 runVisitorMaybeStartingFrom maybe_starting_progress =
     genericRunVisitorStartingFrom maybe_starting_progress
     .
-    flip forkVisitorWorkerThread
+    flip forkWorkerThread
 -- }}}
 
 runVisitorStartingFrom :: -- {{{
@@ -176,9 +176,9 @@ genericRunVisitorStartingFrom :: -- {{{
     Monoid result ⇒
     Maybe (Progress result) →
     (
-        (VisitorWorkerTerminationReason result → IO ()) →
+        (WorkerTerminationReason result → IO ()) →
         Workload →
-        IO (VisitorWorkerEnvironment result)
+        IO (WorkerEnvironment result)
     ) →
     ThreadsControllerMonad result () →
     IO (TerminationReason result)
@@ -226,11 +226,11 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
                 sendWorkloadToWorker worker_id workload = -- {{{
                     (liftIO $ spawnWorker (\termination_reason →
                         case termination_reason of
-                            VisitorWorkerFinished final_progress →
+                            WorkerFinished final_progress →
                                 receiveFinishedFromWorker worker_id final_progress
-                            VisitorWorkerFailed message →
+                            WorkerFailed message →
                                 receiveFailureFromWorker worker_id message
-                            VisitorWorkerAborted →
+                            WorkerAborted →
                                 receiveQuitFromWorker worker_id
                     ) workload)
                     >>=

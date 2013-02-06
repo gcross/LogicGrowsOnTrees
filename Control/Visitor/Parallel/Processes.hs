@@ -62,7 +62,7 @@ import qualified Control.Visitor.Parallel.Process as Process
 import Control.Visitor.Parallel.Process
 import Control.Visitor.Parallel.Workgroup
 import Control.Visitor.Supervisor.RequestQueue
-import Control.Visitor.Worker as Worker
+import Control.Visitor.Worker as Worker hiding (ProgressUpdate,StolenWorkload)
 import Control.Visitor.Workload
 -- }}}
 
@@ -95,9 +95,9 @@ instance RequestQueueMonad (ProcessesControllerMonad result) where
 
 -- Drivers {{{
 driver :: Serialize configuration ⇒ Driver IO configuration visitor result -- {{{
-driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
+driver = Driver $ \forkWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
     genericRunVisitor
-        forkVisitorWorkerThread
+        forkWorkerThread
         (execParser (info (liftA2 (,) number_of_processes_options configuration_parser) infomod))
         (initializeGlobalState . snd)
         (getMaybeStartingProgress . snd)
@@ -242,7 +242,7 @@ runVisitor :: -- {{{
     IO (Maybe (configuration,TerminationReason result))
 runVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
-        forkVisitorWorkerThread
+        forkWorkerThread
         getConfiguration
         initializeGlobalState
         getStartingProgress
@@ -293,7 +293,7 @@ runWorkerWithVisitor :: -- {{{
     Handle →
     Handle →
     IO ()
-runWorkerWithVisitor = genericRunWorker . flip forkVisitorWorkerThread
+runWorkerWithVisitor = genericRunWorker . flip forkWorkerThread
 -- }}}
 
 runWorkerWithVisitorIO :: -- {{{
@@ -336,10 +336,10 @@ send handle value = do
 genericRunVisitor :: -- {{{
     (Serialize configuration, Monoid result, Serialize result) ⇒
     (
-        (VisitorWorkerTerminationReason result → IO ()) →
+        (WorkerTerminationReason result → IO ()) →
         visitor result →
         Workload →
-        IO (VisitorWorkerEnvironment result)
+        IO (WorkerEnvironment result)
     ) →
     IO configuration →
     (configuration → IO ()) →
@@ -375,9 +375,9 @@ genericRunVisitor forkWorkerThread getConfiguration initializeGlobalState getSta
 genericRunWorker :: -- {{{
     (Monoid result, Serialize result) ⇒
     (
-        (VisitorWorkerTerminationReason result → IO ()) →
+        (WorkerTerminationReason result → IO ()) →
         Workload →
-        IO (VisitorWorkerEnvironment result)
+        IO (WorkerEnvironment result)
     ) →
     Handle →
     Handle →

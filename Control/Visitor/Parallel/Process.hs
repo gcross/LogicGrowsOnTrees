@@ -30,7 +30,8 @@ import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
 import Control.Visitor.Supervisor
-import Control.Visitor.Worker
+import qualified Control.Visitor.Worker as Worker
+import Control.Visitor.Worker hiding (ProgressUpdate,StolenWorkload)
 import Control.Visitor.Workload
 -- }}}
 
@@ -43,8 +44,8 @@ deriveLoggers "Logger" [DEBUG,INFO]
 data MessageForSupervisor result = -- {{{
     Failed String
   | Finished (Progress result)
-  | ProgressUpdate (VisitorWorkerProgressUpdate result)
-  | StolenWorkload (Maybe (VisitorWorkerStolenWorkload result))
+  | ProgressUpdate (Worker.ProgressUpdate result)
+  | StolenWorkload (Maybe (Worker.StolenWorkload result))
   | WorkerQuit
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForSupervisor)
@@ -67,9 +68,9 @@ runWorker :: -- {{{
     IO (MessageForWorker result) →
     (MessageForSupervisor result → IO ()) →
     (
-        (VisitorWorkerTerminationReason result → IO ()) →
+        (WorkerTerminationReason result → IO ()) →
         Workload →
-        IO (VisitorWorkerEnvironment result)
+        IO (WorkerEnvironment result)
     ) →
     IO ()
 runWorker receiveMessage sendMessage forkWorkerThread =
@@ -77,7 +78,7 @@ runWorker receiveMessage sendMessage forkWorkerThread =
     let processRequest sendRequest constructResponse =
             tryTakeMVar worker_environment_mvar
             >>=
-            maybe (return ()) (\worker_environment@VisitorWorkerEnvironment{workerPendingRequests} → do
+            maybe (return ()) (\worker_environment@WorkerEnvironment{workerPendingRequests} → do
                 sendRequest workerPendingRequests (sendMessage . constructResponse)
                 putMVar worker_environment_mvar worker_environment
             )
@@ -99,11 +100,11 @@ runWorker receiveMessage sendMessage forkWorkerThread =
                                 (\termination_reason → do
                                     _ ← takeMVar worker_environment_mvar
                                     case termination_reason of
-                                        VisitorWorkerFinished final_progress →
+                                        WorkerFinished final_progress →
                                             sendMessage $ Finished final_progress
-                                        VisitorWorkerFailed exception →
+                                        WorkerFailed exception →
                                             sendMessage $ Failed (show exception)
-                                        VisitorWorkerAborted →
+                                        WorkerAborted →
                                             return ()
                                 )
                                 workload

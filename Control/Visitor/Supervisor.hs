@@ -318,9 +318,9 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . Super
 receiveProgressUpdate :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
-    VisitorWorkerProgressUpdate result →
+    ProgressUpdate result →
     SupervisorMonad result worker_id m ()
-receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") . SupervisorMonad . lift $ do
+receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") . SupervisorMonad . lift $ do
     infoM $ "Received progress update from " ++ show worker_id
     validateWorkerKnownAndActive "receiving progress update" worker_id
     current_progress %: (`mappend` progress_update)
@@ -334,7 +334,7 @@ receiveProgressUpdate worker_id (VisitorWorkerProgressUpdate progress_update rem
 receiveStolenWorkload :: -- {{{
     (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
     worker_id →
-    Maybe (VisitorWorkerStolenWorkload result) →
+    Maybe (StolenWorkload result) →
     SupervisorMonad result worker_id m ()
 receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") . SupervisorMonad . lift $ do
     infoM $ "Received stolen workload from " ++ show worker_id
@@ -342,7 +342,7 @@ receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveSt
     workers_pending_workload_steal %: Set.delete worker_id
     case maybe_stolen_workload of
         Nothing → return ()
-        Just (VisitorWorkerStolenWorkload (VisitorWorkerProgressUpdate progress_update remaining_workload) workload) → do
+        Just (StolenWorkload (ProgressUpdate progress_update remaining_workload) workload) → do
             current_progress %: (`mappend` progress_update)
             active_workers %: Map.insert worker_id remaining_workload
             enqueueWorkload workload

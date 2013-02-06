@@ -26,7 +26,7 @@ main = defaultMain
     ,bench "visitor w/ checkpointing" $ nf (getSum . runVisitorThroughCheckpoint Unexplored . sumtree) depth
     ,bench "visitor using worker" $ do
         result_mvar ← newEmptyMVar
-        _ ← forkVisitorWorkerThread
+        _ ← forkWorkerThread
             (putMVar result_mvar)
             (sumtree depth)
             entire_workload

@@ -93,10 +93,10 @@ data Driver result_monad configuration visitor result =  -- {{{
         , MonadIO result_monad
         ) ⇒
         (
-            (VisitorWorkerTerminationReason result → IO ()) →
+            (WorkerTerminationReason result → IO ()) →
             visitor result →
             Workload →
-            IO (VisitorWorkerEnvironment result)
+            IO (WorkerEnvironment result)
         ) →
         Parser configuration →
         (∀ α. InfoMod α) →
@@ -173,7 +173,7 @@ mainVisitor :: -- {{{
     (visitor_configuration → TerminationReason result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
-mainVisitor (Driver runDriver) = genericMain . runDriver $ forkVisitorWorkerThread
+mainVisitor (Driver runDriver) = genericMain . runDriver $ forkWorkerThread
 -- }}}
 
 mainVisitorIO :: -- {{{

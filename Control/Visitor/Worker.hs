@@ -44,40 +44,40 @@ import Control.Visitor.Workload
 
 -- Types {{{
 
-data VisitorWorkerProgressUpdate α = VisitorWorkerProgressUpdate -- {{{
-    {   visitorWorkerProgressUpdate :: Progress α
-    ,   visitorWorkerRemainingWorkload :: Workload
+data ProgressUpdate α = ProgressUpdate -- {{{
+    {   progressUpdateProgress :: Progress α
+    ,   progressUpdateRemainingWorkload :: Workload
     } deriving (Eq,Show)
-$( derive makeSerialize ''VisitorWorkerProgressUpdate )
+$( derive makeSerialize ''ProgressUpdate )
 -- }}}
 
-data VisitorWorkerStolenWorkload α = VisitorWorkerStolenWorkload -- {{{
-    {   visitorWorkerStolenWorkerProgressUpdate :: VisitorWorkerProgressUpdate α
-    ,   visitorWorkerStolenWorkload :: Workload
+data StolenWorkload α = StolenWorkload -- {{{
+    {   stolenWorkloadProgressUpdate :: ProgressUpdate α
+    ,   stolenWorkload :: Workload
     } deriving (Eq,Show)
-$( derive makeSerialize ''VisitorWorkerStolenWorkload )
+$( derive makeSerialize ''StolenWorkload )
 -- }}}
 
-data VisitorWorkerRequest α = -- {{{
+data WorkerRequest α = -- {{{
     AbortRequested
-  | ProgressUpdateRequested (VisitorWorkerProgressUpdate α → IO ())
-  | WorkloadStealRequested (Maybe (VisitorWorkerStolenWorkload α) → IO ())
+  | ProgressUpdateRequested (ProgressUpdate α → IO ())
+  | WorkloadStealRequested (Maybe (StolenWorkload α) → IO ())
 -- }}}
 
-type VisitorWorkerRequestQueue α = IORef [VisitorWorkerRequest α]
+type WorkerRequestQueue α = IORef [WorkerRequest α]
 
-data VisitorWorkerEnvironment α = VisitorWorkerEnvironment -- {{{
+data WorkerEnvironment α = WorkerEnvironment -- {{{
     {   workerInitialPath :: Path
     ,   workerThreadId :: ThreadId
-    ,   workerPendingRequests :: VisitorWorkerRequestQueue α
+    ,   workerPendingRequests :: WorkerRequestQueue α
     ,   workerTerminationFlag :: IVar ()
     }
 -- }}}
 
-data VisitorWorkerTerminationReason α = -- {{{
-    VisitorWorkerFinished (Progress α)
-  | VisitorWorkerFailed String
-  | VisitorWorkerAborted
+data WorkerTerminationReason α = -- {{{
+    WorkerFinished (Progress α)
+  | WorkerFailed String
+  | WorkerAborted
   deriving (Show)
 -- }}}
 
@@ -91,9 +91,9 @@ computeProgressUpdate :: -- {{{
     CheckpointCursor →
     Context m α →
     Checkpoint →
-    VisitorWorkerProgressUpdate α
+    ProgressUpdate α
 computeProgressUpdate result initial_path cursor context checkpoint =
-    VisitorWorkerProgressUpdate
+    ProgressUpdate
         (Progress
             (checkpointFromInitialPath initial_path
              .
@@ -115,33 +115,33 @@ computeProgressUpdate result initial_path cursor context checkpoint =
 
 forkVisitorIOWorkerThread :: -- {{{
     Monoid α ⇒
-    (VisitorWorkerTerminationReason α → IO ()) →
+    (WorkerTerminationReason α → IO ()) →
     VisitorIO α →
     Workload →
-    IO (VisitorWorkerEnvironment α)
+    IO (WorkerEnvironment α)
 forkVisitorIOWorkerThread = forkVisitorTWorkerThread id
 -- }}}
 
 forkVisitorTWorkerThread :: -- {{{
     (MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
-    (VisitorWorkerTerminationReason α → IO ()) →
+    (WorkerTerminationReason α → IO ()) →
     VisitorT m α →
     Workload →
-    IO (VisitorWorkerEnvironment α)
+    IO (WorkerEnvironment α)
 forkVisitorTWorkerThread =
     genericForkVisitorTWorkerThread
         sendVisitorTDownPath
         stepVisitorTThroughCheckpoint
 -- }}}
 
-forkVisitorWorkerThread :: -- {{{
+forkWorkerThread :: -- {{{
     Monoid α ⇒
-    (VisitorWorkerTerminationReason α → IO ()) →
+    (WorkerTerminationReason α → IO ()) →
     Visitor α →
     Workload →
-    IO (VisitorWorkerEnvironment α)
-forkVisitorWorkerThread =
+    IO (WorkerEnvironment α)
+forkWorkerThread =
     genericForkVisitorTWorkerThread
         (return .* sendVisitorDownPath)
         (return . stepVisitorThroughCheckpoint)
@@ -153,10 +153,10 @@ genericForkVisitorTWorkerThread :: -- {{{
     (Path → VisitorT m α → n (VisitorT m α)) →
     (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
     (∀ β. n β → IO β) →
-    (VisitorWorkerTerminationReason α → IO ()) →
+    (WorkerTerminationReason α → IO ()) →
     VisitorT m α →
     Workload →
-    IO (VisitorWorkerEnvironment α)
+    IO (WorkerEnvironment α)
 genericForkVisitorTWorkerThread
     walk
     step
@@ -176,7 +176,7 @@ genericForkVisitorTWorkerThread
           case requests of
             -- Respond to request {{{
                 [] → liftIO yield >> loop3 result cursor visitor_state
-                AbortRequested:_ → return VisitorWorkerAborted
+                AbortRequested:_ → return WorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     liftIO . submitProgress $ computeProgressUpdate result initial_path cursor context checkpoint
                     loop2 mempty cursor visitor_state rest_requests
@@ -187,7 +187,7 @@ genericForkVisitorTWorkerThread
                             loop2 result cursor visitor_state rest_requests
                         Just (new_cursor,new_context,workload) → do
                             liftIO . submitMaybeWorkload . Just $
-                                VisitorWorkerStolenWorkload
+                                StolenWorkload
                                     (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
                                     workload
                             loop2 mempty new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
@@ -204,7 +204,7 @@ genericForkVisitorTWorkerThread
                 Nothing →
                     return
                     .
-                    VisitorWorkerFinished
+                    WorkerFinished
                     .
                     flip Progress new_result
                     .
@@ -226,14 +226,14 @@ genericForkVisitorTWorkerThread
                 )
                 `catch`
                 (\e → case fromException e of
-                    Just ThreadKilled → return VisitorWorkerAborted
-                    Just UserInterrupt → return VisitorWorkerAborted
-                    _ → return $ VisitorWorkerFailed (show e)
+                    Just ThreadKilled → return WorkerAborted
+                    Just UserInterrupt → return WorkerAborted
+                    _ → return $ WorkerFailed (show e)
                 )
         IVar.write finished_flag ()
         finishedCallback termination_reason
     return $
-        VisitorWorkerEnvironment
+        WorkerEnvironment
             initial_path
             thread_id
             pending_requests_ref
@@ -241,24 +241,24 @@ genericForkVisitorTWorkerThread
 {-# INLINE genericForkVisitorTWorkerThread #-}
 -- }}}
 
-sendAbortRequest :: VisitorWorkerRequestQueue α → IO () -- {{{
+sendAbortRequest :: WorkerRequestQueue α → IO () -- {{{
 sendAbortRequest = flip sendRequest AbortRequested
 -- }}}
 
 sendProgressUpdateRequest :: -- {{{
-    VisitorWorkerRequestQueue α →
-    (VisitorWorkerProgressUpdate α → IO ()) →
+    WorkerRequestQueue α →
+    (ProgressUpdate α → IO ()) →
     IO ()
 sendProgressUpdateRequest queue = sendRequest queue . ProgressUpdateRequested
 -- }}}
 
-sendRequest :: VisitorWorkerRequestQueue α → VisitorWorkerRequest α → IO () -- {{{
+sendRequest :: WorkerRequestQueue α → WorkerRequest α → IO () -- {{{
 sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
 -- }}}
 
 sendWorkloadStealRequest :: -- {{{
-    VisitorWorkerRequestQueue α →
-    (Maybe (VisitorWorkerStolenWorkload α) → IO ()) →
+    WorkerRequestQueue α →
+    (Maybe (StolenWorkload α) → IO ()) →
     IO ()
 sendWorkloadStealRequest queue = sendRequest queue . WorkloadStealRequested
 -- }}}
