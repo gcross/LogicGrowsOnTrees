@@ -30,7 +30,7 @@ import Data.Typeable (Typeable)
 
 import Control.Visitor.Checkpoint (VisitorProgress)
 import qualified Control.Visitor.Supervisor as Supervisor
-import Control.Visitor.Supervisor (VisitorSupervisorMonad)
+import Control.Visitor.Supervisor (SupervisorMonad)
 -- }}}
 
 -- Classes {{{
@@ -48,7 +48,7 @@ class MonadCatchIO m ⇒ RequestQueueMonad m where -- {{{
 
 -- Types {{{
 
-type Request result worker_id m = VisitorSupervisorMonad result worker_id m ()
+type Request result worker_id m = SupervisorMonad result worker_id m ()
 data RequestQueue result worker_id m = RequestQueue -- {{{
     {   requests :: !(TChan (Request result worker_id m))
     ,   receivers :: !(IORef [VisitorProgress result → IO ()])
@@ -111,7 +111,7 @@ getCurrentProgress = syncAsync getCurrentProgressAsync
 
 getQuantityAsync :: -- {{{
     (MonadIO m', Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    VisitorSupervisorMonad result worker_id m α →
+    SupervisorMonad result worker_id m α →
     (α → IO ()) →
     RequestQueue result worker_id m →
     m' ()
@@ -132,7 +132,7 @@ newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
 processAllRequests :: -- {{{
     MonadIO m ⇒
     RequestQueue result worker_id m →
-    VisitorSupervisorMonad result worker_id m ()
+    SupervisorMonad result worker_id m ()
 processAllRequests (RequestQueue requests _) = go
   where
     go =
@@ -144,7 +144,7 @@ processAllRequests (RequestQueue requests _) = go
 processRequest :: -- {{{
     MonadIO m ⇒
     RequestQueue result worker_id m →
-    VisitorSupervisorMonad result worker_id m ()
+    SupervisorMonad result worker_id m ()
 processRequest =
     join
     .

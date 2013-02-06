@@ -98,7 +98,7 @@ type WorkgroupStateMonad inner_state result = StateT (WorkgroupState result) (Re
 
 type WorkgroupRequestQueue inner_state result = RequestQueue result WorkerId (WorkgroupStateMonad inner_state result)
 
-type WorkgroupMonad inner_state result = VisitorSupervisorMonad result WorkerId (WorkgroupStateMonad inner_state result)
+type WorkgroupMonad inner_state result = SupervisorMonad result WorkerId (WorkgroupStateMonad inner_state result)
 
 newtype WorkgroupControllerMonad inner_state result α = C { unwrapC :: RequestQueueReader result WorkerId (WorkgroupStateMonad inner_state result) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO)
 -- }}}
@@ -183,10 +183,10 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         .
         flip evalStateT initial_state
         $
-        do  VisitorSupervisorResult termination_reason worker_ids ←
-                runVisitorSupervisorMaybeStartingFrom
+        do  SupervisorResult termination_reason worker_ids ←
+                runSupervisorMaybeStartingFrom
                     maybe_starting_progress
-                    VisitorSupervisorActions{..}
+                    SupervisorActions{..}
                     $
                     -- enableSupervisorDebugMode >>
                     forever (processRequest request_queue)
