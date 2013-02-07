@@ -42,7 +42,7 @@ import Prelude hiding (catch)
 import Control.Applicative ((<$>),(<*>),Applicative)
 import Control.Arrow (first,second)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
-import Control.Monad (liftM2,mplus,unless,when)
+import Control.Monad (liftM,liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import qualified Control.Monad.Reader.Class as MonadsTF
@@ -271,28 +271,20 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . Supervisor
     tryToObtainWorkloadFor worker_id
 -- }}}
 
-disableSupervisorDebugMode :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    SupervisorMonad result worker_id m ()
+disableSupervisorDebugMode :: Monad m ⇒ SupervisorMonad result worker_id m () -- {{{
 disableSupervisorDebugMode = setSupervisorDebugMode False
 -- }}}
 
-enableSupervisorDebugMode :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    SupervisorMonad result worker_id m ()
+enableSupervisorDebugMode :: Monad m ⇒ SupervisorMonad result worker_id m () -- {{{
 enableSupervisorDebugMode = setSupervisorDebugMode True
 -- }}}
 
-getCurrentProgress :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    SupervisorMonad result worker_id m (Progress result)
+getCurrentProgress :: Monad m ⇒ SupervisorMonad result worker_id m (Progress result) -- {{{
 getCurrentProgress = SupervisorMonad . lift . get $ current_progress
 -- }}}
 
-getNumberOfWorkers :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    SupervisorMonad result worker_id m Int
-getNumberOfWorkers = SupervisorMonad . lift . (Set.size <$>) . get $ known_workers
+getNumberOfWorkers :: Monad m ⇒ SupervisorMonad result worker_id m Int -- {{{
+getNumberOfWorkers = SupervisorMonad . lift . liftM Set.size . get $ known_workers
 -- }}}
 
 getWaitingWorkers :: -- {{{
@@ -488,10 +480,7 @@ runSupervisorStartingFrom starting_progress actions loop =
     loop
 -- }}}
 
-setSupervisorDebugMode :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    Bool →
-    SupervisorMonad result worker_id m ()
+setSupervisorDebugMode :: Monad m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
 setSupervisorDebugMode = SupervisorMonad . lift . (debug_mode %=)
 -- }}}
 
