@@ -187,8 +187,8 @@ data SupervisorTerminationReason result worker_id = -- {{{
 
 data SupervisorResult result worker_id = -- {{{
     SupervisorResult
-    {   visitorSupervisorTerminationReason :: SupervisorTerminationReason result worker_id
-    ,   visitorSupervisorRemainingWorkers :: [worker_id]
+    {   supervisorTerminationReason :: SupervisorTerminationReason result worker_id
+    ,   supervisorRemainingWorkers :: [worker_id]
     } deriving (Eq,Show)
 -- }}}
 
