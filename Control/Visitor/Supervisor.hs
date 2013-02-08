@@ -4,6 +4,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -241,7 +242,9 @@ data SupervisorProgram result worker_id m = -- {{{
 
 data RunStatistics = -- {{{
     RunStatistics
-    {   runWallTime :: !NominalDiffTime
+    {   runStartTime :: !UTCTime
+    ,   runEndTime :: !UTCTime
+    ,   runWallTime :: !NominalDiffTime
     } deriving (Eq,Show)
 -- }}}
 
@@ -329,12 +332,11 @@ getCurrentProgress = SupervisorMonad . lift . get $ current_progress
 getCurrentStatistics :: -- {{{
     SupervisorMonadConstraint m ⇒
     SupervisorMonad result worker_id m RunStatistics
-getCurrentStatistics = SupervisorMonad . lift $
-    liftM RunStatistics
-        (liftM2 diffUTCTime
-            (liftIO getCurrentTime)
-            (asks start_time)
-        )
+getCurrentStatistics = SupervisorMonad . lift $ do
+    runEndTime ← liftIO getCurrentTime
+    runStartTime ← asks start_time
+    let runWallTime = runEndTime `diffUTCTime` runStartTime
+    return RunStatistics{..}
 -- }}}
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m Int -- {{{
