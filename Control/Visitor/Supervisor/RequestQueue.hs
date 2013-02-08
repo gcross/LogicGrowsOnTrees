@@ -30,7 +30,7 @@ import Data.Typeable (Typeable)
 
 import Control.Visitor.Checkpoint (Progress)
 import qualified Control.Visitor.Supervisor as Supervisor
-import Control.Visitor.Supervisor (SupervisorMonad)
+import Control.Visitor.Supervisor (SupervisorMonad,SupervisorProgram(..))
 -- }}}
 
 -- Classes {{{
@@ -178,6 +178,22 @@ receiveProgress queue progress =
 
 requestProgressUpdate :: RequestQueueMonad m ⇒ m (Progress (RequestQueueMonadResult m)) -- {{{
 requestProgressUpdate = syncAsync requestProgressUpdateAsync
+-- }}}
+
+requestQueueProgram :: -- {{{
+    MonadIO m ⇒
+    RequestQueue result worker_id m →
+    SupervisorProgram result worker_id m
+requestQueueProgram =
+    flip BlockingProgram id
+    .
+    liftIO
+    .
+    atomically
+    .
+    readTChan
+    .
+    requests
 -- }}}
 
 syncAsync :: MonadIO m ⇒ ((α → IO ()) → m ()) → m α -- {{{

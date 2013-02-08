@@ -187,9 +187,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
                 runSupervisorMaybeStartingFrom
                     maybe_starting_progress
                     SupervisorCallbacks{..}
-                    $
-                    -- enableSupervisorDebugMode >>
-                    forever (processRequest request_queue)
+                    (requestQueueProgram request_queue)
             asks killAllWorkers >>= liftInner . ($ worker_ids)
             return . (RunOutcome run_statistics) $ case termination_reason of
                 SupervisorAborted remaining_progress → Aborted remaining_progress

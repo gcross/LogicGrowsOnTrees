@@ -1,6 +1,7 @@
 -- Language extensions {{{
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -16,6 +17,7 @@ module Control.Visitor.Supervisor -- {{{
     , SupervisorMonad
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
+    , SupervisorProgram(..)
     , SupervisorTerminationReason(..)
     , SupervisorWorkerIdConstraint
     , abortSupervisor
@@ -37,6 +39,9 @@ module Control.Visitor.Supervisor -- {{{
     , runSupervisor
     , runSupervisorMaybeStartingFrom
     , runSupervisorStartingFrom
+    , runUnrestrictedSupervisor
+    , runUnrestrictedSupervisorMaybeStartingFrom
+    , runUnrestrictedSupervisorStartingFrom
     , setSupervisorDebugMode
     ) where -- }}}
 
@@ -47,7 +52,7 @@ import Control.Applicative ((<$>),(<*>),Applicative)
 import Control.Arrow (first,second)
 import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
-import Control.Monad (liftM,liftM2,mplus,unless,when)
+import Control.Monad (forever,liftM,liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import qualified Control.Monad.Reader.Class as MonadsTF
@@ -221,6 +226,17 @@ newtype SupervisorMonad result worker_id m α = -- {{{
     SupervisorMonad {
         unwrapSupervisorMonad :: SupervisorAbortMonad result worker_id m α
     } deriving (Applicative,Functor,Monad,MonadIO)
+-- }}}
+
+data WaitingSubprogram m α = -- {{{
+    BlockingSubprogram (m α)
+  | PollingSubprogram (m (Maybe α))
+-- }}}
+
+data SupervisorProgram result worker_id m = -- {{{
+    ∀ α. BlockingProgram (m α) (α → SupervisorMonad result worker_id m ())
+  | ∀ α. PollingProgram (m (Maybe α)) (α → SupervisorMonad result worker_id m ())
+  | UnrestrictedProgram (∀ α. SupervisorMonad result worker_id m α)
 -- }}}
 
 data RunStatistics = -- {{{
@@ -487,7 +503,7 @@ runSupervisor :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     SupervisorCallbacks result worker_id m →
-    (∀ a. SupervisorMonad result worker_id m a) →
+    SupervisorProgram result worker_id m →
     m (SupervisorOutcome result worker_id)
 runSupervisor = runSupervisorStartingFrom mempty
 -- }}}
@@ -499,7 +515,7 @@ runSupervisorMaybeStartingFrom :: -- {{{
     ) ⇒
     Maybe (Progress result) →
     SupervisorCallbacks result worker_id m →
-    (∀ a. SupervisorMonad result worker_id m a) →
+    SupervisorProgram result worker_id m →
     m (SupervisorOutcome result worker_id)
 runSupervisorMaybeStartingFrom Nothing = runSupervisor
 runSupervisorMaybeStartingFrom (Just progress) = runSupervisorStartingFrom progress
@@ -512,9 +528,9 @@ runSupervisorStartingFrom :: -- {{{
     ) ⇒
     Progress result →
     SupervisorCallbacks result worker_id m →
-    (∀ α. SupervisorMonad result worker_id m α) →
+    SupervisorProgram result worker_id m →
     m (SupervisorOutcome result worker_id)
-runSupervisorStartingFrom starting_progress actions loop = liftIO getCurrentTime >>= \start_time →
+runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentTime >>= \start_time →
     flip runReaderT (SupervisorRunConstants actions start_time)
     .
     flip evalStateT
@@ -549,8 +565,47 @@ runSupervisorStartingFrom starting_progress actions loop = liftIO getCurrentTime
     )
     .
     unwrapSupervisorMonad
+    .
+    runSupervisorProgram
     $
-    loop
+    program
+-- }}}
+
+runUnrestrictedSupervisor :: -- {{{
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    SupervisorCallbacks result worker_id m →
+    (∀ α. SupervisorMonad result worker_id m α) →
+    m (SupervisorOutcome result worker_id)
+runUnrestrictedSupervisor callbacks = runSupervisorStartingFrom mempty callbacks . UnrestrictedProgram
+-- }}}
+
+runUnrestrictedSupervisorMaybeStartingFrom :: -- {{{
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    Maybe (Progress result) →
+    SupervisorCallbacks result worker_id m →
+    (∀ α. SupervisorMonad result worker_id m α) →
+    m (SupervisorOutcome result worker_id)
+runUnrestrictedSupervisorMaybeStartingFrom Nothing = runUnrestrictedSupervisor
+runUnrestrictedSupervisorMaybeStartingFrom (Just progress) = runUnrestrictedSupervisorStartingFrom progress
+-- }}}
+
+runUnrestrictedSupervisorStartingFrom :: -- {{{
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    Progress result →
+    SupervisorCallbacks result worker_id m →
+    (∀ α. SupervisorMonad result worker_id m α) →
+    m (SupervisorOutcome result worker_id)
+runUnrestrictedSupervisorStartingFrom starting_progress actions =
+    runSupervisorStartingFrom starting_progress actions . UnrestrictedProgram
 -- }}}
 
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
@@ -764,6 +819,16 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
             else throw $ SpaceFullyExploredButWorkloadsRemain workers_and_workloads
     debugM $ " === END VALIDATE === " ++ label
   ) >> return result
+-- }}}
+
+runSupervisorProgram :: Monad m ⇒ SupervisorProgram result worker_id m → SupervisorMonad result worker_id m α -- {{{
+runSupervisorProgram program =
+    case program of
+        BlockingProgram getRequest processRequest →
+            forever $ lift getRequest >>= processRequest
+        PollingProgram getMaybeRequest processRequest →
+            forever $ lift getMaybeRequest >>= maybe (return ()) processRequest
+        UnrestrictedProgram run → run
 -- }}}
 
 sendCurrentProgressToUser :: -- {{{
