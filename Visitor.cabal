@@ -51,6 +51,7 @@ Library
         PSQueue == 1.1.*,
         sequential-index == 0.2.*,
         stm >= 2.3 && < 2.5,
+        time == 1.4.*,
         transformers >= 0.2 && < 0.4,
         yjtools >= 0.9.7 && < 0.10
     Exposed-modules:

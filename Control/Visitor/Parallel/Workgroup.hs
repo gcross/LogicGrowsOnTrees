@@ -47,7 +47,7 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (TerminationReason(..))
+import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
 import Control.Visitor.Supervisor
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
@@ -146,7 +146,7 @@ runWorkgroup :: -- {{{
     (WorkgroupReceivers result → WorkgroupCallbacks inner_state) →
     Maybe (Progress result) →
     WorkgroupControllerMonad inner_state result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C controller) = do
     request_queue ← newRequestQueue
     let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
@@ -176,14 +176,14 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
             asks sendWorkloadTo >>= liftInner . ($ workload) . ($ worker_id)
             bumpWorkerRemovalPriority worker_id
     manager_thread_id ← forkIO $ runReaderT controller request_queue
-    termination_reason ←
+    run_outcome ←
         flip evalStateT initial_inner_state
         .
         flip runReaderT (constructCallbacks WorkgroupReceivers{..})
         .
         flip evalStateT initial_state
         $
-        do  SupervisorResult termination_reason worker_ids ←
+        do  SupervisorOutcome termination_reason run_statistics worker_ids ←
                 runSupervisorMaybeStartingFrom
                     maybe_starting_progress
                     SupervisorCallbacks{..}
@@ -191,13 +191,13 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
                     -- enableSupervisorDebugMode >>
                     forever (processRequest request_queue)
             asks killAllWorkers >>= liftInner . ($ worker_ids)
-            return $ case termination_reason of
+            return . (RunOutcome run_statistics) $ case termination_reason of
                 SupervisorAborted remaining_progress → Aborted remaining_progress
                 SupervisorCompleted result → Completed result
                 SupervisorFailure worker_id message →
                     Failure $ "Worker " ++ show worker_id ++ " failed with message: " ++ message
     killThread manager_thread_id
-    return termination_reason
+    return run_outcome
   where
     initial_state =
         WorkgroupState

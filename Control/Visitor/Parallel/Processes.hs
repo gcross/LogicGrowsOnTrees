@@ -57,7 +57,7 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (Driver(Driver),TerminationReason)
+import Control.Visitor.Main (Driver(Driver),RunOutcome)
 import qualified Control.Visitor.Parallel.Process as Process
 import Control.Visitor.Parallel.Process
 import Control.Visitor.Parallel.Workgroup
@@ -132,7 +132,7 @@ runSupervisor :: -- {{{
     (Handle → IO ()) →
     Maybe (Progress result) →
     ProcessesControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runSupervisor worker_filepath worker_arguments sendConfigurationTo maybe_starting_progress (C controller) = do
     request_queue ← newRequestQueue
     runWorkgroup
@@ -239,7 +239,7 @@ runVisitor :: -- {{{
     (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → Visitor result) →
-    IO (Maybe (configuration,TerminationReason result))
+    IO (Maybe (configuration,RunOutcome result))
 runVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
         forkVisitorWorkerThread
@@ -257,7 +257,7 @@ runVisitorIO :: -- {{{
     (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → VisitorIO result) →
-    IO (Maybe (configuration,TerminationReason result))
+    IO (Maybe (configuration,RunOutcome result))
 runVisitorIO getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
         forkVisitorIOWorkerThread
@@ -276,7 +276,7 @@ runVisitorT :: -- {{{
     (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → VisitorT m result) →
-    IO (Maybe (configuration,TerminationReason result))
+    IO (Maybe (configuration,RunOutcome result))
 runVisitorT runInBase getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     genericRunVisitor
         (forkVisitorTWorkerThread runInBase)
@@ -346,7 +346,7 @@ genericRunVisitor :: -- {{{
     (configuration → IO (Maybe (Progress result))) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → visitor result) →
-    IO (Maybe (configuration,TerminationReason result))
+    IO (Maybe (configuration,RunOutcome result))
 genericRunVisitor forkVisitorWorkerThread getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
     getArgs >>= \args →
     if args == sentinel

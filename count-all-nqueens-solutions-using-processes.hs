@@ -30,7 +30,7 @@ main =
             )
         )
         mempty
-        (\_ termination_reason → do
+        (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of
                 Aborted _ → error "search aborted"
                 Completed (Sum count) → print count

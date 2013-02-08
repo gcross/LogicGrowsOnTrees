@@ -11,10 +11,11 @@
 -- }}}
 
 module Control.Visitor.Supervisor -- {{{
-    ( SupervisorCallbacks(..)
+    ( RunStatistics(..)
+    , SupervisorCallbacks(..)
     , SupervisorMonad
     , SupervisorMonadConstraint
-    , SupervisorResult(..)
+    , SupervisorOutcome(..)
     , SupervisorTerminationReason(..)
     , SupervisorWorkerIdConstraint
     , abortSupervisor
@@ -44,6 +45,7 @@ import Prelude hiding (catch)
 
 import Control.Applicative ((<$>),(<*>),Applicative)
 import Control.Arrow (first,second)
+import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
 import Control.Monad (liftM,liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
@@ -74,6 +76,7 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import qualified Data.Sequence as Seq
 import Data.Typeable (Typeable)
+import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime,getCurrentTime)
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
@@ -166,6 +169,13 @@ data SupervisorCallbacks result worker_id m = -- {{{
     }
 -- }}}
 
+data SupervisorRunConstants result worker_id m = -- {{{
+    SupervisorRunConstants
+    {   callbacks :: !(SupervisorCallbacks result worker_id m)
+    ,   start_time :: !UTCTime
+    }
+-- }}}
+
 data SupervisorState result worker_id = -- {{{
     SupervisorState
     {   waiting_workers_or_available_workloads_ :: !(Either (Set worker_id) (Set Workload))
@@ -188,21 +198,22 @@ data SupervisorTerminationReason result worker_id = -- {{{
   deriving (Eq,Show)
 -- }}}
 
-data SupervisorResult result worker_id = -- {{{
-    SupervisorResult
+data SupervisorOutcome result worker_id = -- {{{
+    SupervisorOutcome
     {   supervisorTerminationReason :: SupervisorTerminationReason result worker_id
+    ,   supervisorRunStatistics :: RunStatistics
     ,   supervisorRemainingWorkers :: [worker_id]
     } deriving (Eq,Show)
 -- }}}
 
 type SupervisorContext result worker_id m = -- {{{
     StateT (SupervisorState result worker_id)
-        (ReaderT (SupervisorCallbacks result worker_id m) m)
+        (ReaderT (SupervisorRunConstants result worker_id m) m)
 -- }}}
 
 type SupervisorAbortMonad result worker_id m = -- {{{
     AbortT
-        (SupervisorResult result worker_id)
+        (SupervisorOutcome result worker_id)
         (SupervisorContext result worker_id m)
 -- }}}
 
@@ -210,6 +221,12 @@ newtype SupervisorMonad result worker_id m α = -- {{{
     SupervisorMonad {
         unwrapSupervisorMonad :: SupervisorAbortMonad result worker_id m α
     } deriving (Applicative,Functor,Monad,MonadIO)
+-- }}}
+
+data RunStatistics = -- {{{
+    RunStatistics
+    {   runWallTime :: !NominalDiffTime
+    } deriving (Eq,Show)
 -- }}}
 
 -- }}}
@@ -293,6 +310,17 @@ getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorMonad result wor
 getCurrentProgress = SupervisorMonad . lift . get $ current_progress
 -- }}}
 
+getCurrentStatistics :: -- {{{
+    SupervisorMonadConstraint m ⇒
+    SupervisorMonad result worker_id m RunStatistics
+getCurrentStatistics = SupervisorMonad . lift $
+    liftM RunStatistics
+        (liftM2 diffUTCTime
+            (liftIO getCurrentTime)
+            (asks start_time)
+        )
+-- }}}
+
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m Int -- {{{
 getNumberOfWorkers = SupervisorMonad . lift . liftM Set.size . get $ known_workers
 -- }}}
@@ -318,7 +346,7 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . Super
         then sendCurrentProgressToUser
         else do
             workers_pending_progress_update %= active_worker_ids
-            asks broadcastProgressUpdateToWorkers >>= liftUserToContext . ($ Set.toList active_worker_ids)
+            asks (callbacks >>> broadcastProgressUpdateToWorkers) >>= liftUserToContext . ($ Set.toList active_worker_ids)
 -- }}}
 
 receiveProgressUpdate :: -- {{{
@@ -413,8 +441,11 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
             active_worker_ids ← Map.keys . Map.delete worker_id <$> get active_workers
             unless (null active_worker_ids) . throw $
                 ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
-            known_worker_ids ← Set.toList <$> get known_workers
-            abort $ SupervisorResult (SupervisorCompleted new_results) known_worker_ids
+            SupervisorOutcome
+                <$> (return $ SupervisorCompleted new_results)
+                <*> (unwrapSupervisorMonad getCurrentStatistics)
+                <*> (Set.toList <$> get known_workers)
+             >>= abort
         _ → lift $ do
             deactivateWorker False worker_id
             unless remove_worker $ tryToObtainWorkloadFor worker_id
@@ -457,7 +488,7 @@ runSupervisor :: -- {{{
     ) ⇒
     SupervisorCallbacks result worker_id m →
     (∀ a. SupervisorMonad result worker_id m a) →
-    m (SupervisorResult result worker_id)
+    m (SupervisorOutcome result worker_id)
 runSupervisor = runSupervisorStartingFrom mempty
 -- }}}
 
@@ -469,7 +500,7 @@ runSupervisorMaybeStartingFrom :: -- {{{
     Maybe (Progress result) →
     SupervisorCallbacks result worker_id m →
     (∀ a. SupervisorMonad result worker_id m a) →
-    m (SupervisorResult result worker_id)
+    m (SupervisorOutcome result worker_id)
 runSupervisorMaybeStartingFrom Nothing = runSupervisor
 runSupervisorMaybeStartingFrom (Just progress) = runSupervisorStartingFrom progress
 -- }}}
@@ -482,9 +513,9 @@ runSupervisorStartingFrom :: -- {{{
     Progress result →
     SupervisorCallbacks result worker_id m →
     (∀ α. SupervisorMonad result worker_id m α) →
-    m (SupervisorResult result worker_id)
-runSupervisorStartingFrom starting_progress actions loop =
-    flip runReaderT actions
+    m (SupervisorOutcome result worker_id)
+runSupervisorStartingFrom starting_progress actions loop = liftIO getCurrentTime >>= \start_time →
+    flip runReaderT (SupervisorRunConstants actions start_time)
     .
     flip evalStateT
         (SupervisorState
@@ -535,8 +566,9 @@ abortSupervisorWithReason ::  -- {{{
     SupervisorTerminationReason result worker_id →
     SupervisorAbortMonad result worker_id m α
 abortSupervisorWithReason reason =
-    (SupervisorResult
+    (SupervisorOutcome
         <$> (return reason)
+        <*> (unwrapSupervisorMonad getCurrentStatistics)
         <*> (Set.toList <$> get known_workers)
     ) >>= abort
 -- }}}
@@ -577,7 +609,7 @@ checkWhetherMoreStealsAreNeeded = do
         available_workers_for_steal %: IntMap.update (const maybe_new_workers) depth
         unless (null workers_to_steal_from) $ do
             infoM $ "Sending workload steal requests to " ++ show workers_to_steal_from
-            asks broadcastWorkloadStealToWorkers >>= liftUserToContext . ($ workers_to_steal_from)
+            asks (callbacks >>> broadcastWorkloadStealToWorkers) >>= liftUserToContext . ($ workers_to_steal_from)
 -- }}}
 
 clearPendingProgressUpdate :: -- {{{
@@ -740,7 +772,7 @@ sendCurrentProgressToUser :: -- {{{
     ) ⇒
     SupervisorContext result worker_id m ()
 sendCurrentProgressToUser = do
-    callback ← asks receiveCurrentProgress
+    callback ← asks (callbacks >>> receiveCurrentProgress)
     current_progress ← get current_progress
     liftUserToContext (callback current_progress)
 -- }}}
@@ -754,7 +786,7 @@ sendWorkloadTo :: -- {{{
     SupervisorContext result worker_id m ()
 sendWorkloadTo workload worker_id = do
     infoM $ "Sending workload to " ++ show worker_id
-    asks sendWorkloadToWorker >>= liftUserToContext . (\f → f workload worker_id)
+    asks (callbacks >>> sendWorkloadToWorker) >>= liftUserToContext . (\f → f workload worker_id)
     isNothing . Map.lookup worker_id <$> get active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %: Map.insert worker_id workload

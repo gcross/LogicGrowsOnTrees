@@ -12,6 +12,7 @@
 
 module Control.Visitor.Main -- {{{
     ( Driver(..)
+    , RunOutcome(..)
     , TerminationReason(..)
     , mainVisitor
     , mainVisitorIO
@@ -47,6 +48,7 @@ import System.Log.Logger.TH
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
+import Control.Visitor.Supervisor (RunStatistics(..))
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker
 import Control.Visitor.Workload
@@ -102,11 +104,17 @@ data Driver result_monad configuration visitor result =  -- {{{
         (∀ α. InfoMod α) →
         (configuration → IO ()) →
         (configuration → IO (Maybe (Progress result))) →
-        (configuration → TerminationReason result → IO ()) →
+        (configuration → RunOutcome result → IO ()) →
         (configuration → visitor result) →
         (configuration → manager_monad result ()) →
         result_monad ()
     )
+-- }}}
+
+data RunOutcome result = RunOutcome -- {{{
+    {   runStatistics :: RunStatistics
+    ,   runTerminationReason :: TerminationReason result
+    } deriving (Eq,Show)
 -- }}}
 
 data TerminationReason result = -- {{{
@@ -173,7 +181,7 @@ mainVisitor :: -- {{{
     Driver result_monad (Configuration,visitor_configuration) Visitor result →
     Parser visitor_configuration →
     (∀ α. InfoMod α) →
-    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
 mainVisitor (Driver runDriver) = genericMain . runDriver $ forkVisitorWorkerThread
@@ -184,7 +192,7 @@ mainVisitorIO :: -- {{{
     Driver result_monad (Configuration,visitor_configuration) VisitorIO result →
     Parser visitor_configuration →
     (∀ α. InfoMod α) →
-    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → VisitorIO result) →
     result_monad ()
 mainVisitorIO (Driver runDriver) = genericMain . runDriver $ forkVisitorIOWorkerThread
@@ -196,7 +204,7 @@ mainVisitorT :: -- {{{
     (∀ β. m β → IO β) →
     Parser visitor_configuration →
     (∀ α. InfoMod α) →
-    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
 mainVisitorT (Driver runDriver) = genericMain . runDriver . forkVisitorTWorkerThread
@@ -240,14 +248,14 @@ genericMain :: -- {{{
         (∀ α. InfoMod α) →
         ((Configuration,visitor_configuration) → IO ()) →
         ((Configuration,visitor_configuration) → IO (Maybe (Progress result))) →
-        ((Configuration,visitor_configuration) → TerminationReason result → IO ()) →
+        ((Configuration,visitor_configuration) → RunOutcome result → IO ()) →
         ((Configuration,visitor_configuration) → visitor) →
         ((Configuration,visitor_configuration) → manager_monad result ()) →
         result_monad ()
     ) →
     Parser visitor_configuration →
     (∀ α. InfoMod α) →
-    (visitor_configuration → TerminationReason result → IO ()) →
+    (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → visitor) →
     result_monad ()
 genericMain run visitor_configuration_options infomod notifyTerminated constructVisitor =
@@ -267,8 +275,8 @@ genericMain run visitor_configuration_options infomod notifyTerminated construct
                         (noticeM "Loading existing checkpoint file" >> either error Just . decodeLazy <$> readFile checkpoint_path)
                         (return Nothing)
         )
-        (\(Configuration{..},visitor_configuration) termination_reason →
-            notifyTerminated visitor_configuration termination_reason
+        (\(Configuration{..},visitor_configuration) run_outcome@RunOutcome{runTerminationReason} →
+            notifyTerminated visitor_configuration run_outcome
             `finally`
             case maybe_checkpoint_configuration of
                 Nothing → return ()
@@ -276,7 +284,7 @@ genericMain run visitor_configuration_options infomod notifyTerminated construct
                     let deleteCheckpointFile = do
                             noticeM "Deleting any remaining checkpoint file"
                             removeFileIfExists checkpoint_path
-                    in case termination_reason of
+                    in case runTerminationReason of
                         Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
                         Completed _ → deleteCheckpointFile
                         Failure _ → deleteCheckpointFile

@@ -31,7 +31,7 @@ import System.Log.Logger.TH
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (Driver(Driver),TerminationReason)
+import Control.Visitor.Main (Driver(Driver),RunOutcome)
 import Control.Visitor.Parallel.Workgroup
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker as Worker
@@ -80,7 +80,7 @@ runVisitor :: -- {{{
     Monoid result ⇒
     Visitor result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitor = runVisitorMaybeStartingFrom Nothing
 -- }}}
 
@@ -89,7 +89,7 @@ runVisitorMaybeStartingFrom :: -- {{{
     Maybe (Progress result) →
     Visitor result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorMaybeStartingFrom maybe_starting_progress =
     genericRunVisitorStartingFrom maybe_starting_progress
     .
@@ -101,7 +101,7 @@ runVisitorStartingFrom :: -- {{{
     Progress result →
     Visitor result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorStartingFrom = runVisitorMaybeStartingFrom . Just
 -- }}}
 
@@ -109,7 +109,7 @@ runVisitorIO :: -- {{{
     Monoid result ⇒
     VisitorIO result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorIO = runVisitorIOMaybeStartingFrom Nothing
 -- }}}
 
@@ -118,7 +118,7 @@ runVisitorIOMaybeStartingFrom :: -- {{{
     Maybe (Progress result) →
     VisitorIO result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorIOMaybeStartingFrom maybe_starting_progress =
     genericRunVisitorStartingFrom maybe_starting_progress
     .
@@ -130,7 +130,7 @@ runVisitorIOStartingFrom :: -- {{{
     Progress result →
     VisitorIO result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorIOStartingFrom = runVisitorIOMaybeStartingFrom . Just
 -- }}}
 
@@ -139,7 +139,7 @@ runVisitorT :: -- {{{
     (∀ α. m α → IO α) →
     VisitorT m result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorT = flip runVisitorTMaybeStartingFrom Nothing
 -- }}}
 
@@ -149,7 +149,7 @@ runVisitorTMaybeStartingFrom :: -- {{{
     Maybe (Progress result) →
     VisitorT m result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorTMaybeStartingFrom runMonad maybe_starting_progress =
     genericRunVisitorStartingFrom maybe_starting_progress
     .
@@ -162,7 +162,7 @@ runVisitorTStartingFrom :: -- {{{
     Progress result →
     VisitorT m result →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 runVisitorTStartingFrom runInIO = runVisitorTMaybeStartingFrom runInIO . Just
 -- }}}
 
@@ -181,7 +181,7 @@ genericRunVisitorStartingFrom :: -- {{{
         IO (WorkerEnvironment result)
     ) →
     ThreadsControllerMonad result () →
-    IO (TerminationReason result)
+    IO (RunOutcome result)
 genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller) =
     runWorkgroup
         mempty
