@@ -24,7 +24,7 @@ import Prelude hiding (readFile,writeFile)
 
 import Control.Concurrent (ThreadId,killThread,threadDelay)
 import Control.Exception (finally,handleJust,onException)
-import Control.Monad (forever,liftM)
+import Control.Monad (forever,liftM,when)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Tools (ifM)
 
@@ -35,8 +35,9 @@ import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Either.Unwrap (mapRight)
 import Data.Maybe (catMaybes)
-import Data.Monoid (Monoid(..))
+import Data.Monoid (Endo(..),Monoid(..))
 import Data.Serialize
+import Data.Traversable (sequenceA)
 
 import Options.Applicative
 
@@ -45,6 +46,9 @@ import System.IO.Error (isDoesNotExistError)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO,NOTICE,WARNING),setLevel,rootLoggerName,updateGlobalLogger)
 import System.Log.Logger.TH
+import System.IO (hPutStrLn,stderr)
+
+import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
@@ -76,9 +80,16 @@ instance Serialize LoggingConfiguration where
     get = LoggingConfiguration . read <$> get
 -- }}}
 
+data StatisticsConfiguration = StatisticsConfiguration -- {{{
+    {    show_wall_times :: Bool
+    } deriving (Eq,Show)
+$( derive makeSerialize ''StatisticsConfiguration )
+-- }}}
+
 data Configuration = Configuration -- {{{
     {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
     ,   logging_configuration :: LoggingConfiguration
+    ,   statistics_configuration :: StatisticsConfiguration
     } deriving (Eq,Show)
 $( derive makeSerialize ''Configuration )
 -- }}}
@@ -129,6 +140,8 @@ data TerminationReason result = -- {{{
 -- }}}
 
 -- Values {{{
+default_statistics_configuration = StatisticsConfiguration False
+
 -- Options {{{
 checkpoint_configuration_options :: Parser (Maybe CheckpointConfiguration) -- {{{
 checkpoint_configuration_options =
@@ -165,11 +178,27 @@ logging_configuration_options =
             )
 -- }}}
 
+statistics_configuration_options :: Parser StatisticsConfiguration -- {{{
+statistics_configuration_options =
+    fmap (($ default_statistics_configuration) . appEndo . mconcat)
+    .
+    sequenceA
+    .
+    map (\(active_value,mods) → flag (Endo id) (Endo active_value) mods)
+    $
+    [(\x → x { show_wall_times = True }
+     ,  long "show-walltimes"
+     <> help "Shows the starting, ending, and duration wall time of the run"
+     )
+    ]
+-- }}}
+
 configuration_options :: Parser Configuration -- {{{
 configuration_options =
     Configuration
         <$> checkpoint_configuration_options
         <*> logging_configuration_options
+        <*> statistics_configuration_options
 -- }}}
 -- }}}
 -- }}}
@@ -275,9 +304,10 @@ genericMain run visitor_configuration_options infomod notifyTerminated construct
                         (noticeM "Loading existing checkpoint file" >> either error Just . decodeLazy <$> readFile checkpoint_path)
                         (return Nothing)
         )
-        (\(Configuration{..},visitor_configuration) run_outcome@RunOutcome{runTerminationReason} →
-            notifyTerminated visitor_configuration run_outcome
-            `finally`
+        (\(Configuration{..},visitor_configuration) run_outcome@RunOutcome{..} →
+            (do showStatistics statistics_configuration runStatistics
+                notifyTerminated visitor_configuration run_outcome
+            ) `finally`
             case maybe_checkpoint_configuration of
                 Nothing → return ()
                 Just CheckpointConfiguration{checkpoint_path} →
@@ -303,6 +333,16 @@ removeFileIfExists path =
         (\e → if isDoesNotExistError e then Nothing else Just ())
         (\_ → return ())
         (removeFile path)
+-- }}}
+
+showStatistics :: MonadIO m ⇒ StatisticsConfiguration → RunStatistics → m () -- {{{
+showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
+    when show_wall_times $
+        hPutStrLn stderr $
+            printf "Run started at %s, ended at %s, and took %s seconds."
+                (show runStartTime)
+                (show runEndTime)
+                (show runWallTime)
 -- }}}
 
 writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{
