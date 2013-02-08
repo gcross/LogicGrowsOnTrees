@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
@@ -12,8 +13,10 @@
 module Control.Visitor.Supervisor -- {{{
     ( SupervisorCallbacks(..)
     , SupervisorMonad
+    , SupervisorMonadConstraint
     , SupervisorResult(..)
     , SupervisorTerminationReason(..)
+    , SupervisorWorkerIdConstraint
     , abortSupervisor
     , addWorker
     , disableSupervisorDebugMode
@@ -211,6 +214,11 @@ newtype SupervisorMonad result worker_id m α = -- {{{
 
 -- }}}
 
+-- Contraints {{{
+type SupervisorMonadConstraint m = (Functor m, MonadCatchIO m)
+type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
+-- }}}
+
 -- Instances {{{
 
 instance MonadTrans (SupervisorMonad result worker_id) where -- {{{
@@ -255,13 +263,15 @@ instance MonadsTF.MonadState m ⇒ MonadsTF.MonadState (SupervisorMonad result w
 
 -- Exposed functions {{{
 
-abortSupervisor :: (Functor m, Monad m) ⇒ SupervisorMonad result worker_id m α -- {{{
+abortSupervisor :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m α -- {{{
 abortSupervisor = SupervisorMonad $
     get current_progress >>= abortSupervisorWithReason . SupervisorAborted
 -- }}}
 
 addWorker :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorMonad result worker_id m ()
 addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . SupervisorMonad . lift $ do
@@ -271,31 +281,35 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . Supervisor
     tryToObtainWorkloadFor worker_id
 -- }}}
 
-disableSupervisorDebugMode :: Monad m ⇒ SupervisorMonad result worker_id m () -- {{{
+disableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
 disableSupervisorDebugMode = setSupervisorDebugMode False
 -- }}}
 
-enableSupervisorDebugMode :: Monad m ⇒ SupervisorMonad result worker_id m () -- {{{
+enableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
 enableSupervisorDebugMode = setSupervisorDebugMode True
 -- }}}
 
-getCurrentProgress :: Monad m ⇒ SupervisorMonad result worker_id m (Progress result) -- {{{
+getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m (Progress result) -- {{{
 getCurrentProgress = SupervisorMonad . lift . get $ current_progress
 -- }}}
 
-getNumberOfWorkers :: Monad m ⇒ SupervisorMonad result worker_id m Int -- {{{
+getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m Int -- {{{
 getNumberOfWorkers = SupervisorMonad . lift . liftM Set.size . get $ known_workers
 -- }}}
 
 getWaitingWorkers :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     SupervisorMonad result worker_id m (Set worker_id)
 getWaitingWorkers = SupervisorMonad . lift $
     either id (const Set.empty) <$> get waiting_workers_or_available_workloads
 -- }}}
 
 performGlobalProgressUpdate :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     SupervisorMonad result worker_id m ()
 performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . SupervisorMonad . lift $ do
     infoM $ "Performing global progress update."
@@ -308,7 +322,10 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" . Super
 -- }}}
 
 receiveProgressUpdate :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     ProgressUpdate result →
     SupervisorMonad result worker_id m ()
@@ -324,7 +341,10 @@ receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_worklo
 -- }}}
 
 receiveStolenWorkload :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     Maybe (StolenWorkload result) →
     SupervisorMonad result worker_id m ()
@@ -342,7 +362,7 @@ receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveSt
     checkWhetherMoreStealsAreNeeded
 -- }}}
 
-receiveWorkerFailure :: (Functor m, Monad m) ⇒ worker_id → String → SupervisorMonad result worker_id m α -- {{{
+receiveWorkerFailure :: SupervisorMonadConstraint m ⇒ worker_id → String → SupervisorMonad result worker_id m α -- {{{
 receiveWorkerFailure =
     (SupervisorMonad . abortSupervisorWithReason)
     .*
@@ -350,7 +370,10 @@ receiveWorkerFailure =
 -- }}}
 
 receiveWorkerFinished :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     Progress result →
     SupervisorMonad result worker_id m ()
@@ -358,7 +381,10 @@ receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
 -- }}}
 
 receiveWorkerFinishedAndRemoved :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     Progress result →
     SupervisorMonad result worker_id m ()
@@ -366,7 +392,10 @@ receiveWorkerFinishedAndRemoved = receiveWorkerFinishedWithRemovalFlag True
 -- }}}
 
 receiveWorkerFinishedWithRemovalFlag :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     Bool →
     worker_id →
     Progress result →
@@ -392,7 +421,9 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
 -- }}}
 
 removeWorker :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorMonad result worker_id m ()
 removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) . SupervisorMonad . lift $ do
@@ -405,7 +436,9 @@ removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) . Supe
 -- }}}
 
 removeWorkerIfPresent :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorMonad result worker_id m ()
 removeWorkerIfPresent worker_id = postValidate ("removeWorker " ++ show worker_id) . SupervisorMonad . lift $ do
@@ -418,7 +451,10 @@ removeWorkerIfPresent worker_id = postValidate ("removeWorker " ++ show worker_i
 -- }}}
 
 runSupervisor :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     SupervisorCallbacks result worker_id m →
     (∀ a. SupervisorMonad result worker_id m a) →
     m (SupervisorResult result worker_id)
@@ -426,7 +462,10 @@ runSupervisor = runSupervisorStartingFrom mempty
 -- }}}
 
 runSupervisorMaybeStartingFrom :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     Maybe (Progress result) →
     SupervisorCallbacks result worker_id m →
     (∀ a. SupervisorMonad result worker_id m a) →
@@ -436,7 +475,10 @@ runSupervisorMaybeStartingFrom (Just progress) = runSupervisorStartingFrom progr
 -- }}}
 
 runSupervisorStartingFrom :: -- {{{
-    (Monoid result, Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( Monoid result
+    , SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     Progress result →
     SupervisorCallbacks result worker_id m →
     (∀ α. SupervisorMonad result worker_id m α) →
@@ -480,7 +522,7 @@ runSupervisorStartingFrom starting_progress actions loop =
     loop
 -- }}}
 
-setSupervisorDebugMode :: Monad m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
+setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
 setSupervisorDebugMode = SupervisorMonad . lift . (debug_mode %=)
 -- }}}
 
@@ -489,7 +531,7 @@ setSupervisorDebugMode = SupervisorMonad . lift . (debug_mode %=)
 -- Internal Functions {{{
 
 abortSupervisorWithReason ::  -- {{{
-    (Functor m, Monad m) ⇒
+    SupervisorMonadConstraint m ⇒
     SupervisorTerminationReason result worker_id →
     SupervisorAbortMonad result worker_id m α
 abortSupervisorWithReason reason =
@@ -500,7 +542,9 @@ abortSupervisorWithReason reason =
 -- }}}
 
 checkWhetherMoreStealsAreNeeded :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     SupervisorContext result worker_id m ()
 checkWhetherMoreStealsAreNeeded = do
     number_of_waiting_workers ← either Set.size (const 0) <$> get waiting_workers_or_available_workloads
@@ -537,7 +581,9 @@ checkWhetherMoreStealsAreNeeded = do
 -- }}}
 
 clearPendingProgressUpdate :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorContext result worker_id m ()
 clearPendingProgressUpdate worker_id =
@@ -552,7 +598,9 @@ clearPendingProgressUpdate worker_id =
 -- }}}
 
 deactivateWorker :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     Bool →
     worker_id →
     SupervisorContext result worker_id m ()
@@ -573,7 +621,9 @@ deactivateWorker reenqueue_workload worker_id = do
 -- }}}
 
 dequeueWorkerForSteal :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorContext result worker_id m ()
 dequeueWorkerForSteal worker_id =
@@ -587,7 +637,9 @@ dequeueWorkerForSteal worker_id =
 -- }}}
 
 enqueueWorkerForSteal :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorContext result worker_id m ()
 enqueueWorkerForSteal worker_id =
@@ -599,7 +651,9 @@ enqueueWorkerForSteal worker_id =
 -- }}}
 
 enqueueWorkload :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     Workload →
     SupervisorContext result worker_id m ()
 enqueueWorkload workload =
@@ -616,7 +670,9 @@ enqueueWorkload workload =
 -- }}}
 
 getWorkerDepth :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorContext result worker_id m Int
 getWorkerDepth worker_id =
@@ -634,7 +690,9 @@ liftUserToContext = lift . lift
 -- }}}
 
 postValidate :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     String →
     SupervisorMonad result worker_id m α →
     SupervisorMonad result worker_id m α
@@ -677,7 +735,9 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
 -- }}}
 
 sendCurrentProgressToUser :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     SupervisorContext result worker_id m ()
 sendCurrentProgressToUser = do
     callback ← asks receiveCurrentProgress
@@ -686,7 +746,9 @@ sendCurrentProgressToUser = do
 -- }}}
 
 sendWorkloadTo :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     Workload →
     worker_id →
     SupervisorContext result worker_id m ()
@@ -701,7 +763,9 @@ sendWorkloadTo workload worker_id = do
 -- }}}
 
 tryToObtainWorkloadFor :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     worker_id →
     SupervisorContext result worker_id m ()
 tryToObtainWorkloadFor worker_id =
@@ -720,7 +784,9 @@ tryToObtainWorkloadFor worker_id =
 -- }}}
 
 validateWorkerKnown :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     String →
     worker_id →
     SupervisorContext result worker_id m ()
@@ -730,7 +796,9 @@ validateWorkerKnown action worker_id =
 -- }}}
 
 validateWorkerKnownAndActive :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     String →
     worker_id →
     SupervisorContext result worker_id m ()
@@ -741,7 +809,9 @@ validateWorkerKnownAndActive action worker_id = do
 -- }}}
 
 validateWorkerNotKnown :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     String →
     worker_id →
     SupervisorContext result worker_id m ()
@@ -751,7 +821,9 @@ validateWorkerNotKnown action worker_id = do
 -- }}}
 
 whenDebugging :: -- {{{
-    (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     SupervisorContext result worker_id m () →
     SupervisorContext result worker_id m ()
 whenDebugging action = get debug_mode >>= flip when action
