@@ -14,6 +14,7 @@ module Control.Visitor.Main -- {{{
     ( Driver(..)
     , RunOutcome(..)
     , TerminationReason(..)
+    , mainParser
     , mainVisitor
     , mainVisitorIO
     , mainVisitorT
@@ -42,11 +43,13 @@ import Data.Traversable (sequenceA)
 import Options.Applicative
 
 import System.Directory (doesFileExist,removeFile,renameFile)
+import System.Environment (getArgs)
+import System.Exit (exitWith)
+import System.IO (hPutStrLn,stderr)
 import System.IO.Error (isDoesNotExistError)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO,NOTICE,WARNING),setLevel,rootLoggerName,updateGlobalLogger)
 import System.Log.Logger.TH
-import System.IO (hPutStrLn,stderr)
 
 import Text.Printf (printf)
 
@@ -195,15 +198,22 @@ statistics_configuration_options =
 
 configuration_options :: Parser Configuration -- {{{
 configuration_options =
-    Configuration
+    helper
+    <*>
+    (Configuration
         <$> checkpoint_configuration_options
         <*> logging_configuration_options
         <*> statistics_configuration_options
+    )
 -- }}}
 -- }}}
 -- }}}
 
 -- Exposed Functions {{{
+
+mainParser :: Parser α → InfoMod α → IO α -- {{{
+mainParser = execParser .* info
+-- }}}
 
 mainVisitor :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒

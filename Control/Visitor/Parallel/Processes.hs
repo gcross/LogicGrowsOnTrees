@@ -57,7 +57,7 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (Driver(Driver),RunOutcome)
+import Control.Visitor.Main (Driver(Driver),RunOutcome,mainParser)
 import qualified Control.Visitor.Parallel.Process as Process
 import Control.Visitor.Parallel.Process
 import Control.Visitor.Parallel.Workgroup
@@ -98,7 +98,7 @@ driver :: Serialize configuration ⇒ Driver IO configuration visitor result -- 
 driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
     genericRunVisitor
         forkVisitorWorkerThread
-        (execParser (info (liftA2 (,) number_of_processes_options configuration_parser) infomod))
+        (mainParser (liftA2 (,) number_of_processes_options configuration_parser) infomod)
         (initializeGlobalState . snd)
         (getMaybeStartingProgress . snd)
         (\(number_of_processes,configuration) → do

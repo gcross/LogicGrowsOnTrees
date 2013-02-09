@@ -31,7 +31,7 @@ import System.Log.Logger.TH
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (Driver(Driver),RunOutcome)
+import Control.Visitor.Main (Driver(Driver),RunOutcome,mainParser)
 import Control.Visitor.Parallel.Workgroup
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker as Worker
@@ -59,7 +59,7 @@ instance RequestQueueMonad (ThreadsControllerMonad result) where
 -- Driver {{{
 driver :: Driver IO configuration visitor result
 driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
-    configuration ← execParser (info configuration_parser infomod)
+    configuration ← mainParser configuration_parser infomod
     initializeGlobalState configuration
     maybe_starting_progress ← getMaybeStartingProgress configuration
     genericRunVisitorStartingFrom
