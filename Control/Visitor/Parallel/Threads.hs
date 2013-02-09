@@ -23,8 +23,6 @@ import qualified Data.IntMap as IntMap
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
 
-import Options.Applicative (InfoMod,execParser,info)
-
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
@@ -58,8 +56,8 @@ instance RequestQueueMonad (ThreadsControllerMonad result) where
 
 -- Driver {{{
 driver :: Driver IO configuration visitor result
-driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
-    configuration ← mainParser configuration_parser infomod
+driver = Driver $ \forkVisitorWorkerThread configuration_term term_info initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
+    configuration ← mainParser configuration_term term_info
     initializeGlobalState configuration
     maybe_starting_progress ← getMaybeStartingProgress configuration
     genericRunVisitorStartingFrom

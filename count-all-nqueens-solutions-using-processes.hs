@@ -8,8 +8,7 @@ import Data.Functor
 import Data.Monoid
 import Data.Serialize (Serialize(..))
 
-import Options.Applicative
-
+import System.Console.CmdTheLine
 import System.Environment
 
 import Control.Visitor.Main
@@ -24,12 +23,12 @@ instance Serialize (Sum Int) where
 main =
     mainVisitor
         driver
-        (argument auto
-            (   metavar "#"
-             <> help "board size"
-            )
-        )
-        mempty
+        (required (flip (pos 0) (posInfo
+            {   posName = "#"
+            ,   posDoc = "board size"
+            }
+        ) Nothing))
+        (defTI { termDoc = "count the number of n-queens solutions for a given board size" })
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of
                 Aborted _ → error "search aborted"

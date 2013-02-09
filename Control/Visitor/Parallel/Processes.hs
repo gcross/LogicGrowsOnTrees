@@ -43,8 +43,7 @@ import Data.Maybe (fromJust,fromMaybe)
 import Data.Monoid (Monoid(mempty))
 import Data.Serialize (Serialize,encode,decode)
 
-import Options.Applicative
-
+import System.Console.CmdTheLine
 import System.Environment (getArgs,getProgName)
 import System.Environment.FindBin (getProgPath)
 import System.FilePath ((</>))
@@ -95,10 +94,10 @@ instance RequestQueueMonad (ProcessesControllerMonad result) where
 
 -- Drivers {{{
 driver :: Serialize configuration ⇒ Driver IO configuration visitor result -- {{{
-driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
+driver = Driver $ \forkVisitorWorkerThread configuration_term term_info initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
     genericRunVisitor
         forkVisitorWorkerThread
-        (mainParser (liftA2 (,) number_of_processes_options configuration_parser) infomod)
+        (mainParser (liftA2 (,) number_of_processes_term configuration_term) term_info)
         (initializeGlobalState . snd)
         (getMaybeStartingProgress . snd)
         (\(number_of_processes,configuration) → do
@@ -109,13 +108,12 @@ driver = Driver $ \forkVisitorWorkerThread configuration_parser infomod initiali
     >>=
     maybe (return ()) (uncurry $ notifyTerminated . snd)
   where
-    number_of_processes_options =
-        option
-        (   long "number-of-processes"
-         <> short 'n'
-         <> help "Number of worker processes to spawn."
-         <> noArgError (ErrorMsg "You need to specify the number of processes using either -n or (equivalently) --number-of-processes.")
-        )
+    number_of_processes_term = required (flip opt (
+        (optInfo ["n","number-of-processes"])
+        {   optName = "#"
+        ,   optDoc = "This *required* option specifies the number of worker processes to spawn."
+        }
+        ) Nothing )
 -- }}}
 -- }}}
 

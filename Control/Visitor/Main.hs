@@ -6,8 +6,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE ViewPatterns #-}
 -- }}}
 
 module Control.Visitor.Main -- {{{
@@ -23,14 +25,15 @@ module Control.Visitor.Main -- {{{
 -- Imports {{{
 import Prelude hiding (readFile,writeFile)
 
+import Control.Applicative ((<$>),(<*>),liftA2)
 import Control.Concurrent (ThreadId,killThread,threadDelay)
 import Control.Exception (finally,handleJust,onException)
-import Control.Monad (forever,liftM,when)
+import Control.Monad (forever,liftM,mplus,when)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Tools (ifM)
 
 import Data.ByteString.Lazy (readFile,writeFile)
-import Data.Char (toUpper)
+import Data.Char (toLower)
 import Data.Composition ((.*))
 import Data.Derive.Serialize
 import Data.DeriveTH
@@ -40,15 +43,14 @@ import Data.Monoid (Endo(..),Monoid(..))
 import Data.Serialize
 import Data.Traversable (sequenceA)
 
-import Options.Applicative
-
+import System.Console.CmdTheLine
 import System.Directory (doesFileExist,removeFile,renameFile)
-import System.Environment (getArgs)
+import System.Environment (getArgs,getProgName)
 import System.Exit (exitWith)
 import System.IO (hPutStrLn,stderr)
 import System.IO.Error (isDoesNotExistError)
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(DEBUG,INFO,NOTICE,WARNING),setLevel,rootLoggerName,updateGlobalLogger)
+import System.Log.Logger (Priority(..),setLevel,rootLoggerName,updateGlobalLogger)
 import System.Log.Logger.TH
 
 import Text.Printf (printf)
@@ -114,8 +116,8 @@ data Driver result_monad configuration visitor result =  -- {{{
             Workload →
             IO (WorkerEnvironment result)
         ) →
-        Parser configuration →
-        (∀ α. InfoMod α) →
+        Term configuration →
+        TermInfo →
         (configuration → IO ()) →
         (configuration → IO (Maybe (Progress result))) →
         (configuration → RunOutcome result → IO ()) →
@@ -140,86 +142,77 @@ data TerminationReason result = -- {{{
 
 -- }}}
 
+-- Instances {{{
+instance ArgVal Priority where -- {{{
+    converter = enum $
+        [DEBUG,INFO,NOTICE,WARNING,ERROR,CRITICAL,ALERT,EMERGENCY]
+        >>=
+        \level → let name = show level
+                 in return (name,level) `mplus` return (map toLower name,level)
+-- }}}
 -- }}}
 
 -- Values {{{
-default_statistics_configuration = StatisticsConfiguration False
-
--- Options {{{
-checkpoint_configuration_options :: Parser (Maybe CheckpointConfiguration) -- {{{
-checkpoint_configuration_options =
+-- Terms {{{
+checkpoint_configuration_term :: Term (Maybe CheckpointConfiguration) -- {{{
+checkpoint_configuration_term =
     maybe (const Nothing) (Just .* CheckpointConfiguration)
-        <$> nullOption
-            (   long "checkpoint-file"
-             <> metavar "FILE"
-             <> short 'c'
-             <> help "Path to the checkpoint file;  enables periodic checkpointing"
-             <> reader (Right . Just)
-             <> value Nothing
-            )
-        <*> option
-            (   long "checkpoint-interval"
-             <> metavar "SECONDS"
-             <> short 'i'
-             <> help "Time between checkpoints (in seconds, decimals allowed);  ignored if checkpoint file not specified"
-             <> value 60
-             <> showDefault
-            )
+        <$> value (flip opt (
+            (optInfo ["c","checkpoint-file"])
+            {   optName = "FILEPATH"
+            ,   optDoc = "This enables periodic checkpointing with the given path specifying the location of the checkpoint file;  if the file already exists then it will be loaded as the initial starting point for the search."
+            }
+            ) Nothing)
+        <*> value (flip opt (
+            (optInfo ["i","checkpoint-interval"])
+            {   optName = "SECONDS"
+            ,   optDoc = "This specifies the time between checkpoints (in seconds, decimals allowed); it is ignored if checkpoint file is not specified."
+            }
+            ) 60)
 -- }}}
 
-logging_configuration_options :: Parser LoggingConfiguration -- {{{
-logging_configuration_options =
+logging_configuration_term :: Term LoggingConfiguration -- {{{
+logging_configuration_term =
     LoggingConfiguration
-        <$> nullOption
-            (   long "log-level"
-             <> metavar "LEVEL"
-             <> short 'l'
-             <> help "Upper bound (inclusive) on the importance of the messages that will be logged;  must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY"
-             <> value WARNING
-             <> showDefault
-             <> reader (auto . map toUpper)
-            )
+    <$> value (flip opt (
+        (optInfo ["l","log-level"])
+        {   optName = "LEVEL"
+        ,   optDoc = "This specifies the upper bound (inclusive) on the importance of the messages that will be logged;  it must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, or EMERGENCY."
+        }
+        ) WARNING)
 -- }}}
 
-statistics_configuration_options :: Parser StatisticsConfiguration -- {{{
-statistics_configuration_options =
-    fmap (($ default_statistics_configuration) . appEndo . mconcat)
-    .
-    sequenceA
-    .
-    map (\(active_value,mods) → flag (Endo id) (Endo active_value) mods)
-    $
-    [(\x → x { show_wall_times = True }
-     ,  long "show-walltimes"
-     <> help "Shows the starting, ending, and duration wall time of the run"
-     )
-    ]
+statistics_configuration_term :: Term StatisticsConfiguration -- {{{
+statistics_configuration_term =
+    StatisticsConfiguration
+    <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
 -- }}}
 
-configuration_options :: Parser Configuration -- {{{
-configuration_options =
-    helper
-    <*>
-    (Configuration
-        <$> checkpoint_configuration_options
-        <*> logging_configuration_options
-        <*> statistics_configuration_options
-    )
+configuration_term :: Term Configuration -- {{{
+configuration_term =
+    Configuration
+        <$> checkpoint_configuration_term
+        <*> logging_configuration_term
+        <*> statistics_configuration_term
 -- }}}
 -- }}}
 -- }}}
 
 -- Exposed Functions {{{
 
-mainParser :: Parser α → InfoMod α → IO α -- {{{
-mainParser = execParser .* info
+mainParser :: Term α → TermInfo → IO α -- {{{
+mainParser term term_info =
+    (if null (termName term_info)
+        then getProgName >>= \progname → return $ term_info {termName = progname}
+        else return term_info
+    ) >>= exec . (term,)
 -- }}}
 
 mainVisitor :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (Configuration,visitor_configuration) Visitor result →
-    Parser visitor_configuration →
-    (∀ α. InfoMod α) →
+    Term visitor_configuration →
+    TermInfo →
     (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
@@ -229,8 +222,8 @@ mainVisitor (Driver runDriver) = genericMain . runDriver $ forkVisitorWorkerThre
 mainVisitorIO :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (Configuration,visitor_configuration) VisitorIO result →
-    Parser visitor_configuration →
-    (∀ α. InfoMod α) →
+    Term visitor_configuration →
+    TermInfo →
     (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → VisitorIO result) →
     result_monad ()
@@ -241,8 +234,8 @@ mainVisitorT :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     Driver result_monad (Configuration,visitor_configuration) (VisitorT m) result →
     (∀ β. m β → IO β) →
-    Parser visitor_configuration →
-    (∀ α. InfoMod α) →
+    Term visitor_configuration →
+    TermInfo →
     (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
@@ -283,8 +276,8 @@ genericMain :: -- {{{
     , MonadIO result_monad
     ) ⇒
     (
-        Parser (Configuration,visitor_configuration) →
-        (∀ α. InfoMod α) →
+        Term (Configuration,visitor_configuration) →
+        TermInfo →
         ((Configuration,visitor_configuration) → IO ()) →
         ((Configuration,visitor_configuration) → IO (Maybe (Progress result))) →
         ((Configuration,visitor_configuration) → RunOutcome result → IO ()) →
@@ -292,13 +285,13 @@ genericMain :: -- {{{
         ((Configuration,visitor_configuration) → manager_monad result ()) →
         result_monad ()
     ) →
-    Parser visitor_configuration →
-    (∀ α. InfoMod α) →
+    Term visitor_configuration →
+    TermInfo →
     (visitor_configuration → RunOutcome result → IO ()) →
     (visitor_configuration → visitor) →
     result_monad ()
-genericMain run visitor_configuration_options infomod notifyTerminated constructVisitor =
-    run (liftA2 (,) configuration_options visitor_configuration_options)
+genericMain run visitor_configuration_term infomod notifyTerminated constructVisitor =
+    run (liftA2 (,) configuration_term visitor_configuration_term)
          infomod
         (\(Configuration{logging_configuration=LoggingConfiguration{..}},_) →
             updateGlobalLogger rootLoggerName (setLevel log_level)
