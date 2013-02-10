@@ -66,7 +66,7 @@ import Control.Monad.Trans.Abort.Instances.MonadsTF
 import Control.Monad.Trans.Reader (ReaderT,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT,runStateT)
 
-import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
+import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify,modify)
 import Data.Accessor.Template (deriveAccessors)
 import Data.Composition ((.*))
 import Data.Either.Unwrap (whenLeft)
@@ -193,6 +193,9 @@ data SupervisorState result worker_id = -- {{{
     ,   workers_pending_progress_update_ :: !(Set worker_id)
     ,   current_progress_ :: !(Progress result)
     ,   debug_mode_ :: !Bool
+    ,   last_occupied_change_time_ :: !UTCTime
+    ,   total_occupied_time_ :: !NominalDiffTime
+    ,   is_currently_occupied_ :: !Bool
     }
 $( deriveAccessors ''SupervisorState )
 -- }}}
@@ -245,6 +248,7 @@ data RunStatistics = -- {{{
     {   runStartTime :: !UTCTime
     ,   runEndTime :: !UTCTime
     ,   runWallTime :: !NominalDiffTime
+    ,   runSupervisorOccupation :: !Float
     } deriving (Eq,Show)
 -- }}}
 
@@ -317,12 +321,28 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . Supervisor
     tryToObtainWorkloadFor worker_id
 -- }}}
 
+changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
+changeSupervisorOccupiedStatus new_occupied_status = SupervisorMonad . lift $
+    (/= new_occupied_status) <$> get is_currently_occupied
+    >>=
+    flip when (do
+        is_currently_occupied %= new_occupied_status
+        current_time ← liftIO getCurrentTime
+        last_time ← getAndModify last_occupied_change_time (const current_time) 
+        unless new_occupied_status $ modify total_occupied_time (+ current_time `diffUTCTime` last_time)
+    )
+-- }}}
+
 disableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
 disableSupervisorDebugMode = setSupervisorDebugMode False
 -- }}}
 
 enableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
 enableSupervisorDebugMode = setSupervisorDebugMode True
+-- }}}
+
+endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
+endSupervisorOccupied = changeSupervisorOccupiedStatus False
 -- }}}
 
 getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m (Progress result) -- {{{
@@ -332,11 +352,21 @@ getCurrentProgress = SupervisorMonad . lift . get $ current_progress
 getCurrentStatistics :: -- {{{
     SupervisorMonadConstraint m ⇒
     SupervisorMonad result worker_id m RunStatistics
-getCurrentStatistics = SupervisorMonad . lift $ do
-    runEndTime ← liftIO getCurrentTime
-    runStartTime ← asks start_time
-    let runWallTime = runEndTime `diffUTCTime` runStartTime
-    return RunStatistics{..}
+getCurrentStatistics = do
+    endSupervisorOccupied
+    SupervisorMonad . lift $ do
+        runEndTime ← liftIO getCurrentTime
+        runStartTime ← asks start_time
+        let runWallTime = runEndTime `diffUTCTime` runStartTime
+        runSupervisorOccupation ←
+            fromRational
+            .
+            toRational
+            .
+            (/ runWallTime)
+            <$>
+            get total_occupied_time
+        return RunStatistics{..}
 -- }}}
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m Int -- {{{
@@ -547,6 +577,9 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             ,   workers_pending_progress_update_ = mempty
             ,   current_progress_ = starting_progress
             ,   debug_mode_ = False
+            ,   last_occupied_change_time_ = start_time
+            ,   total_occupied_time_ = 0
+            ,   is_currently_occupied_ = False
             }
         )
     .
@@ -612,6 +645,10 @@ runUnrestrictedSupervisorStartingFrom starting_progress actions =
 
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
 setSupervisorDebugMode = SupervisorMonad . lift . (debug_mode %=)
+-- }}}
+
+startSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
+startSupervisorOccupied = changeSupervisorOccupiedStatus True
 -- }}}
 
 -- }}}
@@ -823,13 +860,21 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
   ) >> return result
 -- }}}
 
-runSupervisorProgram :: Monad m ⇒ SupervisorProgram result worker_id m → SupervisorMonad result worker_id m α -- {{{
+runSupervisorProgram :: SupervisorMonadConstraint m ⇒ SupervisorProgram result worker_id m → SupervisorMonad result worker_id m α -- {{{
 runSupervisorProgram program =
     case program of
-        BlockingProgram getRequest processRequest →
-            forever $ lift getRequest >>= processRequest
-        PollingProgram getMaybeRequest processRequest →
-            forever $ lift getMaybeRequest >>= maybe (return ()) processRequest
+        BlockingProgram getRequest processRequest → forever $ do
+            request ← lift getRequest
+            startSupervisorOccupied
+            processRequest request
+            endSupervisorOccupied
+        PollingProgram getMaybeRequest processRequest → forever $ do
+            maybe_request ← lift getMaybeRequest
+            case maybe_request of
+                Nothing → endSupervisorOccupied
+                Just request → do
+                    startSupervisorOccupied
+                    processRequest request
         UnrestrictedProgram run → run
 -- }}}
 
