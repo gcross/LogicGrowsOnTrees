@@ -6,7 +6,7 @@
 module Control.Visitor.Examples.Queens.Implementation where
 
 -- Imports {{{
-import Control.Applicative (liftA2)
+import Control.Applicative ((<$>),liftA2)
 import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum,void)
 import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
@@ -97,6 +97,21 @@ getOpenings size blocked
      where
        next_x = PositionAndBit (i+1) (b `unsafeShiftL` 1)
 {-# INLINE getOpenings #-}
+-- }}}
+
+getOpeningsAsList :: Int → Word64 → [PositionAndBit] -- {{{
+getOpeningsAsList size blocked
+    | blocked .&. mask == mask = []
+    | otherwise = go $ PositionAndBit 0 1
+  where
+    mask = bit size - 1
+    go !x@(PositionAndBit i b)
+     | i >= size          = []
+     | b .&. blocked == 0 = x:go next_x
+     | otherwise          = go next_x
+     where
+       next_x = PositionAndBit (i+1) (b `unsafeShiftL` 1)
+{-# INLINE getOpeningsAsList #-}
 -- }}}
 
 getSymmetricOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBitWithReflection -- {{{
@@ -724,8 +739,7 @@ nqueensSearch :: MonadPlus m ⇒ ([(Int,Int)] → α → α) → (α → m β) �
 nqueensSearch updateValue finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
     go initial_value initial_search_state
   where
-    go !value !(NQueensSearchState 0 _ _ _ _ _) = finalizeValue value
-    go !value !(NQueensSearchState
+    go !value !s@(NQueensSearchState
                     number_of_queens_remaining
                     row
                     occupied_rows
@@ -733,6 +747,7 @@ nqueensSearch updateValue finalizeValue initial_value size initial_search_state@
                     occupied_negative_diagonals
                     occupied_positive_diagonals
                )
+      | number_of_queens_remaining <= 10 = msum (finalizeValue <$> goL value s)
       | occupied_rows .&. 1 == 0 =
          (getOpenings size $
             occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
@@ -750,6 +765,40 @@ nqueensSearch updateValue finalizeValue initial_value size initial_search_state@
             )
       | otherwise =
          go value
+            (NQueensSearchState
+                 number_of_queens_remaining
+                (row+1)
+                (occupied_rows `unsafeShiftR` 1)
+                 occupied_columns
+                (occupied_negative_diagonals `unsafeShiftR` 1)
+                (occupied_positive_diagonals `rotateL` 1)
+            )
+    goL !value !(NQueensSearchState 0 _ _ _ _ _) = [value]
+    goL !value !(NQueensSearchState
+                    number_of_queens_remaining
+                    row
+                    occupied_rows
+                    occupied_columns
+                    occupied_negative_diagonals
+                    occupied_positive_diagonals
+               )
+      | occupied_rows .&. 1 == 0 =
+         (getOpeningsAsList size $
+            occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
+         )
+         >>=
+         \(PositionAndBit offset offset_bit) → goL
+            ([(row,window_start+offset)] `updateValue` value)
+            (NQueensSearchState
+                (number_of_queens_remaining-1)
+                (row+1)
+                (occupied_rows `unsafeShiftR` 1)
+                (occupied_columns .|. offset_bit)
+                ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
+                ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
+            )
+      | otherwise =
+         goL value
             (NQueensSearchState
                  number_of_queens_remaining
                 (row+1)
