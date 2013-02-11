@@ -28,4 +28,4 @@ main = defaultMain
         _ ← takeMVar result_mvar
         return ()
     ]
-  where n = 11
+  where n = 14

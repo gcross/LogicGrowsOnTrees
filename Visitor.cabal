@@ -114,6 +114,24 @@ Executable print-all-nqueens-solutions
     else
         Buildable: False
 
+Benchmark run-versus-list
+    Type: exitcode-stdio-1.0
+    Main-is: run-versus-list.hs
+    Hs-source-dirs: benchmarks
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        criterion == 0.6.*
+
+Benchmark nqueens-versus-list
+    Type: exitcode-stdio-1.0
+    Main-is: nqueens-versus-list.hs
+    Hs-source-dirs: benchmarks
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        criterion == 0.6.*
+
 Test-Suite tests
     Type: exitcode-stdio-1.0
     Main-is: tests.hs

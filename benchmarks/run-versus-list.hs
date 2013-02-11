@@ -33,4 +33,4 @@ main = defaultMain
         _ ← takeMVar result_mvar
         return ()
     ]
-  where depth = 19
+  where depth = 12
