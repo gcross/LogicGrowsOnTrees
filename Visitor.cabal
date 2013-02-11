@@ -7,7 +7,7 @@ Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
 Stability:           Provisional
 Synopsis:            
 Description:         
-Cabal-version:       >=1.6
+Cabal-version:       >=1.8
 Build-type:          Simple
 Category:	     
 
@@ -37,7 +37,6 @@ Library
         data-ivar == 0.30.*,
         derive >= 2.5.11 && < 2.6,
         directory >= 1.1 && < 1.3,
-        dlist == 0.5.*,
         either-unwrap == 1.1.*,
         filepath == 1.3.*,
         FindBin == 0.0.*,
@@ -73,13 +72,19 @@ Library
         Control.Visitor.Workload
     Extensions:
 
-Flag build-nqueens-executables
-    Description: Enable building the n-queens executables.
+Flag build-nqueens-examples
+    Description: Enable building the n-queens example executables.
     Default:     False
 
 Executable count-all-nqueens-solutions-using-threads
     Main-is: count-all-nqueens-solutions-using-threads.hs
-    if flag(build-nqueens-executables)
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        cereal == 0.3.*,
+        cmdtheline == 0.2.*
+    if flag(build-nqueens-examples)
         Buildable: True
     else
         Buildable: False
@@ -87,30 +92,66 @@ Executable count-all-nqueens-solutions-using-threads
 
 Executable count-all-nqueens-solutions-using-processes
     Main-is: count-all-nqueens-solutions-using-processes.hs
-    if flag(build-nqueens-executables)
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        cereal == 0.3.*,
+        cmdtheline == 0.2.*
+    if flag(build-nqueens-examples)
+        Buildable: True
+    else
+        Buildable: False
+
+Executable print-all-nqueens-solutions
+    Main-is: print-all-nqueens-solutions.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor,
+        base > 4 && < 5
+    if flag(build-nqueens-examples)
         Buildable: True
     else
         Buildable: False
 
 Test-Suite tests
-    Type:       exitcode-stdio-1.0
-    Main-is:    tests.hs
+    Type: exitcode-stdio-1.0
+    Main-is: tests.hs
+    Hs-source-dirs: tests
     Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        bytestring >= 0.9 && < 0.11,
+        cereal == 0.3.*,
+        containers >= 0.4 && < 0.6,
+        data-ivar == 0.30.*,
+        dlist == 0.5.*,
+        either-unwrap == 1.1.*,
+        hslogger == 1.2.*,
+        hslogger-template == 2.0.*,
         HUnit == 1.2.*,
+        operational == 0.2.*,
         random == 1.0.*,
         QuickCheck >= 2.4 && < 2.6,
         quickcheck-instances == 0.3.*,
+        stm >= 2.3 && < 2.5,
         test-framework >= 0.6 && < 0.9,
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
+        transformers >= 0.2 && < 0.4,
         uuid == 1.2.*
 
 Test-Suite test-nqueens
-    Type:       exitcode-stdio-1.0
-    Main-is:    test-nqueens.hs
+    Type: exitcode-stdio-1.0
+    Main-is: test-nqueens.hs
+    Hs-source-dirs: tests
     Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        containers >= 0.4 && < 0.6,
         HUnit == 1.2.*,
         QuickCheck >= 2.4 && < 2.6,
         test-framework >= 0.6 && < 0.9,
         test-framework-hunit >= 0.2 && < 0.4,
-        test-framework-quickcheck2 >= 0.2 && < 0.4
+        test-framework-quickcheck2 >= 0.2 && < 0.4,
+        transformers >= 0.2 && < 0.4

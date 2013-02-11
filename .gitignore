@@ -2,5 +2,4 @@ dist/*
 *.hi
 *.o
 *.swp
-tests
 *~
