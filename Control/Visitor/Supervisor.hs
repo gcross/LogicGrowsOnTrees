@@ -238,8 +238,8 @@ data WaitingSubprogram m α = -- {{{
 -- }}}
 
 data SupervisorProgram result worker_id m = -- {{{
-    ∀ α. BlockingProgram (m α) (α → SupervisorMonad result worker_id m ())
-  | ∀ α. PollingProgram (m (Maybe α)) (α → SupervisorMonad result worker_id m ())
+    ∀ α. BlockingProgram (SupervisorMonad result worker_id m ()) (m α) (α → SupervisorMonad result worker_id m ())
+  | ∀ α. PollingProgram (SupervisorMonad result worker_id m ()) (m (Maybe α)) (α → SupervisorMonad result worker_id m ())
   | UnrestrictedProgram (∀ α. SupervisorMonad result worker_id m α)
 -- }}}
 
@@ -863,12 +863,14 @@ postValidate label action = action >>= \result → SupervisorMonad . lift $
 runSupervisorProgram :: SupervisorMonadConstraint m ⇒ SupervisorProgram result worker_id m → SupervisorMonad result worker_id m α -- {{{
 runSupervisorProgram program =
     case program of
-        BlockingProgram getRequest processRequest → forever $ do
+        BlockingProgram initialize getRequest processRequest → forever $ do
+            initialize
             request ← lift getRequest
             startSupervisorOccupied
             processRequest request
             endSupervisorOccupied
-        PollingProgram getMaybeRequest processRequest → forever $ do
+        PollingProgram initialize getMaybeRequest processRequest → forever $ do
+            initialize
             maybe_request ← lift getMaybeRequest
             case maybe_request of
                 Nothing → endSupervisorOccupied

@@ -182,10 +182,11 @@ requestProgressUpdate = syncAsync requestProgressUpdateAsync
 
 requestQueueProgram :: -- {{{
     MonadIO m ⇒
+    SupervisorMonad result worker_id m () →
     RequestQueue result worker_id m →
     SupervisorProgram result worker_id m
-requestQueueProgram =
-    flip BlockingProgram id
+requestQueueProgram initialize =
+    flip (BlockingProgram initialize) id
     .
     liftIO
     .
