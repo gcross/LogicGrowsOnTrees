@@ -23,8 +23,8 @@ instance Serialize (Sum Int) where
 main =
     mainVisitor
         driver
-        (required (flip (pos 0) (posInfo
-            {   posName = "#"
+        (getBoardSize <$> required (flip (pos 0) (posInfo
+            {   posName = "BOARD_SIZE"
             ,   posDoc = "board size"
             }
         ) Nothing))
