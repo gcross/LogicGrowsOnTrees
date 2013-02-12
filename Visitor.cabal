@@ -43,6 +43,7 @@ Library
         higherorder == 0.0.*,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
+        lens == 3.8.*,
         MonadCatchIO-transformers == 0.3.*,
         mtl == 2.1.*,
         operational == 0.2.*,

@@ -19,7 +19,12 @@ module Control.Visitor.Parallel.Workgroup
 
 -- Imports {{{
 import Control.Applicative (Applicative,(<$>))
+import Control.Arrow ((&&&))
 import Control.Concurrent (forkIO,killThread)
+import Control.Lens (makeLenses)
+import Control.Lens.Getter (use)
+import Control.Lens.Lens ((%%=))
+import Control.Lens.Setter ((.=),(%=))
 import Control.Monad (forever,forM_,mapM_,replicateM_)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
@@ -29,8 +34,6 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT,ask,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 
-import Data.Accessor.Monad.MTL.State ((%=),(%:),get,getAndModify)
-import Data.Accessor.Template (deriveAccessors)
 import Data.Composition ((.*))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -87,12 +90,12 @@ data WorkgroupReceivers result = WorkgroupReceivers -- {{{
 -- }}}
 
 data WorkgroupState result = WorkgroupState -- {{{
-    {   pending_quit_ :: !IntSet
-    ,   next_worker_id_ :: !WorkerId
-    ,   next_priority_ :: !RemovalPriority
-    ,   removal_queue_ :: !(PSQ WorkerId RemovalPriority)
+    {   _pending_quit :: !IntSet
+    ,   _next_worker_id :: !WorkerId
+    ,   _next_priority :: !RemovalPriority
+    ,   _removal_queue :: !(PSQ WorkerId RemovalPriority)
     }
-$( deriveAccessors ''WorkgroupState )
+$( makeLenses ''WorkgroupState )
 -- }}}
 
 type WorkgroupStateMonad inner_state result = StateT (WorkgroupState result) (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
@@ -154,7 +157,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
         receiveFailureFromWorker = flip enqueueRequest request_queue .* receiveWorkerFailure
         receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do -- {{{
-            removal_flag ← IntSet.member worker_id <$> get pending_quit
+            removal_flag ← IntSet.member worker_id <$> use pending_quit
             infoM $ if removal_flag
                 then "Worker " ++ show worker_id ++ " has finished, and will be removed."
                 else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
@@ -162,7 +165,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         -- }}}
         receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do -- {{{
             infoM $ "Worker " ++ show worker_id ++ " has quit."
-            quitting ← IntSet.member worker_id <$> getAndModify pending_quit (IntSet.delete worker_id)
+            quitting ← pending_quit %%= (IntSet.member worker_id &&& IntSet.delete worker_id)
             if quitting
                 then removeWorkerIfPresent worker_id
                 else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
@@ -200,10 +203,10 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
   where
     initial_state =
         WorkgroupState
-            {   pending_quit_ = mempty
-            ,   next_worker_id_ = 0
-            ,   next_priority_ = maxBound
-            ,   removal_queue_ = PSQ.empty
+            {   _pending_quit = mempty
+            ,   _next_worker_id = 0
+            ,   _next_priority = maxBound
+            ,   _removal_queue = PSQ.empty
             }
 -- }}}
 
@@ -216,7 +219,7 @@ bumpWorkerRemovalPriority :: -- {{{
     WorkerId →
     m ()
 bumpWorkerRemovalPriority worker_id =
-    getAndModify next_priority pred >>= (removal_queue %:) . PSQ.insert worker_id
+    next_priority %%= (PSQ.insert worker_id &&& pred) >>= (removal_queue %=)
 -- }}}
 
 fireAWorker :: -- {{{
@@ -228,17 +231,17 @@ fireAWorker =
             infoM $ "Removing waiting worker " ++ show worker_id ++ "."
             removeWorker worker_id
             removeWorkerFromRemovalQueue worker_id
-            pending_quit %: IntSet.insert worker_id
+            pending_quit %= IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ False) . ($ worker_id)
         Nothing → do
             (worker_id,new_removal_queue) ← do
-                (PSQ.minView <$> get removal_queue) >>=
+               (PSQ.minView <$> use removal_queue) >>=
                     \x → case x of
                         Nothing → error "No workers found to be removed!"
                         Just (worker_id :-> _,rest_queue) → return (worker_id,rest_queue)
             infoM $ "Removing active worker " ++ show worker_id ++ "."
-            removal_queue %= new_removal_queue
-            pending_quit %: IntSet.insert worker_id
+            removal_queue .= new_removal_queue
+            pending_quit %= IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ True) . ($ worker_id)
 
 -- }}}
@@ -246,7 +249,7 @@ fireAWorker =
 hireAWorker :: -- {{{
     WorkgroupMonad inner_state result ()
 hireAWorker = do
-    worker_id ← getAndModify next_worker_id succ
+    worker_id ← next_worker_id %%= (id &&& succ)
     bumpWorkerRemovalPriority worker_id
     asks createWorker >>= liftInnerToSupervisor . ($ worker_id)
     addWorker worker_id
@@ -261,11 +264,11 @@ liftInnerToSupervisor = lift . liftInner
 -- }}}
 
 numberOfWorkers :: WorkgroupMonad inner_state result Int -- {{{
-numberOfWorkers = PSQ.size <$> get removal_queue
+numberOfWorkers = PSQ.size <$> use removal_queue
 -- }}}
 
 removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state result () -- {{{
-removeWorkerFromRemovalQueue = (removal_queue %:) . PSQ.delete
+removeWorkerFromRemovalQueue = (removal_queue %=) . PSQ.delete
 -- }}}
 
 -- }}}
