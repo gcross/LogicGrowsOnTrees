@@ -73,7 +73,7 @@ Library
         Control.Visitor.Workload
     Extensions:
 
-Flag build-nqueens-examples
+Flag build-examples
     Description: Enable building the n-queens example executables.
     Default:     False
 
@@ -85,7 +85,7 @@ Executable count-all-nqueens-solutions-using-threads
         base > 4 && < 5,
         cereal == 0.3.*,
         cmdtheline == 0.2.*
-    if flag(build-nqueens-examples)
+    if flag(build-examples)
         Buildable: True
     else
         Buildable: False
@@ -99,7 +99,7 @@ Executable count-all-nqueens-solutions-using-processes
         base > 4 && < 5,
         cereal == 0.3.*,
         cmdtheline == 0.2.*
-    if flag(build-nqueens-examples)
+    if flag(build-examples)
         Buildable: True
     else
         Buildable: False
@@ -110,7 +110,7 @@ Executable print-all-nqueens-solutions
     Build-depends:
         Visitor,
         base > 4 && < 5
-    if flag(build-nqueens-examples)
+    if flag(build-examples)
         Buildable: True
     else
         Buildable: False
