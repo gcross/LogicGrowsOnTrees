@@ -869,14 +869,14 @@ runSupervisorProgram program =
             startSupervisorOccupied
             processRequest request
             endSupervisorOccupied
-        PollingProgram initialize getMaybeRequest processRequest → forever $ do
-            initialize
+        PollingProgram initialize getMaybeRequest processRequest → initialize >> forever (do
             maybe_request ← lift getMaybeRequest
             case maybe_request of
                 Nothing → endSupervisorOccupied
                 Just request → do
                     startSupervisorOccupied
                     processRequest request
+         )
         UnrestrictedProgram run → run
 -- }}}
 
