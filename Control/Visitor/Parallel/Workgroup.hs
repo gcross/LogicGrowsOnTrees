@@ -19,11 +19,10 @@ module Control.Visitor.Parallel.Workgroup
 
 -- Imports {{{
 import Control.Applicative (Applicative,(<$>))
-import Control.Arrow ((&&&))
 import Control.Concurrent (forkIO,killThread)
 import Control.Lens (makeLenses)
 import Control.Lens.Getter (use)
-import Control.Lens.Lens ((%%=))
+import Control.Lens.Lens ((<<%=))
 import Control.Lens.Setter ((.=),(%=))
 import Control.Monad (forever,forM_,mapM_,replicateM_)
 import Control.Monad.CatchIO (MonadCatchIO)
@@ -165,7 +164,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         -- }}}
         receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do -- {{{
             infoM $ "Worker " ++ show worker_id ++ " has quit."
-            quitting ← pending_quit %%= (IntSet.member worker_id &&& IntSet.delete worker_id)
+            quitting ← IntSet.member worker_id <$> (pending_quit <<%= IntSet.delete worker_id)
             if quitting
                 then removeWorkerIfPresent worker_id
                 else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
@@ -219,7 +218,7 @@ bumpWorkerRemovalPriority :: -- {{{
     WorkerId →
     m ()
 bumpWorkerRemovalPriority worker_id =
-    next_priority %%= (PSQ.insert worker_id &&& pred) >>= (removal_queue %=)
+    (next_priority <<%= pred) >>= (removal_queue %=) . PSQ.insert worker_id
 -- }}}
 
 fireAWorker :: -- {{{
@@ -249,7 +248,7 @@ fireAWorker =
 hireAWorker :: -- {{{
     WorkgroupMonad inner_state result ()
 hireAWorker = do
-    worker_id ← next_worker_id %%= (id &&& succ)
+    worker_id ← next_worker_id <<%= succ
     bumpWorkerRemovalPriority worker_id
     asks createWorker >>= liftInnerToSupervisor . ($ worker_id)
     addWorker worker_id

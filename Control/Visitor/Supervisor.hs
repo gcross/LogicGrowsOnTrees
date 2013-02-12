@@ -54,12 +54,12 @@ module Control.Visitor.Supervisor -- {{{
 import Prelude hiding (catch)
 
 import Control.Applicative ((<$>),(<*>),Applicative)
-import Control.Arrow ((&&&),first,second)
+import Control.Arrow (first,second)
 import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
 import Control.Lens.Getter (use)
 import Control.Lens.Setter ((.=),(%=),(+=))
-import Control.Lens.Lens ((%%=))
+import Control.Lens.Lens ((<<%=))
 import Control.Lens.TH (makeLenses)
 import Control.Monad (forever,liftM,liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
@@ -345,7 +345,7 @@ changeSupervisorOccupiedStatus new_occupied_status = SupervisorMonad . lift $
         liftIO getCurrentTime >>= \current_time →
         supervisor_occupation_statistics %= execState (do
             is_currently_occupied .= new_occupied_status
-            last_time ← last_occupied_change_time %%= (id &&& const current_time)
+            last_time ← last_occupied_change_time <<%= const current_time
             unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
         )
     )
@@ -754,11 +754,13 @@ deactivateWorker reenqueue_workload worker_id = do
     workers_pending_workload_steal %= Set.delete worker_id
     dequeueWorkerForSteal worker_id
     if reenqueue_workload
-        then active_workers %%= (Map.lookup worker_id &&& Map.delete worker_id)
+        then active_workers <<%= Map.delete worker_id
               >>=
                 enqueueWorkload
                 .
                 fromMaybe (error $ "Attempt to deactive worker " ++ show worker_id ++ " which was not listed as active.")
+                .
+                Map.lookup worker_id
         else active_workers %= Map.delete worker_id
     clearPendingProgressUpdate worker_id
     checkWhetherMoreStealsAreNeeded
