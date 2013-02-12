@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -23,12 +24,12 @@ import Control.Monad (forever,forM_,mapM_,replicateM_)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (asks)
-import Control.Monad.State.Class (MonadState,StateType)
+import Control.Monad.State.Class (MonadState)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT,ask,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 
-import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify)
+import Data.Accessor.Monad.MTL.State ((%=),(%:),get,getAndModify)
 import Data.Accessor.Template (deriveAccessors)
 import Data.Composition ((.*))
 import Data.IntMap (IntMap)
@@ -211,7 +212,7 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
 -- Internal Functions {{{
 
 bumpWorkerRemovalPriority :: -- {{{
-    (MonadState m, StateType m ~ WorkgroupState result) ⇒
+    (MonadState (WorkgroupState result) m) ⇒
     WorkerId →
     m ()
 bumpWorkerRemovalPriority worker_id =

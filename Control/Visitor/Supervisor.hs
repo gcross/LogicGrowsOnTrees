@@ -2,12 +2,15 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-} -- needed to define the MTL instances :-/
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -56,17 +59,17 @@ import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(.
 import Control.Monad (forever,liftM,liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
-import qualified Control.Monad.Reader.Class as MonadsTF
-import qualified Control.Monad.State.Class as MonadsTF
+import qualified Control.Monad.Reader.Class as MTL
+import qualified Control.Monad.State.Class as MTL
 import Control.Monad.Reader (ask,asks)
 import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
-import Control.Monad.Trans.Abort.Instances.MonadsTF
+import Control.Monad.Trans.Abort.Instances.MTL
 import Control.Monad.Trans.Reader (ReaderT,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT,runStateT)
 
-import Data.Accessor.Monad.TF.State ((%=),(%:),get,getAndModify,modify)
+import Data.Accessor.Monad.MTL.State ((%=),(%:),get,getAndModify,modify)
 import Data.Accessor.Template (deriveAccessors)
 import Data.Composition ((.*))
 import Data.Either.Unwrap (whenLeft)
@@ -265,12 +268,11 @@ instance MonadTrans (SupervisorMonad result worker_id) where -- {{{
     lift = SupervisorMonad . lift . liftUserToContext
 -- }}}
 
-instance MonadsTF.MonadReader m ⇒ MonadsTF.MonadReader (SupervisorMonad result worker_id m) where -- {{{
-    type EnvType (SupervisorMonad result worker_id m) = MonadsTF.EnvType m
-    ask = lift MonadsTF.ask
+instance MTL.MonadReader r m ⇒ MTL.MonadReader r (SupervisorMonad result worker_id m) where -- {{{
+    ask = lift MTL.ask
     local f m = SupervisorMonad $ do
-        actions ← MonadsTF.ask
-        old_state ← MonadsTF.get
+        actions ← MTL.ask
+        old_state ← MTL.get
         (result,new_state) ←
             lift
             .
@@ -278,7 +280,7 @@ instance MonadsTF.MonadReader m ⇒ MonadsTF.MonadReader (SupervisorMonad result
             .
             lift
             .
-            MonadsTF.local f
+            MTL.local f
             .
             flip runReaderT actions
             .
@@ -289,14 +291,13 @@ instance MonadsTF.MonadReader m ⇒ MonadsTF.MonadReader (SupervisorMonad result
             unwrapSupervisorMonad
             $
             m
-        MonadsTF.put new_state
+        MTL.put new_state
         either abort return result
 -- }}}
 
-instance MonadsTF.MonadState m ⇒ MonadsTF.MonadState (SupervisorMonad result worker_id m) where -- {{{
-    type StateType (SupervisorMonad result worker_id m) = MonadsTF.StateType m
-    get = lift MonadsTF.get
-    put = lift . MonadsTF.put
+instance MTL.MonadState s m ⇒ MTL.MonadState s (SupervisorMonad result worker_id m) where -- {{{
+    get = lift MTL.get
+    put = lift . MTL.put
 -- }}}
 
 -- }}}
