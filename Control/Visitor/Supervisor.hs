@@ -72,7 +72,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
 import Control.Monad.Trans.Abort.Instances.MTL
 import Control.Monad.Trans.Reader (ReaderT,runReaderT)
-import Control.Monad.Trans.State.Strict (StateT,evalStateT,runStateT)
+import Control.Monad.Trans.State.Strict (StateT,evalStateT,execState,runStateT)
 
 import Data.Composition ((.*))
 import Data.Either.Unwrap (whenLeft)
@@ -341,11 +341,13 @@ changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → Super
 changeSupervisorOccupiedStatus new_occupied_status = SupervisorMonad . lift $
     (/= new_occupied_status) <$> use supervisor_is_currently_occupied
     >>=
-    flip when (do
-        current_time ← liftIO getCurrentTime
-        supervisor_is_currently_occupied .= new_occupied_status
-        last_time ← supervisor_last_occupied_change_time %%= (id &&& const current_time) 
-        unless new_occupied_status $ supervisor_total_occupied_time += (current_time `diffUTCTime` last_time)
+    flip when (
+        liftIO getCurrentTime >>= \current_time →
+        supervisor_occupation_statistics %= execState (do
+            is_currently_occupied .= new_occupied_status
+            last_time ← last_occupied_change_time %%= (id &&& const current_time)
+            unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
+        )
     )
 -- }}}
 
