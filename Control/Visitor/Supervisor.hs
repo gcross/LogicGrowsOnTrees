@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -171,6 +172,14 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Super
 
 -- Types {{{
 
+data OccupationStatistics = OccupationStatistics -- {{{
+    {   _last_occupied_change_time :: !UTCTime
+    ,   _total_occupied_time :: !NominalDiffTime
+    ,   _is_currently_occupied :: !Bool
+    }
+$( makeLenses ''OccupationStatistics )
+-- }}}
+
 data SupervisorCallbacks result worker_id m = -- {{{
     SupervisorCallbacks
     {   broadcastProgressUpdateToWorkers :: [worker_id] → m ()
@@ -198,9 +207,7 @@ data SupervisorState result worker_id = -- {{{
     ,   _workers_pending_progress_update :: !(Set worker_id)
     ,   _current_progress :: !(Progress result)
     ,   _debug_mode :: !Bool
-    ,   _last_occupied_change_time :: !UTCTime
-    ,   _total_occupied_time :: !NominalDiffTime
-    ,   _is_currently_occupied :: !Bool
+    ,   _supervisor_occupation_statistics :: OccupationStatistics
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -257,6 +264,12 @@ data RunStatistics = -- {{{
     } deriving (Eq,Show)
 -- }}}
 
+-- }}}
+
+-- Lens aliases {{{
+supervisor_is_currently_occupied = supervisor_occupation_statistics . is_currently_occupied
+supervisor_last_occupied_change_time = supervisor_occupation_statistics . last_occupied_change_time
+supervisor_total_occupied_time = supervisor_occupation_statistics . total_occupied_time
 -- }}}
 
 -- Contraints {{{
@@ -326,13 +339,13 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . Supervisor
 
 changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
 changeSupervisorOccupiedStatus new_occupied_status = SupervisorMonad . lift $
-    (/= new_occupied_status) <$> use is_currently_occupied
+    (/= new_occupied_status) <$> use supervisor_is_currently_occupied
     >>=
     flip when (do
-        is_currently_occupied .= new_occupied_status
         current_time ← liftIO getCurrentTime
-        last_time ← last_occupied_change_time %%= (id &&& const current_time) 
-        unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
+        supervisor_is_currently_occupied .= new_occupied_status
+        last_time ← supervisor_last_occupied_change_time %%= (id &&& const current_time) 
+        unless new_occupied_status $ supervisor_total_occupied_time += (current_time `diffUTCTime` last_time)
     )
 -- }}}
 
@@ -368,7 +381,7 @@ getCurrentStatistics = do
             .
             (/ runWallTime)
             <$>
-            use total_occupied_time
+            use supervisor_total_occupied_time
         return RunStatistics{..}
 -- }}}
 
@@ -580,9 +593,11 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             ,   _workers_pending_progress_update = mempty
             ,   _current_progress = starting_progress
             ,   _debug_mode = False
-            ,   _last_occupied_change_time = start_time
-            ,   _total_occupied_time = 0
-            ,   _is_currently_occupied = False
+            ,   _supervisor_occupation_statistics = OccupationStatistics
+                {   _last_occupied_change_time = start_time
+                ,   _total_occupied_time = 0
+                ,   _is_currently_occupied = False
+                }
             }
         )
     .
