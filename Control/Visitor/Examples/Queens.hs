@@ -1,5 +1,5 @@
 -- Language extensions {{{
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
