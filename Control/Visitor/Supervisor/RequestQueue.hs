@@ -94,6 +94,20 @@ addProgressReceiver receiver =
     receivers
 -- }}}
 
+tryDequeueRequest :: -- {{{
+    MonadIO m' ⇒
+    RequestQueue result worker_id m →
+    m' (Maybe (Request result worker_id m))
+tryDequeueRequest =
+    liftIO
+    .
+    atomically
+    .
+    tryReadTChan
+    .
+    requests
+-- }}}
+
 enqueueRequest :: -- {{{
     MonadIO m' ⇒
     Request result worker_id m →
