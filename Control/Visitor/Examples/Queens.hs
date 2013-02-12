@@ -7,6 +7,7 @@ module Control.Visitor.Examples.Queens where
 
 -- Imports {{{
 import Control.Monad (MonadPlus)
+
 import Data.Bits (bitSize)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
