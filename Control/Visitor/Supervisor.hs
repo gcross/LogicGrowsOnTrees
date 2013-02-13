@@ -59,7 +59,7 @@ import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
 import Control.Lens.Getter (use)
 import Control.Lens.Setter ((.=),(%=),(+=))
-import Control.Lens.Lens ((<<%=))
+import Control.Lens.Lens ((<<%=),Lens)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (forever,liftM,liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
@@ -338,17 +338,7 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . Supervisor
 -- }}}
 
 changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
-changeSupervisorOccupiedStatus new_occupied_status = SupervisorMonad . lift $
-    (/= new_occupied_status) <$> use supervisor_is_currently_occupied
-    >>=
-    flip when (
-        liftIO getCurrentTime >>= \current_time →
-        supervisor_occupation_statistics %= execState (do
-            is_currently_occupied .= new_occupied_status
-            last_time ← last_occupied_change_time <<%= const current_time
-            unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
-        )
-    )
+changeSupervisorOccupiedStatus = SupervisorMonad . lift . changeOccupiedStatus supervisor_occupation_statistics
 -- }}}
 
 disableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
@@ -685,6 +675,24 @@ abortSupervisorWithReason reason =
         <*> (unwrapSupervisorMonad getCurrentStatistics)
         <*> (Set.toList <$> use known_workers)
     ) >>= abort
+-- }}}
+
+changeOccupiedStatus :: -- {{{
+    (MonadState s m, SupervisorMonadConstraint m) ⇒
+    Lens s s OccupationStatistics OccupationStatistics →
+    Bool →
+    m ()
+changeOccupiedStatus occupied_statistics new_occupied_status =
+    (/= new_occupied_status) <$> use (occupied_statistics . is_currently_occupied)
+    >>=
+    flip when (
+        liftIO getCurrentTime >>= \current_time →
+        occupied_statistics %= execState (do
+            is_currently_occupied .= new_occupied_status
+            last_time ← last_occupied_change_time <<%= const current_time
+            unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
+        )
+    )
 -- }}}
 
 checkWhetherMoreStealsAreNeeded :: -- {{{
