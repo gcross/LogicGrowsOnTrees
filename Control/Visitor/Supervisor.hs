@@ -57,6 +57,7 @@ import Control.Applicative ((<$>),(<*>),Applicative)
 import Control.Arrow (first,second)
 import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
+import Control.Lens.At (at)
 import Control.Lens.Getter (use)
 import Control.Lens.Setter ((.=),(%=),(+=))
 import Control.Lens.Lens ((<<%=),Lens)
@@ -72,7 +73,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
 import Control.Monad.Trans.Abort.Instances.MTL
 import Control.Monad.Trans.Reader (ReaderT,runReaderT)
-import Control.Monad.Trans.State.Strict (StateT,evalStateT,execState,runStateT)
+import Control.Monad.Trans.State.Strict (StateT,evalStateT,execStateT,runStateT)
 
 import Data.Composition ((.*))
 import Data.Either.Unwrap (whenLeft)
@@ -208,6 +209,8 @@ data SupervisorState result worker_id = -- {{{
     ,   _current_progress :: !(Progress result)
     ,   _debug_mode :: !Bool
     ,   _supervisor_occupation_statistics :: OccupationStatistics
+    ,   _worker_start_times :: !(Map worker_id UTCTime)
+    ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -338,7 +341,12 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) . Supervisor
 -- }}}
 
 changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
-changeSupervisorOccupiedStatus = SupervisorMonad . lift . changeOccupiedStatus supervisor_occupation_statistics
+changeSupervisorOccupiedStatus new_status = SupervisorMonad . lift $
+    use supervisor_occupation_statistics
+    >>=
+    changeOccupiedStatus new_status
+    >>=
+    (supervisor_occupation_statistics .=)
 -- }}}
 
 disableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
@@ -590,6 +598,8 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
                 ,   _total_occupied_time = 0
                 ,   _is_currently_occupied = False
                 }
+            ,   _worker_start_times = mempty
+            ,   _worker_occupation_statistics = mempty
             }
         )
     .
@@ -678,21 +688,34 @@ abortSupervisorWithReason reason =
 -- }}}
 
 changeOccupiedStatus :: -- {{{
-    (MonadState s m, SupervisorMonadConstraint m) ⇒
-    Lens s s OccupationStatistics OccupationStatistics →
+    SupervisorMonadConstraint m ⇒
     Bool →
-    m ()
-changeOccupiedStatus occupied_statistics new_occupied_status =
-    (/= new_occupied_status) <$> use (occupied_statistics . is_currently_occupied)
+    OccupationStatistics →
+    m OccupationStatistics
+changeOccupiedStatus new_occupied_status = execStateT $
+    (/= new_occupied_status) <$> use is_currently_occupied
     >>=
-    flip when (
-        liftIO getCurrentTime >>= \current_time →
-        occupied_statistics %= execState (do
-            is_currently_occupied .= new_occupied_status
-            last_time ← last_occupied_change_time <<%= const current_time
-            unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
-        )
+    flip when (do
+        current_time ← liftIO getCurrentTime
+        is_currently_occupied .= new_occupied_status
+        last_time ← last_occupied_change_time <<%= const current_time
+        unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
     )
+-- }}}
+
+changeWorkerOccupiedStatus :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    worker_id →
+    Bool →
+    SupervisorContext result worker_id m ()
+changeWorkerOccupiedStatus worker_id new_status =
+    use worker_occupation_statistics
+    >>=
+    changeOccupiedStatus new_status . fromJust . Map.lookup worker_id
+    >>=
+    (worker_occupation_statistics %=) . Map.insert worker_id
 -- }}}
 
 checkWhetherMoreStealsAreNeeded :: -- {{{
