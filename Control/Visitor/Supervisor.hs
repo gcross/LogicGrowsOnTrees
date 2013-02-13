@@ -64,8 +64,8 @@ import Control.Lens.TH (makeLenses)
 import Control.Monad (forever,liftM,liftM2,mplus,unless,when)
 import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
-import qualified Control.Monad.Reader.Class as MTL
-import qualified Control.Monad.State.Class as MTL
+import Control.Monad.Reader.Class (MonadReader(..))
+import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Reader (ask,asks)
 import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -283,11 +283,11 @@ instance MonadTrans (SupervisorMonad result worker_id) where -- {{{
     lift = SupervisorMonad . lift . liftUserToContext
 -- }}}
 
-instance MTL.MonadReader r m ⇒ MTL.MonadReader r (SupervisorMonad result worker_id m) where -- {{{
-    ask = lift MTL.ask
+instance MonadReader r m ⇒ MonadReader r (SupervisorMonad result worker_id m) where -- {{{
+    ask = lift ask
     local f m = SupervisorMonad $ do
-        actions ← MTL.ask
-        old_state ← MTL.get
+        actions ← ask
+        old_state ← get
         (result,new_state) ←
             lift
             .
@@ -295,7 +295,7 @@ instance MTL.MonadReader r m ⇒ MTL.MonadReader r (SupervisorMonad result worke
             .
             lift
             .
-            MTL.local f
+            local f
             .
             flip runReaderT actions
             .
@@ -306,13 +306,13 @@ instance MTL.MonadReader r m ⇒ MTL.MonadReader r (SupervisorMonad result worke
             unwrapSupervisorMonad
             $
             m
-        MTL.put new_state
+        put new_state
         either abort return result
 -- }}}
 
-instance MTL.MonadState s m ⇒ MTL.MonadState s (SupervisorMonad result worker_id m) where -- {{{
-    get = lift MTL.get
-    put = lift . MTL.put
+instance MonadState s m ⇒ MonadState s (SupervisorMonad result worker_id m) where -- {{{
+    get = lift get
+    put = lift . put
 -- }}}
 
 -- }}}
