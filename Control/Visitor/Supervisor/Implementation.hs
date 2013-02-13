@@ -12,7 +12,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Visitor.Supervisor.Implementation
+module Control.Visitor.Supervisor.Implementation -- {{{
     ( RunStatistics(..)
     , SupervisorAbortMonad()
     , SupervisorCallbacks(..)
@@ -39,7 +39,7 @@ module Control.Visitor.Supervisor.Implementation
     , removeWorkerIfPresent
     , runSupervisorStartingFrom
     , setSupervisorDebugMode
-    ) where
+    ) where -- }}}
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>),liftA2)
