@@ -50,7 +50,7 @@ import Control.Lens ((&))
 import Control.Lens.At (at)
 import Control.Lens.Getter ((^.),use)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
-import Control.Lens.Lens ((<<%=),Lens)
+import Control.Lens.Lens ((<%=),(<<%=),Lens)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (liftM,liftM2,mplus,unless,when)
 import Control.Monad.IO.Class (MonadIO,liftIO)
@@ -72,7 +72,7 @@ import Data.List (inits)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (fromJust,fromMaybe,isJust,isNothing)
-import Data.Monoid (Monoid(..))
+import Data.Monoid ((<>),Monoid(..))
 import qualified Data.Set as Set
 import Data.Set (Set)
 import qualified Data.Sequence as Seq
@@ -670,9 +670,8 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
         then "Worker " ++ show worker_id ++ " finished and removed."
         else "Worker " ++ show worker_id ++ " finished."
     lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
-    current_progress %= (`mappend` final_progress)
     when remove_worker $ known_workers %= Set.delete worker_id
-    Progress checkpoint new_results ← use current_progress
+    Progress checkpoint new_results ← current_progress <%= (<> final_progress)
     case checkpoint of
         Explored → do
             active_worker_ids ← Map.keys . Map.delete worker_id <$> use active_workers
