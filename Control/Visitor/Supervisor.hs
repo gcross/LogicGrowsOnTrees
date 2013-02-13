@@ -31,6 +31,7 @@ module Control.Visitor.Supervisor -- {{{
     , disableSupervisorDebugMode
     , enableSupervisorDebugMode
     , getCurrentProgress
+    , getCurrentStatistics
     , getNumberOfWorkers
     , getWaitingWorkers
     , performGlobalProgressUpdate
@@ -150,14 +151,14 @@ endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad result 
 endSupervisorOccupied = changeSupervisorOccupiedStatus False
 -- }}}
 
-finalizeStatistics :: -- {{{
-    SupervisorFullConstraint worker_id m ⇒
-    SupervisorMonad result worker_id m RunStatistics
-finalizeStatistics = SupervisorMonad . lift $ Implementation.finalizeStatistics
--- }}}
-
 getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m (Progress result) -- {{{
 getCurrentProgress = SupervisorMonad . lift $ Implementation.getCurrentProgress
+-- }}}
+
+getCurrentStatistics :: -- {{{
+    SupervisorFullConstraint worker_id m ⇒
+    SupervisorMonad result worker_id m RunStatistics
+getCurrentStatistics = SupervisorMonad . lift $ Implementation.getCurrentStatistics
 -- }}}
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m Int -- {{{

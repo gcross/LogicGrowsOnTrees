@@ -25,8 +25,8 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , abortSupervisorWithReason
     , addWorker
     , changeSupervisorOccupiedStatus
-    , finalizeStatistics
     , getCurrentProgress
+    , getCurrentStatistics
     , getNumberOfWorkers
     , getWaitingWorkers
     , liftUserToContext
@@ -256,18 +256,18 @@ instance Monoid RetiredOccupationStatistics where
 
 -- Functions {{{
 
-abortSupervisor :: SupervisorMonadConstraint m ⇒ SupervisorAbortMonad result worker_id m α -- {{{
+abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ SupervisorAbortMonad result worker_id m α -- {{{
 abortSupervisor = use current_progress >>= abortSupervisorWithReason . SupervisorAborted
 -- }}}
 
 abortSupervisorWithReason ::  -- {{{
-    SupervisorMonadConstraint m ⇒
+    SupervisorFullConstraint worker_id m ⇒
     SupervisorTerminationReason result worker_id →
     SupervisorAbortMonad result worker_id m α
 abortSupervisorWithReason reason =
     (SupervisorOutcome
         <$> (return reason)
-        <*> (lift finalizeStatistics)
+        <*> (lift getCurrentStatistics)
         <*> (Set.toList <$> use known_workers)
     ) >>= abort
 -- }}}
@@ -457,8 +457,12 @@ enqueueWorkload workload =
             waiting_workers_or_available_workloads .= Right (Set.insert workload available_workloads)
 -- }}}
 
-finalizeStatistics :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m RunStatistics -- {{{
-finalizeStatistics = do
+getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m (Progress result) -- {{{
+getCurrentProgress = use current_progress
+-- }}}
+
+getCurrentStatistics :: SupervisorFullConstraint worker_id m ⇒ SupervisorContext result worker_id m RunStatistics -- {{{
+getCurrentStatistics = do
     runEndTime ← liftIO getCurrentTime
     runStartTime ← use (supervisor_occupation_statistics . start_time)
     let runWallTime = runEndTime `diffUTCTime` runStartTime
@@ -469,10 +473,6 @@ finalizeStatistics = do
         >>=
         return . getOccupationFraction
     return RunStatistics{..}
--- }}}
-
-getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m (Progress result) -- {{{
-getCurrentProgress = use current_progress
 -- }}}
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m Int -- {{{
@@ -662,7 +662,7 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
                 ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
             SupervisorOutcome
                 <$> (return $ SupervisorCompleted new_results)
-                <*> (lift finalizeStatistics)
+                <*> (lift getCurrentStatistics)
                 <*> (Set.toList <$> use known_workers)
              >>= abort
         _ → lift $ do
