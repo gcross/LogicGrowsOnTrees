@@ -14,7 +14,6 @@ module Control.Visitor.Parallel.Process
 import Control.Concurrent (killThread)
 import Control.Concurrent.MVar (isEmptyMVar,newEmptyMVar,putMVar,takeMVar,tryTakeMVar)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
-import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class
 
 import Data.Derive.Serialize

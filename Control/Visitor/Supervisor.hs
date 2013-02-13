@@ -52,19 +52,16 @@ module Control.Visitor.Supervisor -- {{{
     ) where -- }}}
 
 -- Imports {{{
-import Prelude hiding (catch)
-
 import Control.Applicative ((<$>),(<*>),Applicative)
 import Control.Arrow (first,second)
 import Control.Category ((>>>))
-import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert)
+import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
 import Control.Lens.At (at)
 import Control.Lens.Getter (use)
 import Control.Lens.Setter ((.=),(%=),(+=))
 import Control.Lens.Lens ((<<%=),Lens)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (forever,liftM,liftM2,mplus,unless,when)
-import Control.Monad.CatchIO (MonadCatchIO,catch,throw)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
@@ -277,7 +274,7 @@ supervisor_total_occupied_time = supervisor_occupation_statistics . total_occupi
 -- }}}
 
 -- Contraints {{{
-type SupervisorMonadConstraint m = (Functor m, MonadCatchIO m)
+type SupervisorMonadConstraint m = (Functor m, MonadIO m)
 type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
 type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,SupervisorMonadConstraint m)
 -- }}}
@@ -606,20 +603,6 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
         )
     .
     runAbortT
-    .
-    (
-        AbortT
-        .
-        (flip catch $ \e →
-            let abortIt = unwrapAbortT . unwrapSupervisorMonad $ abortSupervisor
-            in case fromException e of
-                Just ThreadKilled → abortIt
-                Just UserInterrupt → abortIt
-                _ → throw e
-        )
-        .
-        unwrapAbortT
-    )
     .
     unwrapSupervisorMonad
     .
