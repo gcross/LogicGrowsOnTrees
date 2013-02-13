@@ -42,13 +42,14 @@ module Control.Visitor.Supervisor.Implementation
     ) where
 
 -- Imports {{{
-import Control.Applicative ((<$>),(<*>))
+import Control.Applicative ((<$>),(<*>),liftA2)
 import Control.Arrow (first)
 import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
+import Control.Lens ((&))
 import Control.Lens.At (at)
-import Control.Lens.Getter (use)
-import Control.Lens.Setter ((.=),(%=),(+=))
+import Control.Lens.Getter ((^.),use)
+import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
 import Control.Lens.Lens ((<<%=),Lens)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (liftM,liftM2,mplus,unless,when)
@@ -160,11 +161,19 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Super
 
 -- Types {{{
 
+data RetiredOccupationStatistics = RetiredOccupationStatistics -- {{{
+    {   _occupied_time :: !NominalDiffTime
+    ,   _total_time :: !NominalDiffTime
+    } deriving (Eq,Show)
+$( makeLenses ''RetiredOccupationStatistics )
+-- }}}
+
 data OccupationStatistics = OccupationStatistics -- {{{
-    {   _last_occupied_change_time :: !UTCTime
+    {   _start_time :: !UTCTime
+    ,   _last_occupied_change_time :: !UTCTime
     ,   _total_occupied_time :: !NominalDiffTime
     ,   _is_currently_occupied :: !Bool
-    }
+    } deriving (Eq,Show)
 $( makeLenses ''OccupationStatistics )
 -- }}}
 
@@ -188,13 +197,6 @@ data SupervisorCallbacks result worker_id m = -- {{{
 
 type SupervisorMonadState result worker_id = MonadState (SupervisorState result worker_id)
 
-data SupervisorRunConstants result worker_id m = -- {{{
-    SupervisorRunConstants
-    {   callbacks :: !(SupervisorCallbacks result worker_id m)
-    ,   start_time :: !UTCTime
-    }
--- }}}
-
 data SupervisorState result worker_id = -- {{{
     SupervisorState
     {   _waiting_workers_or_available_workloads :: !(Either (Set worker_id) (Set Workload))
@@ -207,7 +209,6 @@ data SupervisorState result worker_id = -- {{{
     ,   _current_progress :: !(Progress result)
     ,   _debug_mode :: !Bool
     ,   _supervisor_occupation_statistics :: OccupationStatistics
-    ,   _worker_start_times :: !(Map worker_id UTCTime)
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     }
 $( makeLenses ''SupervisorState )
@@ -230,7 +231,7 @@ data SupervisorOutcome result worker_id = -- {{{
 
 type SupervisorContext result worker_id m = -- {{{
     StateT (SupervisorState result worker_id)
-        (ReaderT (SupervisorRunConstants result worker_id m) m)
+        (ReaderT (SupervisorCallbacks result worker_id m) m)
 -- }}}
 
 type SupervisorAbortMonad result worker_id m = -- {{{
@@ -241,16 +242,16 @@ type SupervisorAbortMonad result worker_id m = -- {{{
 
 -- }}}
 
--- Lens aliases {{{
-supervisor_is_currently_occupied = supervisor_occupation_statistics . is_currently_occupied
-supervisor_last_occupied_change_time = supervisor_occupation_statistics . last_occupied_change_time
-supervisor_total_occupied_time = supervisor_occupation_statistics . total_occupied_time
--- }}}
-
 -- Contraints {{{
 type SupervisorMonadConstraint m = (Functor m, MonadIO m)
 type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
 type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,SupervisorMonadConstraint m)
+-- }}}
+
+-- Instances {{{
+instance Monoid RetiredOccupationStatistics where
+    mempty = RetiredOccupationStatistics 0 0
+    mappend x y = x & (occupied_time +~ y^.occupied_time) & (total_time +~ y^.total_time)
 -- }}}
 
 -- Functions {{{
@@ -360,7 +361,7 @@ checkWhetherMoreStealsAreNeeded = do
         available_workers_for_steal %= IntMap.update (const maybe_new_workers) depth
         unless (null workers_to_steal_from) $ do
             infoM $ "Sending workload steal requests to " ++ show workers_to_steal_from
-            asks (callbacks >>> broadcastWorkloadStealToWorkers) >>= liftUserToContext . ($ workers_to_steal_from)
+            asks broadcastWorkloadStealToWorkers >>= liftUserToContext . ($ workers_to_steal_from)
 -- }}}
 
 clearPendingProgressUpdate :: -- {{{
@@ -458,18 +459,15 @@ enqueueWorkload workload =
 
 finalizeStatistics :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m RunStatistics -- {{{
 finalizeStatistics = do
-    endSupervisorOccupied
     runEndTime ← liftIO getCurrentTime
-    runStartTime ← asks start_time
+    runStartTime ← use (supervisor_occupation_statistics . start_time)
     let runWallTime = runEndTime `diffUTCTime` runStartTime
     runSupervisorOccupation ←
-        fromRational
-        .
-        toRational
-        .
-        (/ runWallTime)
-        <$>
-        use supervisor_total_occupied_time
+        use supervisor_occupation_statistics
+        >>=
+        retireOccupationStatistics
+        >>=
+        return . getOccupationFraction
     return RunStatistics{..}
 -- }}}
 
@@ -479,6 +477,10 @@ getCurrentProgress = use current_progress
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m Int -- {{{
 getNumberOfWorkers = liftM Set.size . use $ known_workers
+-- }}}
+
+getOccupationFraction :: RetiredOccupationStatistics → Float -- {{{
+getOccupationFraction = fromRational . toRational . liftA2 (/) (^.occupied_time) (^.total_time)
 -- }}}
 
 getWaitingWorkers :: -- {{{
@@ -549,7 +551,7 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" $ do
         then sendCurrentProgressToUser
         else do
             workers_pending_progress_update .= active_worker_ids
-            asks (callbacks >>> broadcastProgressUpdateToWorkers) >>= liftUserToContext . ($ Set.toList active_worker_ids)
+            asks broadcastProgressUpdateToWorkers >>= liftUserToContext . ($ Set.toList active_worker_ids)
 -- }}}
 
 postValidate :: -- {{{
@@ -668,6 +670,19 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
             unless remove_worker $ tryToObtainWorkloadFor worker_id
 -- }}}
 
+retireManyOccupationStatistics :: SupervisorMonadConstraint m ⇒ [OccupationStatistics] → m [RetiredOccupationStatistics] -- {{{
+retireManyOccupationStatistics occupied_statistics =
+    liftIO getCurrentTime >>= \current_time → return $
+    map (\o → mempty
+        & occupied_time .~ (o^.total_occupied_time + if o^.is_currently_occupied then current_time `diffUTCTime` (o^.last_occupied_change_time) else 0)
+        & total_time .~ (current_time `diffUTCTime` (o^.start_time))
+    ) occupied_statistics
+-- }}}
+
+retireOccupationStatistics :: SupervisorMonadConstraint m ⇒ OccupationStatistics → m RetiredOccupationStatistics -- {{{
+retireOccupationStatistics = fmap head . retireManyOccupationStatistics . (:[])
+-- }}}
+
 removeWorker :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
@@ -708,7 +723,7 @@ runSupervisorStartingFrom :: -- {{{
     (∀ α. SupervisorAbortMonad result worker_id m α) →
     m (SupervisorOutcome result worker_id)
 runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentTime >>= \start_time →
-    flip runReaderT (SupervisorRunConstants actions start_time)
+    flip runReaderT actions
     .
     flip evalStateT
         (SupervisorState
@@ -723,11 +738,11 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             ,   _current_progress = starting_progress
             ,   _debug_mode = False
             ,   _supervisor_occupation_statistics = OccupationStatistics
-                {   _last_occupied_change_time = start_time
+                {   _start_time = start_time
+                ,   _last_occupied_change_time = start_time
                 ,   _total_occupied_time = 0
                 ,   _is_currently_occupied = False
                 }
-            ,   _worker_start_times = mempty
             ,   _worker_occupation_statistics = mempty
             }
         )
@@ -743,7 +758,7 @@ sendCurrentProgressToUser :: -- {{{
     ) ⇒
     SupervisorContext result worker_id m ()
 sendCurrentProgressToUser = do
-    callback ← asks (callbacks >>> receiveCurrentProgress)
+    callback ← asks receiveCurrentProgress
     current_progress ← use current_progress
     liftUserToContext (callback current_progress)
 -- }}}
@@ -757,7 +772,7 @@ sendWorkloadTo :: -- {{{
     SupervisorContext result worker_id m ()
 sendWorkloadTo workload worker_id = do
     infoM $ "Sending workload to " ++ show worker_id
-    asks (callbacks >>> sendWorkloadToWorker) >>= liftUserToContext . (\f → f workload worker_id)
+    asks sendWorkloadToWorker >>= liftUserToContext . (\f → f workload worker_id)
     isNothing . Map.lookup worker_id <$> use active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %= Map.insert worker_id workload
