@@ -65,6 +65,7 @@ Library
         Control.Visitor.Parallel.Workgroup
         Control.Visitor.Path
         Control.Visitor.Supervisor
+        Control.Visitor.Supervisor.Implementation
         Control.Visitor.Supervisor.RequestQueue
         Control.Visitor.Utils.MonadStacks
         Control.Visitor.Worker
