@@ -285,6 +285,15 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     tryToObtainWorkloadFor worker_id
 -- }}}
 
+beginWorkerOccupied :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    worker_id →
+    SupervisorContext result worker_id m ()
+beginWorkerOccupied = changeWorkerOccupiedStatus True
+-- }}}
+
 changeOccupiedStatus :: -- {{{
     SupervisorMonadConstraint m ⇒
     Bool →
@@ -314,10 +323,10 @@ changeWorkerOccupiedStatus :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    worker_id →
     Bool →
+    worker_id →
     SupervisorContext result worker_id m ()
-changeWorkerOccupiedStatus worker_id new_status =
+changeWorkerOccupiedStatus new_status worker_id =
     use worker_occupation_statistics
     >>=
     changeOccupiedStatus new_status . fromJust . Map.lookup worker_id
@@ -422,6 +431,15 @@ dequeueWorkerForSteal worker_id =
 
 endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m () -- {{{
 endSupervisorOccupied = changeSupervisorOccupiedStatus False
+-- }}}
+
+endWorkerOccupied :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    worker_id →
+    SupervisorContext result worker_id m ()
+endWorkerOccupied = changeWorkerOccupiedStatus False
 -- }}}
 
 enqueueWorkerForSteal :: -- {{{
