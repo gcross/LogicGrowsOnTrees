@@ -19,6 +19,7 @@
 module Control.Visitor.Supervisor -- {{{
     ( RunStatistics(..)
     , SupervisorCallbacks(..)
+    , SupervisorFullConstraint
     , SupervisorMonad
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
@@ -278,6 +279,7 @@ supervisor_total_occupied_time = supervisor_occupation_statistics . total_occupi
 -- Contraints {{{
 type SupervisorMonadConstraint m = (Functor m, MonadCatchIO m)
 type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
+type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,SupervisorMonadConstraint m)
 -- }}}
 
 -- Instances {{{
