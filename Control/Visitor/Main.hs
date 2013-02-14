@@ -86,8 +86,9 @@ instance Serialize LoggingConfiguration where
 -- }}}
 
 data StatisticsConfiguration = StatisticsConfiguration -- {{{
-    {   show_wall_times :: Bool
-    ,   show_supervisor_occupation :: Bool
+    {   show_wall_times :: !Bool
+    ,   show_supervisor_occupation :: !Bool
+    ,   show_worker_occupation :: !Bool
     } deriving (Eq,Show)
 $( derive makeSerialize ''StatisticsConfiguration )
 -- }}}
@@ -185,11 +186,12 @@ logging_configuration_term =
 
 statistics_configuration_term :: Term StatisticsConfiguration -- {{{
 statistics_configuration_term =
-    (\show_all → if show_all then const (StatisticsConfiguration True True) else id)
+    (\show_all → if show_all then const (StatisticsConfiguration True True True) else id)
     <$> value (flag ((optInfo ["show-all"]) { optDoc ="This option will cause *all* run statistic to be printed to standard error after the program terminates." }))
     <*> (StatisticsConfiguration
         <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-supervisor-occupation"]) { optDoc ="This option will cause the supervisor occupation percentage to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-worker-occupation"]) { optDoc ="This option will cause the worker occupation percentage to be printed to standard error after the program terminates." }))
         )
 -- }}}
 
@@ -355,6 +357,10 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         hPutStrLn stderr $
             printf "Supervior was occupied for %f%% of the run."
                 runSupervisorOccupation
+    when show_worker_occupation $
+        hPutStrLn stderr $
+            printf "Workers were occupied %f%% of the time on average."
+                runWorkerOccupation
 -- }}}
 
 writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{

@@ -43,14 +43,14 @@ module Control.Visitor.Supervisor.Implementation -- {{{
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>),liftA2)
-import Control.Arrow (first)
+import Control.Arrow ((&&&),first)
 import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
 import Control.Lens ((&))
 import Control.Lens.At (at)
 import Control.Lens.Getter ((^.),use)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
-import Control.Lens.Lens ((<%=),(<<%=),Lens)
+import Control.Lens.Lens ((<%=),(<<%=),(%%=),Lens)
 import Control.Lens.TH (makeLenses)
 import Control.Monad (liftM,liftM2,mplus,unless,when)
 import Control.Monad.IO.Class (MonadIO,liftIO)
@@ -183,6 +183,7 @@ data RunStatistics = -- {{{
     ,   runEndTime :: !UTCTime
     ,   runWallTime :: !NominalDiffTime
     ,   runSupervisorOccupation :: !Float
+    ,   runWorkerOccupation :: !Float
     } deriving (Eq,Show)
 -- }}}
 
@@ -210,6 +211,7 @@ data SupervisorState result worker_id = -- {{{
     ,   _debug_mode :: !Bool
     ,   _supervisor_occupation_statistics :: OccupationStatistics
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
+    ,   _retired_worker_occupation_statistics :: !(Map worker_id RetiredOccupationStatistics)
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -282,6 +284,8 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     infoM $ "Adding worker " ++ show worker_id
     validateWorkerNotKnown "adding worker" worker_id
     known_workers %= Set.insert worker_id
+    start_time ← liftIO getCurrentTime
+    worker_occupation_statistics %= Map.insert worker_id (OccupationStatistics start_time start_time 0 False)
     tryToObtainWorkloadFor worker_id
 -- }}}
 
@@ -490,6 +494,12 @@ getCurrentStatistics = do
         retireOccupationStatistics
         >>=
         return . getOccupationFraction
+    runWorkerOccupation ←
+        getOccupationFraction . mconcat . Map.elems
+        <$>
+        liftM2 (Map.unionWith (<>))
+            (use retired_worker_occupation_statistics)
+            (use worker_occupation_statistics >>= retireManyOccupationStatistics)
     return RunStatistics{..}
 -- }}}
 
@@ -670,8 +680,8 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
         then "Worker " ++ show worker_id ++ " finished and removed."
         else "Worker " ++ show worker_id ++ " finished."
     lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
-    when remove_worker $ known_workers %= Set.delete worker_id
     Progress checkpoint new_results ← current_progress <%= (<> final_progress)
+    when remove_worker . lift $ retireWorker worker_id
     case checkpoint of
         Explored → do
             active_worker_ids ← Map.keys . Map.delete worker_id <$> use active_workers
@@ -683,14 +693,16 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
                 <*> (Set.toList <$> use known_workers)
              >>= abort
         _ → lift $ do
-            deactivateWorker False worker_id
-            unless remove_worker $ tryToObtainWorkloadFor worker_id
+                deactivateWorker False worker_id
+                unless remove_worker $ do
+                    endWorkerOccupied worker_id
+                    tryToObtainWorkloadFor worker_id
 -- }}}
 
-retireManyOccupationStatistics :: SupervisorMonadConstraint m ⇒ [OccupationStatistics] → m [RetiredOccupationStatistics] -- {{{
+retireManyOccupationStatistics :: (Functor f, SupervisorMonadConstraint m) ⇒ f OccupationStatistics → m (f RetiredOccupationStatistics) -- {{{
 retireManyOccupationStatistics occupied_statistics =
     liftIO getCurrentTime >>= \current_time → return $
-    map (\o → mempty
+    fmap (\o → mempty
         & occupied_time .~ (o^.total_occupied_time + if o^.is_currently_occupied then current_time `diffUTCTime` (o^.last_occupied_change_time) else 0)
         & total_time .~ (current_time `diffUTCTime` (o^.start_time))
     ) occupied_statistics
@@ -709,10 +721,7 @@ removeWorker :: -- {{{
 removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) $ do
     infoM $ "Removing worker " ++ show worker_id
     validateWorkerKnown "removing the worker" worker_id
-    known_workers %= Set.delete worker_id
-    ifM (isJust . Map.lookup worker_id <$> use active_workers)
-        (deactivateWorker True worker_id)
-        (waiting_workers_or_available_workloads %= either (Left . Set.delete worker_id) Right)
+    retireAndDeactivateWorker worker_id
 -- }}}
 
 removeWorkerIfPresent :: -- {{{
@@ -724,10 +733,37 @@ removeWorkerIfPresent :: -- {{{
 removeWorkerIfPresent worker_id = postValidate ("removeWorker " ++ show worker_id) $ do
     whenM (Set.member worker_id <$> use known_workers) $ do
         infoM $ "Removing worker " ++ show worker_id
-        known_workers %= Set.delete worker_id
-        ifM (isJust . Map.lookup worker_id <$> use active_workers)
-            (deactivateWorker True worker_id)
-            (waiting_workers_or_available_workloads %= either (Left . Set.delete worker_id) Right)
+        retireAndDeactivateWorker worker_id
+-- }}}
+
+retireWorker :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    worker_id →
+    SupervisorContext result worker_id m ()
+retireWorker worker_id = do
+    known_workers %= Set.delete worker_id
+    retired_occupation_statistics ←
+        worker_occupation_statistics %%= (fromJust . Map.lookup worker_id &&& Map.delete worker_id)
+        >>=
+        retireOccupationStatistics
+    retired_worker_occupation_statistics %= Map.alter (
+        Just . maybe retired_occupation_statistics (<> retired_occupation_statistics)
+     ) worker_id
+-- }}}
+
+retireAndDeactivateWorker :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    worker_id →
+    SupervisorContext result worker_id m ()
+retireAndDeactivateWorker worker_id = do
+    retireWorker worker_id
+    ifM (isJust . Map.lookup worker_id <$> use active_workers)
+        (deactivateWorker True worker_id)
+        (waiting_workers_or_available_workloads %= either (Left . Set.delete worker_id) Right)
 -- }}}
 
 runSupervisorStartingFrom :: -- {{{
@@ -761,6 +797,7 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
                 ,   _is_currently_occupied = False
                 }
             ,   _worker_occupation_statistics = mempty
+            ,   _retired_worker_occupation_statistics = mempty
             }
         )
     .
@@ -793,6 +830,7 @@ sendWorkloadTo workload worker_id = do
     isNothing . Map.lookup worker_id <$> use active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %= Map.insert worker_id workload
+    beginWorkerOccupied worker_id
     enqueueWorkerForSteal worker_id
     checkWhetherMoreStealsAreNeeded
 -- }}}
