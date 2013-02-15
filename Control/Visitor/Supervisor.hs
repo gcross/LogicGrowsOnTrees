@@ -68,7 +68,7 @@ import Control.Visitor.Checkpoint (Progress)
 import Control.Visitor.Worker (ProgressUpdate,StolenWorkload)
 
 import qualified Control.Visitor.Supervisor.Implementation as Implementation
-import Control.Visitor.Supervisor.Implementation
+import Control.Visitor.Supervisor.Implementation -- {{{
     ( RunStatistics(..)
     , SupervisorAbortMonad()
     , SupervisorCallbacks(..)
@@ -80,7 +80,7 @@ import Control.Visitor.Supervisor.Implementation
     , TimeStatistics(..)
     , liftUserToContext
     , localWithinContext
-    )
+    ) -- }}}
 -- }}}
 
 -- Types {{{
