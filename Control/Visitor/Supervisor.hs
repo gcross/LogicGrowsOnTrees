@@ -26,6 +26,7 @@ module Control.Visitor.Supervisor -- {{{
     , SupervisorProgram(..)
     , SupervisorTerminationReason(..)
     , SupervisorWorkerIdConstraint
+    , TimeStatistics(..)
     , abortSupervisor
     , addWorker
     , disableSupervisorDebugMode
@@ -76,6 +77,7 @@ import Control.Visitor.Supervisor.Implementation
     , SupervisorOutcome(..)
     , SupervisorTerminationReason(..)
     , SupervisorWorkerIdConstraint
+    , TimeStatistics(..)
     , liftUserToContext
     , localWithinContext
     )

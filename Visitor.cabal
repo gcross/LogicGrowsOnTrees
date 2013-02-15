@@ -42,6 +42,7 @@ Library
         hslogger-template == 2.0.*,
         lens == 3.8.*,
         MonadCatchIO-transformers == 0.3.*,
+        monoid-statistics == 0.3.*,
         mtl == 2.1.*,
         operational == 0.2.*,
         pretty == 1.1.*,
