@@ -8,7 +8,30 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Threads where
+module Control.Visitor.Parallel.Threads
+    ( ThreadsControllerMonad
+    , abort
+    , changeNumberOfWorkers
+    , changeNumberOfWorkersAsync
+    , changeNumberOfWorkersToMatchCPUs
+    , driver
+    , fork
+    , getCurrentProgress
+    , getCurrentProgressAsync
+    , getNumberOfWorkers
+    , getNumberOfWorkersAsync
+    , requestProgressUpdate
+    , requestProgressUpdateAsync
+    , runVisitor
+    , runVisitorMaybeStartingFrom
+    , runVisitorStartingFrom
+    , runVisitorIO
+    , runVisitorIOMaybeStartingFrom
+    , runVisitorIOStartingFrom
+    , runVisitorT
+    , runVisitorTMaybeStartingFrom
+    , runVisitorTStartingFrom
+    ) where
 
 -- Imports {{{
 import Control.Applicative (Applicative)
