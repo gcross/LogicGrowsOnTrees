@@ -11,8 +11,18 @@
 
 module Control.Visitor.Parallel.Processes
     ( ProcessesControllerMonad
+    , abort
+    , changeNumberOfWorkers
+    , changeNumberOfWorkersAsync
     , driver
+    , fork
+    , getCurrentProgress
+    , getCurrentProgressAsync
+    , getNumberOfWorkers
+    , getNumberOfWorkersAsync
     , getProgFilepath
+    , requestProgressUpdate
+    , requestProgressUpdateAsync
     , runSupervisor
     , runVisitor
     , runVisitorIO

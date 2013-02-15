@@ -1,0 +1,75 @@
+Name:                Visitor-processes
+Version:             1.0
+License:             BSD3
+License-file:        LICENSE
+Author:              Gregory Crosswhite
+Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
+Stability:           Provisional
+Synopsis:            
+Description:         
+Cabal-version:       >=1.8
+Build-type:          Simple
+Category:	     
+
+Source-Repository head
+  Type:                git
+  Location:            git://github.com/gcross/Visitor-processes.git
+
+Source-Repository this
+    Type:                git
+    Location:            git://github.com/gcross/Visitor-processes.git
+--    Tag:                 
+
+
+Library
+    Build-depends:
+        Visitor == 1.0.*,
+        base > 4 && < 5,
+        bytestring >= 0.9 && < 0.11,
+        cereal == 0.3.*,
+        cmdtheline == 0.2.*,
+        containers >= 0.4 && < 0.6,
+        filepath == 1.3.*,
+        FindBin == 0.0.*,
+        hslogger == 1.2.*,
+        hslogger-template == 2.0.*,
+        MonadCatchIO-transformers == 0.3.*,
+        process == 1.1.*,
+        transformers >= 0.2 && < 0.4
+    Exposed-modules:
+        Control.Visitor.Parallel.Processes
+    Extensions:
+
+Flag examples
+    Description: Enable building the executables.
+    Default:     False
+
+Executable count-all-nqueens-solutions
+    Main-is: count-all-nqueens-solutions.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor-processes,
+        base > 4 && < 5,
+        cereal == 0.3.*,
+        cmdtheline == 0.2.*
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+
+Test-Suite tests
+    Type: exitcode-stdio-1.0
+    Main-is: tests.hs
+    Hs-source-dirs: tests
+    Build-depends:
+        Visitor-processes,
+        Visitor == 1.0.*,
+        base > 4 && < 5,
+        cereal == 0.3.*,
+        hslogger == 1.2.*,
+        hslogger-template == 2.0.*,
+        HUnit == 1.2.*,
+        random == 1.0.*,
+        test-framework >= 0.6 && < 0.9,
+        test-framework-hunit >= 0.2 && < 0.4,
+        transformers >= 0.2 && < 0.4
