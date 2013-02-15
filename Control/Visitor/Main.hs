@@ -355,12 +355,12 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (show runWallTime)
     when show_supervisor_occupation $
         hPutStrLn stderr $
-            printf "Supervior was occupied for %f%% of the run."
-                runSupervisorOccupation
+            printf "Supervior was occupied for %.1f%% of the run."
+                (runSupervisorOccupation*100)
     when show_worker_occupation $
         hPutStrLn stderr $
-            printf "Workers were occupied %f%% of the time on average."
-                runWorkerOccupation
+            printf "Workers were occupied %.1f%% of the time on average."
+                (runWorkerOccupation*100)
 -- }}}
 
 writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{
