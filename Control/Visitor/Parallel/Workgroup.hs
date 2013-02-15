@@ -224,9 +224,9 @@ bumpWorkerRemovalPriority worker_id =
 fireAWorker :: -- {{{
     WorkgroupMonad inner_state result ()
 fireAWorker =
-    Set.minView <$> getWaitingWorkers
+    tryGetWaitingWorker
     >>= \x → case x of
-        Just (worker_id,_) → do
+        Just worker_id → do
             infoM $ "Removing waiting worker " ++ show worker_id ++ "."
             removeWorker worker_id
             removeWorkerFromRemovalQueue worker_id

@@ -33,7 +33,6 @@ module Control.Visitor.Supervisor -- {{{
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
-    , getWaitingWorkers
     , performGlobalProgressUpdate
     , receiveProgressUpdate
     , receiveStolenWorkload
@@ -50,6 +49,7 @@ module Control.Visitor.Supervisor -- {{{
     , runUnrestrictedSupervisorMaybeStartingFrom
     , runUnrestrictedSupervisorStartingFrom
     , setSupervisorDebugMode
+    , tryGetWaitingWorker
     ) where -- }}}
 
 -- Imports {{{
@@ -62,7 +62,6 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.Composition ((.*),(.**))
 import Data.Monoid (Monoid(mempty))
-import Data.Set (Set)
 
 import Control.Visitor.Checkpoint (Progress)
 import Control.Visitor.Worker (ProgressUpdate,StolenWorkload)
@@ -163,14 +162,6 @@ getCurrentStatistics = SupervisorMonad . lift $ Implementation.getCurrentStatist
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m Int -- {{{
 getNumberOfWorkers = SupervisorMonad . lift $ Implementation.getNumberOfWorkers
--- }}}
-
-getWaitingWorkers :: -- {{{
-    ( SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    ) ⇒
-    SupervisorMonad result worker_id m (Set worker_id)
-getWaitingWorkers = SupervisorMonad . lift $ Implementation.getWaitingWorkers
 -- }}}
 
 performGlobalProgressUpdate :: -- {{{
@@ -362,3 +353,12 @@ runUnrestrictedSupervisorStartingFrom starting_progress actions =
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
 setSupervisorDebugMode = SupervisorMonad . lift . Implementation.setSupervisorDebugMode
 -- }}}
+
+tryGetWaitingWorker :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    SupervisorMonad result worker_id m (Maybe worker_id)
+tryGetWaitingWorker = SupervisorMonad . lift $ Implementation.tryGetWaitingWorker
+-- }}}
+

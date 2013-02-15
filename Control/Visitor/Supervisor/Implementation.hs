@@ -28,7 +28,6 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
-    , getWaitingWorkers
     , liftUserToContext
     , localWithinContext
     , performGlobalProgressUpdate
@@ -39,6 +38,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , removeWorkerIfPresent
     , runSupervisorStartingFrom
     , setSupervisorDebugMode
+    , tryGetWaitingWorker
     ) where -- }}}
 
 -- Imports {{{
@@ -511,14 +511,6 @@ getOccupationFraction :: RetiredOccupationStatistics → Float -- {{{
 getOccupationFraction = fromRational . toRational . liftA2 (/) (^.occupied_time) (^.total_time)
 -- }}}
 
-getWaitingWorkers :: -- {{{
-    ( SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    ) ⇒
-    SupervisorContext result worker_id m (Set worker_id)
-getWaitingWorkers = either id (const Set.empty) <$> use waiting_workers_or_available_workloads
--- }}}
-
 getWorkerDepth :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
@@ -837,6 +829,17 @@ sendWorkloadTo workload worker_id = do
 
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorContext result worker_id m () -- {{{
 setSupervisorDebugMode = (debug_mode .=)
+-- }}}
+
+tryGetWaitingWorker :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    SupervisorContext result worker_id m (Maybe worker_id)
+tryGetWaitingWorker =
+    either (fmap fst . Set.minView) (const Nothing)
+    <$>
+    use waiting_workers_or_available_workloads
 -- }}}
 
 tryToObtainWorkloadFor :: -- {{{
