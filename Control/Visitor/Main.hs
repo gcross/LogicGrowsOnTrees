@@ -371,12 +371,13 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         hPutStrLn stderr $
             printf
                 (unlines
-                    ["Workers requested new workloads %i times for an average rate of %.1g requests/second."
+                    ["Workers requested new workloads %i times with an average of %sseconds between each request or %.1g requests/second."
                     ,"The minimum waiting time was %sseconds, and the maximum waiting time was %sseconds."
                     ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
                     ]
                 )
                 timeCount
+                (showWithUnitPrefix $ total_time / fromIntegral timeCount)
                 (fromIntegral timeCount / total_time)
                 (showWithUnitPrefix timeMin)
                 (showWithUnitPrefix timeMax)
