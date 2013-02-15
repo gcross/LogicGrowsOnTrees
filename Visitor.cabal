@@ -35,8 +35,6 @@ Library
         derive >= 2.5.11 && < 2.6,
         directory >= 1.1 && < 1.3,
         either-unwrap == 1.1.*,
-        filepath == 1.3.*,
-        FindBin == 0.0.*,
         higherorder == 0.0.*,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
@@ -47,7 +45,6 @@ Library
         operational == 0.2.*,
         prefix-units == 0.1.*,
         pretty == 1.1.*,
-        process == 1.1.*,
         PSQueue == 1.1.*,
         sequential-index == 0.2.*,
         stm >= 2.3 && < 2.5,
@@ -62,7 +59,6 @@ Library
         Control.Visitor.Label
         Control.Visitor.Main
         Control.Visitor.Parallel.Process
-        Control.Visitor.Parallel.Processes
         Control.Visitor.Parallel.Threads
         Control.Visitor.Parallel.Workgroup
         Control.Visitor.Path
@@ -78,8 +74,8 @@ Flag examples
     Description: Enable building the executables.
     Default:     False
 
-Executable count-all-nqueens-solutions-using-threads
-    Main-is: count-all-nqueens-solutions-using-threads.hs
+Executable count-all-nqueens-solutions
+    Main-is: count-all-nqueens-solutions.hs
     Hs-source-dirs: examples
     Build-depends:
         Visitor,
@@ -91,19 +87,6 @@ Executable count-all-nqueens-solutions-using-threads
     else
         Buildable: False
     GHC-Options: -threaded
-
-Executable count-all-nqueens-solutions-using-processes
-    Main-is: count-all-nqueens-solutions-using-processes.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        Visitor,
-        base > 4 && < 5,
-        cereal == 0.3.*,
-        cmdtheline == 0.2.*
-    if flag(examples)
-        Buildable: True
-    else
-        Buildable: False
 
 Executable print-all-nqueens-solutions
     Main-is: print-all-nqueens-solutions.hs

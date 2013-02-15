@@ -4,7 +4,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -64,12 +63,9 @@ import Data.Word
 
 import Debug.Trace (trace)
 
-import System.Environment
 import System.IO (stdin,stdout)
 import System.IO.Unsafe
 import System.Log.Logger (Priority(..),updateGlobalLogger,rootLoggerName,setLevel)
-import qualified System.Log.Logger as Logger
-import System.Log.Logger.TH
 import System.Random
 
 import Test.Framework
@@ -88,7 +84,6 @@ import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Queens
 import Control.Visitor.Label
 import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
-import qualified Control.Visitor.Parallel.Processes as Processes
 import qualified Control.Visitor.Parallel.Threads as Threads
 import qualified Control.Visitor.Parallel.Workgroup as Workgroup
 import Control.Visitor.Path
@@ -453,23 +448,9 @@ bad_test_supervisor_actions =
 -- }}}
 -- }}}
 
--- Loggers {{{
-deriveLoggers "Logger" [ERROR]
--- }}}
--- }}}
-
 main = do
     -- updateGlobalLogger rootLoggerName (setLevel DEBUG)
-    args ← getArgs
-    case args of
-        ["nqueens",read → n] →
-            Processes.runWorkerWithVisitor
-                (nqueensCount n)
-                stdin
-                stdout
-             `catch`
-             (\(e::SomeException) → errorM $ "Worker process failed: " ++ show e)
-        _ → defaultMain tests
+    defaultMain tests
 
 tests = -- {{{
     [testGroup "test helpers" $ -- {{{
@@ -712,39 +693,6 @@ tests = -- {{{
                     return $ left `mplus` right
             in getAll . runLabeledVisitor <$> sized (gen rootLabel)
          -- }}}
-        ]
-     -- }}}
-    ,testGroup "Control.Visitor.Parallel.Processes" $ -- {{{
-      let runTest generateNoise = do
-             let visitor = nqueensCount 13
-             progresses_ref ← newIORef []
-             filepath ← Processes.getProgFilepath
-             RunOutcome _ termination_reason ←
-                 Processes.runSupervisor
-                     filepath
-                     ["nqueens","13"]
-                     (const $ return ())
-                     Nothing
-                     (forever $ requestProgressUpdate >>= (liftIO . modifyIORef progresses_ref . (:)) >> generateNoise)
-             result ← case termination_reason of
-                 Aborted _ → error "prematurely aborted"
-                 Completed result → return result
-                 Failure message → error message
-             let correct_result = runVisitor visitor
-             result @?= correct_result
-             progresses ← remdups <$> readIORef progresses_ref
-             replicateM_ 4 $ randomRIO (0,length progresses-1) >>= \i → do
-                 let Progress checkpoint result = progresses !! i
-                 result @=? runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
-                 correct_result @=? mappend result (runVisitorThroughCheckpoint checkpoint visitor)
-      in [testCase "one process" . runTest . void $ do
-              Workgroup.changeNumberOfWorkers (return . (\i → 0))
-              Workgroup.changeNumberOfWorkers (return . (\i → 1))
-        ,testCase "two processes" . runTest . void $
-              Workgroup.changeNumberOfWorkers (return . (\i → 3-i))
-        ,testCase "many processes" . runTest . void $ liftIO (randomRIO (0,1::Int)) >>= \i → case i of
-          0 → Workgroup.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
-          1 → Workgroup.changeNumberOfWorkers (return . (+1))
         ]
      -- }}}
     ,testGroup "Control.Visitor.Parallel.Threads" $ -- {{{
