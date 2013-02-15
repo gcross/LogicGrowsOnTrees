@@ -357,11 +357,11 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (show runWallTime)
     when show_supervisor_occupation $
         hPutStrLn stderr $
-            printf "Supervior was occupied for %.1f%% of the run."
+            printf "Supervior was occupied for %.2f%% of the run."
                 (runSupervisorOccupation*100)
     when show_worker_occupation $
         hPutStrLn stderr $
-            printf "Workers were occupied %.1f%% of the time on average."
+            printf "Workers were occupied %.2f%% of the time on average."
                 (runWorkerOccupation*100)
     when show_worker_wait_times $ do
         let TimeStatistics{..} = runWorkerWaitTimes
