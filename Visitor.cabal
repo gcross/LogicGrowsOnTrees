@@ -45,6 +45,7 @@ Library
         monoid-statistics == 0.3.*,
         mtl == 2.1.*,
         operational == 0.2.*,
+        prefix-units == 0.1.*,
         pretty == 1.1.*,
         process == 1.1.*,
         PSQueue == 1.1.*,

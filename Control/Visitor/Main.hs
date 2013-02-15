@@ -40,6 +40,7 @@ import Data.DeriveTH
 import Data.Either.Unwrap (mapRight)
 import Data.Maybe (catMaybes)
 import Data.Monoid (Endo(..),Monoid(..))
+import Data.Prefix.Units (FormatMode(FormatSiAll),fancySymbol,formatValue,unitName)
 import Data.Serialize
 import Data.Traversable (sequenceA)
 
@@ -349,12 +350,14 @@ removeFileIfExists path =
 
 showStatistics :: MonadIO m ⇒ StatisticsConfiguration → RunStatistics → m () -- {{{
 showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
+    let total_time :: Double
+        total_time = fromRational . toRational $ runWallTime
     when show_wall_times $
         hPutStrLn stderr $
-            printf "Run started at %s, ended at %s, and took %s seconds."
+            printf "Run started at %s, ended at %s, and took %sseconds."
                 (show runStartTime)
                 (show runEndTime)
-                (show runWallTime)
+                (showWithUnitPrefix total_time)  
     when show_supervisor_occupation $
         hPutStrLn stderr $
             printf "Supervior was occupied for %.2f%% of the run."
@@ -368,16 +371,22 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         hPutStrLn stderr $
             printf
                 (unlines
-                    ["Workers requested new workloads %i times."
-                    ,"The minimum waiting time was %.1g seconds, and the maximum waiting time was %.1g seconds."
-                    ,"On average, a worker had to wait %.1g +/- %.1g (std. dev) seconds for a new workload."
+                    ["Workers requested new workloads %i times for an average rate of %.1g requests/second."
+                    ,"The minimum waiting time was %sseconds, and the maximum waiting time was %sseconds."
+                    ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
                     ]
                 )
                 timeCount
-                timeMin
-                timeMax
-                timeMean
-                timeStdDev
+                (fromIntegral timeCount / total_time)
+                (showWithUnitPrefix timeMin)
+                (showWithUnitPrefix timeMax)
+                (showWithUnitPrefix timeMean)
+                (showWithUnitPrefix timeStdDev)
+  where
+    showWithUnitPrefix :: Double → String
+    showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
+      where
+        (x_scaled,Just unit) = formatValue (Left FormatSiAll) x 
 -- }}}
 
 writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{
