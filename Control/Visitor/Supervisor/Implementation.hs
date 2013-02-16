@@ -561,6 +561,8 @@ enqueueWorkload workload =
         Right available_workloads → do
             waiting_workers_or_available_workloads .= Right (Set.insert workload available_workloads)
             updateTimeWeightedCountStatisticsUsingLens available_workload_count_statistics (Set.size available_workloads + 1)
+    >>
+    checkWhetherMoreStealsAreNeeded
 -- }}}
 
 extractTimeStatistics :: TimeStatisticsMonoid → TimeStatistics -- {{{
@@ -997,17 +999,17 @@ tryToObtainWorkloadFor is_new_worker worker_id =
         Left waiting_workers → do
             maybe_time_started_waiting ← getMaybeTimeStartedWorking
             waiting_workers_or_available_workloads .= Left (Map.insert worker_id maybe_time_started_waiting waiting_workers)
-            checkWhetherMoreStealsAreNeeded
             updateTimeWeightedCountStatisticsUsingLens waiting_worker_count_statistics (Map.size waiting_workers + 1)
         Right (Set.minView → Nothing) → do
             maybe_time_started_waiting ← getMaybeTimeStartedWorking
             waiting_workers_or_available_workloads .= Left (Map.singleton worker_id maybe_time_started_waiting)
-            checkWhetherMoreStealsAreNeeded
             updateTimeWeightedCountStatisticsUsingLens waiting_worker_count_statistics 1
         Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadTo workload worker_id
             waiting_workers_or_available_workloads .= Right remaining_workloads
             updateTimeWeightedCountStatisticsUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
+    >>
+    checkWhetherMoreStealsAreNeeded
   where
     getMaybeTimeStartedWorking
       | is_new_worker = return Nothing
