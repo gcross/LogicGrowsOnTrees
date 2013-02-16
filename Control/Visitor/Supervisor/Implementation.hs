@@ -209,8 +209,8 @@ data TimeStatisticsMonoid = TimeStatisticsMonoid -- {{{
     ,   timeDataMax :: {-# UNPACK #-} !Max
     ,   timeDataVariance ::  {-# UNPACK #-} !Variance
     } deriving (Eq,Show)
--- }}}                   
 $( derive makeMonoid ''TimeStatisticsMonoid )
+-- }}}
 -- }}}
 
 data SupervisorCallbacks result worker_id m = -- {{{
