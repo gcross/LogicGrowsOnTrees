@@ -225,12 +225,12 @@ $( derive makeMonoid ''TimeStatisticsMonoid )
 -- }}}
 
 data TimeWeightedCountStatistics = TimeWeightedCountStatistics -- {{{
-    {   _lastValue :: !Int
-    ,   _lastUpdateTime :: !UTCTime
-    ,   _firstMoment :: !Double
-    ,   _secondMoment :: !Double
-    ,   _minimumValue :: !Int
-    ,   _maximumValue :: !Int
+    {   _previous_value :: !Int
+    ,   _previous_time :: !UTCTime
+    ,   _first_moment :: !Double
+    ,   _second_moment :: !Double
+    ,   _minimum_value :: !Int
+    ,   _maximum_value :: !Int
     } deriving (Eq,Show)
 $( makeLenses ''TimeWeightedCountStatistics )
 -- }}}
@@ -579,10 +579,10 @@ finalizeCountStatistics start_time getFinalValue getWeightedStatistics = do
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
     final_value ← getFinalValue
     evalState (do
-        countAverage ← (/total_weight) <$> use firstMoment
-        countStdDev ← sqrt . (\x → x-countAverage*countAverage) . (/total_weight) <$> use secondMoment
-        countMin ← min final_value <$> use minimumValue
-        countMax ← max final_value <$> use maximumValue
+        countAverage ← (/total_weight) <$> use first_moment
+        countStdDev ← sqrt . (\x → x-countAverage*countAverage) . (/total_weight) <$> use second_moment
+        countMin ← min final_value <$> use minimum_value
+        countMax ← max final_value <$> use maximum_value
         return $ CountStatistics{..}
      ) . updateTimeWeightedCountStatistics end_time final_value <$> getWeightedStatistics
 -- }}}
@@ -1017,14 +1017,14 @@ tryToObtainWorkloadFor is_new_worker worker_id =
 
 updateTimeWeightedCountStatistics :: UTCTime → Int → TimeWeightedCountStatistics → TimeWeightedCountStatistics -- {{{
 updateTimeWeightedCountStatistics current_time value = execState $ do
-    last_time ← lastUpdateTime <<.= current_time
-    last_value ← lastValue <<.= value
+    last_time ← previous_time <<.= current_time
+    last_value ← previous_value <<.= value
     let weight = fromRational . toRational $ (current_time `diffUTCTime` last_time)
         last_value_as_double = fromRational . toRational $ last_value
-    firstMoment += weight*last_value_as_double
-    secondMoment += weight*last_value_as_double*last_value_as_double
-    minimumValue %= min value
-    maximumValue %= max value
+    first_moment += weight*last_value_as_double
+    second_moment += weight*last_value_as_double*last_value_as_double
+    minimum_value %= min value
+    maximum_value %= max value
 -- }}}
 
 updateTimeWeightedCountStatisticsUsingLens :: -- {{{
