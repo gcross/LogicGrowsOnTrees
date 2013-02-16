@@ -487,7 +487,7 @@ deactivateWorker reenqueue_workload worker_id = do
               >>=
                 enqueueWorkload
                 .
-                fromMaybe (error $ "Attempt to deactive worker " ++ show worker_id ++ " which was not listed as active.")
+                fromMaybe (error $ "Attempt to deactivate worker " ++ show worker_id ++ " which was not listed as active.")
                 .
                 Map.lookup worker_id
         else active_workers %= Map.delete worker_id
