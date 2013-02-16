@@ -80,9 +80,12 @@ import Data.Maybe (fromJust,fromMaybe,isJust,isNothing)
 import Data.Monoid ((<>),Monoid(..))
 import Data.Monoid.Statistics (StatMonoid(..))
 import Data.Monoid.Statistics.Numeric (CalcCount(..),CalcMean(..),CalcVariance(..),Min(..),Max(..),Variance(..),calcStddev)
+import qualified Data.MultiSet as MultiSet
+import Data.MultiSet (MultiSet)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import qualified Data.Sequence as Seq
+import Data.Sequence ((><),Seq)
 import Data.Typeable (Typeable)
 import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime,getCurrentTime)
 
@@ -202,6 +205,7 @@ data RunStatistics = -- {{{
     ,   runSupervisorOccupation :: !Float
     ,   runWorkerOccupation :: !Float
     ,   runWorkerWaitTimes :: !TimeStatistics
+    ,   runStealWaitTimes :: !TimeStatistics
     ,   runWaitingWorkerCountStatistics :: !CountStatistics
     ,   runAvailableWorkloadCountStatistics :: !CountStatistics
     } deriving (Eq,Show)
@@ -262,7 +266,8 @@ data SupervisorState result worker_id = -- {{{
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     ,   _retired_worker_occupation_statistics :: !(Map worker_id RetiredOccupationStatistics)
     ,   _worker_wait_time_statistics :: !TimeStatisticsMonoid
-    ,   _steal_request_matcher_queue :: !(Seq (Maybe UTCTime))
+    ,   _steal_request_matcher_queue :: !(MultiSet UTCTime)
+    ,   _steal_request_failures :: !Int
     ,   _workload_steal_time_statistics :: !TimeStatisticsMonoid
     ,   _waiting_worker_count_statistics :: !TimeWeightedCountStatistics
     ,   _available_workload_count_statistics :: !TimeWeightedCountStatistics
@@ -441,6 +446,15 @@ checkWhetherMoreStealsAreNeeded = do
                 go accum n (Set.minView → Nothing) = findWorkers accum n deeper_workers
                 go accum n (Set.minView → Just (worker_id,rest_workers)) = go (worker_id:accum) (n-1) rest_workers
         workers_to_steal_from ← available_workers_for_steal %%= findWorkers [] number_of_needed_steals
+        let number_of_workers_to_steal_from = length workers_to_steal_from
+        original_steal_request_failures ← use steal_request_failures
+        number_of_additional_requests ← steal_request_failures %%=
+            \number_of_steal_request_failures →
+                if number_of_steal_request_failures >= number_of_workers_to_steal_from
+                    then (0,number_of_steal_request_failures-number_of_workers_to_steal_from)
+                    else (number_of_workers_to_steal_from-number_of_steal_request_failures,0)
+        current_time ← liftIO getCurrentTime
+        steal_request_matcher_queue %= (MultiSet.insertMany current_time number_of_additional_requests)
         workers_pending_workload_steal %= (Set.union . Set.fromList) workers_to_steal_from
         unless (null workers_to_steal_from) $ do
             infoM $ "Sending workload steal requests to " ++ show workers_to_steal_from
@@ -472,7 +486,8 @@ deactivateWorker :: -- {{{
     worker_id →
     SupervisorContext result worker_id m ()
 deactivateWorker reenqueue_workload worker_id = do
-    workers_pending_workload_steal %= Set.delete worker_id
+    pending_steal ← workers_pending_workload_steal %%= (Set.member worker_id &&& Set.delete worker_id)
+    when pending_steal $ steal_request_failures += 1
     dequeueWorkerForSteal worker_id
     if reenqueue_workload
         then active_workers <<%= Map.delete worker_id
@@ -603,6 +618,7 @@ getCurrentStatistics = do
             (use retired_worker_occupation_statistics)
             (use worker_occupation_statistics >>= retireManyOccupationStatistics)
     runWorkerWaitTimes ← extractTimeStatistics <$> use worker_wait_time_statistics
+    runStealWaitTimes ← extractTimeStatistics <$> use workload_steal_time_statistics
     runWaitingWorkerCountStatistics ←
         finalizeCountStatistics
             runStartTime
@@ -773,8 +789,10 @@ receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveSt
     validateWorkerKnownAndActive "receiving stolen workload" worker_id
     workers_pending_workload_steal %= Set.delete worker_id
     case maybe_stolen_workload of
-        Nothing → return ()
+        Nothing → steal_request_failures += 1
         Just (StolenWorkload (ProgressUpdate progress_update remaining_workload) workload) → do
+            (steal_request_matcher_queue %%= fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView)
+              >>= (timePassedSince >=> (workload_steal_time_statistics %=) . pappend)
             current_progress %= (`mappend` progress_update)
             active_workers %= Map.insert worker_id remaining_workload
             enqueueWorkload workload
@@ -918,6 +936,9 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             ,   _worker_occupation_statistics = mempty
             ,   _retired_worker_occupation_statistics = mempty
             ,   _worker_wait_time_statistics = mempty
+            ,   _steal_request_matcher_queue = mempty
+            ,   _steal_request_failures = 0
+            ,   _workload_steal_time_statistics = mempty
             ,   _waiting_worker_count_statistics = initialTimeWeightedCountStatisticsForStartingTime start_time
             ,   _available_workload_count_statistics = initialTimeWeightedCountStatisticsForStartingTime start_time
             }

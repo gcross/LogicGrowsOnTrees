@@ -91,6 +91,7 @@ data StatisticsConfiguration = StatisticsConfiguration -- {{{
     ,   show_supervisor_occupation :: !Bool
     ,   show_worker_occupation :: !Bool
     ,   show_worker_wait_times :: !Bool
+    ,   show_steal_wait_times :: !Bool
     ,   show_numbers_of_waiting_workers :: !Bool
     ,   show_numbers_of_available_workloads :: !Bool
     } deriving (Eq,Show)
@@ -190,13 +191,14 @@ logging_configuration_term =
 
 statistics_configuration_term :: Term StatisticsConfiguration -- {{{
 statistics_configuration_term =
-    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True) else id)
+    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True) else id)
     <$> value (flag ((optInfo ["show-all"]) { optDoc ="This option will cause *all* run statistic to be printed to standard error after the program terminates." }))
     <*> (StatisticsConfiguration
         <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-supervisor-occupation"]) { optDoc ="This option will cause the supervisor occupation percentage to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-worker-occupation"]) { optDoc ="This option will cause the worker occupation percentage to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-worker-wait-times"]) { optDoc ="This option will cause statistics about the worker wait times to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-steal-wait-times"]) { optDoc ="This option will cause statistics about the steal wait times to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-numbers-of-waiting-workers"]) { optDoc ="This option will cause statistics about the number of waiting workers to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-numbers-of-available-workloads"]) { optDoc ="This option will cause statistics about the number of available workloads to be printed to standard error after the program terminates." }))
         )
@@ -378,6 +380,23 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                     ["Workers requested new workloads %i times with an average of %sseconds between each request or %.1g requests/second."
                     ,"The minimum waiting time was %sseconds, and the maximum waiting time was %sseconds."
                     ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
+                    ]
+                )
+                timeCount
+                (showWithUnitPrefix $ total_time / fromIntegral timeCount)
+                (fromIntegral timeCount / total_time)
+                (showWithUnitPrefix timeMin)
+                (showWithUnitPrefix timeMax)
+                (showWithUnitPrefix timeMean)
+                (showWithUnitPrefix timeStdDev)
+    when show_steal_wait_times $ do
+        let TimeStatistics{..} = runStealWaitTimes
+        hPutStrLn stderr $
+            printf
+                (unlines
+                    ["Workloads were stolen %i times with an average of %sseconds between each steal or %.1g steals/second."
+                    ,"The minimum waiting time for a steal was %sseconds, and the maximum waiting time was %sseconds."
+                    ,"On average, it took %sseconds +/- %sseconds (std. dev) to steal a workload."
                     ]
                 )
                 timeCount
