@@ -253,7 +253,6 @@ data SupervisorState result worker_id = -- {{{
     {   _waiting_workers_or_available_workloads :: !(Either (Map worker_id (Maybe UTCTime)) (Set Workload))
     ,   _known_workers :: !(Set worker_id)
     ,   _active_workers :: !(Map worker_id Workload)
-    ,   _current_steal_depth :: !Int
     ,   _available_workers_for_steal :: !(IntMap (Set worker_id))
     ,   _workers_pending_workload_steal :: !(Set worker_id)
     ,   _workers_pending_progress_update :: !(Set worker_id)
@@ -430,26 +429,17 @@ checkWhetherMoreStealsAreNeeded = do
        && IntMap.null available_workers
       ) $ throw OutOfSourcesForNewWorkloads
     let number_of_needed_steals = (number_of_waiting_workers - number_of_pending_workload_steals) `max` 0
-    when (number_of_needed_steals > 0 && (not . IntMap.null) available_workers) $ do
-        depth ← do
-            old_depth ← use current_steal_depth
-            if number_of_pending_workload_steals == 0 && IntMap.notMember old_depth available_workers
-                then do
-                    let new_depth = fst (IntMap.findMin available_workers)
-                    current_steal_depth .= new_depth
-                    return new_depth
-                else return old_depth
-        let (maybe_new_workers,workers_to_steal_from) =
-                go []
-                   (fromMaybe Set.empty . IntMap.lookup depth $ available_workers)
-                   number_of_needed_steals
+    when (number_of_needed_steals > 0) $ do
+        let findWorkers accum 0 available_workers = (accum,available_workers)
+            findWorkers accum n (IntMap.minViewWithKey → Nothing) = (accum,IntMap.empty)
+            findWorkers accum n (IntMap.minViewWithKey → Just ((depth,workers),deeper_workers)) =
+                go accum n workers
               where
-                go accum (Set.minView → Nothing) _ = (Nothing,accum)
-                go accum workers 0 = (Just workers,accum)
-                go accum (Set.minView → Just (worker_id,rest_workers)) n =
-                    go (worker_id:accum) rest_workers (n-1)
+                go accum 0 workers = (accum,if Set.null workers then deeper_workers else IntMap.insert depth workers deeper_workers)
+                go accum n (Set.minView → Nothing) = findWorkers accum n deeper_workers
+                go accum n (Set.minView → Just (worker_id,rest_workers)) = go (worker_id:accum) (n-1) rest_workers
+        workers_to_steal_from ← available_workers_for_steal %%= findWorkers [] number_of_needed_steals
         workers_pending_workload_steal %= (Set.union . Set.fromList) workers_to_steal_from
-        available_workers_for_steal %= IntMap.update (const maybe_new_workers) depth
         unless (null workers_to_steal_from) $ do
             infoM $ "Sending workload steal requests to " ++ show workers_to_steal_from
             asks broadcastWorkloadStealToWorkers >>= liftUserToContext . ($ workers_to_steal_from)
@@ -912,7 +902,6 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
                     Right . Set.singleton $ Workload Seq.empty (progressCheckpoint starting_progress)
             ,   _known_workers = mempty
             ,   _active_workers = mempty
-            ,   _current_steal_depth = 0
             ,   _available_workers_for_steal = mempty
             ,   _workers_pending_workload_steal = mempty
             ,   _workers_pending_progress_update = mempty
