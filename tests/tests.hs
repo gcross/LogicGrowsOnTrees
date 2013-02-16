@@ -329,6 +329,16 @@ addReceiveCurrentProgressAction actions = do
     })
 -- }}}
 
+addSetWorkloadStealBroadcastIdsAction :: -- {{{
+    SupervisorCallbacks result worker_id IO →
+    IO (IORef [worker_id],SupervisorCallbacks result worker_id IO)
+addSetWorkloadStealBroadcastIdsAction actions = do
+    broadcasts_ref ← newIORef ([] :: [worker_id])
+    return (broadcasts_ref, actions {
+        broadcastWorkloadStealToWorkers = writeIORef broadcasts_ref
+    })
+-- }}}
+
 echo :: Show α ⇒ α → α -- {{{
 echo x = trace (show x) x
 -- }}}
@@ -928,15 +938,17 @@ tests = -- {{{
                 monadicIO . run $ do
                     (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                     (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
-                    let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
+                    (workload_steal_ids_ref,actions3) ← addSetWorkloadStealBroadcastIdsAction actions2
+                    let actions4 = ignoreAcceptWorkloadAction $ actions3
                     let progress = Progress Unexplored (Sum 0)
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions3 $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions4 $ do
                         addWorker 0
                         forM_ (zip [0..] (tail active_workers)) $ \(prefix_count,worker_id) → do
                             addWorker worker_id
+                            [worker_to_steal_from] ← liftIO $ readIORef workload_steal_ids_ref
                             let remaining_workload = Workload (Seq.replicate (prefix_count+1) (ChoiceStep LeftBranch)) Unexplored
                             let stolen_workload = Workload (Seq.replicate (prefix_count) (ChoiceStep LeftBranch) |> (ChoiceStep RightBranch)) Unexplored
-                            receiveStolenWorkload 0 $ Just (StolenWorkload (ProgressUpdate mempty remaining_workload) stolen_workload)
+                            receiveStolenWorkload worker_to_steal_from $ Just (StolenWorkload (ProgressUpdate mempty remaining_workload) stolen_workload)
                         mapM_ addWorker inactive_workers
                         performGlobalProgressUpdate
                         mapM_ removeWorker active_workers

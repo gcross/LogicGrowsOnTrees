@@ -262,6 +262,8 @@ data SupervisorState result worker_id = -- {{{
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     ,   _retired_worker_occupation_statistics :: !(Map worker_id RetiredOccupationStatistics)
     ,   _worker_wait_time_statistics :: !TimeStatisticsMonoid
+    ,   _steal_request_matcher_queue :: !(Seq (Maybe UTCTime))
+    ,   _workload_steal_time_statistics :: !TimeStatisticsMonoid
     ,   _waiting_worker_count_statistics :: !TimeWeightedCountStatistics
     ,   _available_workload_count_statistics :: !TimeWeightedCountStatistics
     }
