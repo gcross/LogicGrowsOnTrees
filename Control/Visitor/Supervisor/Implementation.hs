@@ -14,8 +14,8 @@
 -- }}}
 
 module Control.Visitor.Supervisor.Implementation -- {{{
-    ( CountStatistics(..)
-    , RunStatistics(..)
+    ( RunStatistics(..)
+    , Statistics(..)
     , SupervisorAbortMonad()
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
@@ -173,11 +173,11 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Super
 
 -- Statistics {{{
 
-data CountStatistics = CountStatistics -- {{{
-    {   countAverage :: !Double
-    ,   countStdDev :: !Double
-    ,   countMin :: !Int
-    ,   countMax :: !Int
+data Statistics α = Statistics -- {{{
+    {   statAverage :: !Double
+    ,   statStdDev :: !Double
+    ,   statMin :: !α
+    ,   statMax :: !α
     } deriving (Eq,Show)
 -- }}}
 
@@ -206,8 +206,8 @@ data RunStatistics = -- {{{
     ,   runWorkerOccupation :: !Float
     ,   runWorkerWaitTimes :: !TimeStatistics
     ,   runStealWaitTimes :: !TimeStatistics
-    ,   runWaitingWorkerCountStatistics :: !CountStatistics
-    ,   runAvailableWorkloadCountStatistics :: !CountStatistics
+    ,   runWaitingWorkerStatistics :: !(Statistics Int)
+    ,   runAvailableWorkloadStatistics :: !(Statistics Int)
     } deriving (Eq,Show)
 -- }}}
 
@@ -228,15 +228,15 @@ data TimeStatisticsMonoid = TimeStatisticsMonoid -- {{{
 $( derive makeMonoid ''TimeStatisticsMonoid )
 -- }}}
 
-data TimeWeightedCountStatistics = TimeWeightedCountStatistics -- {{{
-    {   _previous_value :: !Int
+data TimeWeightedStatistics α = TimeWeightedStatistics -- {{{
+    {   _previous_value :: !α
     ,   _previous_time :: !UTCTime
     ,   _first_moment :: !Double
     ,   _second_moment :: !Double
-    ,   _minimum_value :: !Int
-    ,   _maximum_value :: !Int
+    ,   _minimum_value :: !α
+    ,   _maximum_value :: !α
     } deriving (Eq,Show)
-$( makeLenses ''TimeWeightedCountStatistics )
+$( makeLenses ''TimeWeightedStatistics )
 -- }}}
 
 -- }}}
@@ -269,8 +269,8 @@ data SupervisorState result worker_id = -- {{{
     ,   _steal_request_matcher_queue :: !(MultiSet UTCTime)
     ,   _steal_request_failures :: !Int
     ,   _workload_steal_time_statistics :: !TimeStatisticsMonoid
-    ,   _waiting_worker_count_statistics :: !TimeWeightedCountStatistics
-    ,   _available_workload_count_statistics :: !TimeWeightedCountStatistics
+    ,   _waiting_worker_count_statistics :: !(TimeWeightedStatistics Int)
+    ,   _available_workload_count_statistics :: !(TimeWeightedStatistics Int)
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -561,13 +561,13 @@ enqueueWorkload workload =
                   (timePassedSince >=> (worker_wait_time_statistics %=) . pappend)
                   maybe_time_started_waiting
             sendWorkloadTo workload free_worker_id
-            updateTimeWeightedCountStatisticsUsingLens waiting_worker_count_statistics (Map.size remaining_workers)
+            updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics (Map.size remaining_workers)
         Left (Map.minViewWithKey → Nothing) → do
             waiting_workers_or_available_workloads .= Right (Set.singleton workload)
-            updateTimeWeightedCountStatisticsUsingLens available_workload_count_statistics 1
+            updateTimeWeightedStatisticsUsingLens available_workload_count_statistics 1
         Right available_workloads → do
             waiting_workers_or_available_workloads .= Right (Set.insert workload available_workloads)
-            updateTimeWeightedCountStatisticsUsingLens available_workload_count_statistics (Set.size available_workloads + 1)
+            updateTimeWeightedStatisticsUsingLens available_workload_count_statistics (Set.size available_workloads + 1)
     >>
     checkWhetherMoreStealsAreNeeded
 -- }}}
@@ -582,18 +582,18 @@ extractTimeStatistics =
         <*>  calcStddev
 -- }}}
 
-finalizeCountStatistics :: SupervisorMonadConstraint m ⇒ UTCTime → m Int → m TimeWeightedCountStatistics → m CountStatistics -- {{{ 
-finalizeCountStatistics start_time getFinalValue getWeightedStatistics = do
+finalizeStatistics :: (Ord α, Real α) ⇒ SupervisorMonadConstraint m ⇒ UTCTime → m α → m (TimeWeightedStatistics α) → m (Statistics α) -- {{{ 
+finalizeStatistics start_time getFinalValue getWeightedStatistics = do
     end_time ← liftIO getCurrentTime
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
     final_value ← getFinalValue
     evalState (do
-        countAverage ← (/total_weight) <$> use first_moment
-        countStdDev ← sqrt . (\x → x-countAverage*countAverage) . (/total_weight) <$> use second_moment
-        countMin ← min final_value <$> use minimum_value
-        countMax ← max final_value <$> use maximum_value
-        return $ CountStatistics{..}
-     ) . updateTimeWeightedCountStatistics end_time final_value <$> getWeightedStatistics
+        statAverage ← (/total_weight) <$> use first_moment
+        statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
+        statMin ← min final_value <$> use minimum_value
+        statMax ← max final_value <$> use maximum_value
+        return $ Statistics{..}
+     ) . updateTimeWeightedStatistics end_time final_value <$> getWeightedStatistics
 -- }}}
 
 getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m (Progress result) -- {{{
@@ -619,13 +619,13 @@ getCurrentStatistics = do
             (use worker_occupation_statistics >>= retireManyOccupationStatistics)
     runWorkerWaitTimes ← extractTimeStatistics <$> use worker_wait_time_statistics
     runStealWaitTimes ← extractTimeStatistics <$> use workload_steal_time_statistics
-    runWaitingWorkerCountStatistics ←
-        finalizeCountStatistics
+    runWaitingWorkerStatistics ←
+        finalizeStatistics
             runStartTime
             (either Map.size (const 0) <$> use waiting_workers_or_available_workloads)
             (use waiting_worker_count_statistics)
-    runAvailableWorkloadCountStatistics ←
-        finalizeCountStatistics
+    runAvailableWorkloadStatistics ←
+        finalizeStatistics
             runStartTime
             (either (const 0) Set.size <$> use waiting_workers_or_available_workloads)
             (use available_workload_count_statistics)
@@ -656,15 +656,15 @@ getWorkerDepth worker_id =
     use active_workers
 -- }}}
 
-initialTimeWeightedCountStatisticsForStartingTime :: UTCTime → TimeWeightedCountStatistics -- {{{
-initialTimeWeightedCountStatisticsForStartingTime starting_time =
-    TimeWeightedCountStatistics
+initialTimeWeightedStatisticsForStartingTime :: Num α ⇒ UTCTime → TimeWeightedStatistics α -- {{{
+initialTimeWeightedStatisticsForStartingTime starting_time =
+    TimeWeightedStatistics
         0
         starting_time
         0
         0
-        maxBound
-        minBound
+        (fromIntegral (maxBound :: Int))
+        (fromIntegral (minBound :: Int))
 -- }}}
 
 liftUserToContext :: Monad m ⇒ m α → SupervisorContext result worker_id m α -- {{{
@@ -900,7 +900,7 @@ retireAndDeactivateWorker worker_id = do
         (waiting_workers_or_available_workloads %%=
             either (pred . Map.size &&& Left . Map.delete worker_id)
                    (error $ "worker " ++ show worker_id ++ " is inactive but was not in the waiting queue")
-         >>= updateTimeWeightedCountStatisticsUsingLens waiting_worker_count_statistics
+         >>= updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics
         )
 -- }}}
 
@@ -939,8 +939,8 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             ,   _steal_request_matcher_queue = mempty
             ,   _steal_request_failures = 0
             ,   _workload_steal_time_statistics = mempty
-            ,   _waiting_worker_count_statistics = initialTimeWeightedCountStatisticsForStartingTime start_time
-            ,   _available_workload_count_statistics = initialTimeWeightedCountStatisticsForStartingTime start_time
+            ,   _waiting_worker_count_statistics = initialTimeWeightedStatisticsForStartingTime start_time
+            ,   _available_workload_count_statistics = initialTimeWeightedStatisticsForStartingTime start_time
             }
         )
     .
@@ -1011,15 +1011,15 @@ tryToObtainWorkloadFor is_new_worker worker_id =
         Left waiting_workers → do
             maybe_time_started_waiting ← getMaybeTimeStartedWorking
             waiting_workers_or_available_workloads .= Left (Map.insert worker_id maybe_time_started_waiting waiting_workers)
-            updateTimeWeightedCountStatisticsUsingLens waiting_worker_count_statistics (Map.size waiting_workers + 1)
+            updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics (Map.size waiting_workers + 1)
         Right (Set.minView → Nothing) → do
             maybe_time_started_waiting ← getMaybeTimeStartedWorking
             waiting_workers_or_available_workloads .= Left (Map.singleton worker_id maybe_time_started_waiting)
-            updateTimeWeightedCountStatisticsUsingLens waiting_worker_count_statistics 1
+            updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics 1
         Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadTo workload worker_id
             waiting_workers_or_available_workloads .= Right remaining_workloads
-            updateTimeWeightedCountStatisticsUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
+            updateTimeWeightedStatisticsUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
     >>
     checkWhetherMoreStealsAreNeeded
   where
@@ -1029,8 +1029,8 @@ tryToObtainWorkloadFor is_new_worker worker_id =
 
 -- }}}
 
-updateTimeWeightedCountStatistics :: UTCTime → Int → TimeWeightedCountStatistics → TimeWeightedCountStatistics -- {{{
-updateTimeWeightedCountStatistics current_time value = execState $ do
+updateTimeWeightedStatistics :: Real α ⇒ UTCTime → α → TimeWeightedStatistics α → TimeWeightedStatistics α -- {{{
+updateTimeWeightedStatistics current_time value = execState $ do
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
     let weight = fromRational . toRational $ (current_time `diffUTCTime` last_time)
@@ -1041,13 +1041,13 @@ updateTimeWeightedCountStatistics current_time value = execState $ do
     maximum_value %= max value
 -- }}}
 
-updateTimeWeightedCountStatisticsUsingLens :: -- {{{
-    MonadIO m ⇒
-    Lens (SupervisorState result worker_id) (SupervisorState result worker_id) TimeWeightedCountStatistics TimeWeightedCountStatistics →
-    Int →
+updateTimeWeightedStatisticsUsingLens :: -- {{{
+    (Real α, MonadIO m) ⇒
+    Lens (SupervisorState result worker_id) (SupervisorState result worker_id) (TimeWeightedStatistics α) (TimeWeightedStatistics α) →
+    α →
     SupervisorContext result worker_id m ()
-updateTimeWeightedCountStatisticsUsingLens field value =
-    liftIO getCurrentTime >>= \current_time → field %= updateTimeWeightedCountStatistics current_time value
+updateTimeWeightedStatisticsUsingLens field value =
+    liftIO getCurrentTime >>= \current_time → field %= updateTimeWeightedStatistics current_time value
 -- }}}
 
 validateWorkerKnown :: -- {{{

@@ -58,7 +58,7 @@ import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Supervisor (CountStatistics(..),RunStatistics(..),TimeStatistics(..))
+import Control.Visitor.Supervisor (RunStatistics(..),Statistics(..),TimeStatistics(..))
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker
 import Control.Visitor.Workload
@@ -407,20 +407,20 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (showWithUnitPrefix timeMean)
                 (showWithUnitPrefix timeStdDev)
     when show_numbers_of_waiting_workers $ do
-        let CountStatistics{..} = runWaitingWorkerCountStatistics
+        let Statistics{..} = runWaitingWorkerStatistics
         hPutStrLn stderr $
             printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never fewer than %i."
-                countAverage
-                countStdDev
-                countMin
+                statAverage
+                statStdDev
+                statMin
     when show_numbers_of_available_workloads $ do
-        let CountStatistics{..} = runAvailableWorkloadCountStatistics
+        let Statistics{..} = runAvailableWorkloadStatistics
         hPutStrLn stderr $
             printf "On average, %.1f +/ - %.1f (std. dev) workloads were available at any given time;  never fewer than %i, nor more than %i."
-                countAverage
-                countStdDev
-                countMin
-                countMax
+                statAverage
+                statStdDev
+                statMin
+                statMax
   where
     showWithUnitPrefix :: Double → String
     showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
