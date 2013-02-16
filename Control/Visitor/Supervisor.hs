@@ -17,7 +17,8 @@
 -- }}}
 
 module Control.Visitor.Supervisor -- {{{
-    ( RunStatistics(..)
+    ( CountStatistics(..)
+    , RunStatistics(..)
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
     , SupervisorMonad
@@ -69,7 +70,8 @@ import Control.Visitor.Worker (ProgressUpdate,StolenWorkload)
 
 import qualified Control.Visitor.Supervisor.Implementation as Implementation
 import Control.Visitor.Supervisor.Implementation -- {{{
-    ( RunStatistics(..)
+    ( CountStatistics(..)
+    , RunStatistics(..)
     , SupervisorAbortMonad()
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint

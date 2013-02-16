@@ -58,7 +58,7 @@ import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Supervisor (RunStatistics(..),TimeStatistics(..))
+import Control.Visitor.Supervisor (CountStatistics(..),RunStatistics(..),TimeStatistics(..))
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker
 import Control.Visitor.Workload
@@ -91,6 +91,8 @@ data StatisticsConfiguration = StatisticsConfiguration -- {{{
     ,   show_supervisor_occupation :: !Bool
     ,   show_worker_occupation :: !Bool
     ,   show_worker_wait_times :: !Bool
+    ,   show_numbers_of_waiting_workers :: !Bool
+    ,   show_numbers_of_available_workloads :: !Bool
     } deriving (Eq,Show)
 $( derive makeSerialize ''StatisticsConfiguration )
 -- }}}
@@ -188,13 +190,15 @@ logging_configuration_term =
 
 statistics_configuration_term :: Term StatisticsConfiguration -- {{{
 statistics_configuration_term =
-    (\show_all → if show_all then const (StatisticsConfiguration True True True True) else id)
+    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True) else id)
     <$> value (flag ((optInfo ["show-all"]) { optDoc ="This option will cause *all* run statistic to be printed to standard error after the program terminates." }))
     <*> (StatisticsConfiguration
         <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-supervisor-occupation"]) { optDoc ="This option will cause the supervisor occupation percentage to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-worker-occupation"]) { optDoc ="This option will cause the worker occupation percentage to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-worker-wait-times"]) { optDoc ="This option will cause statistics about the worker wait times to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-numbers-of-waiting-workers"]) { optDoc ="This option will cause statistics about the number of waiting workers to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-numbers-of-available-workloads"]) { optDoc ="This option will cause statistics about the number of available workloads to be printed to standard error after the program terminates." }))
         )
 -- }}}
 
@@ -383,6 +387,21 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (showWithUnitPrefix timeMax)
                 (showWithUnitPrefix timeMean)
                 (showWithUnitPrefix timeStdDev)
+    when show_numbers_of_waiting_workers $ do
+        let CountStatistics{..} = runWaitingWorkerCountStatistics
+        hPutStrLn stderr $
+            printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never fewer than %i."
+                countAverage
+                countStdDev
+                countMin
+    when show_numbers_of_available_workloads $ do
+        let CountStatistics{..} = runAvailableWorkloadCountStatistics
+        hPutStrLn stderr $
+            printf "On average, %.1f +/ - %.1f (std. dev) workloads were available at any given time;  never fewer than %i, nor more than %i."
+                countAverage
+                countStdDev
+                countMin
+                countMax
   where
     showWithUnitPrefix :: Double → String
     showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
