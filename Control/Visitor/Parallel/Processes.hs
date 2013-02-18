@@ -9,7 +9,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Processes
+module Control.Visitor.Parallel.Processes -- {{{
     ( ProcessesControllerMonad
     , abort
     , changeNumberOfWorkers
@@ -30,7 +30,7 @@ module Control.Visitor.Parallel.Processes
     , runWorkerWithVisitor
     , runWorkerWithVisitorIO
     , runWorkerWithVisitorT
-    ) where
+    ) where -- }}}
 
 -- Imports {{{
 import Prelude hiding (catch)
