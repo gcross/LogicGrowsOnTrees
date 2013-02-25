@@ -94,6 +94,7 @@ data StatisticsConfiguration = StatisticsConfiguration -- {{{
     ,   show_steal_wait_times :: !Bool
     ,   show_numbers_of_waiting_workers :: !Bool
     ,   show_numbers_of_available_workloads :: !Bool
+    ,   show_instantaneous_workload_request_rates :: !Bool
     } deriving (Eq,Show)
 $( derive makeSerialize ''StatisticsConfiguration )
 -- }}}
@@ -191,7 +192,7 @@ logging_configuration_term =
 
 statistics_configuration_term :: Term StatisticsConfiguration -- {{{
 statistics_configuration_term =
-    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True) else id)
+    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True True) else id)
     <$> value (flag ((optInfo ["show-all"]) { optDoc ="This option will cause *all* run statistic to be printed to standard error after the program terminates." }))
     <*> (StatisticsConfiguration
         <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
@@ -201,6 +202,7 @@ statistics_configuration_term =
         <*> value (flag ((optInfo ["show-steal-wait-times"]) { optDoc ="This option will cause statistics about the steal wait times to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-numbers-of-waiting-workers"]) { optDoc ="This option will cause statistics about the number of waiting workers to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-numbers-of-available-workloads"]) { optDoc ="This option will cause statistics about the number of available workloads to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-workload-request-rate"]) { optDoc ="This option will cause statistics about the (roughly) instantatnous rate at which workloads are requested by finished works to be printed to standard error after the program terminates." }))
         )
 -- }}}
 
@@ -417,6 +419,19 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         let Statistics{..} = runAvailableWorkloadStatistics
         hPutStrLn stderr $
             printf "On average, %.1f +/ - %.1f (std. dev) workloads were available at any given time;  never fewer than %i, nor more than %i."
+                statAverage
+                statStdDev
+                statMin
+                statMax
+    when show_instantaneous_workload_request_rates $ do
+        let Statistics{..} = runInstantaneousWorkloadRequestRateStatistics
+        hPutStrLn stderr $
+            printf
+                (unlines
+                    ["On average, the instantanenous rate at which workloads were being requested was %.1f +/ - %.1f (std. dev) requests per second;  the rate never fell below %.1f nor rose above %.1f."
+                    ,"This rate is obtained by exponentially smoothing the request data over a time scale of one second"
+                    ]
+                )
                 statAverage
                 statStdDev
                 statMin

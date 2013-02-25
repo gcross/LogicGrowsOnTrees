@@ -51,7 +51,7 @@ import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
 import Control.Lens ((&))
 import Control.Lens.At (at)
-import Control.Lens.Getter ((^.),use)
+import Control.Lens.Getter ((^.),use,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
 import Control.Lens.Lens ((<%=),(<<%=),(%%=),(<<.=),Lens)
 import Control.Lens.TH (makeLenses)
@@ -64,9 +64,10 @@ import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
 import Control.Monad.Trans.Abort.Instances.MTL
-import Control.Monad.Trans.Reader (ReaderT,runReaderT)
+import Control.Monad.Trans.Reader (ReaderT,runReader,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalState,evalStateT,execState,execStateT,runStateT)
 
+import Data.Composition ((.*))
 import Data.Derive.Monoid
 import Data.DeriveTH
 import Data.Either.Unwrap (whenLeft)
@@ -173,6 +174,13 @@ instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (Super
 
 -- Statistics {{{
 
+data ExponentiallyDecayingSum = ExponentiallyDecayingSum -- {{{
+    {   _last_decaying_sum_timestamp :: !UTCTime
+    ,   _decaying_sum_value :: !Float
+    } deriving (Eq,Show)
+$( makeLenses ''ExponentiallyDecayingSum )
+-- }}}
+
 data Statistics α = Statistics -- {{{
     {   statAverage :: !Double
     ,   statStdDev :: !Double
@@ -208,6 +216,7 @@ data RunStatistics = -- {{{
     ,   runStealWaitTimes :: !TimeStatistics
     ,   runWaitingWorkerStatistics :: !(Statistics Int)
     ,   runAvailableWorkloadStatistics :: !(Statistics Int)
+    ,   runInstantaneousWorkloadRequestRateStatistics :: !(Statistics Float)
     } deriving (Eq,Show)
 -- }}}
 
@@ -271,6 +280,8 @@ data SupervisorState result worker_id = -- {{{
     ,   _workload_steal_time_statistics :: !TimeStatisticsMonoid
     ,   _waiting_worker_count_statistics :: !(TimeWeightedStatistics Int)
     ,   _available_workload_count_statistics :: !(TimeWeightedStatistics Int)
+    ,   _instantaneous_workload_request_rate :: !ExponentiallyDecayingSum
+    ,   _instantaneous_workload_request_rate_statistics :: !(TimeWeightedStatistics Float)
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -356,6 +367,12 @@ abortSupervisorWithReason reason =
         <*> (lift getCurrentStatistics)
         <*> (Set.toList <$> use known_workers)
     ) >>= abort
+-- }}}
+
+addPointToExponentiallyDecayingSum :: UTCTime → ExponentiallyDecayingSum → ExponentiallyDecayingSum -- {{{
+addPointToExponentiallyDecayingSum current_time = execState $ do
+    previous_time ← last_decaying_sum_timestamp <<.= current_time
+    decaying_sum_value %= (+ 1) . (* computeExponentialDecayCoefficient previous_time current_time)
 -- }}}
 
 addWorker :: -- {{{
@@ -476,6 +493,16 @@ clearPendingProgressUpdate worker_id =
         no_progress_updates_are_pending ← Set.null <$> use workers_pending_progress_update
         when no_progress_updates_are_pending sendCurrentProgressToUser
     )
+-- }}}
+
+computeExponentialDecayCoefficient :: UTCTime → UTCTime → Float -- {{{
+computeExponentialDecayCoefficient = (exp . fromRational . toRational) .* diffUTCTime
+-- }}}
+
+computeInstantaneousRateFromDecayingSum :: UTCTime → ExponentiallyDecayingSum → Float -- {{{
+computeInstantaneousRateFromDecayingSum current_time = runReader $ do
+    previous_time ← view last_decaying_sum_timestamp
+    (* computeExponentialDecayCoefficient previous_time current_time) <$> view decaying_sum_value
 -- }}}
 
 deactivateWorker :: -- {{{
@@ -629,6 +656,11 @@ getCurrentStatistics = do
             runStartTime
             (either (const 0) Set.size <$> use waiting_workers_or_available_workloads)
             (use available_workload_count_statistics)
+    runInstantaneousWorkloadRequestRateStatistics ←
+        finalizeStatistics
+            runStartTime
+            (computeInstantaneousRateFromDecayingSum runEndTime <$> use instantaneous_workload_request_rate)
+            (use instantaneous_workload_request_rate_statistics)
     return RunStatistics{..}
 -- }}}
 
@@ -941,6 +973,8 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             ,   _workload_steal_time_statistics = mempty
             ,   _waiting_worker_count_statistics = initialTimeWeightedStatisticsForStartingTime start_time
             ,   _available_workload_count_statistics = initialTimeWeightedStatisticsForStartingTime start_time
+            ,   _instantaneous_workload_request_rate = ExponentiallyDecayingSum start_time 0
+            ,   _instantaneous_workload_request_rate_statistics = initialTimeWeightedStatisticsForStartingTime start_time
             }
         )
     .
@@ -1005,6 +1039,8 @@ tryToObtainWorkloadFor :: -- {{{
     worker_id →
     SupervisorContext result worker_id m ()
 tryToObtainWorkloadFor is_new_worker worker_id =
+    unless is_new_worker updateInstataneousWorkloadRequestRate
+    >>
     use waiting_workers_or_available_workloads
     >>=
     \x → case x of
@@ -1027,6 +1063,14 @@ tryToObtainWorkloadFor is_new_worker worker_id =
       | is_new_worker = return Nothing
       | otherwise = Just <$> liftIO getCurrentTime
 
+-- }}}
+
+updateInstataneousWorkloadRequestRate :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m () -- {{{
+updateInstataneousWorkloadRequestRate = do
+    current_time ← liftIO getCurrentTime
+    previous_value ← instantaneous_workload_request_rate %%= ((^.decaying_sum_value) &&& addPointToExponentiallyDecayingSum current_time)
+    current_value ← use (instantaneous_workload_request_rate . decaying_sum_value)
+    updateTimeWeightedStatisticsUsingLens instantaneous_workload_request_rate_statistics ((current_value + previous_value) / 2)
 -- }}}
 
 updateTimeWeightedStatistics :: Real α ⇒ UTCTime → α → TimeWeightedStatistics α → TimeWeightedStatistics α -- {{{
