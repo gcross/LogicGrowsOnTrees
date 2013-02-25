@@ -362,17 +362,17 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         total_time = fromRational . toRational $ runWallTime
     when show_wall_times $
         hPutStrLn stderr $
-            printf "Run started at %s, ended at %s, and took %sseconds."
+            printf "Run started at %s, ended at %s, and took %sseconds.\n"
                 (show runStartTime)
                 (show runEndTime)
                 (showWithUnitPrefix total_time)  
     when show_supervisor_occupation $
         hPutStrLn stderr $
-            printf "Supervior was occupied for %.2f%% of the run."
+            printf "Supervior was occupied for %.2f%% of the run.\n"
                 (runSupervisorOccupation*100)
     when show_worker_occupation $
         hPutStrLn stderr $
-            printf "Workers were occupied %.2f%% of the time on average."
+            printf "Workers were occupied %.2f%% of the time on average.\n"
                 (runWorkerOccupation*100)
     when show_worker_wait_times $ do
         let TimeStatistics{..} = runWorkerWaitTimes
@@ -411,14 +411,14 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
     when show_numbers_of_waiting_workers $ do
         let Statistics{..} = runWaitingWorkerStatistics
         hPutStrLn stderr $
-            printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never fewer than %i."
+            printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never fewer than %i.\n"
                 statAverage
                 statStdDev
                 statMin
     when show_numbers_of_available_workloads $ do
         let Statistics{..} = runAvailableWorkloadStatistics
         hPutStrLn stderr $
-            printf "On average, %.1f +/ - %.1f (std. dev) workloads were available at any given time;  never fewer than %i, nor more than %i."
+            printf "On average, %.1f +/ - %.1f (std. dev) workloads were available at any given time;  never fewer than %i, nor more than %i.\n"
                 statAverage
                 statStdDev
                 statMin
@@ -429,7 +429,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
             printf
                 (unlines
                     ["On average, the instantanenous rate at which workloads were being requested was %.1f +/ - %.1f (std. dev) requests per second;  the rate never fell below %.1f nor rose above %.1f."
-                    ,"This rate is obtained by exponentially smoothing the request data over a time scale of one second"
+                    ,"This rate is obtained by exponentially smoothing the request data over a time scale of one second."
                     ]
                 )
                 statAverage
