@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -95,6 +96,7 @@ data StatisticsConfiguration = StatisticsConfiguration -- {{{
     ,   show_numbers_of_waiting_workers :: !Bool
     ,   show_numbers_of_available_workloads :: !Bool
     ,   show_instantaneous_workload_request_rates :: !Bool
+    ,   show_instantaneous_workload_steal_times :: !Bool
     } deriving (Eq,Show)
 $( derive makeSerialize ''StatisticsConfiguration )
 -- }}}
@@ -192,7 +194,7 @@ logging_configuration_term =
 
 statistics_configuration_term :: Term StatisticsConfiguration -- {{{
 statistics_configuration_term =
-    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True True) else id)
+    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True True True) else id)
     <$> value (flag ((optInfo ["show-all"]) { optDoc ="This option will cause *all* run statistic to be printed to standard error after the program terminates." }))
     <*> (StatisticsConfiguration
         <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
@@ -202,7 +204,8 @@ statistics_configuration_term =
         <*> value (flag ((optInfo ["show-steal-wait-times"]) { optDoc ="This option will cause statistics about the steal wait times to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-numbers-of-waiting-workers"]) { optDoc ="This option will cause statistics about the number of waiting workers to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-numbers-of-available-workloads"]) { optDoc ="This option will cause statistics about the number of available workloads to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-workload-request-rate"]) { optDoc ="This option will cause statistics about the (roughly) instantatnous rate at which workloads are requested by finished works to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-workload-request-rate"]) { optDoc ="This option will cause statistics about the (roughly) instantaneous rate at which workloads are requested by finished works to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-workload-steal-time"]) { optDoc ="This option will cause statistics about the (roughly) instantaneous amount of time that it took to steal a workload to be printed to standard error after the program terminates." }))
         )
 -- }}}
 
@@ -429,18 +432,31 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
             printf
                 (unlines
                     ["On average, the instantanenous rate at which workloads were being requested was %.1f +/ - %.1f (std. dev) requests per second;  the rate never fell below %.1f nor rose above %.1f."
-                    ,"This rate is obtained by exponentially smoothing the request data over a time scale of one second."
+                    ,"This value was obtained by exponentially smoothing the request data over a time scale of one second."
                     ]
                 )
                 statAverage
                 statStdDev
                 statMin
                 statMax
+    when show_instantaneous_workload_steal_times $ do
+        let Statistics{..} = runInstantaneousWorkloadStealTimeStatistics
+        hPutStrLn stderr $
+            printf
+                (unlines
+                    ["On average, the instantaneous time to steal a workload was %sseconds +/ - %sseconds (std. dev);  this time interval never fell below %sseconds nor rose above %sseconds."
+                    ,"This value was obtained by exponentially smoothing the request data over a time scale of one second."
+                    ]
+                )
+                (showWithUnitPrefix statAverage)
+                (showWithUnitPrefix statStdDev)
+                (showWithUnitPrefix statMin)
+                (showWithUnitPrefix statMax)
   where
-    showWithUnitPrefix :: Double → String
+    showWithUnitPrefix :: Real n ⇒ n → String
     showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
       where
-        (x_scaled,Just unit) = formatValue (Left FormatSiAll) x 
+        (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . fromRational . toRational $ x 
 -- }}}
 
 writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{

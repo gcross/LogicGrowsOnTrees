@@ -181,6 +181,13 @@ data ExponentiallyDecayingSum = ExponentiallyDecayingSum -- {{{
 $( makeLenses ''ExponentiallyDecayingSum )
 -- }}}
 
+data ExponentiallyWeightedAverage = ExponentiallyWeightedAverage -- {{{
+    {   _last_average_timestamp :: !UTCTime
+    ,   _current_average_value :: !Float
+    } deriving (Eq,Show)
+$( makeLenses ''ExponentiallyWeightedAverage )
+-- }}}
+
 data Statistics α = Statistics -- {{{
     {   statAverage :: !Double
     ,   statStdDev :: !Double
@@ -217,6 +224,7 @@ data RunStatistics = -- {{{
     ,   runWaitingWorkerStatistics :: !(Statistics Int)
     ,   runAvailableWorkloadStatistics :: !(Statistics Int)
     ,   runInstantaneousWorkloadRequestRateStatistics :: !(Statistics Float)
+    ,   runInstantaneousWorkloadStealTimeStatistics :: !(Statistics Float)
     } deriving (Eq,Show)
 -- }}}
 
@@ -282,6 +290,8 @@ data SupervisorState result worker_id = -- {{{
     ,   _available_workload_count_statistics :: !(TimeWeightedStatistics Int)
     ,   _instantaneous_workload_request_rate :: !ExponentiallyDecayingSum
     ,   _instantaneous_workload_request_rate_statistics :: !(TimeWeightedStatistics Float)
+    ,   _instantaneous_workload_steal_time :: !ExponentiallyWeightedAverage
+    ,   _instantaneous_workload_steal_time_statistics :: !(TimeWeightedStatistics Float)
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -373,6 +383,14 @@ addPointToExponentiallyDecayingSum :: UTCTime → ExponentiallyDecayingSum → E
 addPointToExponentiallyDecayingSum current_time = execState $ do
     previous_time ← last_decaying_sum_timestamp <<.= current_time
     decaying_sum_value %= (+ 1) . (* computeExponentialDecayCoefficient previous_time current_time)
+-- }}}
+
+addPointToExponentiallyWeightedAverage :: Float → UTCTime → ExponentiallyWeightedAverage → ExponentiallyWeightedAverage -- {{{
+addPointToExponentiallyWeightedAverage current_value current_time = execState $ do
+    previous_time ← last_average_timestamp <<.= current_time
+    let old_value_weight = exp . fromRational . toRational $ (previous_time `diffUTCTime` current_time)
+        new_value_weight = 1 - old_value_weight
+    current_average_value %= (+ new_value_weight * current_value) . (* old_value_weight)
 -- }}}
 
 addWorker :: -- {{{
@@ -661,6 +679,11 @@ getCurrentStatistics = do
             runStartTime
             (computeInstantaneousRateFromDecayingSum runEndTime <$> use instantaneous_workload_request_rate)
             (use instantaneous_workload_request_rate_statistics)
+    runInstantaneousWorkloadStealTimeStatistics ←
+        finalizeStatistics
+            runStartTime
+            (use $ instantaneous_workload_steal_time . current_average_value)
+            (use instantaneous_workload_steal_time_statistics)
     return RunStatistics{..}
 -- }}}
 
@@ -824,7 +847,7 @@ receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveSt
         Nothing → steal_request_failures += 1
         Just (StolenWorkload (ProgressUpdate progress_update remaining_workload) workload) → do
             (steal_request_matcher_queue %%= fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView)
-              >>= (timePassedSince >=> (workload_steal_time_statistics %=) . pappend)
+              >>= (timePassedSince >=> liftA2 (>>) ((workload_steal_time_statistics %=) . pappend) updateInstataneousWorkloadStealTime)
             current_progress %= (`mappend` progress_update)
             active_workers %= Map.insert worker_id remaining_workload
             enqueueWorkload workload
@@ -975,6 +998,8 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             ,   _available_workload_count_statistics = initialTimeWeightedStatisticsForStartingTime start_time
             ,   _instantaneous_workload_request_rate = ExponentiallyDecayingSum start_time 0
             ,   _instantaneous_workload_request_rate_statistics = initialTimeWeightedStatisticsForStartingTime start_time
+            ,   _instantaneous_workload_steal_time = ExponentiallyWeightedAverage start_time 0
+            ,   _instantaneous_workload_steal_time_statistics = initialTimeWeightedStatisticsForStartingTime start_time
             }
         )
     .
@@ -1071,6 +1096,14 @@ updateInstataneousWorkloadRequestRate = do
     previous_value ← instantaneous_workload_request_rate %%= ((^.decaying_sum_value) &&& addPointToExponentiallyDecayingSum current_time)
     current_value ← use (instantaneous_workload_request_rate . decaying_sum_value)
     updateTimeWeightedStatisticsUsingLens instantaneous_workload_request_rate_statistics ((current_value + previous_value) / 2)
+-- }}}
+
+updateInstataneousWorkloadStealTime :: SupervisorMonadConstraint m ⇒ NominalDiffTime → SupervisorContext result worker_id m () -- {{{
+updateInstataneousWorkloadStealTime (fromRational . toRational → current_value) = do
+    current_time ← liftIO getCurrentTime
+    previous_value ← instantaneous_workload_steal_time %%= ((^.current_average_value) &&& addPointToExponentiallyWeightedAverage current_value current_time)
+    current_value ← use (instantaneous_workload_steal_time . current_average_value)
+    updateTimeWeightedStatisticsUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
 -- }}}
 
 updateTimeWeightedStatistics :: Real α ⇒ UTCTime → α → TimeWeightedStatistics α → TimeWeightedStatistics α -- {{{
