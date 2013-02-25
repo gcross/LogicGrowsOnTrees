@@ -7,7 +7,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Workgroup
+module Control.Visitor.Parallel.Workgroup -- {{{
     ( WorkerId
     , WorkgroupCallbacks(..)
     , WorkgroupControllerMonad
@@ -15,7 +15,7 @@ module Control.Visitor.Parallel.Workgroup
     , WorkgroupRequestQueueMonad(..)
     , changeNumberOfWorkers
     , runWorkgroup
-    ) where
+    ) where -- }}}
 
 -- Imports {{{
 import Control.Applicative (Applicative,(<$>))
