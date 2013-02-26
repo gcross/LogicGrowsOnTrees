@@ -321,12 +321,12 @@ data SupervisorOutcome result worker_id = -- {{{
     } deriving (Eq,Show)
 -- }}}
 
-type InsideContextMonad result worker_id m α = -- {{{
+type InsideContextMonad result worker_id m = -- {{{
     StateT (SupervisorState result worker_id) (
-        ReaderT (SupervisorConstants result worker_id m) (
+        ReaderT (SupervisorConstants result worker_id m)
             m
-        )
-    ) α -- }}}
+    )
+-- }}}
 newtype ContextMonad result worker_id m α = ContextMonad -- {{{
     { unwrapContextMonad :: InsideContextMonad result worker_id m α
     } deriving (Applicative,Functor,Monad,MonadIO)
