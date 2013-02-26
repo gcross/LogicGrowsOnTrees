@@ -49,7 +49,7 @@ import System.Console.CmdTheLine
 import System.Directory (doesFileExist,removeFile,renameFile)
 import System.Environment (getArgs,getProgName)
 import System.Exit (exitWith)
-import System.IO (hPutStrLn,stderr)
+import System.IO (hPutStr,hPutStrLn,stderr)
 import System.IO.Error (isDoesNotExistError)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(..),setLevel,rootLoggerName,updateGlobalLogger)
@@ -90,6 +90,7 @@ instance Serialize LoggingConfiguration where
 data StatisticsConfiguration = StatisticsConfiguration -- {{{
     {   show_wall_times :: !Bool
     ,   show_supervisor_occupation :: !Bool
+    ,   show_supervisor_monad_occupation :: !Bool
     ,   show_worker_occupation :: !Bool
     ,   show_worker_wait_times :: !Bool
     ,   show_steal_wait_times :: !Bool
@@ -194,11 +195,12 @@ logging_configuration_term =
 
 statistics_configuration_term :: Term StatisticsConfiguration -- {{{
 statistics_configuration_term =
-    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True True True) else id)
+    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True True True True) else id)
     <$> value (flag ((optInfo ["show-all"]) { optDoc ="This option will cause *all* run statistic to be printed to standard error after the program terminates." }))
     <*> (StatisticsConfiguration
         <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-supervisor-occupation"]) { optDoc ="This option will cause the supervisor occupation percentage to be printed to standard error after the program terminates." }))
+        <*> value (flag ((optInfo ["show-supervisor-monad-occupation"]) { optDoc ="This option will cause the supervisor monad occupation percentage to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-worker-occupation"]) { optDoc ="This option will cause the worker occupation percentage to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-worker-wait-times"]) { optDoc ="This option will cause statistics about the worker wait times to be printed to standard error after the program terminates." }))
         <*> value (flag ((optInfo ["show-steal-wait-times"]) { optDoc ="This option will cause statistics about the steal wait times to be printed to standard error after the program terminates." }))
@@ -368,11 +370,13 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
             printf "Run started at %s, ended at %s, and took %sseconds.\n"
                 (show runStartTime)
                 (show runEndTime)
-                (showWithUnitPrefix total_time)  
-    when show_supervisor_occupation $
-        hPutStrLn stderr $
-            printf "Supervior was occupied for %.2f%% of the run.\n"
-                (runSupervisorOccupation*100)
+                (showWithUnitPrefix total_time)
+    hPutStr stderr $
+        case (show_supervisor_occupation,show_supervisor_monad_occupation) of
+            (True,False) → printf "Supervior was occupied for %.2f%% of the run.\n\n" (runSupervisorOccupation*100)
+            (False,True) → printf "Supervisor ran inside the SupervisorMonad for %.2f%% of the run.\n\n" (runSupervisorMonadOccupation*100)
+            (True,True) → printf "Supervior was occupied for %.2f%% of the run, of which %.2f%% was spent inside the SupervisorMonad.\n\n" (runSupervisorOccupation*100) (runSupervisorOccupation/runSupervisorMonadOccupation*100)
+            _ → ""
     when show_worker_occupation $
         hPutStrLn stderr $
             printf "Workers were occupied %.2f%% of the time on average.\n"

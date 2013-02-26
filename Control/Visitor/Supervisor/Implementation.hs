@@ -47,6 +47,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , removeWorkerIfPresent
     , runSupervisorStartingFrom
     , setSupervisorDebugMode
+    , time_spent_in_supervisor_monad
     , tryGetWaitingWorker
     ) where -- }}}
 
@@ -227,6 +228,7 @@ data RunStatistics = -- {{{
     ,   runEndTime :: !UTCTime
     ,   runWallTime :: !NominalDiffTime
     ,   runSupervisorOccupation :: !Float
+    ,   runSupervisorMonadOccupation :: !Float
     ,   runWorkerOccupation :: !Float
     ,   runWorkerWaitTimes :: !TimeStatistics
     ,   runStealWaitTimes :: !TimeStatistics
@@ -306,6 +308,7 @@ data SupervisorState result worker_id = -- {{{
     ,   _instantaneous_workload_request_rate_statistics :: !(TimeWeightedStatistics Float)
     ,   _instantaneous_workload_steal_time :: !ExponentiallyWeightedAverage
     ,   _instantaneous_workload_steal_time_statistics :: !(TimeWeightedStatistics Float)
+    ,   _time_spent_in_supervisor_monad :: !NominalDiffTime
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -728,6 +731,14 @@ getCurrentStatistics = do
         retireOccupationStatistics
         >>=
         return . getOccupationFraction
+    runSupervisorMonadOccupation ←
+        fromRational
+        .
+        toRational
+        .
+        (/runWallTime)
+        <$>
+        use time_spent_in_supervisor_monad
     runWorkerOccupation ←
         getOccupationFraction . mconcat . Map.elems
         <$>
@@ -1101,6 +1112,7 @@ runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCu
             ,   _instantaneous_workload_request_rate_statistics = initialTimeWeightedStatisticsForStartingTime start_time
             ,   _instantaneous_workload_steal_time = ExponentiallyWeightedAverage start_time 0
             ,   _instantaneous_workload_steal_time_statistics = initialTimeWeightedStatisticsForStartingTime start_time
+            ,   _time_spent_in_supervisor_monad = 0
             }
         )
     .

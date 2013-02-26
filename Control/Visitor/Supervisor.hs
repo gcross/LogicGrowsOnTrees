@@ -56,14 +56,14 @@ module Control.Visitor.Supervisor -- {{{
 
 -- Imports {{{
 import Control.Applicative (Applicative)
-import Control.Lens.Setter ((.~))
+import Control.Lens.Setter ((.~),(+=))
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 
-import Data.Time.Clock (getCurrentTime)
+import Data.Time.Clock (diffUTCTime,getCurrentTime)
 import Data.Composition ((.*),(.**))
 import Data.Monoid (Monoid(mempty))
 
@@ -87,6 +87,7 @@ import Control.Visitor.Supervisor.Implementation -- {{{
     , liftContextToAbort
     , liftUserToAbort
     , localWithinContext
+    , time_spent_in_supervisor_monad
     ) -- }}}
 -- }}}
 
@@ -130,9 +131,11 @@ instance MonadState s m ⇒ MonadState s (SupervisorMonad result worker_id m) wh
 
 instance WrappableIntoSupervisorMonad AbortMonad where -- {{{
     wrapIntoSupervisorMonad action = do
-        time1 ← liftIO getCurrentTime
-        SupervisorMonad . local (current_time .~ time1) $ action
-        -- time2 ← liftIO getCurrentTime
+        time_at_entrance ← liftIO getCurrentTime
+        SupervisorMonad . local (current_time .~ time_at_entrance) $ do
+            result ← action
+            liftIO getCurrentTime >>= (time_spent_in_supervisor_monad +=) . (flip diffUTCTime time_at_entrance)
+            return result
 -- }}}
 
 instance WrappableIntoSupervisorMonad ContextMonad where -- {{{
