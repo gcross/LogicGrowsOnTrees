@@ -313,7 +313,6 @@ data SupervisorState result worker_id = -- {{{
 $( makeLenses ''SupervisorState )
 -- }}}
 
-type SupervisorMonadState result worker_id = MonadState (SupervisorState result worker_id)
 
 data SupervisorTerminationReason result worker_id = -- {{{
     SupervisorAborted (Progress result)
@@ -355,6 +354,9 @@ newtype AbortMonad result worker_id m α = AbortMonad -- {{{
 -- }}}
 
 -- Contraints {{{
+type SupervisorReaderConstraint result worker_id m m' = MonadReader (SupervisorConstants result worker_id m) m'
+type SupervisorStateConstraint result worker_id m' = MonadState (SupervisorState result worker_id) m'
+
 type SupervisorMonadConstraint m = (Functor m, MonadIO m)
 type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
 type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,SupervisorMonadConstraint m)
@@ -471,7 +473,7 @@ beginWorkerOccupied = flip changeWorkerOccupiedStatus True
 
 changeOccupiedStatus :: -- {{{
     ( Monad m'
-    , MonadReader (SupervisorConstants result worker_id m) m'
+    , SupervisorReaderConstraint result worker_id m m'
     ) ⇒
     m' OccupationStatistics →
     (OccupationStatistics → m' ()) →
@@ -568,10 +570,18 @@ computeExponentialDecayCoefficient :: UTCTime → UTCTime → Float -- {{{
 computeExponentialDecayCoefficient = (exp . fromRational . toRational) .* diffUTCTime
 -- }}}
 
-computeInstantaneousRateFromDecayingSum :: UTCTime → ExponentiallyDecayingSum → Float -- {{{
-computeInstantaneousRateFromDecayingSum current_time = runReader $ do
-    previous_time ← view last_decaying_sum_timestamp
-    (* computeExponentialDecayCoefficient previous_time current_time) <$> view decaying_sum_value
+computeInstantaneousRateFromDecayingSum :: -- {{{
+    ( Functor m'
+    , SupervisorMonadConstraint m
+    , SupervisorReaderConstraint result worker_id m m'
+    ) ⇒
+    ExponentiallyDecayingSum →
+    m' Float
+computeInstantaneousRateFromDecayingSum expsum = do
+    current_time ← view current_time
+    flip runReaderT expsum $ do
+        previous_time ← view last_decaying_sum_timestamp
+        (* computeExponentialDecayCoefficient previous_time current_time) <$> view decaying_sum_value
 -- }}}
 
 deactivateWorker :: -- {{{
@@ -683,7 +693,7 @@ finalizeStatistics :: -- {{{
     , Real α
     , SupervisorMonadConstraint m
     , SupervisorMonadConstraint m'
-    , MonadReader (SupervisorConstants result worker_id m) m'
+    , SupervisorReaderConstraint result worker_id m m'
     ) ⇒
     UTCTime →
     m' α →
@@ -710,8 +720,8 @@ getCurrentProgress = use current_progress
 getCurrentStatistics :: -- {{{
     ( SupervisorFullConstraint worker_id m
     , SupervisorMonadConstraint m'
-    , MonadState (SupervisorState result worker_id) m'
-    , MonadReader (SupervisorConstants result worker_id m) m'
+    , SupervisorReaderConstraint result worker_id m m'
+    , SupervisorStateConstraint result worker_id m'
     ) ⇒
     m' RunStatistics
 getCurrentStatistics = do
@@ -753,7 +763,7 @@ getCurrentStatistics = do
     runInstantaneousWorkloadRequestRateStatistics ←
         finalizeStatistics
             runStartTime
-            (computeInstantaneousRateFromDecayingSum runEndTime <$> use instantaneous_workload_request_rate)
+            (use instantaneous_workload_request_rate >>= computeInstantaneousRateFromDecayingSum)
             (use instantaneous_workload_request_rate_statistics)
     runInstantaneousWorkloadStealTimeStatistics ←
         finalizeStatistics
@@ -862,10 +872,14 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" $ do
 -- }}}
 
 postValidate :: -- {{{
-    (SupervisorMonadState result worker_id m, SupervisorFullConstraint worker_id m) ⇒
+    ( SupervisorMonadConstraint m'
+    , SupervisorFullConstraint worker_id m
+    , SupervisorStateConstraint result worker_id m'
+    , SupervisorReaderConstraint result worker_id m m'
+    ) ⇒
     String →
-    m α →
-    m α
+    m' α →
+    m' α
 postValidate label action = action >>= \result →
   (use debug_mode >>= flip when (do
     debugM $ " === BEGIN VALIDATE === " ++ label
@@ -984,7 +998,7 @@ retireManyOccupationStatistics :: -- {{{
     ( Functor f
     , SupervisorMonadConstraint m
     , Monad m'
-    , MonadReader (SupervisorConstants result worker_id m) m'
+    , SupervisorReaderConstraint result worker_id m m'
     ) ⇒
     f OccupationStatistics →
     m' (f RetiredOccupationStatistics)
@@ -999,7 +1013,7 @@ retireManyOccupationStatistics occupied_statistics =
 retireOccupationStatistics :: -- {{{
     ( SupervisorMonadConstraint m
     , Monad m'
-    , MonadReader (SupervisorConstants result worker_id m) m'
+    , SupervisorReaderConstraint result worker_id m m'
     ) ⇒
     OccupationStatistics →
     m' RetiredOccupationStatistics
@@ -1154,7 +1168,7 @@ setSupervisorDebugMode = (debug_mode .=)
 timePassedSince :: -- {{{
     ( Functor m'
     , SupervisorMonadConstraint m
-    , MonadReader (SupervisorConstants result worker_id m)  m'
+    , SupervisorReaderConstraint result worker_id m  m'
     ) ⇒
     UTCTime →
     m' NominalDiffTime
