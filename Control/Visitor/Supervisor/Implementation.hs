@@ -2,12 +2,14 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -33,6 +35,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , getCurrentStatistics
     , getNumberOfWorkers
     , liftUserToContext
+    , localWithinAbort
     , localWithinContext
     , performGlobalProgressUpdate
     , receiveProgressUpdate
@@ -46,7 +49,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     ) where -- }}}
 
 -- Imports {{{
-import Control.Applicative ((<$>),(<*>),liftA2)
+import Control.Applicative ((<$>),(<*>),Applicative,liftA2)
 import Control.Arrow ((&&&),first)
 import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
@@ -54,7 +57,8 @@ import Control.Lens ((&))
 import Control.Lens.At (at)
 import Control.Lens.Getter ((^.),use,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
-import Control.Lens.Lens ((<%=),(<<%=),(%%=),(<<.=),Lens)
+import Control.Lens.Internal.Zoom (Focusing,Zoomed)
+import Control.Lens.Lens ((<%=),(<<%=),(%%=),(<<.=),Lens,Lens')
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Zoom (Zoom(..))
 import Control.Monad ((>=>),liftM,liftM2,mplus,unless,void,when)
@@ -318,7 +322,16 @@ data SupervisorOutcome result worker_id = -- {{{
     } deriving (Eq,Show)
 -- }}}
 
-type SupervisorContext result worker_id m = StateT (SupervisorState result worker_id) (ReaderT (SupervisorConstants result worker_id m) m)
+type InsideSupervisorContext result worker_id m α = -- {{{
+    StateT (SupervisorState result worker_id) (
+        ReaderT (SupervisorConstants result worker_id m) (
+            m
+        )
+    ) α -- }}}
+newtype SupervisorContext result worker_id m α = SupervisorContext -- {{{
+    { unwrapSupervisorContext :: InsideSupervisorContext result worker_id m α
+    } deriving (Applicative,Functor,Monad,MonadIO)
+-- }}}
 type ZoomedInStateContext result worker_id m s = StateT s (ReaderT (SupervisorCallbacks result worker_id m) m)
 
 type SupervisorAbortMonad result worker_id m = -- {{{
@@ -336,6 +349,25 @@ type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker
 -- }}}
 
 -- Instances {{{
+
+type instance Zoomed (SupervisorContext result worker_id m) = Focusing ( -- {{{
+    StateT (SupervisorState result worker_id) (
+        ReaderT (SupervisorConstants result worker_id m) (
+            m
+        )
+    )
+ )
+-- }}}
+
+instance Monad m ⇒ MonadReader (SupervisorConstants result worker_id m) (SupervisorContext result worker_id m) where -- {{{
+    ask = SupervisorContext ask 
+    local f = SupervisorContext . local f . unwrapSupervisorContext
+-- }}}
+
+instance Monad m ⇒ MonadState (SupervisorState result worker_id) (SupervisorContext result worker_id m) where -- {{{
+    get = SupervisorContext get 
+    put = SupervisorContext . put
+-- }}}
 
 instance Monoid RetiredOccupationStatistics where -- {{{
     mempty = RetiredOccupationStatistics 0 0
@@ -729,19 +761,27 @@ initialTimeWeightedStatisticsForStartingTime starting_time =
 -- }}}
 
 liftUserToContext :: Monad m ⇒ m α → SupervisorContext result worker_id m α -- {{{
-liftUserToContext = lift . lift
+liftUserToContext = SupervisorContext . lift . lift
+-- }}}
+
+localWithinAbort :: -- {{{
+    MonadReader r m ⇒
+    (r → r) →
+    SupervisorAbortMonad result worker_id m α →
+    SupervisorAbortMonad result worker_id m α
+localWithinAbort f = AbortT . localWithinContext f . unwrapAbortT
 -- }}}
 
 localWithinContext :: -- {{{
     MonadReader r m ⇒
     (r → r) →
-    SupervisorAbortMonad result worker_id m α →
-    SupervisorAbortMonad result worker_id m α
+    SupervisorContext result worker_id m α →
+    SupervisorContext result worker_id m α
 localWithinContext f m = do
     actions ← ask
     old_state ← get
     (result,new_state) ←
-        lift
+        SupervisorContext
         .
         lift
         .
@@ -753,11 +793,11 @@ localWithinContext f m = do
         .
         flip runStateT old_state
         .
-        unwrapAbortT
+        unwrapSupervisorContext
         $
         m
     put new_state
-    either abort return result
+    return result
 -- }}}
 
 performGlobalProgressUpdate :: -- {{{
@@ -1009,6 +1049,8 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             }
         )
     .
+    unwrapSupervisorContext
+    .
     runAbortT
     $
     program
@@ -1112,7 +1154,8 @@ updateInstataneousWorkloadStealTime (fromRational . toRational → current_value
     updateTimeWeightedStatisticsUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
 -- }}}
 
-updateTimeWeightedStatistics value = do -- {{{ Type signature was a pain to get right so I gave up.
+updateTimeWeightedStatistics :: (MonadIO m, Real α) ⇒ α → StateT (TimeWeightedStatistics α) m () -- {{{
+updateTimeWeightedStatistics value = do 
     current_time ← liftIO getCurrentTime
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
@@ -1125,11 +1168,12 @@ updateTimeWeightedStatistics value = do -- {{{ Type signature was a pain to get 
 -- }}}
 
 updateTimeWeightedStatisticsUsingLens :: -- {{{
+    ∀ α m result worker_id. 
     (Real α, SupervisorMonadConstraint m) ⇒
-    Lens (SupervisorState result worker_id) (SupervisorState result worker_id) (TimeWeightedStatistics α) (TimeWeightedStatistics α) →
+    Lens' (SupervisorState result worker_id) (TimeWeightedStatistics α) →
     α →
     SupervisorContext result worker_id m ()
-updateTimeWeightedStatisticsUsingLens field = void . zoom field . updateTimeWeightedStatistics
+updateTimeWeightedStatisticsUsingLens field = SupervisorContext . void . zoom field . updateTimeWeightedStatistics
 -- }}}
 
 validateWorkerKnown :: -- {{{

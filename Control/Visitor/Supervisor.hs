@@ -109,7 +109,7 @@ instance MonadTrans (SupervisorMonad result worker_id) where -- {{{
 
 instance MonadReader r m ⇒ MonadReader r (SupervisorMonad result worker_id m) where -- {{{
     ask = lift ask
-    local f = SupervisorMonad . localWithinContext f . unwrapSupervisorMonad
+    local f = SupervisorMonad . Implementation.localWithinAbort f . unwrapSupervisorMonad
 -- }}}
 
 instance MonadState s m ⇒ MonadState s (SupervisorMonad result worker_id m) where -- {{{
