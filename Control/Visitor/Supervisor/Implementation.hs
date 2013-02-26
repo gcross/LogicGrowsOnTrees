@@ -20,7 +20,6 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , RunStatistics(..)
     , Statistics(..)
     , SupervisorCallbacks(..)
-    , SupervisorConstants(..)
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
