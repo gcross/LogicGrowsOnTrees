@@ -55,7 +55,8 @@ import Control.Lens.Getter ((^.),use,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
 import Control.Lens.Lens ((<%=),(<<%=),(%%=),(<<.=),Lens)
 import Control.Lens.TH (makeLenses)
-import Control.Monad ((>=>),liftM,liftM2,mplus,unless,when)
+import Control.Lens.Zoom (Zoom(..))
+import Control.Monad ((>=>),liftM,liftM2,mplus,unless,void,when)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
@@ -311,10 +312,8 @@ data SupervisorOutcome result worker_id = -- {{{
     } deriving (Eq,Show)
 -- }}}
 
-type SupervisorContext result worker_id m = -- {{{
-    StateT (SupervisorState result worker_id)
-        (ReaderT (SupervisorCallbacks result worker_id m) m)
--- }}}
+type SupervisorContext result worker_id m = StateT (SupervisorState result worker_id) (ReaderT (SupervisorCallbacks result worker_id m) m)
+type ZoomedInStateContext result worker_id m s = StateT s (ReaderT (SupervisorCallbacks result worker_id m) m)
 
 type SupervisorAbortMonad result worker_id m = -- {{{
     AbortT
@@ -627,18 +626,19 @@ extractTimeStatistics =
         <*>  calcStddev
 -- }}}
 
-finalizeStatistics :: (Ord α, Real α) ⇒ SupervisorMonadConstraint m ⇒ UTCTime → m α → m (TimeWeightedStatistics α) → m (Statistics α) -- {{{ 
+finalizeStatistics :: (Ord α, Real α, SupervisorMonadConstraint m) ⇒ UTCTime → SupervisorContext worker_id result m α → SupervisorContext worker_id result m (TimeWeightedStatistics α) → SupervisorContext worker_id result m (Statistics α) -- {{{ 
 finalizeStatistics start_time getFinalValue getWeightedStatistics = do
     end_time ← liftIO getCurrentTime
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
     final_value ← getFinalValue
-    evalState (do
+    getWeightedStatistics >>= (evalStateT $ do
+        updateTimeWeightedStatistics final_value
         statAverage ← (/total_weight) <$> use first_moment
         statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
         statMin ← min final_value <$> use minimum_value
         statMax ← max final_value <$> use maximum_value
         return $ Statistics{..}
-     ) . updateTimeWeightedStatistics end_time final_value <$> getWeightedStatistics
+     )
 -- }}}
 
 getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m (Progress result) -- {{{
@@ -1106,8 +1106,8 @@ updateInstataneousWorkloadStealTime (fromRational . toRational → current_value
     updateTimeWeightedStatisticsUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
 -- }}}
 
-updateTimeWeightedStatistics :: Real α ⇒ UTCTime → α → TimeWeightedStatistics α → TimeWeightedStatistics α -- {{{
-updateTimeWeightedStatistics current_time value = execState $ do
+updateTimeWeightedStatistics value = do -- {{{ Type signature was a pain to get right so I gave up.
+    current_time ← liftIO getCurrentTime
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
     let weight = fromRational . toRational $ (current_time `diffUTCTime` last_time)
@@ -1119,12 +1119,11 @@ updateTimeWeightedStatistics current_time value = execState $ do
 -- }}}
 
 updateTimeWeightedStatisticsUsingLens :: -- {{{
-    (Real α, MonadIO m) ⇒
+    (Real α, SupervisorMonadConstraint m) ⇒
     Lens (SupervisorState result worker_id) (SupervisorState result worker_id) (TimeWeightedStatistics α) (TimeWeightedStatistics α) →
     α →
     SupervisorContext result worker_id m ()
-updateTimeWeightedStatisticsUsingLens field value =
-    liftIO getCurrentTime >>= \current_time → field %= updateTimeWeightedStatistics current_time value
+updateTimeWeightedStatisticsUsingLens field = void . zoom field . updateTimeWeightedStatistics
 -- }}}
 
 validateWorkerKnown :: -- {{{
