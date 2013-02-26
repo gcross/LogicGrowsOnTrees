@@ -34,7 +34,8 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
-    , liftUserToContext
+    , liftContextToAbort
+    , liftUserToAbort
     , localWithinAbort
     , localWithinContext
     , performGlobalProgressUpdate
@@ -334,10 +335,14 @@ newtype ContextMonad result worker_id m α = ContextMonad -- {{{
 -- }}}
 type ZoomedInStateContext result worker_id m s = StateT s (ReaderT (SupervisorCallbacks result worker_id m) m)
 
-type AbortMonad result worker_id m = -- {{{
+type InsideAbortMonad result worker_id m = -- {{{
     AbortT
         (SupervisorOutcome result worker_id)
         (ContextMonad result worker_id m)
+-- }}}
+newtype AbortMonad result worker_id m α = AbortMonad -- {{{
+    { unwrapAbortMonad :: InsideAbortMonad result worker_id m α
+    } deriving (Applicative,Functor,Monad,MonadIO)
 -- }}}
 
 -- }}}
@@ -359,9 +364,19 @@ type instance Zoomed (ContextMonad result worker_id m) = Focusing ( -- {{{
  )
 -- }}}
 
+instance Monad m ⇒ MonadReader (SupervisorConstants result worker_id m) (AbortMonad result worker_id m) where -- {{{
+    ask = AbortMonad ask
+    local f = AbortMonad . local f . unwrapAbortMonad
+-- }}}
+
 instance Monad m ⇒ MonadReader (SupervisorConstants result worker_id m) (ContextMonad result worker_id m) where -- {{{
     ask = ContextMonad ask
     local f = ContextMonad . local f . unwrapContextMonad
+-- }}}
+
+instance Monad m ⇒ MonadState (SupervisorState result worker_id) (AbortMonad result worker_id m) where -- {{{
+    get = AbortMonad get
+    put = AbortMonad . put
 -- }}}
 
 instance Monad m ⇒ MonadState (SupervisorState result worker_id) (ContextMonad result worker_id m) where -- {{{
@@ -408,10 +423,10 @@ abortSupervisorWithReason ::  -- {{{
     SupervisorFullConstraint worker_id m ⇒
     SupervisorTerminationReason result worker_id →
     AbortMonad result worker_id m α
-abortSupervisorWithReason reason =
+abortSupervisorWithReason reason = AbortMonad $
     (SupervisorOutcome
         <$> (return reason)
-        <*> (lift getCurrentStatistics)
+        <*>  getCurrentStatistics
         <*> (Set.toList <$> use known_workers)
     ) >>= abort
 -- }}}
@@ -664,7 +679,15 @@ extractTimeStatistics =
         <*>  calcStddev
 -- }}}
 
-finalizeStatistics :: (Ord α, Real α, SupervisorMonadConstraint m) ⇒ UTCTime → ContextMonad worker_id result m α → ContextMonad worker_id result m (TimeWeightedStatistics α) → ContextMonad worker_id result m (Statistics α) -- {{{ 
+finalizeStatistics :: -- {{{
+    ( Ord α
+    , Real α
+    , SupervisorMonadConstraint m
+    ) ⇒
+    UTCTime →
+    m α →
+    m (TimeWeightedStatistics α) →
+    m (Statistics α)
 finalizeStatistics start_time getFinalValue getWeightedStatistics = do
     end_time ← liftIO getCurrentTime
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
@@ -683,7 +706,11 @@ getCurrentProgress :: SupervisorMonadConstraint m ⇒ ContextMonad result worker
 getCurrentProgress = use current_progress
 -- }}}
 
-getCurrentStatistics :: SupervisorFullConstraint worker_id m ⇒ ContextMonad result worker_id m RunStatistics -- {{{
+getCurrentStatistics :: -- {{{
+    ( SupervisorFullConstraint worker_id m
+    , MonadState (SupervisorState result worker_id) m
+    ) ⇒
+    m RunStatistics
 getCurrentStatistics = do
     runEndTime ← liftIO getCurrentTime
     runStartTime ← use (supervisor_occupation_statistics . start_time)
@@ -760,6 +787,14 @@ initialTimeWeightedStatisticsForStartingTime starting_time =
         (fromIntegral (minBound :: Int))
 -- }}}
 
+liftContextToAbort :: Monad m ⇒ ContextMonad result worker_id m α → AbortMonad result worker_id m α -- {{{
+liftContextToAbort = AbortMonad . lift
+-- }}}
+
+liftUserToAbort :: Monad m ⇒ m α → AbortMonad result worker_id m α -- {{{
+liftUserToAbort = liftContextToAbort . liftUserToContext
+-- }}}
+
 liftUserToContext :: Monad m ⇒ m α → ContextMonad result worker_id m α -- {{{
 liftUserToContext = ContextMonad . lift . lift
 -- }}}
@@ -769,7 +804,7 @@ localWithinAbort :: -- {{{
     (r → r) →
     AbortMonad result worker_id m α →
     AbortMonad result worker_id m α
-localWithinAbort f = AbortT . localWithinContext f . unwrapAbortT
+localWithinAbort f = AbortMonad . AbortT . localWithinContext f . unwrapAbortT . unwrapAbortMonad
 -- }}}
 
 localWithinContext :: -- {{{
@@ -910,7 +945,7 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     worker_id →
     Progress result →
     AbortMonad result worker_id m ()
-receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (progressCheckpoint final_progress)) $ do
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = AbortMonad . postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (progressCheckpoint final_progress)) $ do
     infoM $ if remove_worker
         then "Worker " ++ show worker_id ++ " finished and removed."
         else "Worker " ++ show worker_id ++ " finished."
@@ -1052,6 +1087,8 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
     unwrapContextMonad
     .
     runAbortT
+    .
+    unwrapAbortMonad
     $
     program
 -- }}}
