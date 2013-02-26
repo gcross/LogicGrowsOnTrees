@@ -874,7 +874,7 @@ postValidate :: -- {{{
     m α →
     m α
 postValidate label action = action >>= \result →
-  (whenDebugging $ do
+  (use debug_mode >>= flip when (do
     debugM $ " === BEGIN VALIDATE === " ++ label
     use known_workers >>= debugM . ("Known workers is now " ++) . show
     use active_workers >>= debugM . ("Active workers is now " ++) . show
@@ -908,7 +908,7 @@ postValidate label action = action >>= \result →
             then throw $ SpaceFullyExploredButSearchNotTerminated
             else throw $ SpaceFullyExploredButWorkloadsRemain workers_and_workloads
     debugM $ " === END VALIDATE === " ++ label
-  ) >> return result
+  )) >> return result
 -- }}}
 
 receiveProgressUpdate :: -- {{{
@@ -1286,10 +1286,6 @@ validateWorkerNotKnown :: -- {{{
 validateWorkerNotKnown action worker_id = do
     Set.member worker_id <$> (use known_workers)
         >>= flip when (throw $ WorkerAlreadyKnown action worker_id)
--- }}}
-
-whenDebugging :: SupervisorMonadState worker_id result m ⇒ m () → m () -- {{{
-whenDebugging action = use debug_mode >>= flip when action
 -- }}}
 
 -- }}}
