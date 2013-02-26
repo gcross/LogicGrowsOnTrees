@@ -843,80 +843,130 @@ tests = -- {{{
             supervisorRemainingWorkers @?= []
          -- }}}
         ,testGroup "adding and removing workers" -- {{{
-            [testCase "add one worker then abort" $ do -- {{{
-                (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
-                    enableSupervisorDebugMode
-                    addWorker ()
-                    abortSupervisor
-                supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
-                supervisorRemainingWorkers @?= [()]
-                readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
-             -- }}}
-            ,testCase "add then remove one worker then abort" $ do -- {{{
-                (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
-                    enableSupervisorDebugMode
-                    addWorker ()
-                    removeWorker ()
-                    abortSupervisor
-                supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
-                supervisorRemainingWorkers @?= []
-                readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
-             -- }}}
-            ,testCase "add then remove then add one worker then abort" $ do -- {{{
-                (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
-                    enableSupervisorDebugMode
-                    addWorker 1
-                    removeWorker 1
-                    addWorker 2
-                    abortSupervisor
-                supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
-                supervisorRemainingWorkers @?= [2::Int]
-                readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
-             -- }}}
-            ,testCase "add two workers then remove first worker then abort" $ do -- {{{
-                (maybe_workload_ref,actions1) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
-                (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
-                    enableSupervisorDebugMode
-                    addWorker 1
-                    addWorker 2
-                    removeWorker 1
-                    abortSupervisor
-                supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
-                supervisorRemainingWorkers @?= [2::Int]
-                readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
-                readIORef broadcast_ids_list_ref >>= (@?= [[1]])
-             -- }}}
-            ,testProperty "add then remove many workers then abort" $ do -- {{{
-                (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
-                worker_ids_to_remove ←
-                   (fmap concat
-                    $
-                    forM (tail worker_ids_to_add)
-                    $
-                    \worker_id → do
-                        should_remove ← arbitrary
-                        if should_remove
-                            then return [worker_id]
-                            else return []
-                    ) >>= shuffle
-                let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
-
-                monadicIO . run $ do
-                    (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-                    (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions_2 $ do
+            [testGroup "without workload buffer" -- {{{
+                [testCase "add one worker then abort" $ do -- {{{
+                    (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
                         enableSupervisorDebugMode
-                        mapM_ addWorker worker_ids_to_add
-                        mapM_ removeWorker worker_ids_to_remove
+                        killWorkloadBuffer
+                        addWorker ()
                         abortSupervisor
                     supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
-                    sort supervisorRemainingWorkers @?= worker_ids_left 
-                    readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
-                    readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
+                    supervisorRemainingWorkers @?= [()]
+                    readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
+                 -- }}}
+                ,testCase "add then remove one worker then abort" $ do -- {{{
+                    (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
+                        enableSupervisorDebugMode
+                        killWorkloadBuffer
+                        addWorker ()
+                        removeWorker ()
+                        abortSupervisor
+                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorRemainingWorkers @?= []
+                    readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+                 -- }}}
+                ,testCase "add then remove then add one worker then abort" $ do -- {{{
+                    (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
+                        enableSupervisorDebugMode
+                        killWorkloadBuffer
+                        addWorker 1
+                        removeWorker 1
+                        addWorker 2
+                        abortSupervisor
+                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorRemainingWorkers @?= [2::Int]
+                    readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
+                 -- }}}
+                ,testCase "add two workers then remove first worker then abort" $ do -- {{{
+                    (maybe_workload_ref,actions1) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
+                    (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                        enableSupervisorDebugMode
+                        killWorkloadBuffer
+                        addWorker 1
+                        addWorker 2
+                        removeWorker 1
+                        abortSupervisor
+                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorRemainingWorkers @?= [2::Int]
+                    readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
+                    readIORef broadcast_ids_list_ref >>= (@?= [[1]])
+                 -- }}}
+                ,testProperty "add then remove many workers then abort" $ do -- {{{
+                    (NonEmpty worker_ids_to_add :: NonEmptyList UUID) ← arbitrary
+                    worker_ids_to_remove ←
+                       (fmap concat
+                        $
+                        forM (tail worker_ids_to_add)
+                        $
+                        \worker_id → do
+                            should_remove ← arbitrary
+                            if should_remove
+                                then return [worker_id]
+                                else return []
+                        ) >>= shuffle
+                    let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
+    
+                    monadicIO . run $ do
+                        (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                        (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
+                        SupervisorOutcome{..} ← runUnrestrictedSupervisor actions_2 $ do
+                            enableSupervisorDebugMode
+                            killWorkloadBuffer
+                            mapM_ addWorker worker_ids_to_add
+                            mapM_ removeWorker worker_ids_to_remove
+                            abortSupervisor
+                        supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                        sort supervisorRemainingWorkers @?= worker_ids_left 
+                        readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
+                        readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
+                 -- }}}
+                ]
+             -- }}}
+            ,testGroup "with workload buffer" -- {{{
+                [testCase "add one worker then abort" $ do -- {{{
+                    (maybe_workload_ref,actions1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                    (broadcasts_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                        enableSupervisorDebugMode
+                        addWorker ()
+                        abortSupervisor
+                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorRemainingWorkers @?= [()]
+                    readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
+                    readIORef broadcasts_ref >>= (@?= [[()]])
+                 -- }}}
+                ,testCase "add then remove one worker then abort" $ do -- {{{
+                    (maybe_workload_ref,actions1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+                    (broadcasts_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                        enableSupervisorDebugMode
+                        addWorker ()
+                        removeWorker ()
+                        abortSupervisor
+                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorRemainingWorkers @?= []
+                    readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
+                    readIORef broadcasts_ref >>= (@?= [[()]])
+                 -- }}}
+                ,testCase "add then remove then add one worker then abort" $ do -- {{{
+                    (maybe_workload_ref,actions1) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
+                    (broadcasts_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                        enableSupervisorDebugMode
+                        addWorker 1
+                        removeWorker 1
+                        addWorker 2
+                        abortSupervisor
+                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorRemainingWorkers @?= [2::Int]
+                    readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
+                    readIORef broadcasts_ref >>= (@?= [[1],[2]])
+                 -- }}}
+                ]
              -- }}}
             ]
          -- }}}
@@ -925,6 +975,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
                     enableSupervisorDebugMode
+                    killWorkloadBuffer
                     performGlobalProgressUpdate
                     abortSupervisor
                 supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
@@ -943,6 +994,7 @@ tests = -- {{{
                     let actions4 = ignoreAcceptWorkloadAction $ actions3
                     let progress = Progress Unexplored (Sum 0)
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor actions4 $ do
+                        killWorkloadBuffer
                         addWorker 0
                         forM_ (zip [0..] (tail active_workers)) $ \(prefix_count,worker_id) → do
                             addWorker worker_id
@@ -966,6 +1018,7 @@ tests = -- {{{
                 let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor actions3 $ do
                     enableSupervisorDebugMode
+                    killWorkloadBuffer
                     addWorker ()
                     performGlobalProgressUpdate
                     receiveProgressUpdate () $ ProgressUpdate progress entire_workload
@@ -982,6 +1035,7 @@ tests = -- {{{
                 let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor actions3 $ do
                     enableSupervisorDebugMode
+                    killWorkloadBuffer
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     performGlobalProgressUpdate
@@ -1010,15 +1064,17 @@ tests = -- {{{
             ]
          -- }}}
         ,testCase "starting from previous checkpoint" $ do -- {{{
-            (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+            (maybe_workload_ref,actions1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
+            (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
             let checkpoint = ChoiceCheckpoint Unexplored Unexplored
                 progress = Progress checkpoint (Sum 1)
-            SupervisorOutcome{..} ← runUnrestrictedSupervisorStartingFrom progress actions $ do
+            SupervisorOutcome{..} ← runUnrestrictedSupervisorStartingFrom progress actions2 $ do
                 addWorker ()
                 abortSupervisor
             supervisorTerminationReason @?= SupervisorAborted progress
             supervisorRemainingWorkers @?= [()]
             readIORef maybe_workload_ref >>= (@?= Just ((),(Workload Seq.empty checkpoint)))
+            readIORef broadcast_ids_list_ref >>= (@?= [[()]])
          -- }}}
         ]
      -- }}}

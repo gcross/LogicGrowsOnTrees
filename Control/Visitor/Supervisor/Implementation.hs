@@ -35,6 +35,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
+    , killWorkloadBuffer
     , liftContextToAbort
     , liftUserToAbort
     , localWithinAbort
@@ -58,7 +59,7 @@ import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
 import Control.Lens ((&))
 import Control.Lens.At (at)
-import Control.Lens.Getter ((^.),use,view)
+import Control.Lens.Getter ((^.),Getter,use,uses,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
 import Control.Lens.Internal.Zoom (Zoomed)
 import Control.Lens.Lens ((<%=),(<<%=),(<<.=),(%%=),(<<.=),Lens,Lens')
@@ -236,6 +237,7 @@ data RunStatistics = -- {{{
     ,   runAvailableWorkloadStatistics :: !(Statistics Int)
     ,   runInstantaneousWorkloadRequestRateStatistics :: !(Statistics Float)
     ,   runInstantaneousWorkloadStealTimeStatistics :: !(Statistics Float)
+    ,   runBufferSizeStatistics :: !(Statistics Int)
     } deriving (Eq,Show)
 -- }}}
 
@@ -285,6 +287,13 @@ data SupervisorConstants result worker_id m = SupervisorConstants -- {{{
 $( makeLenses ''SupervisorConstants )
 -- }}}
 
+data WorkloadBufferSizeParameters = WorkloadBufferSizeParameters -- {{{
+    {   _minimum_size :: {-# UNPACK #-} !Int
+    ,   _scale_factor :: {-# UNPACK #-} !Int
+    } deriving (Eq,Show)
+$( makeLenses ''WorkloadBufferSizeParameters )
+-- }}}
+
 data SupervisorState result worker_id = -- {{{
     SupervisorState
     {   _waiting_workers_or_available_workloads :: !(Either (Map worker_id (Maybe UTCTime)) (Set Workload))
@@ -309,6 +318,9 @@ data SupervisorState result worker_id = -- {{{
     ,   _instantaneous_workload_steal_time :: !ExponentiallyWeightedAverage
     ,   _instantaneous_workload_steal_time_statistics :: !(TimeWeightedStatistics Float)
     ,   _time_spent_in_supervisor_monad :: !NominalDiffTime
+    ,   _workload_buffer_size :: !Int
+    ,   _workload_buffer_size_parameters :: !WorkloadBufferSizeParameters
+    ,   _workload_buffer_size_statistics :: !(TimeWeightedStatistics Int)
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -362,6 +374,8 @@ type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker
 -- }}}
 
 -- Instances {{{
+
+type instance Zoomed (AbortMonad result worker_id m) = Zoomed (InsideAbortMonad result worker_id m)
 
 type instance Zoomed (ContextMonad result worker_id m) = Zoomed (InsideContextMonad result worker_id m)
 
@@ -522,7 +536,8 @@ checkWhetherMoreStealsAreNeeded = do
        && number_of_waiting_workers > 0
        && IntMap.null available_workers
       ) $ throw OutOfSourcesForNewWorkloads
-    let number_of_needed_steals = (number_of_waiting_workers - number_of_pending_workload_steals) `max` 0
+    workload_buffer_size ← use workload_buffer_size
+    let number_of_needed_steals = (workload_buffer_size + number_of_waiting_workers - number_of_pending_workload_steals) `max` 0
     when (number_of_needed_steals > 0) $ do
         let findWorkers accum 0 available_workers = (accum,available_workers)
             findWorkers accum n (IntMap.minViewWithKey → Nothing) = (accum,IntMap.empty)
@@ -769,6 +784,11 @@ getCurrentStatistics = do
             runStartTime
             (use $ instantaneous_workload_steal_time . current_average_value)
             (use instantaneous_workload_steal_time_statistics)
+    runBufferSizeStatistics ←
+        finalizeStatistics
+            runStartTime
+            (use workload_buffer_size)
+            (use workload_buffer_size_statistics)
     return RunStatistics{..}
 -- }}}
 
@@ -797,14 +817,24 @@ getWorkerDepth worker_id =
 -- }}}
 
 initialTimeWeightedStatisticsForStartingTime :: Num α ⇒ UTCTime → TimeWeightedStatistics α -- {{{
-initialTimeWeightedStatisticsForStartingTime starting_time =
+initialTimeWeightedStatisticsForStartingTime = flip initialTimeWeightedStatisticsForStartingTimeAndValue 0
+-- }}}
+
+initialTimeWeightedStatisticsForStartingTimeAndValue :: Num α ⇒ UTCTime → α → TimeWeightedStatistics α -- {{{
+initialTimeWeightedStatisticsForStartingTimeAndValue starting_time starting_value =
     TimeWeightedStatistics
-        0
+        starting_value
         starting_time
         0
         0
         (fromIntegral (maxBound :: Int))
         (fromIntegral (minBound :: Int))
+-- }}}
+
+killWorkloadBuffer :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m ()
+killWorkloadBuffer = do
+    workload_buffer_size .= 0
+    workload_buffer_size_parameters .= WorkloadBufferSizeParameters 0 0
 -- }}}
 
 liftContextToAbort :: Monad m ⇒ ContextMonad result worker_id m α → AbortMonad result worker_id m α -- {{{
@@ -1119,6 +1149,9 @@ runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCu
             ,   _instantaneous_workload_steal_time = ExponentiallyWeightedAverage start_time 0
             ,   _instantaneous_workload_steal_time_statistics = initialTimeWeightedStatisticsForStartingTime start_time
             ,   _time_spent_in_supervisor_monad = 0
+            ,   _workload_buffer_size = 4
+            ,   _workload_buffer_size_parameters = WorkloadBufferSizeParameters 4 3
+            ,   _workload_buffer_size_statistics = initialTimeWeightedStatisticsForStartingTimeAndValue start_time 4
             }
         )
     .
@@ -1217,6 +1250,25 @@ tryToObtainWorkloadFor is_new_worker worker_id =
       | is_new_worker = return Nothing
       | otherwise = Just <$> view current_time
 
+-- }}}
+
+updateBuffer :: -- {{{
+    ( SupervisorMonadConstraint m'
+    , SupervisorFullConstraint worker_id m
+    ) ⇒ ContextMonad result worker_id m ()
+updateBuffer = do
+    ratio ←
+        liftM2 (*)
+            (use instantaneous_workload_request_rate >>= computeInstantaneousRateFromDecayingSum)
+            (use $ instantaneous_workload_steal_time . current_average_value)
+    new_size ← uses workload_buffer_size_parameters $
+        liftA2 max
+            (^.minimum_size)
+            (ceiling . (* ratio) . fromIntegral . (^.scale_factor))
+    old_size ← workload_buffer_size <<.= new_size
+    when (new_size /= old_size) $ do
+        updateTimeWeightedStatisticsUsingLens workload_buffer_size_statistics new_size
+        when (new_size > old_size) checkWhetherMoreStealsAreNeeded
 -- }}}
 
 updateInstataneousWorkloadRequestRate :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m () -- {{{

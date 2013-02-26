@@ -35,6 +35,7 @@ module Control.Visitor.Supervisor -- {{{
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
+    , killWorkloadBuffer
     , performGlobalProgressUpdate
     , receiveProgressUpdate
     , receiveStolenWorkload
@@ -165,6 +166,10 @@ beginSupervisorOccupied = changeSupervisorOccupiedStatus True
 
 changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
 changeSupervisorOccupiedStatus = wrapIntoSupervisorMonad . Implementation.changeSupervisorOccupiedStatus
+-- }}}
+
+killWorkloadBuffer :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
+killWorkloadBuffer = wrapIntoSupervisorMonad Implementation.killWorkloadBuffer
 -- }}}
 
 disableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
