@@ -31,6 +31,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , abortSupervisorWithReason
     , addWorker
     , changeSupervisorOccupiedStatus
+    , current_time
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
@@ -59,7 +60,7 @@ import Control.Lens.At (at)
 import Control.Lens.Getter ((^.),use,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
 import Control.Lens.Internal.Zoom (Focusing,Zoomed)
-import Control.Lens.Lens ((<%=),(<<%=),(%%=),(<<.=),Lens,Lens')
+import Control.Lens.Lens ((<%=),(<<%=),(<<.=),(%%=),(<<.=),Lens,Lens')
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Zoom (Zoom(..))
 import Control.Monad ((>=>),liftM,liftM2,mplus,unless,void,when)
@@ -95,7 +96,8 @@ import Data.Set (Set)
 import qualified Data.Sequence as Seq
 import Data.Sequence ((><),Seq)
 import Data.Typeable (Typeable)
-import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime,getCurrentTime)
+import qualified Data.Time.Clock as Clock
+import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime)
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
@@ -274,11 +276,11 @@ data SupervisorCallbacks result worker_id m = -- {{{
     }
 -- }}}
 
-type SupervisorMonadState result worker_id = MonadState (SupervisorState result worker_id)
-
 data SupervisorConstants result worker_id m = SupervisorConstants -- {{{
     {   callbacks :: !(SupervisorCallbacks result worker_id m)
+    ,   _current_time :: UTCTime
     }
+$( makeLenses ''SupervisorConstants )
 -- }}}
 
 data SupervisorState result worker_id = -- {{{
@@ -307,6 +309,8 @@ data SupervisorState result worker_id = -- {{{
     }
 $( makeLenses ''SupervisorState )
 -- }}}
+
+type SupervisorMonadState result worker_id = MonadState (SupervisorState result worker_id)
 
 data SupervisorTerminationReason result worker_id = -- {{{
     SupervisorAborted (Progress result)
@@ -455,7 +459,7 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     infoM $ "Adding worker " ++ show worker_id
     validateWorkerNotKnown "adding worker" worker_id
     known_workers %= Set.insert worker_id
-    start_time ← liftIO getCurrentTime
+    start_time ← view current_time
     worker_occupation_statistics %= Map.insert worker_id (OccupationStatistics start_time start_time 0 False)
     tryToObtainWorkloadFor True worker_id
 -- }}}
@@ -466,47 +470,46 @@ beginWorkerOccupied :: -- {{{
     ) ⇒
     worker_id →
     ContextMonad result worker_id m ()
-beginWorkerOccupied = changeWorkerOccupiedStatus True
+beginWorkerOccupied = flip changeWorkerOccupiedStatus True
 -- }}}
 
 changeOccupiedStatus :: -- {{{
-    SupervisorMonadConstraint m ⇒
+    ( Monad m'
+    , MonadReader (SupervisorConstants result worker_id m) m'
+    ) ⇒
+    m' OccupationStatistics →
+    (OccupationStatistics → m' ()) →
     Bool →
-    OccupationStatistics →
-    m OccupationStatistics
-changeOccupiedStatus new_occupied_status = execStateT $
-    (/= new_occupied_status) <$> use is_currently_occupied
-    >>=
-    flip when (do
-        current_time ← liftIO getCurrentTime
-        is_currently_occupied .= new_occupied_status
-        last_time ← last_occupied_change_time <<%= const current_time
-        unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
-    )
+    m' ()
+changeOccupiedStatus getOccupation putOccupation new_occupied_status = do
+    old_occupation ← getOccupation
+    unless (old_occupation^.is_currently_occupied == new_occupied_status) $
+        (flip execStateT old_occupation $ do
+            current_time ← view current_time
+            is_currently_occupied .= new_occupied_status
+            last_time ← last_occupied_change_time <<.= current_time
+            unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
+        ) >>= putOccupation
 -- }}}
 
 changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → ContextMonad result worker_id m () -- {{{
-changeSupervisorOccupiedStatus new_status =
-    use supervisor_occupation_statistics
-    >>=
-    changeOccupiedStatus new_status
-    >>=
-    (supervisor_occupation_statistics .=)
+changeSupervisorOccupiedStatus =
+    changeOccupiedStatus
+        (use supervisor_occupation_statistics)
+        (supervisor_occupation_statistics .=)
 -- }}}
 
 changeWorkerOccupiedStatus :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    Bool →
     worker_id →
+    Bool →
     ContextMonad result worker_id m ()
-changeWorkerOccupiedStatus new_status worker_id =
-    use worker_occupation_statistics
-    >>=
-    changeOccupiedStatus new_status . fromJust . Map.lookup worker_id
-    >>=
-    (worker_occupation_statistics %=) . Map.insert worker_id
+changeWorkerOccupiedStatus worker_id =
+    changeOccupiedStatus
+        (fromJust . Map.lookup worker_id <$> use worker_occupation_statistics)
+        ((worker_occupation_statistics %=) . Map.insert worker_id)
 -- }}}
 
 checkWhetherMoreStealsAreNeeded :: -- {{{
@@ -540,7 +543,7 @@ checkWhetherMoreStealsAreNeeded = do
                 if number_of_steal_request_failures >= number_of_workers_to_steal_from
                     then (0,number_of_steal_request_failures-number_of_workers_to_steal_from)
                     else (number_of_workers_to_steal_from-number_of_steal_request_failures,0)
-        current_time ← liftIO getCurrentTime
+        current_time ← view current_time
         steal_request_matcher_queue %= (MultiSet.insertMany current_time number_of_additional_requests)
         workers_pending_workload_steal %= (Set.union . Set.fromList) workers_to_steal_from
         unless (null workers_to_steal_from) $ do
@@ -625,7 +628,7 @@ endWorkerOccupied :: -- {{{
     ) ⇒
     worker_id →
     ContextMonad result worker_id m ()
-endWorkerOccupied = changeWorkerOccupiedStatus False
+endWorkerOccupied = flip changeWorkerOccupiedStatus False
 -- }}}
 
 enqueueWorkerForSteal :: -- {{{
@@ -683,17 +686,19 @@ finalizeStatistics :: -- {{{
     ( Ord α
     , Real α
     , SupervisorMonadConstraint m
+    , SupervisorMonadConstraint m'
+    , MonadReader (SupervisorConstants result worker_id m) m'
     ) ⇒
     UTCTime →
-    m α →
-    m (TimeWeightedStatistics α) →
-    m (Statistics α)
+    m' α →
+    m' (TimeWeightedStatistics α) →
+    m' (Statistics α)
 finalizeStatistics start_time getFinalValue getWeightedStatistics = do
-    end_time ← liftIO getCurrentTime
+    end_time ← view current_time
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
     final_value ← getFinalValue
     getWeightedStatistics >>= (evalStateT $ do
-        updateTimeWeightedStatistics final_value
+        updateTimeWeightedStatistics final_value end_time
         statAverage ← (/total_weight) <$> use first_moment
         statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
         statMin ← min final_value <$> use minimum_value
@@ -708,11 +713,13 @@ getCurrentProgress = use current_progress
 
 getCurrentStatistics :: -- {{{
     ( SupervisorFullConstraint worker_id m
-    , MonadState (SupervisorState result worker_id) m
+    , SupervisorMonadConstraint m'
+    , MonadState (SupervisorState result worker_id) m'
+    , MonadReader (SupervisorConstants result worker_id m) m'
     ) ⇒
-    m RunStatistics
+    m' RunStatistics
 getCurrentStatistics = do
-    runEndTime ← liftIO getCurrentTime
+    runEndTime ← view current_time
     runStartTime ← use (supervisor_occupation_statistics . start_time)
     let runWallTime = runEndTime `diffUTCTime` runStartTime
     runSupervisorOccupation ←
@@ -969,17 +976,30 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
                     tryToObtainWorkloadFor False worker_id
 -- }}}
 
-retireManyOccupationStatistics :: (Functor f, SupervisorMonadConstraint m) ⇒ f OccupationStatistics → m (f RetiredOccupationStatistics) -- {{{
+retireManyOccupationStatistics :: -- {{{
+    ( Functor f
+    , SupervisorMonadConstraint m
+    , Monad m'
+    , MonadReader (SupervisorConstants result worker_id m) m'
+    ) ⇒
+    f OccupationStatistics →
+    m' (f RetiredOccupationStatistics)
 retireManyOccupationStatistics occupied_statistics =
-    liftIO getCurrentTime >>= \current_time → return $
+    view current_time >>= \current_time → return $
     fmap (\o → mempty
         & occupied_time .~ (o^.total_occupied_time + if o^.is_currently_occupied then current_time `diffUTCTime` (o^.last_occupied_change_time) else 0)
         & total_time .~ (current_time `diffUTCTime` (o^.start_time))
     ) occupied_statistics
 -- }}}
 
-retireOccupationStatistics :: SupervisorMonadConstraint m ⇒ OccupationStatistics → m RetiredOccupationStatistics -- {{{
-retireOccupationStatistics = fmap head . retireManyOccupationStatistics . (:[])
+retireOccupationStatistics :: -- {{{
+    ( SupervisorMonadConstraint m
+    , Monad m'
+    , MonadReader (SupervisorConstants result worker_id m) m'
+    ) ⇒
+    OccupationStatistics →
+    m' RetiredOccupationStatistics
+retireOccupationStatistics = liftM head . retireManyOccupationStatistics . (:[])
 -- }}}
 
 removeWorker :: -- {{{
@@ -1049,8 +1069,8 @@ runSupervisorStartingFrom :: -- {{{
     SupervisorCallbacks result worker_id m →
     (∀ α. AbortMonad result worker_id m α) →
     m (SupervisorOutcome result worker_id)
-runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentTime >>= \start_time →
-    flip runReaderT (SupervisorConstants actions)
+runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCurrentTime >>= \start_time →
+    flip runReaderT (SupervisorConstants actions undefined)
     .
     flip evalStateT
         (SupervisorState
@@ -1126,8 +1146,14 @@ setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → ContextMonad 
 setSupervisorDebugMode = (debug_mode .=)
 -- }}}
 
-timePassedSince :: SupervisorMonadConstraint m ⇒ UTCTime → m NominalDiffTime -- {{{
-timePassedSince = (<$> liftIO getCurrentTime) . flip diffUTCTime
+timePassedSince :: -- {{{
+    ( Functor m'
+    , SupervisorMonadConstraint m
+    , MonadReader (SupervisorConstants result worker_id m)  m'
+    ) ⇒
+    UTCTime →
+    m' NominalDiffTime
+timePassedSince = (<$> view current_time) . flip diffUTCTime
 -- }}}
 
 tryGetWaitingWorker :: -- {{{
@@ -1171,13 +1197,13 @@ tryToObtainWorkloadFor is_new_worker worker_id =
   where
     getMaybeTimeStartedWorking
       | is_new_worker = return Nothing
-      | otherwise = Just <$> liftIO getCurrentTime
+      | otherwise = Just <$> view current_time
 
 -- }}}
 
 updateInstataneousWorkloadRequestRate :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m () -- {{{
 updateInstataneousWorkloadRequestRate = do
-    current_time ← liftIO getCurrentTime
+    current_time ← view current_time
     previous_value ← instantaneous_workload_request_rate %%= ((^.decaying_sum_value) &&& addPointToExponentiallyDecayingSum current_time)
     current_value ← use (instantaneous_workload_request_rate . decaying_sum_value)
     updateTimeWeightedStatisticsUsingLens instantaneous_workload_request_rate_statistics ((current_value + previous_value) / 2)
@@ -1185,15 +1211,14 @@ updateInstataneousWorkloadRequestRate = do
 
 updateInstataneousWorkloadStealTime :: SupervisorMonadConstraint m ⇒ NominalDiffTime → ContextMonad result worker_id m () -- {{{
 updateInstataneousWorkloadStealTime (fromRational . toRational → current_value) = do
-    current_time ← liftIO getCurrentTime
+    current_time ← view current_time
     previous_value ← instantaneous_workload_steal_time %%= ((^.current_average_value) &&& addPointToExponentiallyWeightedAverage current_value current_time)
     current_value ← use (instantaneous_workload_steal_time . current_average_value)
     updateTimeWeightedStatisticsUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
 -- }}}
 
-updateTimeWeightedStatistics :: (MonadIO m, Real α) ⇒ α → StateT (TimeWeightedStatistics α) m () -- {{{
-updateTimeWeightedStatistics value = do 
-    current_time ← liftIO getCurrentTime
+updateTimeWeightedStatistics :: (MonadIO m, Real α) ⇒ α → UTCTime → StateT (TimeWeightedStatistics α) m () -- {{{
+updateTimeWeightedStatistics value current_time = do 
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
     let weight = fromRational . toRational $ (current_time `diffUTCTime` last_time)
@@ -1210,7 +1235,8 @@ updateTimeWeightedStatisticsUsingLens :: -- {{{
     Lens' (SupervisorState result worker_id) (TimeWeightedStatistics α) →
     α →
     ContextMonad result worker_id m ()
-updateTimeWeightedStatisticsUsingLens field = ContextMonad . void . zoom field . updateTimeWeightedStatistics
+updateTimeWeightedStatisticsUsingLens field value =
+    view current_time >>= ContextMonad . void . zoom field . updateTimeWeightedStatistics value
 -- }}}
 
 validateWorkerKnown :: -- {{{
