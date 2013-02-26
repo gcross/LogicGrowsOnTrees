@@ -360,12 +360,12 @@ type instance Zoomed (ContextMonad result worker_id m) = Focusing ( -- {{{
 -- }}}
 
 instance Monad m ⇒ MonadReader (SupervisorConstants result worker_id m) (ContextMonad result worker_id m) where -- {{{
-    ask = ContextMonad ask 
+    ask = ContextMonad ask
     local f = ContextMonad . local f . unwrapContextMonad
 -- }}}
 
 instance Monad m ⇒ MonadState (SupervisorState result worker_id) (ContextMonad result worker_id m) where -- {{{
-    get = ContextMonad get 
+    get = ContextMonad get
     put = ContextMonad . put
 -- }}}
 
