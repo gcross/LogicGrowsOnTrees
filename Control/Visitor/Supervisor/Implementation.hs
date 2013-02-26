@@ -16,9 +16,9 @@
 -- }}}
 
 module Control.Visitor.Supervisor.Implementation -- {{{
-    ( RunStatistics(..)
+    ( AbortMonad()
+    , RunStatistics(..)
     , Statistics(..)
-    , SupervisorAbortMonad()
     , SupervisorCallbacks(..)
     , SupervisorConstants(..)
     , SupervisorFullConstraint
@@ -322,22 +322,22 @@ data SupervisorOutcome result worker_id = -- {{{
     } deriving (Eq,Show)
 -- }}}
 
-type InsideSupervisorContext result worker_id m α = -- {{{
+type InsideContextMonad result worker_id m α = -- {{{
     StateT (SupervisorState result worker_id) (
         ReaderT (SupervisorConstants result worker_id m) (
             m
         )
     ) α -- }}}
-newtype SupervisorContext result worker_id m α = SupervisorContext -- {{{
-    { unwrapSupervisorContext :: InsideSupervisorContext result worker_id m α
+newtype ContextMonad result worker_id m α = ContextMonad -- {{{
+    { unwrapContextMonad :: InsideContextMonad result worker_id m α
     } deriving (Applicative,Functor,Monad,MonadIO)
 -- }}}
 type ZoomedInStateContext result worker_id m s = StateT s (ReaderT (SupervisorCallbacks result worker_id m) m)
 
-type SupervisorAbortMonad result worker_id m = -- {{{
+type AbortMonad result worker_id m = -- {{{
     AbortT
         (SupervisorOutcome result worker_id)
-        (SupervisorContext result worker_id m)
+        (ContextMonad result worker_id m)
 -- }}}
 
 -- }}}
@@ -350,7 +350,7 @@ type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker
 
 -- Instances {{{
 
-type instance Zoomed (SupervisorContext result worker_id m) = Focusing ( -- {{{
+type instance Zoomed (ContextMonad result worker_id m) = Focusing ( -- {{{
     StateT (SupervisorState result worker_id) (
         ReaderT (SupervisorConstants result worker_id m) (
             m
@@ -359,14 +359,14 @@ type instance Zoomed (SupervisorContext result worker_id m) = Focusing ( -- {{{
  )
 -- }}}
 
-instance Monad m ⇒ MonadReader (SupervisorConstants result worker_id m) (SupervisorContext result worker_id m) where -- {{{
-    ask = SupervisorContext ask 
-    local f = SupervisorContext . local f . unwrapSupervisorContext
+instance Monad m ⇒ MonadReader (SupervisorConstants result worker_id m) (ContextMonad result worker_id m) where -- {{{
+    ask = ContextMonad ask 
+    local f = ContextMonad . local f . unwrapContextMonad
 -- }}}
 
-instance Monad m ⇒ MonadState (SupervisorState result worker_id) (SupervisorContext result worker_id m) where -- {{{
-    get = SupervisorContext get 
-    put = SupervisorContext . put
+instance Monad m ⇒ MonadState (SupervisorState result worker_id) (ContextMonad result worker_id m) where -- {{{
+    get = ContextMonad get 
+    put = ContextMonad . put
 -- }}}
 
 instance Monoid RetiredOccupationStatistics where -- {{{
@@ -400,14 +400,14 @@ instance CalcVariance TimeStatisticsMonoid where -- {{{
 
 -- Functions {{{
 
-abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ SupervisorAbortMonad result worker_id m α -- {{{
+abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ AbortMonad result worker_id m α -- {{{
 abortSupervisor = use current_progress >>= abortSupervisorWithReason . SupervisorAborted
 -- }}}
 
 abortSupervisorWithReason ::  -- {{{
     SupervisorFullConstraint worker_id m ⇒
     SupervisorTerminationReason result worker_id →
-    SupervisorAbortMonad result worker_id m α
+    AbortMonad result worker_id m α
 abortSupervisorWithReason reason =
     (SupervisorOutcome
         <$> (return reason)
@@ -435,7 +435,7 @@ addWorker :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     infoM $ "Adding worker " ++ show worker_id
     validateWorkerNotKnown "adding worker" worker_id
@@ -450,7 +450,7 @@ beginWorkerOccupied :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 beginWorkerOccupied = changeWorkerOccupiedStatus True
 -- }}}
 
@@ -470,7 +470,7 @@ changeOccupiedStatus new_occupied_status = execStateT $
     )
 -- }}}
 
-changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorContext result worker_id m () -- {{{
+changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → ContextMonad result worker_id m () -- {{{
 changeSupervisorOccupiedStatus new_status =
     use supervisor_occupation_statistics
     >>=
@@ -485,7 +485,7 @@ changeWorkerOccupiedStatus :: -- {{{
     ) ⇒
     Bool →
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 changeWorkerOccupiedStatus new_status worker_id =
     use worker_occupation_statistics
     >>=
@@ -498,7 +498,7 @@ checkWhetherMoreStealsAreNeeded :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 checkWhetherMoreStealsAreNeeded = do
     number_of_waiting_workers ← either Map.size (const 0) <$> use waiting_workers_or_available_workloads
     number_of_pending_workload_steals ← Set.size <$> use workers_pending_workload_steal
@@ -538,7 +538,7 @@ clearPendingProgressUpdate :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 clearPendingProgressUpdate worker_id =
     Set.member worker_id <$> use workers_pending_progress_update >>= flip when
     -- Note, the conditional above is needed to prevent a "misfire" where
@@ -566,7 +566,7 @@ deactivateWorker :: -- {{{
     ) ⇒
     Bool →
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 deactivateWorker reenqueue_workload worker_id = do
     pending_steal ← workers_pending_workload_steal %%= (Set.member worker_id &&& Set.delete worker_id)
     when pending_steal $ steal_request_failures += 1
@@ -589,7 +589,7 @@ dequeueWorkerForSteal :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 dequeueWorkerForSteal worker_id =
     getWorkerDepth worker_id >>= \depth →
         available_workers_for_steal %=
@@ -600,7 +600,7 @@ dequeueWorkerForSteal worker_id =
                 depth
 -- }}}
 
-endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m () -- {{{
+endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m () -- {{{
 endSupervisorOccupied = changeSupervisorOccupiedStatus False
 -- }}}
 
@@ -609,7 +609,7 @@ endWorkerOccupied :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 endWorkerOccupied = changeWorkerOccupiedStatus False
 -- }}}
 
@@ -618,7 +618,7 @@ enqueueWorkerForSteal :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 enqueueWorkerForSteal worker_id =
     getWorkerDepth worker_id >>= \depth →
         available_workers_for_steal %=
@@ -632,7 +632,7 @@ enqueueWorkload :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     Workload →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 enqueueWorkload workload =
     use waiting_workers_or_available_workloads
     >>=
@@ -664,7 +664,7 @@ extractTimeStatistics =
         <*>  calcStddev
 -- }}}
 
-finalizeStatistics :: (Ord α, Real α, SupervisorMonadConstraint m) ⇒ UTCTime → SupervisorContext worker_id result m α → SupervisorContext worker_id result m (TimeWeightedStatistics α) → SupervisorContext worker_id result m (Statistics α) -- {{{ 
+finalizeStatistics :: (Ord α, Real α, SupervisorMonadConstraint m) ⇒ UTCTime → ContextMonad worker_id result m α → ContextMonad worker_id result m (TimeWeightedStatistics α) → ContextMonad worker_id result m (Statistics α) -- {{{ 
 finalizeStatistics start_time getFinalValue getWeightedStatistics = do
     end_time ← liftIO getCurrentTime
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
@@ -679,11 +679,11 @@ finalizeStatistics start_time getFinalValue getWeightedStatistics = do
      )
 -- }}}
 
-getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m (Progress result) -- {{{
+getCurrentProgress :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m (Progress result) -- {{{
 getCurrentProgress = use current_progress
 -- }}}
 
-getCurrentStatistics :: SupervisorFullConstraint worker_id m ⇒ SupervisorContext result worker_id m RunStatistics -- {{{
+getCurrentStatistics :: SupervisorFullConstraint worker_id m ⇒ ContextMonad result worker_id m RunStatistics -- {{{
 getCurrentStatistics = do
     runEndTime ← liftIO getCurrentTime
     runStartTime ← use (supervisor_occupation_statistics . start_time)
@@ -725,7 +725,7 @@ getCurrentStatistics = do
     return RunStatistics{..}
 -- }}}
 
-getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m Int -- {{{
+getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m Int -- {{{
 getNumberOfWorkers = liftM Set.size . use $ known_workers
 -- }}}
 
@@ -738,7 +738,7 @@ getWorkerDepth :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m Int
+    ContextMonad result worker_id m Int
 getWorkerDepth worker_id =
     maybe
         (error $ "Attempted to use the depth of inactive worker " ++ show worker_id ++ ".")
@@ -760,28 +760,28 @@ initialTimeWeightedStatisticsForStartingTime starting_time =
         (fromIntegral (minBound :: Int))
 -- }}}
 
-liftUserToContext :: Monad m ⇒ m α → SupervisorContext result worker_id m α -- {{{
-liftUserToContext = SupervisorContext . lift . lift
+liftUserToContext :: Monad m ⇒ m α → ContextMonad result worker_id m α -- {{{
+liftUserToContext = ContextMonad . lift . lift
 -- }}}
 
 localWithinAbort :: -- {{{
     MonadReader r m ⇒
     (r → r) →
-    SupervisorAbortMonad result worker_id m α →
-    SupervisorAbortMonad result worker_id m α
+    AbortMonad result worker_id m α →
+    AbortMonad result worker_id m α
 localWithinAbort f = AbortT . localWithinContext f . unwrapAbortT
 -- }}}
 
 localWithinContext :: -- {{{
     MonadReader r m ⇒
     (r → r) →
-    SupervisorContext result worker_id m α →
-    SupervisorContext result worker_id m α
+    ContextMonad result worker_id m α →
+    ContextMonad result worker_id m α
 localWithinContext f m = do
     actions ← ask
     old_state ← get
     (result,new_state) ←
-        SupervisorContext
+        ContextMonad
         .
         lift
         .
@@ -793,7 +793,7 @@ localWithinContext f m = do
         .
         flip runStateT old_state
         .
-        unwrapSupervisorContext
+        unwrapContextMonad
         $
         m
     put new_state
@@ -804,7 +804,7 @@ performGlobalProgressUpdate :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" $ do
     infoM $ "Performing global progress update."
     active_worker_ids ← Map.keysSet <$> use active_workers
@@ -865,7 +865,7 @@ receiveProgressUpdate :: -- {{{
     ) ⇒
     worker_id →
     ProgressUpdate result →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") $ do
     infoM $ "Received progress update from " ++ show worker_id
     validateWorkerKnownAndActive "receiving progress update" worker_id
@@ -884,7 +884,7 @@ receiveStolenWorkload :: -- {{{
     ) ⇒
     worker_id →
     Maybe (StolenWorkload result) →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") $ do
     infoM $ "Received stolen workload from " ++ show worker_id
     validateWorkerKnownAndActive "receiving stolen workload" worker_id
@@ -909,7 +909,7 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     Bool →
     worker_id →
     Progress result →
-    SupervisorAbortMonad result worker_id m ()
+    AbortMonad result worker_id m ()
 receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (progressCheckpoint final_progress)) $ do
     infoM $ if remove_worker
         then "Worker " ++ show worker_id ++ " finished and removed."
@@ -952,7 +952,7 @@ removeWorker :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) $ do
     infoM $ "Removing worker " ++ show worker_id
     validateWorkerKnown "removing the worker" worker_id
@@ -964,7 +964,7 @@ removeWorkerIfPresent :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 removeWorkerIfPresent worker_id = postValidate ("removeWorker " ++ show worker_id) $ do
     whenM (Set.member worker_id <$> use known_workers) $ do
         infoM $ "Removing worker " ++ show worker_id
@@ -976,7 +976,7 @@ retireWorker :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 retireWorker worker_id = do
     known_workers %= Set.delete worker_id
     retired_occupation_statistics ←
@@ -993,7 +993,7 @@ retireAndDeactivateWorker :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 retireAndDeactivateWorker worker_id = do
     retireWorker worker_id
     ifM (isJust . Map.lookup worker_id <$> use active_workers)
@@ -1012,7 +1012,7 @@ runSupervisorStartingFrom :: -- {{{
     ) ⇒
     Progress result →
     SupervisorCallbacks result worker_id m →
-    (∀ α. SupervisorAbortMonad result worker_id m α) →
+    (∀ α. AbortMonad result worker_id m α) →
     m (SupervisorOutcome result worker_id)
 runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentTime >>= \start_time →
     flip runReaderT (SupervisorConstants actions)
@@ -1049,7 +1049,7 @@ runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentT
             }
         )
     .
-    unwrapSupervisorContext
+    unwrapContextMonad
     .
     runAbortT
     $
@@ -1060,7 +1060,7 @@ sendCurrentProgressToUser :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 sendCurrentProgressToUser = do
     callback ← asks (callbacks >>> receiveCurrentProgress)
     current_progress ← use current_progress
@@ -1073,7 +1073,7 @@ sendWorkloadTo :: -- {{{
     ) ⇒
     Workload →
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 sendWorkloadTo workload worker_id = do
     infoM $ "Sending workload to " ++ show worker_id
     asks (callbacks >>> sendWorkloadToWorker) >>= liftUserToContext . (\f → f workload worker_id)
@@ -1085,7 +1085,7 @@ sendWorkloadTo workload worker_id = do
     checkWhetherMoreStealsAreNeeded
 -- }}}
 
-setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorContext result worker_id m () -- {{{
+setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → ContextMonad result worker_id m () -- {{{
 setSupervisorDebugMode = (debug_mode .=)
 -- }}}
 
@@ -1097,7 +1097,7 @@ tryGetWaitingWorker :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    SupervisorContext result worker_id m (Maybe worker_id)
+    ContextMonad result worker_id m (Maybe worker_id)
 tryGetWaitingWorker =
     either (fmap (fst . fst) . Map.minViewWithKey) (const Nothing)
     <$>
@@ -1110,7 +1110,7 @@ tryToObtainWorkloadFor :: -- {{{
     ) ⇒
     Bool →
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 tryToObtainWorkloadFor is_new_worker worker_id =
     unless is_new_worker updateInstataneousWorkloadRequestRate
     >>
@@ -1138,7 +1138,7 @@ tryToObtainWorkloadFor is_new_worker worker_id =
 
 -- }}}
 
-updateInstataneousWorkloadRequestRate :: SupervisorMonadConstraint m ⇒ SupervisorContext result worker_id m () -- {{{
+updateInstataneousWorkloadRequestRate :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m () -- {{{
 updateInstataneousWorkloadRequestRate = do
     current_time ← liftIO getCurrentTime
     previous_value ← instantaneous_workload_request_rate %%= ((^.decaying_sum_value) &&& addPointToExponentiallyDecayingSum current_time)
@@ -1146,7 +1146,7 @@ updateInstataneousWorkloadRequestRate = do
     updateTimeWeightedStatisticsUsingLens instantaneous_workload_request_rate_statistics ((current_value + previous_value) / 2)
 -- }}}
 
-updateInstataneousWorkloadStealTime :: SupervisorMonadConstraint m ⇒ NominalDiffTime → SupervisorContext result worker_id m () -- {{{
+updateInstataneousWorkloadStealTime :: SupervisorMonadConstraint m ⇒ NominalDiffTime → ContextMonad result worker_id m () -- {{{
 updateInstataneousWorkloadStealTime (fromRational . toRational → current_value) = do
     current_time ← liftIO getCurrentTime
     previous_value ← instantaneous_workload_steal_time %%= ((^.current_average_value) &&& addPointToExponentiallyWeightedAverage current_value current_time)
@@ -1172,8 +1172,8 @@ updateTimeWeightedStatisticsUsingLens :: -- {{{
     (Real α, SupervisorMonadConstraint m) ⇒
     Lens' (SupervisorState result worker_id) (TimeWeightedStatistics α) →
     α →
-    SupervisorContext result worker_id m ()
-updateTimeWeightedStatisticsUsingLens field = SupervisorContext . void . zoom field . updateTimeWeightedStatistics
+    ContextMonad result worker_id m ()
+updateTimeWeightedStatisticsUsingLens field = ContextMonad . void . zoom field . updateTimeWeightedStatistics
 -- }}}
 
 validateWorkerKnown :: -- {{{
@@ -1182,7 +1182,7 @@ validateWorkerKnown :: -- {{{
     ) ⇒
     String →
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 validateWorkerKnown action worker_id =
     Set.notMember worker_id <$> (use known_workers)
         >>= flip when (throw $ WorkerNotKnown action worker_id)
@@ -1194,7 +1194,7 @@ validateWorkerKnownAndActive :: -- {{{
     ) ⇒
     String →
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 validateWorkerKnownAndActive action worker_id = do
     validateWorkerKnown action worker_id
     Set.notMember worker_id <$> (use known_workers)
@@ -1207,7 +1207,7 @@ validateWorkerNotKnown :: -- {{{
     ) ⇒
     String →
     worker_id →
-    SupervisorContext result worker_id m ()
+    ContextMonad result worker_id m ()
 validateWorkerNotKnown action worker_id = do
     Set.member worker_id <$> (use known_workers)
         >>= flip when (throw $ WorkerAlreadyKnown action worker_id)

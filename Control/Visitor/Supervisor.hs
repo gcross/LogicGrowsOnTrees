@@ -70,9 +70,9 @@ import Control.Visitor.Worker (ProgressUpdate,StolenWorkload)
 
 import qualified Control.Visitor.Supervisor.Implementation as Implementation
 import Control.Visitor.Supervisor.Implementation -- {{{
-    ( RunStatistics(..)
+    ( AbortMonad()
+    , RunStatistics(..)
     , Statistics(..)
-    , SupervisorAbortMonad()
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
@@ -89,7 +89,7 @@ import Control.Visitor.Supervisor.Implementation -- {{{
 
 newtype SupervisorMonad result worker_id m α = -- {{{
     SupervisorMonad {
-        unwrapSupervisorMonad :: SupervisorAbortMonad result worker_id m α
+        unwrapSupervisorMonad :: AbortMonad result worker_id m α
     } deriving (Applicative,Functor,Monad,MonadIO)
 -- }}}
 
