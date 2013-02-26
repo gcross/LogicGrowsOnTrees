@@ -18,6 +18,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , Statistics(..)
     , SupervisorAbortMonad()
     , SupervisorCallbacks(..)
+    , SupervisorConstants(..)
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
@@ -270,6 +271,11 @@ data SupervisorCallbacks result worker_id m = -- {{{
 
 type SupervisorMonadState result worker_id = MonadState (SupervisorState result worker_id)
 
+data SupervisorConstants result worker_id m = SupervisorConstants -- {{{
+    {   callbacks :: !(SupervisorCallbacks result worker_id m)
+    }
+-- }}}
+
 data SupervisorState result worker_id = -- {{{
     SupervisorState
     {   _waiting_workers_or_available_workloads :: !(Either (Map worker_id (Maybe UTCTime)) (Set Workload))
@@ -312,7 +318,7 @@ data SupervisorOutcome result worker_id = -- {{{
     } deriving (Eq,Show)
 -- }}}
 
-type SupervisorContext result worker_id m = StateT (SupervisorState result worker_id) (ReaderT (SupervisorCallbacks result worker_id m) m)
+type SupervisorContext result worker_id m = StateT (SupervisorState result worker_id) (ReaderT (SupervisorConstants result worker_id m) m)
 type ZoomedInStateContext result worker_id m s = StateT s (ReaderT (SupervisorCallbacks result worker_id m) m)
 
 type SupervisorAbortMonad result worker_id m = -- {{{
@@ -492,7 +498,7 @@ checkWhetherMoreStealsAreNeeded = do
         workers_pending_workload_steal %= (Set.union . Set.fromList) workers_to_steal_from
         unless (null workers_to_steal_from) $ do
             infoM $ "Sending workload steal requests to " ++ show workers_to_steal_from
-            asks broadcastWorkloadStealToWorkers >>= liftUserToContext . ($ workers_to_steal_from)
+            asks (callbacks >>> broadcastWorkloadStealToWorkers) >>= liftUserToContext . ($ workers_to_steal_from)
 -- }}}
 
 clearPendingProgressUpdate :: -- {{{
@@ -766,7 +772,7 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" $ do
         then sendCurrentProgressToUser
         else do
             workers_pending_progress_update .= active_worker_ids
-            asks broadcastProgressUpdateToWorkers >>= liftUserToContext . ($ Set.toList active_worker_ids)
+            asks (callbacks >>> broadcastProgressUpdateToWorkers) >>= liftUserToContext . ($ Set.toList active_worker_ids)
 -- }}}
 
 postValidate :: -- {{{
@@ -969,7 +975,7 @@ runSupervisorStartingFrom :: -- {{{
     (∀ α. SupervisorAbortMonad result worker_id m α) →
     m (SupervisorOutcome result worker_id)
 runSupervisorStartingFrom starting_progress actions program = liftIO getCurrentTime >>= \start_time →
-    flip runReaderT actions
+    flip runReaderT (SupervisorConstants actions)
     .
     flip evalStateT
         (SupervisorState
@@ -1014,7 +1020,7 @@ sendCurrentProgressToUser :: -- {{{
     ) ⇒
     SupervisorContext result worker_id m ()
 sendCurrentProgressToUser = do
-    callback ← asks receiveCurrentProgress
+    callback ← asks (callbacks >>> receiveCurrentProgress)
     current_progress ← use current_progress
     liftUserToContext (callback current_progress)
 -- }}}
@@ -1028,7 +1034,7 @@ sendWorkloadTo :: -- {{{
     SupervisorContext result worker_id m ()
 sendWorkloadTo workload worker_id = do
     infoM $ "Sending workload to " ++ show worker_id
-    asks sendWorkloadToWorker >>= liftUserToContext . (\f → f workload worker_id)
+    asks (callbacks >>> sendWorkloadToWorker) >>= liftUserToContext . (\f → f workload worker_id)
     isNothing . Map.lookup worker_id <$> use active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %= Map.insert worker_id workload
