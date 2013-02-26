@@ -313,7 +313,6 @@ data SupervisorState result worker_id = -- {{{
 $( makeLenses ''SupervisorState )
 -- }}}
 
-
 data SupervisorTerminationReason result worker_id = -- {{{
     SupervisorAborted (Progress result)
   | SupervisorCompleted result
