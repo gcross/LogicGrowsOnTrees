@@ -71,6 +71,7 @@ import Control.Visitor.Worker (ProgressUpdate,StolenWorkload)
 import qualified Control.Visitor.Supervisor.Implementation as Implementation
 import Control.Visitor.Supervisor.Implementation -- {{{
     ( AbortMonad()
+    , ContextMonad()
     , RunStatistics(..)
     , Statistics(..)
     , SupervisorCallbacks(..)
@@ -83,6 +84,12 @@ import Control.Visitor.Supervisor.Implementation -- {{{
     , liftUserToContext
     , localWithinContext
     ) -- }}}
+-- }}}
+
+-- Classes {{{
+class WrappableIntoSupervisorMonad w where -- {{{
+    wrapIntoSupervisorMonad :: MonadIO m ⇒ w result worker_id m α → SupervisorMonad result worker_id m α
+-- }}}
 -- }}}
 
 -- Types {{{
@@ -117,6 +124,10 @@ instance MonadState s m ⇒ MonadState s (SupervisorMonad result worker_id m) wh
     put = lift . put
 -- }}}
 
+instance WrappableIntoSupervisorMonad ContextMonad where -- {{{
+    wrapIntoSupervisorMonad = SupervisorMonad . lift
+-- }}}
+
 -- }}}
 
 -- Exposed functions {{{
@@ -131,7 +142,7 @@ addWorker :: -- {{{
     ) ⇒
     worker_id →
     SupervisorMonad result worker_id m ()
-addWorker = SupervisorMonad . lift . Implementation.addWorker
+addWorker = wrapIntoSupervisorMonad . Implementation.addWorker
 -- }}}
 
 beginSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
@@ -139,7 +150,7 @@ beginSupervisorOccupied = changeSupervisorOccupiedStatus True
 -- }}}
 
 changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
-changeSupervisorOccupiedStatus = SupervisorMonad . lift . Implementation.changeSupervisorOccupiedStatus
+changeSupervisorOccupiedStatus = wrapIntoSupervisorMonad . Implementation.changeSupervisorOccupiedStatus
 -- }}}
 
 disableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m () -- {{{
@@ -155,17 +166,17 @@ endSupervisorOccupied = changeSupervisorOccupiedStatus False
 -- }}}
 
 getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m (Progress result) -- {{{
-getCurrentProgress = SupervisorMonad . lift $ Implementation.getCurrentProgress
+getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
 -- }}}
 
 getCurrentStatistics :: -- {{{
     SupervisorFullConstraint worker_id m ⇒
     SupervisorMonad result worker_id m RunStatistics
-getCurrentStatistics = SupervisorMonad . lift $ Implementation.getCurrentStatistics
+getCurrentStatistics = wrapIntoSupervisorMonad Implementation.getCurrentStatistics
 -- }}}
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m Int -- {{{
-getNumberOfWorkers = SupervisorMonad . lift $ Implementation.getNumberOfWorkers
+getNumberOfWorkers = wrapIntoSupervisorMonad Implementation.getNumberOfWorkers
 -- }}}
 
 performGlobalProgressUpdate :: -- {{{
@@ -173,7 +184,7 @@ performGlobalProgressUpdate :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     SupervisorMonad result worker_id m ()
-performGlobalProgressUpdate = SupervisorMonad . lift $ Implementation.performGlobalProgressUpdate
+performGlobalProgressUpdate = wrapIntoSupervisorMonad Implementation.performGlobalProgressUpdate
 -- }}}
 
 receiveProgressUpdate :: -- {{{
@@ -184,7 +195,7 @@ receiveProgressUpdate :: -- {{{
     worker_id →
     ProgressUpdate result →
     SupervisorMonad result worker_id m ()
-receiveProgressUpdate = (SupervisorMonad . lift) .* Implementation.receiveProgressUpdate
+receiveProgressUpdate = wrapIntoSupervisorMonad .* Implementation.receiveProgressUpdate
 -- }}}
 
 receiveStolenWorkload :: -- {{{
@@ -195,7 +206,7 @@ receiveStolenWorkload :: -- {{{
     worker_id →
     Maybe (StolenWorkload result) →
     SupervisorMonad result worker_id m ()
-receiveStolenWorkload = (SupervisorMonad . lift) .* Implementation.receiveStolenWorkload
+receiveStolenWorkload = wrapIntoSupervisorMonad .* Implementation.receiveStolenWorkload
 -- }}}
 
 receiveWorkerFailure :: SupervisorFullConstraint worker_id m ⇒ worker_id → String → SupervisorMonad result worker_id m α -- {{{
@@ -245,7 +256,7 @@ removeWorker :: -- {{{
     ) ⇒
     worker_id →
     SupervisorMonad result worker_id m ()
-removeWorker = SupervisorMonad . lift . Implementation.removeWorker
+removeWorker = wrapIntoSupervisorMonad . Implementation.removeWorker
 -- }}}
 
 removeWorkerIfPresent :: -- {{{
@@ -254,7 +265,7 @@ removeWorkerIfPresent :: -- {{{
     ) ⇒
     worker_id →
     SupervisorMonad result worker_id m ()
-removeWorkerIfPresent = SupervisorMonad . lift . Implementation.removeWorkerIfPresent
+removeWorkerIfPresent = wrapIntoSupervisorMonad . Implementation.removeWorkerIfPresent
 -- }}}
 
 runSupervisor :: -- {{{
@@ -355,7 +366,7 @@ runUnrestrictedSupervisorStartingFrom starting_progress actions =
 -- }}}
 
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad result worker_id m () -- {{{
-setSupervisorDebugMode = SupervisorMonad . lift . Implementation.setSupervisorDebugMode
+setSupervisorDebugMode = wrapIntoSupervisorMonad . Implementation.setSupervisorDebugMode
 -- }}}
 
 tryGetWaitingWorker :: -- {{{
@@ -363,6 +374,6 @@ tryGetWaitingWorker :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     SupervisorMonad result worker_id m (Maybe worker_id)
-tryGetWaitingWorker = SupervisorMonad . lift $ Implementation.tryGetWaitingWorker
+tryGetWaitingWorker = wrapIntoSupervisorMonad Implementation.tryGetWaitingWorker
 -- }}}
 

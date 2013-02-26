@@ -17,6 +17,7 @@
 
 module Control.Visitor.Supervisor.Implementation -- {{{
     ( AbortMonad()
+    , ContextMonad()
     , RunStatistics(..)
     , Statistics(..)
     , SupervisorCallbacks(..)
