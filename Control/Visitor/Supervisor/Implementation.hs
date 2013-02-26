@@ -60,7 +60,7 @@ import Control.Lens ((&))
 import Control.Lens.At (at)
 import Control.Lens.Getter ((^.),use,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
-import Control.Lens.Internal.Zoom (Focusing,Zoomed)
+import Control.Lens.Internal.Zoom (Zoomed)
 import Control.Lens.Lens ((<%=),(<<%=),(<<.=),(%%=),(<<.=),Lens,Lens')
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Zoom (Zoom(..))
@@ -362,14 +362,7 @@ type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker
 
 -- Instances {{{
 
-type instance Zoomed (ContextMonad result worker_id m) = Focusing ( -- {{{
-    StateT (SupervisorState result worker_id) (
-        ReaderT (SupervisorConstants result worker_id m) (
-            m
-        )
-    )
- )
--- }}}
+type instance Zoomed (ContextMonad result worker_id m) = Zoomed (InsideContextMonad result worker_id m)
 
 instance Monad m ⇒ MonadReader (SupervisorConstants result worker_id m) (AbortMonad result worker_id m) where -- {{{
     ask = AbortMonad ask
