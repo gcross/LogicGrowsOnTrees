@@ -40,6 +40,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     , liftUserToAbort
     , localWithinAbort
     , localWithinContext
+    , number_of_calls
     , performGlobalProgressUpdate
     , receiveProgressUpdate
     , receiveStolenWorkload
@@ -230,6 +231,8 @@ data RunStatistics = -- {{{
     ,   runWallTime :: !NominalDiffTime
     ,   runSupervisorOccupation :: !Float
     ,   runSupervisorMonadOccupation :: !Float
+    ,   runNumberOfCalls :: !Int
+    ,   runAverageTimePerCall :: !Float
     ,   runWorkerOccupation :: !Float
     ,   runWorkerWaitTimes :: !TimeStatistics
     ,   runStealWaitTimes :: !TimeStatistics
@@ -321,6 +324,7 @@ data SupervisorState result worker_id = -- {{{
     ,   _workload_buffer_size :: !Int
     ,   _workload_buffer_size_parameters :: !WorkloadBufferSizeParameters
     ,   _workload_buffer_size_statistics :: !(TimeWeightedStatistics Int)
+    ,   _number_of_calls :: !Int
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -756,6 +760,8 @@ getCurrentStatistics = do
         (/runWallTime)
         <$>
         use time_spent_in_supervisor_monad
+    runNumberOfCalls ← use number_of_calls
+    let runAverageTimePerCall = runSupervisorMonadOccupation / fromIntegral runNumberOfCalls
     runWorkerOccupation ←
         getOccupationFraction . mconcat . Map.elems
         <$>
@@ -1152,6 +1158,7 @@ runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCu
             ,   _workload_buffer_size = 4
             ,   _workload_buffer_size_parameters = WorkloadBufferSizeParameters 4 3
             ,   _workload_buffer_size_statistics = initialTimeWeightedStatisticsForStartingTimeAndValue start_time 4
+            ,   _number_of_calls = 0
             }
         )
     .

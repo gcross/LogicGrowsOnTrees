@@ -88,6 +88,7 @@ import Control.Visitor.Supervisor.Implementation -- {{{
     , liftContextToAbort
     , liftUserToAbort
     , localWithinContext
+    , number_of_calls
     , time_spent_in_supervisor_monad
     ) -- }}}
 -- }}}
@@ -134,6 +135,7 @@ instance WrappableIntoSupervisorMonad AbortMonad where -- {{{
     wrapIntoSupervisorMonad action = do
         time_at_entrance ← liftIO getCurrentTime
         SupervisorMonad . local (current_time .~ time_at_entrance) $ do
+            number_of_calls += 1
             result ← action
             liftIO getCurrentTime >>= (time_spent_in_supervisor_monad +=) . (flip diffUTCTime time_at_entrance)
             return result
