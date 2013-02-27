@@ -307,7 +307,7 @@ data SupervisorState result worker_id = -- {{{
     ,   _workers_pending_progress_update :: !(Set worker_id)
     ,   _current_progress :: !(Progress result)
     ,   _debug_mode :: !Bool
-    ,   _supervisor_occupation_statistics :: OccupationStatistics
+    ,   _supervisor_occupation_statistics :: !OccupationStatistics
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     ,   _retired_worker_occupation_statistics :: !(Map worker_id RetiredOccupationStatistics)
     ,   _worker_wait_time_statistics :: !TimeStatisticsMonoid
