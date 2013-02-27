@@ -457,6 +457,7 @@ bad_test_supervisor_actions =
     }
 -- }}}
 -- }}}
+-- }}}
 
 main = do
     -- updateGlobalLogger rootLoggerName (setLevel DEBUG)
