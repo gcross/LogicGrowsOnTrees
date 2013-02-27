@@ -831,7 +831,7 @@ initialTimeWeightedStatisticsForStartingTimeAndValue starting_time starting_valu
         (fromIntegral (minBound :: Int))
 -- }}}
 
-killWorkloadBuffer :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m ()
+killWorkloadBuffer :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m () -- {{{
 killWorkloadBuffer = do
     workload_buffer_size .= 0
     workload_buffer_size_parameters .= WorkloadBufferSizeParameters 0 0
