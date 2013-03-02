@@ -122,7 +122,7 @@ instance MonadTrans VisitorT where -- {{{
 instance Monad m ⇒ Monoid (VisitorT m α) where -- {{{
     mempty = mzero
     mappend = mplus
-    mconcat = msumBalanced
+    mconcat = msum
 -- }}}
 
 instance Show α ⇒ Show (Visitor α) where -- {{{
