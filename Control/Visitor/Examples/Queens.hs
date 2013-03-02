@@ -12,7 +12,6 @@ import Data.Bits (bitSize)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust)
-import Data.Monoid (Sum(..))
 
 import System.Console.CmdTheLine (ArgVal(..),just)
 
@@ -20,6 +19,7 @@ import Text.PrettyPrint (text)
 
 import Control.Visitor (Visitor)
 import Control.Visitor.Examples.Queens.Implementation
+import Control.Visitor.Utils.IntSum
 -- }}}
 
 -- Types {{{
@@ -85,10 +85,10 @@ nqueensCorrectCount :: Int → Int -- {{{
 nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 -- }}}
 
-nqueensCount :: MonadPlus m ⇒ Int → m (Sum Int) -- {{{
-nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . Sum . multiplicityForSymmetry $ symmetry) ()
-{-# SPECIALIZE nqueensCount :: Int → [Sum Int] #-}
-{-# SPECIALIZE nqueensCount :: Int → Visitor (Sum Int) #-}
+nqueensCount :: MonadPlus m ⇒ Int → m IntSum -- {{{
+nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . IntSum . multiplicityForSymmetry $ symmetry) ()
+{-# SPECIALIZE nqueensCount :: Int → [IntSum] #-}
+{-# SPECIALIZE nqueensCount :: Int → Visitor IntSum #-}
 -- }}}
 
 nqueensSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{

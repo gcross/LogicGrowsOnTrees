@@ -66,6 +66,7 @@ Library
         Control.Visitor.Supervisor
         Control.Visitor.Supervisor.Implementation
         Control.Visitor.Supervisor.RequestQueue
+        Control.Visitor.Utils.IntSum
         Control.Visitor.Utils.MonadStacks
         Control.Visitor.Worker
         Control.Visitor.Workload

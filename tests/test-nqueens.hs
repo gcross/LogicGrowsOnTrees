@@ -13,7 +13,6 @@ import Control.Monad.Trans.State.Strict
 import Data.Bits
 import Data.Functor
 import Data.List
-import Data.Monoid
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Word
@@ -29,6 +28,7 @@ import Text.Printf
 import Control.Visitor
 import Control.Visitor.Examples.Queens
 import Control.Visitor.Examples.Queens.Implementation
+import Control.Visitor.Utils.IntSum
 -- }}}
 
 -- Functions {{{
@@ -884,7 +884,7 @@ tests = -- {{{
             [ testCase ("n = " ++ show n) $
                 (correct_count @=?)
                 .
-                getSum
+                getIntSum
                 .
                 runVisitor
                 .
@@ -897,9 +897,9 @@ tests = -- {{{
          -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getSum . runVisitor . nqueensBruteForceCount $ n) @=?)
+                ((getIntSum . runVisitor . nqueensBruteForceCount $ n) @=?)
                 .
-                getSum
+                getIntSum
                 .
                 runVisitor
                 .
@@ -929,7 +929,7 @@ tests = -- {{{
             [ testCase ("n = " ++ show n) $
                 (correct_count @=?)
                 .
-                getSum
+                getIntSum
                 .
                 runVisitor
                 .
@@ -942,9 +942,9 @@ tests = -- {{{
          -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getSum . runVisitor . nqueensCount $ n) @=?)
+                ((getIntSum . runVisitor . nqueensCount $ n) @=?)
                 .
-                getSum
+                getIntSum
                 .
                 runVisitor
                 .

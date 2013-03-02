@@ -5,7 +5,6 @@
 
 -- Imports {{{
 import Data.Functor
-import Data.Monoid
 import Data.Serialize (Serialize(..))
 
 import System.Console.CmdTheLine
@@ -13,12 +12,10 @@ import System.Environment
 
 import Control.Visitor.Main
 import Control.Visitor.Parallel.Threads
+import Control.Visitor.Utils.IntSum
+
 import Control.Visitor.Examples.Queens
 -- }}}
-
-instance Serialize (Sum Int) where
-    put = put . getSum
-    get = fmap Sum get
 
 main =
     mainVisitor
@@ -32,7 +29,7 @@ main =
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of
                 Aborted _ → error "search aborted"
-                Completed (Sum count) → print count
+                Completed (IntSum count) → print count
                 Failure message → error $ "error: " ++ message
         )
         nqueensCount
