@@ -7,8 +7,10 @@ module Data.Semiring where
 -- Imports {{{
 import Control.Monad (liftM2)
 
+import Data.Composition ((.*))
 import qualified Data.Foldable as Foldable
 import Data.Foldable (Foldable)
+import Data.Function (on)
 import Data.Monoid
 import qualified Data.Set as Set
 import Data.Set (Set)
@@ -30,17 +32,17 @@ infix 7 `mtimes`
 
 instance Semiring All where -- {{{
     munit = All False
-    All x `mtimes` All y = All (x || y)
+    mtimes = All .* ((||) `on` getAll)
 -- }}}
 
 instance Semiring Any where -- {{{
     munit = Any True
-    Any x `mtimes` Any y = Any (x && y)
+    mtimes = Any .* ((&&) `on` getAny)
 -- }}}
 
 instance Num α ⇒ Semiring (Sum α) where -- {{{
     munit = Sum 1
-    Sum x `mtimes` Sum y = Sum (x*y)
+    mtimes = Sum .* ((*) `on` getSum)
     mproduct = Foldable.foldl' mtimes munit
 -- }}}
 
