@@ -57,6 +57,7 @@ Library
         Control.Visitor.Checkpoint
         Control.Visitor.Examples.Queens
         Control.Visitor.Examples.Queens.Implementation
+        Control.Visitor.Examples.RoseTree
         Control.Visitor.Label
         Control.Visitor.Main
         Control.Visitor.Parallel.Process
@@ -68,6 +69,8 @@ Library
         Control.Visitor.Supervisor.RequestQueue
         Control.Visitor.Utils.IntSum
         Control.Visitor.Utils.MonadStacks
+        Control.Visitor.Utils.WordSum
+        Control.Visitor.Visitors.RoseTree
         Control.Visitor.Worker
         Control.Visitor.Workload
         Data.Semiring
@@ -130,6 +133,7 @@ Test-Suite tests
         base > 4 && < 5,
         bytestring >= 0.9 && < 0.11,
         cereal == 0.3.*,
+        composition >= 0.2 && < 1.1,
         containers >= 0.4 && < 0.6,
         data-ivar == 0.30.*,
         dlist == 0.5.*,

@@ -33,6 +33,7 @@ import Control.Monad.Trans.Writer
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
+import Data.Composition ((.*))
 import qualified Data.DList as DList
 import Data.DList (DList)
 import Data.Either.Unwrap
@@ -82,13 +83,15 @@ import Test.QuickCheck.Gen
 import Test.QuickCheck.Instances
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
-import Test.QuickCheck.Property hiding ((.&.))
+import Test.QuickCheck.Property hiding ((.&.),(==>))
+import Test.SmallCheck ((==>))
 import Test.SmallCheck.Series (Serial(..))
 import Test.SmallCheck.Drivers as Small (test)
 
 import Control.Visitor
 import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Queens
+import Control.Visitor.Examples.RoseTree
 import Control.Visitor.Label
 import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
 import qualified Control.Visitor.Parallel.Threads as Threads
@@ -98,6 +101,9 @@ import Control.Visitor.Workload
 import Control.Visitor.Worker
 import Control.Visitor.Supervisor
 import Control.Visitor.Supervisor.RequestQueue
+import Control.Visitor.Utils.IntSum
+import Control.Visitor.Utils.WordSum
+import Control.Visitor.Visitors.RoseTree
 -- }}}
 
 -- Helpers {{{
@@ -232,6 +238,7 @@ instance Arbitrary Workload where -- {{{
 -- Serial {{{
 instance Serial IO All where series = All <$> series
 instance Serial IO Any where series = Any <$> series
+instance Serial IO Word where series = (fromIntegral :: Int → Word) . abs <$> series
 instance Serial IO (Sum Int) where series = Sum <$> series
 instance Serial IO (N Bool) where series = N <$> series
 instance Serial IO (N Int) where series = N <$> series
@@ -731,6 +738,28 @@ tests = -- {{{
                 ,testCase "mzero" $ walkVisitor (mzero :: Visitor [Int]) @?= [([],Explored)]
                 ,testCase "return" $ walkVisitor (return [0] :: Visitor [Int]) @?= [([0],Explored)]
                 ]
+             -- }}}
+            ]
+         -- }}}
+        ]
+     -- }}}
+    ,testGroup "Control.Visitor.Examples.RoseTree" -- {{{
+        [testGroup "generateTrivialTree" -- {{{
+            [Small.testProperty "sumOverAllPathsToLeaves" . Small.test $ -- {{{
+                (liftA2 . liftA2) (==>)
+                    (\arity depth → arity > 0 || depth == 0)
+                    ((liftA2 . liftA2) (==)
+                        computeCorrectTrivialTreeSumOverPathsToLeaves
+                        ((getWordSum . runVisitor . sumOverAllPathsToLeaves) .* generateTrivialTree)
+                    )
+             -- }}}
+            ,Small.testProperty "sumOverAllNodes" . Small.test $ -- {{{
+                (liftA2 . liftA2) (==>)
+                    (\arity depth → arity >= 2)
+                    ((liftA2 . liftA2) (==)
+                        computeCorrectTrivialTreeSumOverNodes
+                        ((getWordSum . runVisitor . sumOverAllNodes) .* generateTrivialTree)
+                    )
              -- }}}
             ]
          -- }}}
