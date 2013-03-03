@@ -28,7 +28,7 @@ import Text.Printf
 import Control.Visitor
 import Control.Visitor.Examples.Queens
 import Control.Visitor.Examples.Queens.Implementation
-import Control.Visitor.Utils.IntSum
+import Control.Visitor.Utils.WordSum
 -- }}}
 
 -- Functions {{{
@@ -884,7 +884,7 @@ tests = -- {{{
             [ testCase ("n = " ++ show n) $
                 (correct_count @=?)
                 .
-                getIntSum
+                getWordSum
                 .
                 runVisitor
                 .
@@ -897,9 +897,9 @@ tests = -- {{{
          -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getIntSum . runVisitor . nqueensBruteForceCount $ n) @=?)
+                ((getWordSum . runVisitor . nqueensBruteForceCount $ n) @=?)
                 .
-                getIntSum
+                getWordSum
                 .
                 runVisitor
                 .
@@ -929,7 +929,7 @@ tests = -- {{{
             [ testCase ("n = " ++ show n) $
                 (correct_count @=?)
                 .
-                getIntSum
+                getWordSum
                 .
                 runVisitor
                 .
@@ -942,9 +942,9 @@ tests = -- {{{
          -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getIntSum . runVisitor . nqueensCount $ n) @=?)
+                ((getWordSum . runVisitor . nqueensCount $ n) @=?)
                 .
-                getIntSum
+                getWordSum
                 .
                 runVisitor
                 .

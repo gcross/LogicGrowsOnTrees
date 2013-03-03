@@ -11,11 +11,11 @@ import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum,void)
 import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
 import Data.List (sort)
-import Data.Word (Word64)
+import Data.Word (Word,Word64)
 
 import Control.Visitor (Visitor,between)
 import Control.Visitor.Utils.MonadStacks (addToStacks,emptyStacks,mergeStacks)
-import Control.Visitor.Utils.IntSum
+import Control.Visitor.Utils.WordSum
 -- }}}
 
 -- Types {{{
@@ -143,7 +143,7 @@ hasRotate180Symmetry :: Int → NQueensSolution → Bool -- {{{
 hasRotate180Symmetry n = liftA2 ((==) `on` sort) id (rotate180 n)
 -- }}}
 
-multiplicityForSymmetry :: NQueensSymmetry → Int -- {{{
+multiplicityForSymmetry :: NQueensSymmetry → Word -- {{{
 multiplicityForSymmetry AllSymmetries = 1
 multiplicityForSymmetry AllRotations = 2
 multiplicityForSymmetry Rotate180Only = 4
@@ -703,10 +703,10 @@ nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSear
 {-# INLINE nqueensBruteForceGeneric #-}
 -- }}}
 
-nqueensBruteForceCount :: MonadPlus m ⇒ Int → m IntSum -- {{{
-nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ IntSum 1) ()
-{-# SPECIALIZE nqueensBruteForceCount :: Int → [IntSum] #-}
-{-# SPECIALIZE nqueensBruteForceCount :: Int → Visitor IntSum #-}
+nqueensBruteForceCount :: MonadPlus m ⇒ Int → m WordSum -- {{{
+nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ WordSum 1) ()
+{-# SPECIALIZE nqueensBruteForceCount :: Int → [WordSum] #-}
+{-# SPECIALIZE nqueensBruteForceCount :: Int → Visitor WordSum #-}
 -- }}}
 
 nqueensBruteForceSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{

@@ -12,6 +12,7 @@ import Data.Bits (bitSize)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust)
+import Data.Word (Word)
 
 import System.Console.CmdTheLine (ArgVal(..),just)
 
@@ -19,7 +20,7 @@ import Text.PrettyPrint (text)
 
 import Control.Visitor (Visitor)
 import Control.Visitor.Examples.Queens.Implementation
-import Control.Visitor.Utils.IntSum
+import Control.Visitor.Utils.WordSum
 -- }}}
 
 -- Types {{{
@@ -44,7 +45,7 @@ instance ArgVal (Maybe BoardSize) where
 
 -- Values -- {{{
 
-nqueens_correct_counts :: IntMap Int
+nqueens_correct_counts :: IntMap Word
 nqueens_correct_counts = IntMap.fromDistinctAscList $
     [( 1,1)
     ,( 2,0)
@@ -81,14 +82,14 @@ nqueens_maximum_size = fst . IntMap.findMax $ nqueens_correct_counts
 
 -- Functions {{{
 
-nqueensCorrectCount :: Int → Int -- {{{
+nqueensCorrectCount :: Int → Word -- {{{
 nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
 -- }}}
 
-nqueensCount :: MonadPlus m ⇒ Int → m IntSum -- {{{
-nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . IntSum . multiplicityForSymmetry $ symmetry) ()
-{-# SPECIALIZE nqueensCount :: Int → [IntSum] #-}
-{-# SPECIALIZE nqueensCount :: Int → Visitor IntSum #-}
+nqueensCount :: MonadPlus m ⇒ Int → m WordSum -- {{{
+nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . multiplicityForSymmetry $ symmetry) ()
+{-# SPECIALIZE nqueensCount :: Int → [WordSum] #-}
+{-# SPECIALIZE nqueensCount :: Int → Visitor WordSum #-}
 -- }}}
 
 nqueensSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{
