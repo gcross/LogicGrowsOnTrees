@@ -70,6 +70,7 @@ Library
         Control.Visitor.Utils.MonadStacks
         Control.Visitor.Worker
         Control.Visitor.Workload
+        Data.Semiring
     Extensions:
 
 Flag examples
@@ -139,10 +140,12 @@ Test-Suite tests
         random == 1.0.*,
         QuickCheck >= 2.4 && < 2.6,
         quickcheck-instances == 0.3.*,
+        smallcheck == 1.0.*,
         stm >= 2.3 && < 2.5,
         test-framework >= 0.6 && < 0.9,
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
+        test-framework-smallcheck == 0.2.*,
         transformers >= 0.2 && < 0.4,
         uuid == 1.2.*
 

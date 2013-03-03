@@ -5,8 +5,9 @@
 module Control.Visitor.Utils.IntSum where
 
 -- Imports {{{
-import Data.Monoid (Monoid(..))
 import Data.List (foldl')
+import Data.Monoid (Monoid(..))
+import Data.Semiring (Semiring(..))
 import Data.Serialize (Serialize(..))
 -- }}}
 
@@ -20,6 +21,11 @@ instance Monoid IntSum where -- {{{
     mempty = IntSum 0
     IntSum x `mappend` IntSum y = IntSum (x+y)
     mconcat = foldl' mappend mempty
+-- }}}
+
+instance Semiring IntSum where -- {{{
+    munit = IntSum 1
+    IntSum x `mtimes` IntSum y = IntSum (x*y)
 -- }}}
 
 instance Serialize IntSum where -- {{{

@@ -1,7 +1,9 @@
 -- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DoRec #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
@@ -50,6 +52,7 @@ import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Monoid
+import Data.Semiring
 import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import qualified Data.Serialize as Serialize
@@ -71,13 +74,16 @@ import System.Random
 import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
-import Test.HUnit hiding (Path)
+import qualified Test.Framework.Providers.SmallCheck as Small
+import Test.HUnit hiding (Test,Path)
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen
 import Test.QuickCheck.Instances
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
 import Test.QuickCheck.Property hiding ((.&.))
+import Test.SmallCheck.Series (Serial(..))
+import Test.SmallCheck.Drivers as Small (test)
 
 import Control.Visitor
 import Control.Visitor.Checkpoint
@@ -219,6 +225,12 @@ instance Arbitrary α ⇒ Arbitrary (StolenWorkload α) where -- {{{
 instance Arbitrary Workload where -- {{{
     arbitrary = Workload <$> arbitrary <*> arbitrary
 -- }}}
+-- }}}
+
+-- Serial {{{
+instance Serial IO All where series = All <$> series
+instance Serial IO Any where series = Any <$> series
+instance Serial IO (Sum Int) where series = Sum <$> series
 -- }}}
 
 -- Serialize {{{
@@ -457,6 +469,38 @@ bad_test_supervisor_actions =
     }
 -- }}}
 -- }}}
+
+-- Checks {{{
+testSemigroupProperties :: ∀ α. (Eq α, Serial IO α, Semiring α, Show α) ⇒ String → α → Test -- {{{
+testSemigroupProperties name _ = testGroup name . map (uncurry Small.testProperty) $
+    [("addition is associative",Small.test
+     $ \(x::α) (y::α) (z::α) → (x <> y) <> z == x <> (y <> z)
+     )
+    ,("addition is commutative",Small.test
+     $ \(x::α) (y::α) → x <> y == y <> x
+     )
+    ,("addition with additive identity is identity operation",Small.test
+     $ \(x::α) → mempty <> x == x
+     )
+    ,("multiplication is associative",Small.test
+     $ \(x::α) (y::α) (z::α) → (x `mtimes` y) `mtimes` z == x `mtimes` (y `mtimes` z)
+     )
+    ,("multiplication by multiplicative identity is identity operation",Small.test
+     $ \(x::α) → munit `mtimes` x == x
+     )
+    ,("left multiplication distributes over addition",Small.test
+     $ \(x::α) (y::α) (z::α) → x `mtimes` (y <> z) == x `mtimes` y <> x `mtimes` z
+     )
+    ,("right multiplication distributes over addition",Small.test
+     $ \(x::α) (y::α) (z::α) → (x <> y) `mtimes` z == x `mtimes` z <> y `mtimes` z
+     )
+    ,("multiplication by additive identity annihilates all elements",Small.test
+     $ \(x::α) → x `mtimes` mempty == mempty
+     )
+    ]
+-- }}}
+-- }}}
+
 -- }}}
 
 main = do
@@ -1361,6 +1405,12 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ]
+     -- }}}
+    ,testGroup "Data.Semiring" -- {{{
+        [testSemigroupProperties "All" (undefined :: All)
+        ,testSemigroupProperties "Any" (undefined :: Any)
+        ,testSemigroupProperties "Sum Int" (undefined :: Sum Int)
         ]
      -- }}}
     ]
