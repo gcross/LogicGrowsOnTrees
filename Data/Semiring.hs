@@ -46,4 +46,9 @@ instance Num α ⇒ Semiring (Sum α) where -- {{{
     mproduct = Foldable.foldl' mtimes munit
 -- }}}
 
+instance (Monoid α, Ord α) ⇒ Semiring (Set α) where -- {{{
+    munit = Set.singleton mempty
+    mtimes = Set.fromList .* (liftM2 mappend `on` Set.toList)
+-- }}}
+
 -- }}}

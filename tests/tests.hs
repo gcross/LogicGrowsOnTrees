@@ -53,6 +53,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Monoid
 import Data.Semiring
+import Data.Semiring.NaturalInstances
 import Data.Sequence (Seq,(<|),(|>),(><))
 import qualified Data.Sequence as Seq
 import qualified Data.Serialize as Serialize
@@ -100,6 +101,7 @@ import Control.Visitor.Supervisor.RequestQueue
 -- }}}
 
 -- Helpers {{{
+
 -- Instances {{{
 -- Newtypes {{{
 newtype UniqueVisitorT m = UniqueVisitor { unwrapUniqueVisitor :: VisitorT m IntSet }
@@ -231,6 +233,9 @@ instance Arbitrary Workload where -- {{{
 instance Serial IO All where series = All <$> series
 instance Serial IO Any where series = Any <$> series
 instance Serial IO (Sum Int) where series = Sum <$> series
+instance Serial IO (N Bool) where series = N <$> series
+instance Serial IO (N Int) where series = N <$> series
+instance Serial IO (Set String) where series = Set.fromList <$> series
 -- }}}
 
 -- Serialize {{{
@@ -471,8 +476,17 @@ bad_test_supervisor_actions =
 -- }}}
 
 -- Checks {{{
-testSemigroupProperties :: ∀ α. (Eq α, Serial IO α, Semiring α, Show α) ⇒ String → α → Test -- {{{
-testSemigroupProperties name _ = testGroup name . map (uncurry Small.testProperty) $
+testSemigroupPropertiesUsingSmall :: -- {{{
+    ∀ α.
+    ( Eq α
+    , Serial IO α
+    , Semiring α
+    , Show α
+    ) ⇒
+    String →
+    α →
+    Test
+testSemigroupPropertiesUsingSmall name _ = testGroup name . map (uncurry Small.testProperty) $
     [("addition is associative",Small.test
      $ \(x::α) (y::α) (z::α) → (x <> y) <> z == x <> (y <> z)
      )
@@ -497,6 +511,35 @@ testSemigroupProperties name _ = testGroup name . map (uncurry Small.testPropert
     ,("multiplication by additive identity annihilates all elements",Small.test
      $ \(x::α) → x `mtimes` mempty == mempty
      )
+    ]
+-- }}}
+testSemigroupPropertiesUsingQuick :: -- {{{
+    ∀ α.
+    ( Arbitrary α
+    , Eq α
+    , Semiring α
+    , Show α
+    ) ⇒
+    String →
+    α →
+    Test
+testSemigroupPropertiesUsingQuick name _ = testGroup name
+    [testProperty "addition is associative" $
+        \(x::α) (y::α) (z::α) → (x <> y) <> z == x <> (y <> z)
+    ,testProperty "addition is commutative" $
+        \(x::α) (y::α) → x <> y == y <> x
+    ,testProperty "addition with additive identity is identity operation" $
+        \(x::α) → mempty <> x == x
+    ,testProperty "multiplication is associative" . mapSize (const 10) $
+        \(x::α) (y::α) (z::α) → (x `mtimes` y) `mtimes` z == x `mtimes` (y `mtimes` z)
+    ,testProperty "multiplication by multiplicative identity is identity operation" $
+        \(x::α) → munit `mtimes` x == x
+    ,testProperty "left multiplication distributes over addition" $
+        \(x::α) (y::α) (z::α) → x `mtimes` (y <> z) == x `mtimes` y <> x `mtimes` z
+    ,testProperty "right multiplication distributes over addition" $
+        \(x::α) (y::α) (z::α) → (x <> y) `mtimes` z == x `mtimes` z <> y `mtimes` z
+    ,testProperty "multiplication by additive identity annihilates all elements" $
+        \(x::α) → x `mtimes` mempty == mempty
     ]
 -- }}}
 -- }}}
@@ -1408,9 +1451,15 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "Data.Semiring" -- {{{
-        [testSemigroupProperties "All" (undefined :: All)
-        ,testSemigroupProperties "Any" (undefined :: Any)
-        ,testSemigroupProperties "Sum Int" (undefined :: Sum Int)
+        [testSemigroupPropertiesUsingSmall "All" (undefined :: All)
+        ,testSemigroupPropertiesUsingSmall "Any" (undefined :: Any)
+        ,testSemigroupPropertiesUsingSmall "Sum Int" (undefined :: Sum Int)
+        ,testSemigroupPropertiesUsingQuick "Set String" (undefined :: Set String)
+        ]
+     -- }}}
+    ,testGroup "Data.Semiring.NaturalInstances" -- {{{
+        [testSemigroupPropertiesUsingSmall "Bool" (undefined :: N Bool)
+        ,testSemigroupPropertiesUsingSmall "Int" (undefined :: N Int)
         ]
      -- }}}
     ]

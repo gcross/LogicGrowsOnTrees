@@ -71,6 +71,7 @@ Library
         Control.Visitor.Worker
         Control.Visitor.Workload
         Data.Semiring
+        Data.Semiring.NaturalInstances
     Extensions:
 
 Flag examples
