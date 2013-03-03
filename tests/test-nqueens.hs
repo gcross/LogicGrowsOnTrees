@@ -5,6 +5,7 @@
 
 -- Imports {{{
 import Control.Applicative
+import Control.Arrow ((***))
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -32,7 +33,7 @@ import Control.Visitor.Utils.WordSum
 -- }}}
 
 -- Functions {{{
-checkBlocks :: [(Int,Int)] → Int → Int → Word64 → Word64 → Word64 → Word64 → Assertion -- {{{
+checkBlocks :: [(Word,Word)] → Int → Int → Word64 → Word64 → Word64 → Word64 → Assertion -- {{{
 checkBlocks
     solution
     window_start
@@ -42,7 +43,7 @@ checkBlocks
     original_occupied_negative_diagonals
     original_occupied_positive_diagonals
  = go
-    solution
+   (map (fromIntegral *** fromIntegral) solution)
    (original_occupied_rows .&. rows_and_columns_mask)
    (original_occupied_columns .&. rows_and_columns_mask)
    (original_occupied_negative_diagonals .&. negative_diagonals_mask)
@@ -127,7 +128,7 @@ checkRightPositiveBlocks size occupied_positive_diagonals occupied_right_positiv
          right_bit_value = occupied_right_positive_diagonals .&. right_bit /= 0
 -- }}}
 
-checkSolutionIsValid :: Int → NQueensSolution → Assertion -- {{{
+checkSolutionIsValid :: Word → NQueensSolution → Assertion -- {{{
 checkSolutionIsValid n solution =
     forM_ (zip [0..] solution) $ \(i,(row1,col1)) → do
         assertBool "row within bounds" $ row1 >= 0 && row1 < n
@@ -139,11 +140,11 @@ checkSolutionIsValid n solution =
             assertBool ("positive diagonals conflict in " ++ show solution) $ row1-col1 /= row2-col2
 -- }}}
 
-checkSolutionsAreValid :: Int → NQueensSolutions → Assertion -- {{{
+checkSolutionsAreValid :: Word → NQueensSolutions → Assertion -- {{{
 checkSolutionsAreValid = mapM_ . checkSolutionIsValid
 -- }}}
 
-checkSymmetry :: MonadIO m ⇒ Int → NQueensSymmetry → [(Int,Int)] → m () -- {{{
+checkSymmetry :: MonadIO m ⇒ Word → NQueensSymmetry → [(Word,Word)] → m () -- {{{
 checkSymmetry n correct_symmetry solution =
         liftIO
         .
@@ -197,7 +198,7 @@ tests = -- {{{
      -- }}}
     ,testGroup "symmetry breaking" -- {{{
         [testGroup "start" $ -- {{{
-            let getAllSolutions :: MonadPlus m ⇒ Int → m [(Int,Int)] -- {{{
+            let getAllSolutions :: MonadPlus m ⇒ Word → m [(Word,Word)] -- {{{
                 getAllSolutions =
                     nqueensStart
                         (++)
@@ -270,7 +271,7 @@ tests = -- {{{
                     solution ← nqueensBruteForceSolutions n
                     liftIO
                         .
-                        assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . multiplySolution n NoSymmetries $ extractExteriorFromSolution n 1 solution :: [[(Int,Int)]]) ++ " does not have an exterior in the starting set")
+                        assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . multiplySolution n NoSymmetries $ extractExteriorFromSolution n 1 solution :: [[(Word,Word)]]) ++ " does not have an exterior in the starting set")
                         .
                         any (
                           flip Set.member start_exteriors
@@ -366,8 +367,8 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "break90" $ -- {{{
-            let getAllSolutions :: MonadPlus m ⇒ Int → m [(Int,Int)] -- {{{
-                getAllSolutions n = break90 [] $ NQueensBreak90State n 0 n 0 0 0
+            let getAllSolutions :: MonadPlus m ⇒ Word → m [(Word,Word)] -- {{{
+                getAllSolutions n = break90 [] $ NQueensBreak90State n 0 (fromIntegral n) 0 0 0
                   where
                     break90 =
                         nqueensBreak90
@@ -419,7 +420,7 @@ tests = -- {{{
                                         s_occupied_negative_diagonals
                                         s_occupied_positive_diagonals
                                 )
-                        in break90 [] $ NQueensBreak90State n 0 n 0 0 0
+                        in break90 [] $ NQueensBreak90State n 0 (fromIntegral n) 0 0 0
                 | n ← [2..20]
                 ]
              -- }}}
@@ -435,7 +436,7 @@ tests = -- {{{
                                 )
                                 (const . checkSymmetry n Rotate180Only)
                                 (const . const . checkSymmetry n NoSymmetries)
-                    in break90 [] $ NQueensBreak90State n 0 n 0 0 0
+                    in break90 [] $ NQueensBreak90State n 0 (fromIntegral n) 0 0 0
                 | n ← [2..20]
                 ]
              -- }}}
@@ -447,7 +448,7 @@ tests = -- {{{
                         go layers
                           | layers > maximum_layers = return ()
                           | otherwise =
-                                (assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . allRotationsOf n $ exterior :: [[(Int,Int)]]) ++ " (" ++ show (symmetryOf n exterior) ++ ") does not have a " ++ show layers ++ " exterior in the break90 set")
+                                (assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . allRotationsOf n $ exterior :: [[(Word,Word)]]) ++ " (" ++ show (symmetryOf n exterior) ++ ") does not have a " ++ show layers ++ " exterior in the break90 set")
                                  .
                                  any (
                                    flip Set.member break90_exteriors
@@ -494,7 +495,7 @@ tests = -- {{{
                         .
                         runVisitorT
                         $
-                        break90 [] $ NQueensBreak90State n 0 n 0 0 0
+                        break90 [] $ NQueensBreak90State n 0 (fromIntegral n) 0 0 0
                         :: IO (Set NQueensSolution)
                        ) >>= assertEqual "missing solutions" Set.empty
                              .
@@ -524,8 +525,8 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "break180" $ -- {{{
-            let getAllSolutions :: MonadPlus m ⇒ Int → m [(Int,Int)] -- {{{
-                getAllSolutions n = break180 [] $ NQueensBreak180State n 0 n 0 0 0 0 0
+            let getAllSolutions :: MonadPlus m ⇒ Word → m [(Word,Word)] -- {{{
+                getAllSolutions n = break180 [] $ NQueensBreak180State n 0 (fromIntegral n) 0 0 0 0 0
                   where
                     break180 =
                         nqueensBreak180
@@ -566,7 +567,7 @@ tests = -- {{{
                                         s_occupied_negative_diagonals
                                         s_occupied_positive_diagonals
                                 )
-                    in break180 [] $ NQueensBreak180State n 0 n 0 0 0 0 0
+                    in break180 [] $ NQueensBreak180State n 0 (fromIntegral n) 0 0 0 0 0
                 | n ← [2..14]
                 ]
              -- }}}
@@ -584,7 +585,7 @@ tests = -- {{{
                                     break180 solution next_state
                                 )
                                 (const . const . checkSymmetry n NoSymmetries)
-                    in break180 [] $ NQueensBreak180State n 0 n 0 0 0 0 0
+                    in break180 [] $ NQueensBreak180State n 0 (fromIntegral n) 0 0 0 0 0
                 | n ← [2..14]
                 ]
              -- }}}
@@ -596,7 +597,7 @@ tests = -- {{{
                         go layers
                           | layers > maximum_layers = return ()
                           | otherwise =
-                                (assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . allRotationsOf n $ exterior :: [[(Int,Int)]]) ++ " (" ++ show (symmetryOf n exterior) ++ ") does not have a " ++ show layers ++ " exterior in the break90 set")
+                                (assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . allRotationsOf n $ exterior :: [[(Word,Word)]]) ++ " (" ++ show (symmetryOf n exterior) ++ ") does not have a " ++ show layers ++ " exterior in the break90 set")
                                  .
                                  any (
                                    flip Set.member break180_exteriors
@@ -634,7 +635,7 @@ tests = -- {{{
                         .
                         runVisitorT
                         $
-                        break180 [] $ NQueensBreak180State n 0 n 0 0 0 0 0
+                        break180 [] $ NQueensBreak180State n 0 (fromIntegral n) 0 0 0 0 0
                         :: IO (Set NQueensSolution)
                        ) >>= assertEqual "missing solutions" Set.empty
                              .
@@ -664,8 +665,8 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "start + break90 + break180" $ -- {{{
-            let getAllSolutions :: MonadPlus m ⇒ Int → m [(Int,Int)] -- {{{
-                getAllSolutions n = nqueensStart (++) return callback90 callback180 search [] n
+            let getAllSolutions :: MonadPlus m ⇒ Word → m [(Word,Word)] -- {{{
+                getAllSolutions = nqueensStart (++) return callback90 callback180 search []
                   where
                     callback90 value state = return value `mplus` break90 value state
                     callback180 value state = return value `mplus` break180 value state
@@ -779,7 +780,7 @@ tests = -- {{{
                         go layers
                           | layers > maximum_layers = return ()
                           | otherwise =
-                                (assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . allRotationsAndReflectionsOf n $ exterior :: [[(Int,Int)]]) ++ " (" ++ show (symmetryOf n exterior) ++ ") does not have a " ++ show layers ++ " exterior in the set")
+                                (assertBool ("solution " ++ show solution ++ " --> " ++ show (sort . map sort . allRotationsAndReflectionsOf n $ exterior :: [[(Word,Word)]]) ++ " (" ++ show (symmetryOf n exterior) ++ ") does not have a " ++ show layers ++ " exterior in the set")
                                  .
                                  any (
                                    flip Set.member all_exteriors

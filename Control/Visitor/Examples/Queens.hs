@@ -82,20 +82,27 @@ nqueens_maximum_size = fst . IntMap.findMax $ nqueens_correct_counts
 
 -- Functions {{{
 
-nqueensCorrectCount :: Int → Word -- {{{
-nqueensCorrectCount = fromJust . ($ nqueens_correct_counts) . IntMap.lookup
+nqueensCorrectCount :: Word → Word -- {{{
+nqueensCorrectCount =
+    fromJust
+    .
+    ($ nqueens_correct_counts)
+    .
+    IntMap.lookup
+    .
+    fromIntegral
 -- }}}
 
-nqueensCount :: MonadPlus m ⇒ Int → m WordSum -- {{{
+nqueensCount :: MonadPlus m ⇒ Word → m WordSum -- {{{
 nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . multiplicityForSymmetry $ symmetry) ()
-{-# SPECIALIZE nqueensCount :: Int → [WordSum] #-}
-{-# SPECIALIZE nqueensCount :: Int → Visitor WordSum #-}
+{-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensCount :: Word → Visitor WordSum #-}
 -- }}}
 
-nqueensSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{
+nqueensSolutions :: MonadPlus m ⇒ Word → m NQueensSolution -- {{{
 nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
-{-# SPECIALIZE nqueensSolutions :: Int → NQueensSolutions #-}
-{-# SPECIALIZE nqueensSolutions :: Int → Visitor NQueensSolution #-}
+{-# SPECIALIZE nqueensSolutions :: Word → NQueensSolutions #-}
+{-# SPECIALIZE nqueensSolutions :: Word → Visitor NQueensSolution #-}
 -- }}}
 
 -- }}}

@@ -7,6 +7,7 @@ module Control.Visitor.Examples.Queens.Implementation where
 
 -- Imports {{{
 import Control.Applicative ((<$>),liftA2)
+import Control.Arrow ((***))
 import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum,void)
 import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
@@ -28,7 +29,7 @@ data NQueensSymmetry =
   deriving (Eq,Ord,Read,Show)
 
 data NQueensBreak90State = NQueensBreak90State -- {{{
-    {   b90_number_of_queens_remaining :: {-# UNPACK #-} !Int
+    {   b90_number_of_queens_remaining :: {-# UNPACK #-} !Word
     ,   b90_window_start :: {-# UNPACK #-} !Int
     ,   b90_window_size :: {-# UNPACK #-} !Int
     ,   b90_occupied_rows_and_columns :: {-# UNPACK #-} !Word64
@@ -38,7 +39,7 @@ data NQueensBreak90State = NQueensBreak90State -- {{{
 -- }}}
 
 data NQueensBreak180State = NQueensBreak180State -- {{{
-    {   b180_number_of_queens_remaining :: {-# UNPACK #-} !Int
+    {   b180_number_of_queens_remaining :: {-# UNPACK #-} !Word
     ,   b180_window_start :: {-# UNPACK #-} !Int
     ,   b180_window_size :: {-# UNPACK #-} !Int
     ,   b180_occupied_rows :: {-# UNPACK #-} !Word64
@@ -50,7 +51,7 @@ data NQueensBreak180State = NQueensBreak180State -- {{{
 -- }}}
 
 data NQueensSearchState = NQueensSearchState -- {{{
-    {   s_number_of_queens_remaining :: {-# UNPACK #-} !Int
+    {   s_number_of_queens_remaining :: {-# UNPACK #-} !Word
     ,   s_row :: {-# UNPACK #-} !Int
     ,   s_occupied_rows :: {-# UNPACK #-} !Word64
     ,   s_occupied_columns :: {-# UNPACK #-} !Word64
@@ -59,7 +60,7 @@ data NQueensSearchState = NQueensSearchState -- {{{
     }
 -- }}}
 
-type NQueensSolution = [(Int,Int)]
+type NQueensSolution = [(Word,Word)]
 type NQueensSolutions = [NQueensSolution]
 
 data PositionAndBit = PositionAndBit {-# UNPACK #-} !Int {-# UNPACK #-} !Word64
@@ -69,15 +70,18 @@ data PositionAndBitWithReflection = PositionAndBitWithReflection {-# UNPACK #-} 
 
 -- Functions {{{
 
-allRotationsAndReflectionsOf :: Int → NQueensSolution → NQueensSolutions -- {{{
+allRotationsAndReflectionsOf :: Word → NQueensSolution → NQueensSolutions -- {{{
 allRotationsAndReflectionsOf = flip multiplySolution NoSymmetries
 -- }}}
 
-allRotationsOf :: Int → NQueensSolution → NQueensSolutions -- {{{
+allRotationsOf :: Word → NQueensSolution → NQueensSolutions -- {{{
 allRotationsOf n = take 4 . iterate (rotateLeft n)
 -- }}}
 
-extractExteriorFromSolution :: Int → Int → NQueensSolution → NQueensSolution -- {{{
+convertSolutionToWord :: [(Int,Int)] → [(Word,Word)]
+convertSolutionToWord = map (fromIntegral *** fromIntegral)
+
+extractExteriorFromSolution :: Word → Word → NQueensSolution → NQueensSolution -- {{{
 extractExteriorFromSolution size layers = filter . uncurry $ ((||) `on` (liftA2 (||) (< threshold_1) (> threshold_2)))
   where
     threshold_1 = layers
@@ -131,15 +135,15 @@ getSymmetricOpenings size blocked
 {-# INLINE getSymmetricOpenings #-}
 -- }}}
 
-hasReflectionSymmetry :: Int → NQueensSolution → Bool -- {{{
+hasReflectionSymmetry :: Word → NQueensSolution → Bool -- {{{
 hasReflectionSymmetry n = liftA2 ((==) `on` sort) id (reflectSolution n)
 -- }}}
 
-hasRotate90Symmetry :: Int → NQueensSolution → Bool -- {{{
+hasRotate90Symmetry :: Word → NQueensSolution → Bool -- {{{
 hasRotate90Symmetry n = liftA2 ((==) `on` sort) id (rotateLeft n)
 -- }}}
 
-hasRotate180Symmetry :: Int → NQueensSolution → Bool -- {{{
+hasRotate180Symmetry :: Word → NQueensSolution → Bool -- {{{
 hasRotate180Symmetry n = liftA2 ((==) `on` sort) id (rotate180 n)
 -- }}}
 
@@ -151,7 +155,7 @@ multiplicityForSymmetry NoSymmetries = 8
 {-# INLINE multiplicityForSymmetry #-}
 -- }}}
 
-multiplySolution :: MonadPlus m ⇒ Int → NQueensSymmetry → NQueensSolution → m NQueensSolution -- {{{
+multiplySolution :: MonadPlus m ⇒ Word → NQueensSymmetry → NQueensSolution → m NQueensSolution -- {{{
 multiplySolution n = go
   where
     go AllSymmetries = return
@@ -163,7 +167,7 @@ multiplySolution n = go
 
 nqueensBreak90 :: -- {{{
     MonadPlus m ⇒
-    ([(Int,Int)] → α → α) →
+    ([(Word,Word)] → α → α) →
     (α → m β) →
     (α → NQueensBreak90State → m β) →
     (α → NQueensBreak180State → m β) →
@@ -172,7 +176,7 @@ nqueensBreak90 :: -- {{{
     NQueensBreak90State →
     m β
 nqueensBreak90
-  !updateValue
+  !updateValue_
   !finalizeValue
   !break90
   !break180
@@ -198,6 +202,7 @@ nqueensBreak90
      finalizeValue ([(window_start+1,window_start+1)] `updateValue` value)
   | otherwise = mzero
   where
+    updateValue = updateValue_ . convertSolutionToWord
     window_end = window_start+window_size-1
     end = window_size-1
     inner_size = window_size-2
@@ -362,7 +367,7 @@ nqueensBreak90
 
 nqueensBreak180 :: -- {{{
     MonadPlus m ⇒
-    ([(Int,Int)] → α → α) →
+    ([(Word,Word)] → α → α) →
     (α → m β) →
     (α → NQueensBreak180State → m β) →
     (α → Int → NQueensSearchState → m β) →
@@ -370,7 +375,7 @@ nqueensBreak180 :: -- {{{
     NQueensBreak180State →
     m β
 nqueensBreak180
-  !updateValue
+  !updateValue_
   !finalizeValue
   !break180
   !search
@@ -405,6 +410,7 @@ nqueensBreak180
      finalizeValue ([(window_start+1,window_start+1)] `updateValue` value)
   | otherwise = mzero
   where
+    updateValue = updateValue_ . convertSolutionToWord
     end = window_size-1
     end_bit = bit end
     window_end = window_start+end
@@ -695,27 +701,27 @@ nqueensBreak180
     -- }}}
 -- }}}
 
-nqueensBruteForceGeneric :: MonadPlus m ⇒ ([(Int,Int)] → α → α) → (α → m β) → α → Int → m β -- {{{
+nqueensBruteForceGeneric :: MonadPlus m ⇒ ([(Word,Word)] → α → α) → (α → m β) → α → Word → m β -- {{{
 nqueensBruteForceGeneric updateValue finalizeValue initial_value 1 = finalizeValue . updateValue [(0,0)] $ initial_value
 nqueensBruteForceGeneric updateValue finalizeValue initial_value 2 = mzero
 nqueensBruteForceGeneric updateValue finalizeValue initial_value 3 = mzero
-nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSearch updateValue finalizeValue initial_value n $ NQueensSearchState n 0 0 0 0 0
+nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSearch updateValue finalizeValue initial_value (fromIntegral n) $ NQueensSearchState n 0 0 0 0 0
 {-# INLINE nqueensBruteForceGeneric #-}
 -- }}}
 
-nqueensBruteForceCount :: MonadPlus m ⇒ Int → m WordSum -- {{{
+nqueensBruteForceCount :: MonadPlus m ⇒ Word → m WordSum -- {{{
 nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ WordSum 1) ()
-{-# SPECIALIZE nqueensBruteForceCount :: Int → [WordSum] #-}
-{-# SPECIALIZE nqueensBruteForceCount :: Int → Visitor WordSum #-}
+{-# SPECIALIZE nqueensBruteForceCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensBruteForceCount :: Word → Visitor WordSum #-}
 -- }}}
 
-nqueensBruteForceSolutions :: MonadPlus m ⇒ Int → m NQueensSolution -- {{{
+nqueensBruteForceSolutions :: MonadPlus m ⇒ Word → m NQueensSolution -- {{{
 nqueensBruteForceSolutions = nqueensBruteForceGeneric (++) return []
-{-# SPECIALIZE nqueensBruteForceSolutions :: Int → NQueensSolutions #-}
-{-# SPECIALIZE nqueensBruteForceSolutions :: Int → Visitor NQueensSolution #-}
+{-# SPECIALIZE nqueensBruteForceSolutions :: Word → NQueensSolutions #-}
+{-# SPECIALIZE nqueensBruteForceSolutions :: Word → Visitor NQueensSolution #-}
 -- }}}
 
-nqueensGeneric :: MonadPlus m ⇒ ([(Int,Int)] → α → α) → (Int → NQueensSymmetry → α → m β) → α → Int → m β -- {{{
+nqueensGeneric :: MonadPlus m ⇒ ([(Word,Word)] → α → α) → (Word → NQueensSymmetry → α → m β) → α → Word → m β -- {{{
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 1 = finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 2 = mzero
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 3 = mzero
@@ -735,10 +741,11 @@ nqueensGeneric updateValue finalizeValueWithSymmetry initial_value n =
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
-nqueensSearch :: MonadPlus m ⇒ ([(Int,Int)] → α → α) → (α → m β) → α → Int → NQueensSearchState → m β -- {{{
-nqueensSearch updateValue finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
+nqueensSearch :: MonadPlus m ⇒ ([(Word,Word)] → α → α) → (α → m β) → α → Int → NQueensSearchState → m β -- {{{
+nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
     go initial_value initial_search_state
   where
+    updateValue = updateValue_ . convertSolutionToWord
     go !value !s@(NQueensSearchState
                     number_of_queens_remaining
                     row
@@ -812,16 +819,16 @@ nqueensSearch updateValue finalizeValue initial_value size initial_search_state@
 
 nqueensStart :: -- {{{
     MonadPlus m ⇒
-    ([(Int,Int)] → α → α) →
+    ([(Word,Word)] → α → α) →
     (α → m β) →
     (α → NQueensBreak90State → m β) →
     (α → NQueensBreak180State → m β) →
     (α → Int → NQueensSearchState → m β) →
     α →
-    Int →
+    Word →
     m β
 nqueensStart
-  !updateValue
+  !updateValue_
   !finalizeValue
   !break90
   !break180
@@ -829,8 +836,9 @@ nqueensStart
   !value
   !n = (preserve90 `mplus` breakTo180) `mplus` (breakAtCorner `mplus` breakAtSides)
   where
-    half_inner_size = (n `div` 2) - 1
-    last = n-1
+    updateValue = updateValue_ . convertSolutionToWord
+    half_inner_size = fromIntegral $ (n `div` 2) - 1
+    last = fromIntegral $ n-1
     inner_last = last-1
     preserve90 = do -- {{{
         position ← between 1 half_inner_size
@@ -848,7 +856,7 @@ nqueensStart
             (NQueensBreak90State
                 (n-4)
                  1
-                (n-2)
+                (fromIntegral $ n-2)
                 (occupied_bits `unsafeShiftR` 1)
                 ((occupied_bits .|. (occupied_bits `unsafeShiftL` last)) `unsafeShiftR` 2)
                  (occupied_bits .|. (occupied_bits `rotateR` last))
@@ -879,7 +887,7 @@ nqueensStart
             (NQueensBreak180State
                 (n-4)
                  1
-                (n-2)
+                (fromIntegral $ n-2)
                 ((right_row_bit .|. left_row_bit) `unsafeShiftR` 1)
                 ((top_column_bit .|. bottom_column_bit) `unsafeShiftR` 1)
                 ((top_column_bit .|. right_row_bit .|. ((bottom_column_bit .|. left_row_bit) `unsafeShiftL` last)) `unsafeShiftR` 2)
@@ -902,7 +910,7 @@ nqueensStart
                 ]
                 value
             )
-            (n-2)
+            (fromIntegral $ n-2)
             (NQueensSearchState
                 (n-3)
                  1
@@ -948,7 +956,7 @@ nqueensStart
                 ]
                 value
             )
-            (n-2)
+            (fromIntegral $ n-2)
             (NQueensSearchState
                 (n-4)
                  1
@@ -971,31 +979,31 @@ reflectBits = go 0 0 1
            (bits `rotateL` 1)
 -- }}}
 
-reflectSolution :: Int → NQueensSolution → NQueensSolution -- {{{
+reflectSolution :: Word → NQueensSolution → NQueensSolution -- {{{
 reflectSolution n old_solution = map (\(row,col) → (row,last-col)) old_solution
   where
     last = n - 1
 -- }}}
 
-rotate180 :: Int → NQueensSolution → NQueensSolution -- {{{
+rotate180 :: Word → NQueensSolution → NQueensSolution -- {{{
 rotate180 n = map (\(row,col) → (last-row,last-col))
   where
     last = n - 1
 -- }}}
 
-rotateLeft :: Int → NQueensSolution → NQueensSolution -- {{{
+rotateLeft :: Word → NQueensSolution → NQueensSolution -- {{{
 rotateLeft n = map (\(row,col) → (col,last-row))
   where
     last = n - 1
 -- }}}
 
-rotateRight :: Int → NQueensSolution → NQueensSolution -- {{{
+rotateRight :: Word → NQueensSolution → NQueensSolution -- {{{
 rotateRight n = map (\(row,col) → (last-col,row))
   where
     last = n - 1
 -- }}}
 
-symmetryOf :: Int → NQueensSolution → NQueensSymmetry -- {{{
+symmetryOf :: Word → NQueensSolution → NQueensSymmetry -- {{{
 symmetryOf n solution
   | hasReflectionSymmetry n solution = AllSymmetries
   | hasRotate90Symmetry n solution = AllRotations
