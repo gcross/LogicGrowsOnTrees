@@ -97,13 +97,13 @@ import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
 import qualified Control.Visitor.Parallel.Threads as Threads
 import qualified Control.Visitor.Parallel.Workgroup as Workgroup
 import Control.Visitor.Path
-import Control.Visitor.Workload
-import Control.Visitor.Worker
 import Control.Visitor.Supervisor
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Utils.IntSum
 import Control.Visitor.Utils.WordSum
 import Control.Visitor.Visitors.RoseTree
+import Control.Visitor.Workload
+import Control.Visitor.Worker
 -- }}}
 
 -- Helpers {{{
