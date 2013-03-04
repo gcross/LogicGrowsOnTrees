@@ -17,6 +17,7 @@ import Prelude hiding (catch)
 
 import Control.Arrow ((&&&))
 import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
+import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catch,evaluate,fromException)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class
@@ -239,6 +240,30 @@ genericForkVisitorTWorkerThread
             pending_requests_ref
             finished_flag
 {-# INLINE genericForkVisitorTWorkerThread #-}
+-- }}}
+
+genericRunVisitor :: -- {{{
+    Monoid α ⇒
+    ((WorkerTerminationReason α → IO ()) → Workload → IO (WorkerEnvironment α)) →
+    IO (WorkerTerminationReason α)
+genericRunVisitor forkWorkerThread = do
+    result_mvar ← newEmptyMVar
+    _ ← forkWorkerThread
+            (putMVar result_mvar)
+            entire_workload
+    takeMVar result_mvar
+-- }}}
+
+runVisitor :: Monoid α ⇒ Visitor α → IO (WorkerTerminationReason α) -- {{{
+runVisitor = genericRunVisitor . flip forkVisitorWorkerThread
+-- }}}
+
+runVisitorIO :: Monoid α ⇒ VisitorIO α → IO (WorkerTerminationReason α) -- {{{
+runVisitorIO = genericRunVisitor . flip forkVisitorIOWorkerThread
+-- }}}
+
+runVisitorT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason α) -- {{{
+runVisitorT runInIO = genericRunVisitor . flip (forkVisitorTWorkerThread runInIO)
 -- }}}
 
 sendAbortRequest :: WorkerRequestQueue α → IO () -- {{{

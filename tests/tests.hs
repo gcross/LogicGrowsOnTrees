@@ -103,7 +103,7 @@ import Control.Visitor.Utils.IntSum
 import Control.Visitor.Utils.WordSum
 import Control.Visitor.Visitors.RoseTree
 import Control.Visitor.Workload
-import Control.Visitor.Worker
+import Control.Visitor.Worker hiding (runVisitor,runVisitorIO,runVisitorT)
 -- }}}
 
 -- Helpers {{{

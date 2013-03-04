@@ -10,7 +10,7 @@ import Data.Monoid
 
 import Control.Visitor
 import Control.Visitor.Checkpoint
-import Control.Visitor.Worker
+import qualified Control.Visitor.Worker as Worker
 import Control.Visitor.Workload
 -- }}}
 
@@ -24,13 +24,6 @@ main = defaultMain
     [bench "list" $ nf (getSum . mconcat . sumtree) depth
     ,bench "visitor" $ nf (getSum . runVisitor . sumtree) depth
     ,bench "visitor w/ checkpointing" $ nf (getSum . runVisitorThroughCheckpoint Unexplored . sumtree) depth
-    ,bench "visitor using worker" $ do
-        result_mvar ← newEmptyMVar
-        _ ← forkVisitorWorkerThread
-            (putMVar result_mvar)
-            (sumtree depth)
-            entire_workload
-        _ ← takeMVar result_mvar
-        return ()
+    ,bench "visitor using worker" $ Worker.runVisitor (sumtree depth)
     ]
   where depth = 12
