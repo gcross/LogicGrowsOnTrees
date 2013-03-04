@@ -220,17 +220,17 @@ genericForkVisitorTWorkerThread
     finished_flag ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←
-                (run $
-                    walk initial_path visitor
-                    >>=
-                    loop1 mempty Seq.empty . initialVisitorState initial_checkpoint
-                )
-                `catch`
-                (\e → case fromException e of
-                    Just ThreadKilled → return WorkerAborted
-                    Just UserInterrupt → return WorkerAborted
-                    _ → return $ WorkerFailed (show e)
-                )
+            (run $
+                walk initial_path visitor
+                >>=
+                loop1 mempty Seq.empty . initialVisitorState initial_checkpoint
+            )
+            `catch`
+            (\e → case fromException e of
+                Just ThreadKilled → return WorkerAborted
+                Just UserInterrupt → return WorkerAborted
+                _ → return $ WorkerFailed (show e)
+            )
         IVar.write finished_flag ()
         finishedCallback termination_reason
     return $
