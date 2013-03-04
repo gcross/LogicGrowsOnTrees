@@ -9,41 +9,58 @@ module Control.Visitor.Examples.Queens where
 import Control.Monad (MonadPlus)
 
 import Data.Bits (bitSize)
+import Data.Functor ((<$>))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust)
 import Data.Word (Word)
 
-import System.Console.CmdTheLine (ArgVal(..),just)
+import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
 import Control.Visitor (Visitor)
 import Control.Visitor.Examples.Queens.Implementation
+import Control.Visitor.Utils.Word_
 import Control.Visitor.Utils.WordSum
 -- }}}
 
 -- Types {{{
-newtype BoardSize = BoardSize { getBoardSize :: Int }
+newtype BoardSize = BoardSize { getBoardSize :: Word }
 instance ArgVal BoardSize where -- {{{
     converter = (parseBoardSize,prettyBoardSize)
       where
-        (parseInt,prettyInt) = converter
+        (parseWord,prettyWord) = converter
         parseBoardSize =
-            either Left (\n →
-                if n >= 1 && n <= nqueens_maximum_size
+            either Left (\(Word_ n) →
+                if n >= 1 && n <= fromIntegral nqueens_maximum_size
                     then Right . BoardSize $ n
                     else Left . text $ "bad board size (must be between 1 and " ++ show nqueens_maximum_size ++ " inclusive)"
             )
             .
-            parseInt
-        prettyBoardSize = prettyInt . getBoardSize
+            parseWord
+        prettyBoardSize = prettyWord . Word_ . getBoardSize
 instance ArgVal (Maybe BoardSize) where
     converter = just
 -- }}}
 -- }}}
 
 -- Values -- {{{
+
+makeBoardSizeTermAtPosition :: Int → Term Word -- {{{
+makeBoardSizeTermAtPosition position =
+    getBoardSize
+    <$>
+    (required
+     $
+     pos position
+        Nothing
+        posInfo
+          { posName = "BOARD_SIZE"
+          , posDoc = "board size"
+          }
+    )
+-- }}}
 
 nqueens_correct_counts :: IntMap Word
 nqueens_correct_counts = IntMap.fromDistinctAscList $
