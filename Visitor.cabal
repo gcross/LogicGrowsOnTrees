@@ -106,6 +106,21 @@ Executable print-all-nqueens-solutions
     else
         Buildable: False
 
+Executable sum-all-trivial-tree-nodes
+    Main-is: sum-all-trivial-tree-nodes.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        cereal == 0.3.*,
+        cmdtheline == 0.2.*,
+        composition >= 0.2 && < 1.1
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    GHC-Options: -threaded
+
 Benchmark run-versus-list
     Type: exitcode-stdio-1.0
     Main-is: run-versus-list.hs

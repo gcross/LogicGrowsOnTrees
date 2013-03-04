@@ -1,15 +1,77 @@
 -- Language extensions {{{
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
 module Control.Visitor.Examples.RoseTree where
 
 -- Imports {{{
-import Control.Visitor.Utils.WordSum (WordSum(..))
+import Control.Applicative ((<$>),(<*>))
+
 import Data.List (genericReplicate)
 import Data.Semiring (Semiring(..))
 import Data.Tree (Tree(..))
 import Data.Word (Word)
+
+import System.Console.CmdTheLine
+
+import Text.PrettyPrint (text)
+
+import Control.Visitor.Utils.WordSum (WordSum(..))
+-- }}}
+
+-- Types {{{
+newtype Arity = Arity { getArity :: Word } deriving (Eq,Show)
+
+data ArityAndDepth = ArityAndDepth -- {{{
+    {   arity :: !Word
+    ,   depth :: !Word
+    } deriving (Eq, Show)
+-- }}}
+
+-- }}}
+
+-- Instances {{{
+instance ArgVal Arity where -- {{{
+    converter = (parseArity,prettyArity)
+      where
+        (parseWord,prettyWord) = converter
+        parseArity =
+            either Left (\n →
+                if n >= 2
+                    then Right . Arity $ n
+                    else Left . text $ "tree arity must be at least 2 (not " ++ show n ++ ")"
+            )
+            .
+            parseWord
+        prettyArity = prettyWord . getArity
+instance ArgVal (Maybe Arity) where
+    converter = just
+-- }}}
+
+-- }}}
+
+-- Values {{{
+makeArityAndDepthTermAtPositions :: Int → Int → Term ArityAndDepth
+makeArityAndDepthTermAtPositions arity_position depth_position =
+    formArityAndDepth
+    <$> (required $
+         pos arity_position
+             Nothing
+             posInfo
+               { posName = "ARITY"
+               , posDoc = "tree arity"
+               }
+        )
+    <*> (required $
+         pos depth_position
+             Nothing
+             posInfo
+               { posName = "DEPTH"
+               , posDoc = "tree depth (depth 0 means 1 level)"
+               }
+        )
 -- }}}
 
 -- Functions {{{
@@ -28,6 +90,10 @@ computeCorrectTrivialTreeSumOverPathsToLeaves = checkArityAndDepth (^)
 
 computeCorrectTrivialTreeSumOverNodes :: Word → Word → Word -- {{{
 computeCorrectTrivialTreeSumOverNodes = checkArityAndDepth $ \arity depth → (arity^(depth+1) - 1) `div` (arity - 1)
+-- }}}
+
+formArityAndDepth :: Arity → Word → ArityAndDepth -- {{{
+formArityAndDepth (Arity arity) depth = ArityAndDepth{..}
 -- }}}
 
 generateTrivialTree :: Word → Word → Tree WordSum -- {{{
