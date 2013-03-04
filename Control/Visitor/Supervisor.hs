@@ -68,6 +68,10 @@ import Data.Time.Clock (diffUTCTime,getCurrentTime)
 import Data.Composition ((.*),(.**))
 import Data.Monoid (Monoid(mempty))
 
+import qualified System.Log.Logger as Logger
+import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger.TH
+
 import Control.Visitor.Checkpoint (Progress)
 import Control.Visitor.Worker (ProgressUpdate,StolenWorkload)
 
@@ -91,6 +95,10 @@ import Control.Visitor.Supervisor.Implementation -- {{{
     , number_of_calls
     , time_spent_in_supervisor_monad
     ) -- }}}
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG]
 -- }}}
 
 -- Classes {{{
@@ -134,11 +142,14 @@ instance MonadState s m ⇒ MonadState s (SupervisorMonad result worker_id m) wh
 instance WrappableIntoSupervisorMonad AbortMonad where -- {{{
     wrapIntoSupervisorMonad action = do
         time_at_entrance ← liftIO getCurrentTime
-        SupervisorMonad . local (current_time .~ time_at_entrance) $ do
+        result ← SupervisorMonad . local (current_time .~ time_at_entrance) $ do
             number_of_calls += 1
+            debugM "Entering SupervisorMonad"
             result ← action
+            debugM "Exiting SupervisorMonad"
             liftIO getCurrentTime >>= (time_spent_in_supervisor_monad +=) . (flip diffUTCTime time_at_entrance)
             return result
+        return result
 -- }}}
 
 instance WrappableIntoSupervisorMonad ContextMonad where -- {{{
@@ -333,10 +344,13 @@ runSupervisorProgram :: SupervisorMonadConstraint m ⇒ SupervisorProgram result
 runSupervisorProgram program =
     case program of
         BlockingProgram initialize getRequest processRequest → initialize >> forever (do
+            debugM "Supervisor waiting for request."
             request ← lift getRequest
+            debugM "Supervisor request has arrived; processing request..."
             beginSupervisorOccupied
             processRequest request
             endSupervisorOccupied
+            debugM "...Supervisor finished processing request."
          )
         PollingProgram initialize getMaybeRequest processRequest → initialize >> forever (do
             maybe_request ← lift getMaybeRequest

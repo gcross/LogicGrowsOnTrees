@@ -245,6 +245,8 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
                 sendProgressUpdateRequestTo = sendRequestToWorker Worker.sendProgressUpdateRequest receiveProgressUpdateFromWorker
                 sendWorkloadStealRequestTo = sendRequestToWorker Worker.sendWorkloadStealRequest receiveStolenWorkloadFromWorker
                 sendWorkloadTo worker_id workload = -- {{{
+                    (debugM $ "Sending " ++ show workload ++ " to worker " ++ show worker_id)
+                    >>
                     (liftIO $ spawnWorker (\termination_reason →
                         case termination_reason of
                             WorkerFinished final_progress →
@@ -258,6 +260,8 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
                     modify
                     .
                     IntMap.insert worker_id
+                    >>
+                    (debugM $ "Thread for worker " ++ show worker_id ++ "started.")
                 -- }}}
             in WorkgroupCallbacks{..}
         )

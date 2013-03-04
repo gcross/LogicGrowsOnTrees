@@ -10,7 +10,22 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Visitor.Worker where
+module Control.Visitor.Worker
+    ( ProgressUpdate(..)
+    , StolenWorkload(..)
+    , WorkerRequestQueue
+    , WorkerEnvironment(..)
+    , WorkerTerminationReason(..)
+    , forkVisitorWorkerThread
+    , forkVisitorIOWorkerThread
+    , forkVisitorTWorkerThread
+    , runVisitor
+    , runVisitorIO
+    , runVisitorT
+    , sendAbortRequest
+    , sendProgressUpdateRequest
+    , sendWorkloadStealRequest
+    ) where
 
 -- Imports {{{
 import Prelude hiding (catch)
@@ -37,7 +52,11 @@ import Data.Sequence ((|>),(><),Seq,viewl,ViewL(..))
 import Data.Serialize
 import qualified Data.Sequence as Seq
 
-import Control.Visitor
+import qualified System.Log.Logger as Logger
+import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger.TH
+
+import Control.Visitor hiding (runVisitor,runVisitorT)
 import Control.Visitor.Checkpoint
 import Control.Visitor.Path
 import Control.Visitor.Workload
@@ -82,6 +101,10 @@ data WorkerTerminationReason α = -- {{{
   deriving (Show)
 -- }}}
 
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Functions {{{
@@ -171,17 +194,22 @@ genericForkVisitorTWorkerThread
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
                 [] → loop3 result cursor visitor_state
-                _ → (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
+                _ → debugM "Worker thread's request queue is non-empty."
+                    >> (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
                     >>= loop2 result cursor visitor_state
         loop2 result cursor visitor_state@(VisitorTState context checkpoint visitor) requests =
           case requests of
             -- Respond to request {{{
                 [] → liftIO yield >> loop3 result cursor visitor_state
-                AbortRequested:_ → return WorkerAborted
+                AbortRequested:_ → do
+                    debugM "Worker theread received abort request."
+                    return WorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
+                    debugM "Worker thread received progress update request."
                     liftIO . submitProgress $ computeProgressUpdate result initial_path cursor context checkpoint
                     loop2 mempty cursor visitor_state rest_requests
-                WorkloadStealRequested submitMaybeWorkload:rest_requests →
+                WorkloadStealRequested submitMaybeWorkload:rest_requests → do
+                    debugM "Worker thread received workload steal."
                     case tryStealWorkload initial_path cursor context of
                         Nothing → do
                             liftIO $ submitMaybeWorkload Nothing
@@ -220,6 +248,7 @@ genericForkVisitorTWorkerThread
     finished_flag ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←
+            debugM "Worker thread has been forked." >>
             (run $
                 walk initial_path visitor
                 >>=
@@ -231,6 +260,11 @@ genericForkVisitorTWorkerThread
                 Just UserInterrupt → return WorkerAborted
                 _ → return $ WorkerFailed (show e)
             )
+        debugM $ "Worker thread has terminated with reason " ++
+            case termination_reason of
+                WorkerFinished _ → "finished."
+                WorkerFailed message → "failed: " ++ show message
+                WorkerAborted → "aborted."
         IVar.write finished_flag ()
         finishedCallback termination_reason
     return $
