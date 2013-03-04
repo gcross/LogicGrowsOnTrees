@@ -190,16 +190,16 @@ genericForkVisitorTWorkerThread
     (Workload initial_path initial_checkpoint)
   = do
     pending_requests_ref ← newIORef []
-    let loop1 result cursor visitor_state =
+    let loop1 result cursor visitor_state = -- Check for requests {{{
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
                 [] → loop3 result cursor visitor_state
                 _ → debugM "Worker thread's request queue is non-empty."
                     >> (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
                     >>= loop2 result cursor visitor_state
-        loop2 result cursor visitor_state@(VisitorTState context checkpoint visitor) requests =
-          case requests of
-            -- Respond to request {{{
+        -- }}}
+        loop2 result cursor visitor_state@(VisitorTState context checkpoint visitor) requests = -- Process requests {{{
+            case requests of
                 [] → liftIO yield >> loop3 result cursor visitor_state
                 AbortRequested:_ → do
                     debugM "Worker theread received abort request."
@@ -220,10 +220,9 @@ genericForkVisitorTWorkerThread
                                     (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
                                     workload
                             loop2 mempty new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
-            -- }}}
-        loop3 result cursor visitor_state
+        -- }}}
+        loop3 result cursor visitor_state -- Step visitor {{{
           = do
-            -- Step visitor {{{
             (maybe_solution,maybe_new_visitor_state) ← step visitor_state
             new_result ← liftIO $ do
                 case maybe_solution of
@@ -243,7 +242,7 @@ genericForkVisitorTWorkerThread
                     $
                     Explored
                 Just new_visitor_state → loop1 new_result cursor new_visitor_state
-            -- }}}
+        -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
     thread_id ← forkIO $ do
