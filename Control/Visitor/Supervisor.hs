@@ -332,12 +332,12 @@ runSupervisorStartingFrom starting_progress actions program =
 runSupervisorProgram :: SupervisorMonadConstraint m ⇒ SupervisorProgram result worker_id m → SupervisorMonad result worker_id m α -- {{{
 runSupervisorProgram program =
     case program of
-        BlockingProgram initialize getRequest processRequest → forever $ do
-            initialize
+        BlockingProgram initialize getRequest processRequest → initialize >> forever (do
             request ← lift getRequest
             beginSupervisorOccupied
             processRequest request
             endSupervisorOccupied
+         )
         PollingProgram initialize getMaybeRequest processRequest → initialize >> forever (do
             maybe_request ← lift getMaybeRequest
             case maybe_request of
