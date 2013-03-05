@@ -66,7 +66,7 @@ testTrivialNodeSum runVisitor arity depth = -- {{{
 -- }}}
 
 main = do
-    updateGlobalLogger rootLoggerName (setLevel DEBUG)
+    -- updateGlobalLogger rootLoggerName (setLevel DEBUG)
     defaultMain tests
 
 tests = -- {{{
