@@ -91,7 +91,7 @@ import Test.SmallCheck.Drivers as Small (test)
 import Control.Visitor
 import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Queens
-import Control.Visitor.Examples.RoseTree
+import Control.Visitor.Examples.Tree
 import Control.Visitor.Label
 import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
 import qualified Control.Visitor.Parallel.Threads as Threads
@@ -101,7 +101,6 @@ import Control.Visitor.Supervisor
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Utils.IntSum
 import Control.Visitor.Utils.WordSum
-import Control.Visitor.Visitors.RoseTree
 import Control.Visitor.Workload
 import Control.Visitor.Worker hiding (runVisitor,runVisitorIO,runVisitorT)
 -- }}}
@@ -743,25 +742,14 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Examples.RoseTree" -- {{{
-        [testGroup "generateTrivialTree" -- {{{
-            [Small.testProperty "sumOverAllPathsToLeaves" . Small.test $ -- {{{
-                (liftA2 . liftA2) (==>)
-                    (\arity depth → arity > 0 || depth == 0)
-                    ((liftA2 . liftA2) (==)
-                        computeCorrectTrivialTreeSumOverPathsToLeaves
-                        ((getWordSum . runVisitor . sumOverAllPathsToLeaves) .* generateTrivialTree)
-                    )
-             -- }}}
-            ,Small.testProperty "sumOverAllNodes" . Small.test $ -- {{{
-                (liftA2 . liftA2) (==>)
-                    (\arity depth → arity >= 2)
-                    ((liftA2 . liftA2) (==)
-                        computeCorrectTrivialTreeSumOverNodes
-                        ((getWordSum . runVisitor . sumOverAllNodes) .* generateTrivialTree)
-                    )
-             -- }}}
-            ]
+    ,testGroup "Control.Visitor.Examples.Tree" -- {{{
+        [Small.testProperty "trivialTree" . Small.test $ -- {{{
+            (liftA2 . liftA2) (==>)
+                (\arity depth → arity >= 2)
+                ((liftA2 . liftA2) (==)
+                    numberOfLeaves
+                    ((getWordSum . runVisitor) .* trivialTree)
+                )
          -- }}}
         ]
      -- }}}

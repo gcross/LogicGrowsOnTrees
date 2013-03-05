@@ -57,7 +57,7 @@ Library
         Control.Visitor.Checkpoint
         Control.Visitor.Examples.Queens
         Control.Visitor.Examples.Queens.Implementation
-        Control.Visitor.Examples.RoseTree
+        Control.Visitor.Examples.Tree
         Control.Visitor.Label
         Control.Visitor.Main
         Control.Visitor.Parallel.Process
@@ -70,7 +70,6 @@ Library
         Control.Visitor.Utils.IntSum
         Control.Visitor.Utils.MonadStacks
         Control.Visitor.Utils.WordSum
-        Control.Visitor.Visitors.RoseTree
         Control.Visitor.Worker
         Control.Visitor.Workload
         Data.Semiring
@@ -106,8 +105,8 @@ Executable print-all-nqueens-solutions
     else
         Buildable: False
 
-Executable sum-all-trivial-tree-nodes
-    Main-is: sum-all-trivial-tree-nodes.hs
+Executable count-all-trivial-tree-leaves
+    Main-is: count-all-trivial-tree-leaves.hs
     Hs-source-dirs: examples
     Build-depends:
         Visitor,
@@ -121,18 +120,18 @@ Executable sum-all-trivial-tree-nodes
         Buildable: False
     GHC-Options: -threaded
 
-Benchmark run-versus-list
+Benchmark visitor-versus-list-trivial-tree
     Type: exitcode-stdio-1.0
-    Main-is: run-versus-list.hs
+    Main-is: visitor-versus-list-trivial-tree.hs
     Hs-source-dirs: benchmarks
     Build-depends:
         Visitor,
         base > 4 && < 5,
         criterion == 0.6.*
 
-Benchmark nqueens-versus-list
+Benchmark visitor-versus-list-nqueens
     Type: exitcode-stdio-1.0
-    Main-is: nqueens-versus-list.hs
+    Main-is: visitor-versus-list-nqueens.hs
     Hs-source-dirs: benchmarks
     Build-depends:
         Visitor,
@@ -168,20 +167,7 @@ Test-Suite tests
         test-framework-smallcheck == 0.2.*,
         transformers >= 0.2 && < 0.4,
         uuid == 1.2.*
-
-Test-Suite test-memory
-    Type: exitcode-stdio-1.0
-    Main-is: test-memory.hs
-    Hs-source-dirs: tests
-    Build-depends:
-        Visitor,
-        base > 4 && < 5,
-        hslogger == 1.2.*,
-        HUnit == 1.2.*,
-        test-framework >= 0.6 && < 0.9,
-        test-framework-hunit >= 0.2 && < 0.4,
-        transformers >= 0.2 && < 0.4
-    GHC-Options: -with-rtsopts=-M1M
+    GHC-Options: -with-rtsopts=-M256M
 
 Test-Suite test-nqueens
     Type: exitcode-stdio-1.0

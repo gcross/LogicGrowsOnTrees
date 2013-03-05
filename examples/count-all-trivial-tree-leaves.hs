@@ -12,23 +12,22 @@ import Data.Serialize (Serialize(..))
 import System.Console.CmdTheLine
 import System.Environment
 
+import Control.Visitor.Examples.Tree
 import Control.Visitor.Main
 import Control.Visitor.Parallel.Threads
 import Control.Visitor.Utils.WordSum
 
-import Control.Visitor.Examples.RoseTree
-import Control.Visitor.Visitors.RoseTree
 -- }}}
 
 main =
     mainVisitor
         driver
         (makeArityAndDepthTermAtPositions 0 1)
-        (defTI { termDoc = "sum the unit nodes of a trivial tree" })
+        (defTI { termDoc = "count the leaves of a tree" })
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of
                 Aborted _ → error "search aborted"
                 Completed (WordSum count) → print count
                 Failure message → error $ "error: " ++ message
         )
-        (sumOverAllNodes . (generateTrivialTree <$> arity <*> depth))
+        (trivialTree <$> arity <*> depth)

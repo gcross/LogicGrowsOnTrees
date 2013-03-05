@@ -4,21 +4,21 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Examples.RoseTree where
+module Control.Visitor.Examples.Tree where
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>))
+import Control.Monad (MonadPlus,msum)
 
 import Data.List (genericReplicate)
-import Data.Semiring (Semiring(..))
-import Data.Tree (Tree(..))
 import Data.Word (Word)
 
 import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import Control.Visitor.Utils.WordSum (WordSum(..))
+import Control.Visitor (Visitor)
+import Control.Visitor.Utils.WordSum
 -- }}}
 
 -- Types {{{
@@ -29,7 +29,6 @@ data ArityAndDepth = ArityAndDepth -- {{{
     ,   depth :: !Word
     } deriving (Eq, Show)
 -- }}}
-
 -- }}}
 
 -- Instances {{{
@@ -49,7 +48,6 @@ instance ArgVal Arity where -- {{{
 instance ArgVal (Maybe Arity) where
     converter = just
 -- }}}
-
 -- }}}
 
 -- Values {{{
@@ -76,32 +74,27 @@ makeArityAndDepthTermAtPositions arity_position depth_position =
 
 -- Functions {{{
 
-checkArityAndDepth :: (Word → Word → α) → Word → Word → α -- {{{
-checkArityAndDepth f arity depth
-  | arity == 0 && depth /= 0
-     = error $ "arity is zero, but depth (" ++ show depth ++ ") is non-zero"
-  | otherwise
-     = f arity depth
--- }}}
-
-computeCorrectTrivialTreeSumOverPathsToLeaves :: Word → Word → Word -- {{{
-computeCorrectTrivialTreeSumOverPathsToLeaves = checkArityAndDepth (^)
--- }}}
-
-computeCorrectTrivialTreeSumOverNodes :: Word → Word → Word -- {{{
-computeCorrectTrivialTreeSumOverNodes = checkArityAndDepth $ \arity depth → (arity^(depth+1) - 1) `div` (arity - 1)
--- }}}
-
 formArityAndDepth :: Arity → Word → ArityAndDepth -- {{{
 formArityAndDepth (Arity arity) depth = ArityAndDepth{..}
 -- }}}
 
-generateTrivialTree :: Word → Word → Tree WordSum -- {{{
-generateTrivialTree = checkArityAndDepth $ \arity →
-    let go1 n = Node munit $ go2 n
-        go2 0 = []
-        go2 n = genericReplicate arity $ go1 (n-1)
-    in go1 
--- }}} 
+numberOfLeaves :: Word → Word → Word -- {{{
+numberOfLeaves arity depth = arity^depth
+-- }}}
+
+tree :: MonadPlus m ⇒ α → Word → Word → m α -- {{{
+tree leaf arity depth
+  | depth == 0 = return leaf
+  | arity > 0  = msum . genericReplicate arity $ tree leaf arity (depth-1)
+  | otherwise  = error "arity must be a positive integer"
+{-# SPECIALIZE tree :: α → Word → Word → [α] #-}
+{-# SPECIALIZE tree :: α → Word → Word → Visitor α #-}
+-- }}}
+
+trivialTree :: MonadPlus m ⇒ Word → Word → m WordSum -- {{{
+trivialTree = tree (WordSum 1)
+{-# SPECIALIZE trivialTree :: Word → Word → [WordSum] #-}
+{-# SPECIALIZE trivialTree :: Word → Word → Visitor WordSum #-}
+-- }}}
 
 -- }}}

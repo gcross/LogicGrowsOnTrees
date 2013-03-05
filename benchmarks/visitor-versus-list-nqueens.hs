@@ -20,4 +20,4 @@ main = defaultMain
     ,bench "visitor w/ checkpointing" $ nf (getWordSum . runVisitorThroughCheckpoint Unexplored . nqueensCount) n
     ,bench "visitor using worker" $ Worker.runVisitor (nqueensCount n)
     ]
-  where n = 14
+  where n = 13
