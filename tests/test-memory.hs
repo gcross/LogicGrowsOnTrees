@@ -55,14 +55,17 @@ testMemory :: String → Assertion → Test.Framework.Test -- {{{
 testMemory name action = testCase name $ performGC >> action >> performGC
 -- }}}
 
-testTrivialNodeSum :: (Visitor WordSum → IO WordSum) → Word → Word → Test.Framework.Test
-testTrivialNodeSum runVisitor arity depth = -- {{{
-    testCase (printf "arity = %i, depth = %i" arity depth) $ do
-        getWordSum <$> (runVisitor . sumOverAllNodes $ generateTrivialTree arity depth)
-        >>=
-        (@?= computeCorrectTrivialTreeSumOverNodes arity depth)
--- }}}
-
+testAll :: (Visitor WordSum,Word) → [Test.Framework.Test] -- {{
+testAll (visitor,correct_result) =
+    [testCase "plain visitor" $
+        getWordSum (runVisitor visitor) @?= correct_result
+    ,testCase "checkpointing visitor" $
+        getWordSum (runVisitorThroughCheckpoint Unexplored visitor) @?= correct_result
+    ,testCase "worker" $
+        (getWordSum  <$> runVisitorWorker visitor) >>= (@?= correct_result)
+    ,testCase "one thread" $
+        (getWordSum  <$> runVisitorThreads (return 1) visitor) >>= (@?= correct_result)
+    ]
 -- }}}
 
 main = do
@@ -70,36 +73,20 @@ main = do
     defaultMain tests
 
 tests = -- {{{
-    [testGroup "using runVisitor" -- {{{
-        [testGroup "sum trivial tree nodes" -- {{{
-            [testTrivialNodeSum (evaluate . runVisitor) 2 10
-            ,testTrivialNodeSum (evaluate . runVisitor) 2 20
-            ]
-         -- }}}
-        ]
-     -- }}}
-    ,testGroup "using runVisitorThroughCheckpoint" -- {{{
-        [testGroup "sum trivial tree nodes" -- {{{
-            [testTrivialNodeSum (evaluate . runVisitorThroughCheckpoint Unexplored) 2 10
-            ,testTrivialNodeSum (evaluate . runVisitorThroughCheckpoint Unexplored) 2 20
-            ]
-         -- }}}
-        ]
-    ,testGroup "using worker" -- {{{
-        [testGroup "sum trivial tree nodes" -- {{{
-            [testTrivialNodeSum runVisitorWorker 2 10
-            ,testTrivialNodeSum runVisitorWorker 2 20
-            ]
-         -- }}}
-        ]
-     -- }}}
-    ,testGroup "using one thread" -- {{{
-        [testGroup "sum trivial tree nodes" -- {{{
-            [testTrivialNodeSum (runVisitorThreads (return 1)) 2 5
-            ,testTrivialNodeSum (runVisitorThreads (return 1)) 2 10
-            ,testTrivialNodeSum (runVisitorThreads (return 1)) 2 20
-            ]
-         -- }}}
+    [testGroup "sum trivial tree nodes" $ -- {{{
+        let constructVisitorAndCorrectResult arity depth =
+                (sumOverAllNodes $ generateTrivialTree arity depth
+                ,computeCorrectTrivialTreeSumOverNodes arity depth
+                )
+        in
+        [testGroup "arity = 2, depth =  5" . testAll $
+            constructVisitorAndCorrectResult 2  5
+        ,testGroup "arity = 2, depth = 10" . testAll $
+            constructVisitorAndCorrectResult 2 10
+        ,testGroup "arity = 2, depth = 15" . testAll $
+            constructVisitorAndCorrectResult 2 15
+        ,testGroup "arity = 2, depth = 25" . testAll $
+            constructVisitorAndCorrectResult 2 25
         ]
      -- }}}
     ]
