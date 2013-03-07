@@ -19,14 +19,14 @@ module Control.Visitor.Supervisor.Implementation -- {{{
     ( AbortMonad()
     , ContextMonad()
     , RunStatistics(..)
-    , Statistics(..)
+    , StepFunctionOfTimeStatistics(..)
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
     , SupervisorTerminationReason(..)
     , SupervisorWorkerIdConstraint
-    , TimeStatistics(..)
+    , IndependentMeasurementsStatistics(..)
     , abortSupervisor
     , abortSupervisorWithReason
     , addWorker
@@ -200,7 +200,7 @@ data ExponentiallyWeightedAverage = ExponentiallyWeightedAverage -- {{{
 $( makeLenses ''ExponentiallyWeightedAverage )
 -- }}}
 
-data Statistics α = Statistics -- {{{
+data StepFunctionOfTimeStatistics α = StepFunctionOfTimeStatistics -- {{{
     {   statAverage :: !Double
     ,   statStdDev :: !Double
     ,   statMin :: !α
@@ -234,17 +234,17 @@ data RunStatistics = -- {{{
     ,   runNumberOfCalls :: !Int
     ,   runAverageTimePerCall :: !Float
     ,   runWorkerOccupation :: !Float
-    ,   runWorkerWaitTimes :: !TimeStatistics
-    ,   runStealWaitTimes :: !TimeStatistics
-    ,   runWaitingWorkerStatistics :: !(Statistics Int)
-    ,   runAvailableWorkloadStatistics :: !(Statistics Int)
-    ,   runInstantaneousWorkloadRequestRateStatistics :: !(Statistics Float)
-    ,   runInstantaneousWorkloadStealTimeStatistics :: !(Statistics Float)
-    ,   runBufferSizeStatistics :: !(Statistics Int)
+    ,   runWorkerWaitTimes :: !IndependentMeasurementsStatistics
+    ,   runStealWaitTimes :: !IndependentMeasurementsStatistics
+    ,   runWaitingWorkerStatistics :: !(StepFunctionOfTimeStatistics Int)
+    ,   runAvailableWorkloadStatistics :: !(StepFunctionOfTimeStatistics Int)
+    ,   runInstantaneousWorkloadRequestRateStatistics :: !(StepFunctionOfTimeStatistics Float)
+    ,   runInstantaneousWorkloadStealTimeStatistics :: !(StepFunctionOfTimeStatistics Float)
+    ,   runBufferSizeStatistics :: !(StepFunctionOfTimeStatistics Int)
     } deriving (Eq,Show)
 -- }}}
 
-data TimeStatistics = TimeStatistics -- {{{
+data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics -- {{{
     {   timeCount :: {-# UNPACK #-} !Int
     ,   timeMin :: {-# UNPACK #-} !Double
     ,   timeMax :: {-# UNPACK #-} !Double
@@ -253,15 +253,15 @@ data TimeStatistics = TimeStatistics -- {{{
     } deriving (Eq,Show)
 -- }}}
 
-data TimeStatisticsMonoid = TimeStatisticsMonoid -- {{{
+data IndependentMeasurements = IndependentMeasurements -- {{{
     {   timeDataMin :: {-# UNPACK #-} !Min
     ,   timeDataMax :: {-# UNPACK #-} !Max
     ,   timeDataVariance ::  {-# UNPACK #-} !Variance
     } deriving (Eq,Show)
-$( derive makeMonoid ''TimeStatisticsMonoid )
+$( derive makeMonoid ''IndependentMeasurements )
 -- }}}
 
-data TimeWeightedStatistics α = TimeWeightedStatistics -- {{{
+data StepFunctionsOfTime α = StepFunctionsOfTime -- {{{
     {   _previous_value :: !α
     ,   _previous_time :: !UTCTime
     ,   _first_moment :: !Double
@@ -269,7 +269,7 @@ data TimeWeightedStatistics α = TimeWeightedStatistics -- {{{
     ,   _minimum_value :: !α
     ,   _maximum_value :: !α
     } deriving (Eq,Show)
-$( makeLenses ''TimeWeightedStatistics )
+$( makeLenses ''StepFunctionsOfTime )
 -- }}}
 
 -- }}}
@@ -310,20 +310,20 @@ data SupervisorState result worker_id = -- {{{
     ,   _supervisor_occupation_statistics :: !OccupationStatistics
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     ,   _retired_worker_occupation_statistics :: !(Map worker_id RetiredOccupationStatistics)
-    ,   _worker_wait_time_statistics :: !TimeStatisticsMonoid
+    ,   _worker_wait_time_statistics :: !IndependentMeasurements
     ,   _steal_request_matcher_queue :: !(MultiSet UTCTime)
     ,   _steal_request_failures :: !Int
-    ,   _workload_steal_time_statistics :: !TimeStatisticsMonoid
-    ,   _waiting_worker_count_statistics :: !(TimeWeightedStatistics Int)
-    ,   _available_workload_count_statistics :: !(TimeWeightedStatistics Int)
+    ,   _workload_steal_time_statistics :: !IndependentMeasurements
+    ,   _waiting_worker_count_statistics :: !(StepFunctionsOfTime Int)
+    ,   _available_workload_count_statistics :: !(StepFunctionsOfTime Int)
     ,   _instantaneous_workload_request_rate :: !ExponentiallyDecayingSum
-    ,   _instantaneous_workload_request_rate_statistics :: !(TimeWeightedStatistics Float)
+    ,   _instantaneous_workload_request_rate_statistics :: !(StepFunctionsOfTime Float)
     ,   _instantaneous_workload_steal_time :: !ExponentiallyWeightedAverage
-    ,   _instantaneous_workload_steal_time_statistics :: !(TimeWeightedStatistics Float)
+    ,   _instantaneous_workload_steal_time_statistics :: !(StepFunctionsOfTime Float)
     ,   _time_spent_in_supervisor_monad :: !NominalDiffTime
     ,   _workload_buffer_size :: !Int
     ,   _workload_buffer_size_parameters :: !WorkloadBufferSizeParameters
-    ,   _workload_buffer_size_statistics :: !(TimeWeightedStatistics Int)
+    ,   _workload_buffer_size_statistics :: !(StepFunctionsOfTime Int)
     ,   _number_of_calls :: !Int
     }
 $( makeLenses ''SupervisorState )
@@ -408,24 +408,24 @@ instance Monoid RetiredOccupationStatistics where -- {{{
     mappend x y = x & (occupied_time +~ y^.occupied_time) & (total_time +~ y^.total_time)
 -- }}}
 
-instance StatMonoid TimeStatisticsMonoid NominalDiffTime where -- {{{
+instance StatMonoid IndependentMeasurements NominalDiffTime where -- {{{
     pappend t =
-        TimeStatisticsMonoid
+        IndependentMeasurements
             <$> (pappend t' . timeDataMin)
             <*> (pappend t' . timeDataMax)
             <*> (pappend t' . timeDataVariance)
       where t' = fromRational . toRational $ t :: Double
 -- }}}
 
-instance CalcCount TimeStatisticsMonoid where -- {{{
+instance CalcCount IndependentMeasurements where -- {{{
     calcCount = calcCount . timeDataVariance
 -- }}}
 
-instance CalcMean TimeStatisticsMonoid where -- {{{
+instance CalcMean IndependentMeasurements where -- {{{
     calcMean = calcMean . timeDataVariance
 -- }}}
 
-instance CalcVariance TimeStatisticsMonoid where -- {{{
+instance CalcVariance IndependentMeasurements where -- {{{
     calcVariance = calcVariance . timeDataVariance
     calcVarianceUnbiased = calcVarianceUnbiased . timeDataVariance
 -- }}}
@@ -685,20 +685,20 @@ enqueueWorkload workload =
                   (timePassedSince >=> (worker_wait_time_statistics %=) . pappend)
                   maybe_time_started_waiting
             sendWorkloadTo workload free_worker_id
-            updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics (Map.size remaining_workers)
+            updateStepFunctionOfTimeUsingLens waiting_worker_count_statistics (Map.size remaining_workers)
         Left (Map.minViewWithKey → Nothing) → do
             waiting_workers_or_available_workloads .= Right (Set.singleton workload)
-            updateTimeWeightedStatisticsUsingLens available_workload_count_statistics 1
+            updateStepFunctionOfTimeUsingLens available_workload_count_statistics 1
         Right available_workloads → do
             waiting_workers_or_available_workloads .= Right (Set.insert workload available_workloads)
-            updateTimeWeightedStatisticsUsingLens available_workload_count_statistics (Set.size available_workloads + 1)
+            updateStepFunctionOfTimeUsingLens available_workload_count_statistics (Set.size available_workloads + 1)
     >>
     checkWhetherMoreStealsAreNeeded
 -- }}}
 
-extractTimeStatistics :: TimeStatisticsMonoid → TimeStatistics -- {{{
-extractTimeStatistics =
-    TimeStatistics
+extractIndependentMeasurementsStatistics :: IndependentMeasurements → IndependentMeasurementsStatistics -- {{{
+extractIndependentMeasurementsStatistics =
+    IndependentMeasurementsStatistics
         <$>  calcCount
         <*> (calcMin . timeDataMin)
         <*> (calcMax . timeDataMax)
@@ -706,7 +706,7 @@ extractTimeStatistics =
         <*>  calcStddev
 -- }}}
 
-finalizeStatistics :: -- {{{
+extractStepFunctionOfTimeStatistics :: -- {{{
     ( Ord α
     , Real α
     , SupervisorMonadConstraint m
@@ -715,19 +715,19 @@ finalizeStatistics :: -- {{{
     ) ⇒
     UTCTime →
     m' α →
-    m' (TimeWeightedStatistics α) →
-    m' (Statistics α)
-finalizeStatistics start_time getFinalValue getWeightedStatistics = do
+    m' (StepFunctionsOfTime α) →
+    m' (StepFunctionOfTimeStatistics α)
+extractStepFunctionOfTimeStatistics start_time getFinalValue getWeightedStatistics = do
     end_time ← view current_time
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
     final_value ← getFinalValue
     getWeightedStatistics >>= (evalStateT $ do
-        updateTimeWeightedStatistics final_value end_time
+        updateStepFunctionOfTime final_value end_time
         statAverage ← (/total_weight) <$> use first_moment
         statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
         statMin ← min final_value <$> use minimum_value
         statMax ← max final_value <$> use maximum_value
-        return $ Statistics{..}
+        return $ StepFunctionOfTimeStatistics{..}
      )
 -- }}}
 
@@ -768,30 +768,30 @@ getCurrentStatistics = do
         liftM2 (Map.unionWith (<>))
             (use retired_worker_occupation_statistics)
             (use worker_occupation_statistics >>= retireManyOccupationStatistics)
-    runWorkerWaitTimes ← extractTimeStatistics <$> use worker_wait_time_statistics
-    runStealWaitTimes ← extractTimeStatistics <$> use workload_steal_time_statistics
+    runWorkerWaitTimes ← extractIndependentMeasurementsStatistics <$> use worker_wait_time_statistics
+    runStealWaitTimes ← extractIndependentMeasurementsStatistics <$> use workload_steal_time_statistics
     runWaitingWorkerStatistics ←
-        finalizeStatistics
+        extractStepFunctionOfTimeStatistics
             runStartTime
             (either Map.size (const 0) <$> use waiting_workers_or_available_workloads)
             (use waiting_worker_count_statistics)
     runAvailableWorkloadStatistics ←
-        finalizeStatistics
+        extractStepFunctionOfTimeStatistics
             runStartTime
             (either (const 0) Set.size <$> use waiting_workers_or_available_workloads)
             (use available_workload_count_statistics)
     runInstantaneousWorkloadRequestRateStatistics ←
-        finalizeStatistics
+        extractStepFunctionOfTimeStatistics
             runStartTime
             (use instantaneous_workload_request_rate >>= computeInstantaneousRateFromDecayingSum)
             (use instantaneous_workload_request_rate_statistics)
     runInstantaneousWorkloadStealTimeStatistics ←
-        finalizeStatistics
+        extractStepFunctionOfTimeStatistics
             runStartTime
             (use $ instantaneous_workload_steal_time . current_average_value)
             (use instantaneous_workload_steal_time_statistics)
     runBufferSizeStatistics ←
-        finalizeStatistics
+        extractStepFunctionOfTimeStatistics
             runStartTime
             (use workload_buffer_size)
             (use workload_buffer_size_statistics)
@@ -822,13 +822,13 @@ getWorkerDepth worker_id =
     use active_workers
 -- }}}
 
-initialTimeWeightedStatisticsForStartingTime :: Num α ⇒ UTCTime → TimeWeightedStatistics α -- {{{
-initialTimeWeightedStatisticsForStartingTime = flip initialTimeWeightedStatisticsForStartingTimeAndValue 0
+initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionsOfTime α -- {{{
+initialStepFunctionForStartingTime = flip initialStepFunctionForStartingTimeAndValue 0
 -- }}}
 
-initialTimeWeightedStatisticsForStartingTimeAndValue :: Num α ⇒ UTCTime → α → TimeWeightedStatistics α -- {{{
-initialTimeWeightedStatisticsForStartingTimeAndValue starting_time starting_value =
-    TimeWeightedStatistics
+initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionsOfTime α -- {{{
+initialStepFunctionForStartingTimeAndValue starting_time starting_value =
+    StepFunctionsOfTime
         starting_value
         starting_time
         0
@@ -1109,7 +1109,7 @@ retireAndDeactivateWorker worker_id = do
         (waiting_workers_or_available_workloads %%=
             either (pred . Map.size &&& Left . Map.delete worker_id)
                    (error $ "worker " ++ show worker_id ++ " is inactive but was not in the waiting queue")
-         >>= updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics
+         >>= updateStepFunctionOfTimeUsingLens waiting_worker_count_statistics
         )
 -- }}}
 
@@ -1148,16 +1148,16 @@ runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCu
             ,   _steal_request_matcher_queue = mempty
             ,   _steal_request_failures = 0
             ,   _workload_steal_time_statistics = mempty
-            ,   _waiting_worker_count_statistics = initialTimeWeightedStatisticsForStartingTime start_time
-            ,   _available_workload_count_statistics = initialTimeWeightedStatisticsForStartingTime start_time
+            ,   _waiting_worker_count_statistics = initialStepFunctionForStartingTime start_time
+            ,   _available_workload_count_statistics = initialStepFunctionForStartingTime start_time
             ,   _instantaneous_workload_request_rate = ExponentiallyDecayingSum start_time 0
-            ,   _instantaneous_workload_request_rate_statistics = initialTimeWeightedStatisticsForStartingTime start_time
+            ,   _instantaneous_workload_request_rate_statistics = initialStepFunctionForStartingTime start_time
             ,   _instantaneous_workload_steal_time = ExponentiallyWeightedAverage start_time 0
-            ,   _instantaneous_workload_steal_time_statistics = initialTimeWeightedStatisticsForStartingTime start_time
+            ,   _instantaneous_workload_steal_time_statistics = initialStepFunctionForStartingTime start_time
             ,   _time_spent_in_supervisor_monad = 0
             ,   _workload_buffer_size = 4
             ,   _workload_buffer_size_parameters = WorkloadBufferSizeParameters 4 3
-            ,   _workload_buffer_size_statistics = initialTimeWeightedStatisticsForStartingTimeAndValue start_time 4
+            ,   _workload_buffer_size_statistics = initialStepFunctionForStartingTimeAndValue start_time 4
             ,   _number_of_calls = 0
             }
         )
@@ -1241,15 +1241,15 @@ tryToObtainWorkloadFor is_new_worker worker_id =
         Left waiting_workers → do
             maybe_time_started_waiting ← getMaybeTimeStartedWorking
             waiting_workers_or_available_workloads .= Left (Map.insert worker_id maybe_time_started_waiting waiting_workers)
-            updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics (Map.size waiting_workers + 1)
+            updateStepFunctionOfTimeUsingLens waiting_worker_count_statistics (Map.size waiting_workers + 1)
         Right (Set.minView → Nothing) → do
             maybe_time_started_waiting ← getMaybeTimeStartedWorking
             waiting_workers_or_available_workloads .= Left (Map.singleton worker_id maybe_time_started_waiting)
-            updateTimeWeightedStatisticsUsingLens waiting_worker_count_statistics 1
+            updateStepFunctionOfTimeUsingLens waiting_worker_count_statistics 1
         Right (Set.minView → Just (workload,remaining_workloads)) → do
             sendWorkloadTo workload worker_id
             waiting_workers_or_available_workloads .= Right remaining_workloads
-            updateTimeWeightedStatisticsUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
+            updateStepFunctionOfTimeUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
     >>
     checkWhetherMoreStealsAreNeeded
   where
@@ -1274,7 +1274,7 @@ updateBuffer = do
             (ceiling . (* ratio) . fromIntegral . (^.scale_factor))
     old_size ← workload_buffer_size <<.= new_size
     when (new_size /= old_size) $ do
-        updateTimeWeightedStatisticsUsingLens workload_buffer_size_statistics new_size
+        updateStepFunctionOfTimeUsingLens workload_buffer_size_statistics new_size
         when (new_size > old_size) checkWhetherMoreStealsAreNeeded
 -- }}}
 
@@ -1283,7 +1283,7 @@ updateInstataneousWorkloadRequestRate = do
     current_time ← view current_time
     previous_value ← instantaneous_workload_request_rate %%= ((^.decaying_sum_value) &&& addPointToExponentiallyDecayingSum current_time)
     current_value ← use (instantaneous_workload_request_rate . decaying_sum_value)
-    updateTimeWeightedStatisticsUsingLens instantaneous_workload_request_rate_statistics ((current_value + previous_value) / 2)
+    updateStepFunctionOfTimeUsingLens instantaneous_workload_request_rate_statistics ((current_value + previous_value) / 2)
 -- }}}
 
 updateInstataneousWorkloadStealTime :: SupervisorMonadConstraint m ⇒ NominalDiffTime → ContextMonad result worker_id m () -- {{{
@@ -1291,11 +1291,11 @@ updateInstataneousWorkloadStealTime (fromRational . toRational → current_value
     current_time ← view current_time
     previous_value ← instantaneous_workload_steal_time %%= ((^.current_average_value) &&& addPointToExponentiallyWeightedAverage current_value current_time)
     current_value ← use (instantaneous_workload_steal_time . current_average_value)
-    updateTimeWeightedStatisticsUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
+    updateStepFunctionOfTimeUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
 -- }}}
 
-updateTimeWeightedStatistics :: (MonadIO m, Real α) ⇒ α → UTCTime → StateT (TimeWeightedStatistics α) m () -- {{{
-updateTimeWeightedStatistics value current_time = do 
+updateStepFunctionOfTime :: (MonadIO m, Real α) ⇒ α → UTCTime → StateT (StepFunctionsOfTime α) m () -- {{{
+updateStepFunctionOfTime value current_time = do
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
     let weight = fromRational . toRational $ (current_time `diffUTCTime` last_time)
@@ -1306,14 +1306,14 @@ updateTimeWeightedStatistics value current_time = do
     maximum_value %= max value
 -- }}}
 
-updateTimeWeightedStatisticsUsingLens :: -- {{{
+updateStepFunctionOfTimeUsingLens :: -- {{{
     ∀ α m result worker_id. 
     (Real α, SupervisorMonadConstraint m) ⇒
-    Lens' (SupervisorState result worker_id) (TimeWeightedStatistics α) →
+    Lens' (SupervisorState result worker_id) (StepFunctionsOfTime α) →
     α →
     ContextMonad result worker_id m ()
-updateTimeWeightedStatisticsUsingLens field value =
-    view current_time >>= ContextMonad . void . zoom field . updateTimeWeightedStatistics value
+updateStepFunctionOfTimeUsingLens field value =
+    view current_time >>= ContextMonad . void . zoom field . updateStepFunctionOfTime value
 -- }}}
 
 validateWorkerKnown :: -- {{{

@@ -18,6 +18,7 @@
 
 module Control.Visitor.Supervisor -- {{{
     ( RunStatistics(..)
+    , IndependentMeasurementsStatistics(..)
     , Statistics(..)
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
@@ -27,7 +28,6 @@ module Control.Visitor.Supervisor -- {{{
     , SupervisorProgram(..)
     , SupervisorTerminationReason(..)
     , SupervisorWorkerIdConstraint
-    , TimeStatistics(..)
     , abortSupervisor
     , addWorker
     , disableSupervisorDebugMode
@@ -79,6 +79,7 @@ import qualified Control.Visitor.Supervisor.Implementation as Implementation
 import Control.Visitor.Supervisor.Implementation -- {{{
     ( AbortMonad()
     , ContextMonad()
+    , IndependentMeasurementsStatistics(..)
     , RunStatistics(..)
     , Statistics(..)
     , SupervisorCallbacks(..)
@@ -87,7 +88,6 @@ import Control.Visitor.Supervisor.Implementation -- {{{
     , SupervisorOutcome(..)
     , SupervisorTerminationReason(..)
     , SupervisorWorkerIdConstraint
-    , TimeStatistics(..)
     , current_time
     , liftContextToAbort
     , liftUserToAbort

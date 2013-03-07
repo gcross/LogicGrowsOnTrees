@@ -59,7 +59,7 @@ import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Supervisor (RunStatistics(..),Statistics(..),TimeStatistics(..))
+import Control.Visitor.Supervisor (RunStatistics(..),Statistics(..),IndependentMeasurementsStatistics(..))
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker
 import Control.Visitor.Workload
@@ -391,7 +391,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
             printf "Workers were occupied %.2f%% of the time on average.\n"
                 (runWorkerOccupation*100)
     when show_worker_wait_times $ do
-        let TimeStatistics{..} = runWorkerWaitTimes
+        let IndependentMeasurementsStatistics{..} = runWorkerWaitTimes
         hPutStrLn stderr $
             printf
                 (unlines
@@ -408,7 +408,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (showWithUnitPrefix timeMean)
                 (showWithUnitPrefix timeStdDev)
     when show_steal_wait_times $ do
-        let TimeStatistics{..} = runStealWaitTimes
+        let IndependentMeasurementsStatistics{..} = runStealWaitTimes
         hPutStrLn stderr $
             printf
                 (unlines
