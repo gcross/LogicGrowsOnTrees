@@ -395,22 +395,27 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         hPutStrLn stderr $
           if timeCount == 0
             then
-              "No workers had to wait for a new workload."
+              "At no point did a worker receive a new workload after finishing a workload."
             else
-              printf
-                (unlines
-                    ["Workers had to wait for new workloads %i times with an average of one worker placed in the wait queue every %ssections or %.1g enqueues/second."
-                    ,"The minimum waiting time was %sseconds, and the maximum waiting time was %sseconds."
-                    ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
-                    ]
-                )
-                timeCount
-                (showWithUnitPrefix $ total_time / fromIntegral timeCount)
-                (fromIntegral timeCount / total_time)
-                (showWithUnitPrefix timeMin)
-                (showWithUnitPrefix timeMax)
-                (showWithUnitPrefix timeMean)
-                (showWithUnitPrefix timeStdDev)
+              if timeMax == 0
+                then
+                  printf "Workers completed their task and obtained a new workload %i times and never had to wait to receive the new workload."
+                    timeCount
+                else
+                  printf
+                    (unlines
+                        ["Workers completed their task and obtained a new workload %i times with an average of one every %sseconds or %.1g enqueues/second."
+                        ,"The minimum waiting time was %sseconds, and the maximum waiting time was %sseconds."
+                        ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
+                        ]
+                    )
+                    timeCount
+                    (showWithUnitPrefix $ total_time / fromIntegral timeCount)
+                    (fromIntegral timeCount / total_time)
+                    (showWithUnitPrefix timeMin)
+                    (showWithUnitPrefix timeMax)
+                    (showWithUnitPrefix timeMean)
+                    (showWithUnitPrefix timeStdDev)
     when show_steal_wait_times $ do
         let IndependentMeasurementsStatistics{..} = runStealWaitTimes
         hPutStrLn stderr $
@@ -504,6 +509,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 statMax
   where
     showWithUnitPrefix :: Real n ⇒ n → String
+    showWithUnitPrefix 0 = "0 "
     showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
       where
         (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . fromRational . toRational $ x 

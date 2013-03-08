@@ -106,6 +106,8 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
+import Text.Printf
+
 import Control.Visitor.Checkpoint
 import Control.Visitor.Path
 import Control.Visitor.Worker
@@ -533,7 +535,10 @@ checkWhetherMoreStealsAreNeeded :: -- {{{
     ) ⇒
     ContextMonad result worker_id m ()
 checkWhetherMoreStealsAreNeeded = do
-    number_of_waiting_workers ← either Map.size (const 0) <$> use waiting_workers_or_available_workloads
+    (number_of_waiting_workers,number_of_available_workloads) ←
+        either (Map.size &&& const 0) (const 0 &&& Set.size)
+        <$>
+        use waiting_workers_or_available_workloads
     number_of_pending_workload_steals ← Set.size <$> use workers_pending_workload_steal
     available_workers ← use available_workers_for_steal
     when (number_of_pending_workload_steals == 0
@@ -541,7 +546,17 @@ checkWhetherMoreStealsAreNeeded = do
        && IntMap.null available_workers
       ) $ throw OutOfSourcesForNewWorkloads
     workload_buffer_size ← use workload_buffer_size
-    let number_of_needed_steals = (workload_buffer_size + number_of_waiting_workers - number_of_pending_workload_steals) `max` 0
+    let number_of_needed_steals =
+         (0 + workload_buffer_size + number_of_waiting_workers
+            - number_of_available_workloads - number_of_pending_workload_steals
+         ) `max` 0
+    debugM $
+        printf "needed steals (%i) = buffer size (%i) + waiting workers (%i) - available workloads (%i) - pending steals (%i)"
+            number_of_needed_steals
+            workload_buffer_size
+            number_of_waiting_workers
+            number_of_available_workloads
+            number_of_pending_workload_steals
     when (number_of_needed_steals > 0) $ do
         let findWorkers accum 0 available_workers = (accum,available_workers)
             findWorkers accum n (IntMap.minViewWithKey → Nothing) = (accum,IntMap.empty)
@@ -1247,6 +1262,7 @@ tryToObtainWorkloadFor is_new_worker worker_id =
             waiting_workers_or_available_workloads .= Left (Map.singleton worker_id maybe_time_started_waiting)
             updateStepFunctionOfTimeUsingLens waiting_worker_count_statistics 1
         Right (Set.minView → Just (workload,remaining_workloads)) → do
+            unless is_new_worker $ worker_wait_time_statistics %= (pappend (0 :: NominalDiffTime))
             sendWorkloadTo workload worker_id
             waiting_workers_or_available_workloads .= Right remaining_workloads
             updateStepFunctionOfTimeUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
