@@ -59,7 +59,7 @@ import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Supervisor (RunStatistics(..),Statistics(..),IndependentMeasurementsStatistics(..))
+import Control.Visitor.Supervisor (IndependentMeasurementsStatistics(..),RunStatistics(..),StepFunctionOfTimeStatistics(..))
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker
 import Control.Visitor.Workload
@@ -393,9 +393,13 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
     when show_worker_wait_times $ do
         let IndependentMeasurementsStatistics{..} = runWorkerWaitTimes
         hPutStrLn stderr $
-            printf
+          if timeCount == 0
+            then
+              "No workers had to wait for a new workload."
+            else
+              printf
                 (unlines
-                    ["Workers requested new workloads %i times with an average of %sseconds between each request or %.1g requests/second."
+                    ["Workers had to wait for new workloads %i times with an average of one worker placed in the wait queue every %ssections or %.1g enqueues/second."
                     ,"The minimum waiting time was %sseconds, and the maximum waiting time was %sseconds."
                     ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
                     ]
@@ -410,7 +414,11 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
     when show_steal_wait_times $ do
         let IndependentMeasurementsStatistics{..} = runStealWaitTimes
         hPutStrLn stderr $
-            printf
+          if timeCount == 0
+            then
+              "No workloads were stolen."
+            else
+              printf
                 (unlines
                     ["Workloads were stolen %i times with an average of %sseconds between each steal or %.1g steals/second."
                     ,"The minimum waiting time for a steal was %sseconds, and the maximum waiting time was %sseconds."
@@ -425,22 +433,43 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (showWithUnitPrefix timeMean)
                 (showWithUnitPrefix timeStdDev)
     when show_numbers_of_waiting_workers $ do
-        let Statistics{..} = runWaitingWorkerStatistics
+        let StepFunctionOfTimeStatistics{..} = runWaitingWorkerStatistics
         hPutStrLn stderr $
-            printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never fewer than %i.\n"
-                statAverage
-                statStdDev
-                statMin
+          if statMax == 0
+            then
+              printf "No worker ever had to wait for a workload to become available.\n"
+            else if statMin == 0
+              then
+                printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never more than %i.\n"
+                  statAverage
+                  statStdDev
+                  statMax
+              else
+                printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never more than %i nor fewer than %i.\n"
+                  statAverage
+                  statStdDev
+                  statMax
+                  statMin
     when show_numbers_of_available_workloads $ do
-        let Statistics{..} = runAvailableWorkloadStatistics
+        let StepFunctionOfTimeStatistics{..} = runAvailableWorkloadStatistics
         hPutStrLn stderr $
-            printf "On average, %.1f +/ - %.1f (std. dev) workloads were available at any given time;  never fewer than %i, nor more than %i.\n"
-                statAverage
-                statStdDev
-                statMin
-                statMax
+          if statMax == 0
+            then
+              printf "No workload ever had to wait for an available worker.\n"
+            else if statMin == 0
+              then
+                printf "On average, %.1f +/ - %.1f (std. dev) workloads were waiting for a worker at any given time;  never more than %i.\n"
+                  statAverage
+                  statStdDev
+                  statMax
+              else
+                printf "On average, %.1f +/ - %.1f (std. dev) workloads were waiting for a worker at any given time;  never more than %i nor fewer than %i.\n"
+                  statAverage
+                  statStdDev
+                  statMax
+                  statMin
     when show_instantaneous_workload_request_rates $ do
-        let Statistics{..} = runInstantaneousWorkloadRequestRateStatistics
+        let StepFunctionOfTimeStatistics{..} = runInstantaneousWorkloadRequestRateStatistics
         hPutStrLn stderr $
             printf
                 (unlines
@@ -453,7 +482,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 statMin
                 statMax
     when show_instantaneous_workload_steal_times $ do
-        let Statistics{..} = runInstantaneousWorkloadStealTimeStatistics
+        let StepFunctionOfTimeStatistics{..} = runInstantaneousWorkloadStealTimeStatistics
         hPutStrLn stderr $
             printf
                 (unlines
@@ -466,7 +495,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (showWithUnitPrefix statMin)
                 (showWithUnitPrefix statMax)
     when show_buffer_size $ do
-        let Statistics{..} = runBufferSizeStatistics
+        let StepFunctionOfTimeStatistics{..} = runBufferSizeStatistics
         hPutStrLn stderr $
             printf "On average, the buffer size was %.1f +/ - %.1f (std. dev);  it was never smaller than %i, nor greater than %i.\n"
                 statAverage

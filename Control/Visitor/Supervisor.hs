@@ -19,7 +19,7 @@
 module Control.Visitor.Supervisor -- {{{
     ( RunStatistics(..)
     , IndependentMeasurementsStatistics(..)
-    , Statistics(..)
+    , StepFunctionOfTimeStatistics(..)
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
     , SupervisorMonad
@@ -81,7 +81,7 @@ import Control.Visitor.Supervisor.Implementation -- {{{
     , ContextMonad()
     , IndependentMeasurementsStatistics(..)
     , RunStatistics(..)
-    , Statistics(..)
+    , StepFunctionOfTimeStatistics(..)
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
