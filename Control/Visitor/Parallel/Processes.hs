@@ -71,7 +71,7 @@ import qualified Control.Visitor.Parallel.Process as Process
 import Control.Visitor.Parallel.Process
 import Control.Visitor.Parallel.Workgroup
 import Control.Visitor.Supervisor.RequestQueue
-import Control.Visitor.Worker as Worker hiding (ProgressUpdate,StolenWorkload)
+import Control.Visitor.Worker as Worker hiding (ProgressUpdate,StolenWorkload,runVisitor,runVisitorIO,runVisitorT)
 import Control.Visitor.Workload
 -- }}}
 

@@ -11,14 +11,11 @@ import Data.Serialize (Serialize(..))
 import System.Console.CmdTheLine
 import System.Environment
 
+import Control.Visitor.Examples.Queens
 import Control.Visitor.Main
 import Control.Visitor.Parallel.Processes
-import Control.Visitor.Examples.Queens
+import Control.Visitor.Utils.WordSum
 -- }}}
-
-instance Serialize (Sum Int) where
-    put = put . getSum
-    get = fmap Sum get
 
 main =
     mainVisitor
@@ -32,7 +29,7 @@ main =
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of
                 Aborted _ → error "search aborted"
-                Completed (Sum count) → print count
+                Completed (WordSum count) → print count
                 Failure message → error $ "error: " ++ message
         )
         nqueensCount

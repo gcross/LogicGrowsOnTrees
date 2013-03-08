@@ -49,6 +49,7 @@ Executable count-all-nqueens-solutions
     Hs-source-dirs: examples
     Build-depends:
         Visitor-processes,
+        Visitor == 1.0.*,
         base > 4 && < 5,
         cereal == 0.3.*,
         cmdtheline == 0.2.*
