@@ -55,7 +55,7 @@ module Control.Visitor.Supervisor.Implementation -- {{{
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>),Applicative,liftA2)
-import Control.Arrow ((&&&),first)
+import Control.Arrow ((&&&),first,second)
 import Control.Category ((>>>))
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
 import Control.Lens ((&))
@@ -76,7 +76,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
 import Control.Monad.Trans.Abort.Instances.MTL
 import Control.Monad.Trans.Reader (ReaderT,runReader,runReaderT)
-import Control.Monad.Trans.State.Strict (StateT,evalState,evalStateT,execState,execStateT,runStateT)
+import Control.Monad.Trans.State.Strict (StateT,evalState,evalStateT,execState,execStateT,mapStateT,runStateT)
 
 import Data.Composition ((.*))
 import Data.Derive.Monoid
@@ -263,7 +263,7 @@ data IndependentMeasurements = IndependentMeasurements -- {{{
 $( derive makeMonoid ''IndependentMeasurements )
 -- }}}
 
-data StepFunctionOfTime α = StepFunctionOfTime -- {{{
+data FunctionOfTime α = FunctionOfTime -- {{{
     {   _previous_value :: !α
     ,   _previous_time :: !UTCTime
     ,   _first_moment :: !Double
@@ -271,8 +271,11 @@ data StepFunctionOfTime α = StepFunctionOfTime -- {{{
     ,   _minimum_value :: !α
     ,   _maximum_value :: !α
     } deriving (Eq,Show)
-$( makeLenses ''StepFunctionOfTime )
+$( makeLenses ''FunctionOfTime )
 -- }}}
+
+newtype StepFunctionOfTime α = StepFunctionOfTime { _step_function_of_time :: FunctionOfTime α }
+$( makeLenses ''StepFunctionOfTime )
 
 -- }}}
 
@@ -738,11 +741,12 @@ extractStepFunctionOfTimeStatistics start_time getFinalValue getWeightedStatisti
     final_value ← getFinalValue
     getWeightedStatistics >>= (evalStateT $ do
         updateStepFunctionOfTime final_value end_time
-        statAverage ← (/total_weight) <$> use first_moment
-        statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
-        statMin ← min final_value <$> use minimum_value
-        statMax ← max final_value <$> use maximum_value
-        return $ StepFunctionOfTimeStatistics{..}
+        zoom step_function_of_time $ do
+            statAverage ← (/total_weight) <$> use first_moment
+            statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
+            statMin ← min final_value <$> use minimum_value
+            statMax ← max final_value <$> use maximum_value
+            return $ StepFunctionOfTimeStatistics{..}
      )
 -- }}}
 
@@ -837,19 +841,23 @@ getWorkerDepth worker_id =
     use active_workers
 -- }}}
 
-initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionOfTime α -- {{{
-initialStepFunctionForStartingTime = flip initialStepFunctionForStartingTimeAndValue 0
--- }}}
-
-initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionOfTime α -- {{{
-initialStepFunctionForStartingTimeAndValue starting_time starting_value =
-    StepFunctionOfTime
+initialFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → FunctionOfTime α -- {{{
+initialFunctionForStartingTimeAndValue starting_time starting_value =
+    FunctionOfTime
         starting_value
         starting_time
         0
         0
         (fromIntegral (maxBound :: Int))
         (fromIntegral (minBound :: Int))
+-- }}}
+
+initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionOfTime α -- {{{
+initialStepFunctionForStartingTime = flip initialStepFunctionForStartingTimeAndValue 0
+-- }}}
+
+initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionOfTime α -- {{{
+initialStepFunctionForStartingTimeAndValue = StepFunctionOfTime .* initialFunctionForStartingTimeAndValue
 -- }}}
 
 killWorkloadBuffer :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m () -- {{{
@@ -1311,7 +1319,7 @@ updateInstataneousWorkloadStealTime (fromRational . toRational → current_value
 -- }}}
 
 updateStepFunctionOfTime :: (MonadIO m, Real α) ⇒ α → UTCTime → StateT (StepFunctionOfTime α) m () -- {{{
-updateStepFunctionOfTime value current_time = do
+updateStepFunctionOfTime value current_time = zoom step_function_of_time $ do
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
     let weight = fromRational . toRational $ (current_time `diffUTCTime` last_time)
