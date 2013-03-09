@@ -59,7 +59,7 @@ import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Supervisor (IndependentMeasurementsStatistics(..),RunStatistics(..),StepFunctionOfTimeStatistics(..))
+import Control.Visitor.Supervisor (IndependentMeasurementsStatistics(..),RunStatistics(..),FunctionOfTimeStatistics(..))
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker
 import Control.Visitor.Workload
@@ -320,7 +320,7 @@ genericMain :: -- {{{
 genericMain run visitor_configuration_term infomod notifyTerminated constructVisitor =
     run (liftA2 (,) configuration_term visitor_configuration_term)
          infomod
-        (\(Configuration{logging_configuration=LoggingConfiguration{..}},_) →
+        (\(Configuration{logging_configuration=LoggingConfiguration{..}},_) → do
             updateGlobalLogger rootLoggerName (setLevel log_level)
         )
         (\(Configuration{..},_) →
@@ -438,7 +438,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (showWithUnitPrefix timeMean)
                 (showWithUnitPrefix timeStdDev)
     when show_numbers_of_waiting_workers $ do
-        let StepFunctionOfTimeStatistics{..} = runWaitingWorkerStatistics
+        let FunctionOfTimeStatistics{..} = runWaitingWorkerStatistics
         hPutStrLn stderr $
           if statMax == 0
             then
@@ -456,7 +456,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                   statMax
                   statMin
     when show_numbers_of_available_workloads $ do
-        let StepFunctionOfTimeStatistics{..} = runAvailableWorkloadStatistics
+        let FunctionOfTimeStatistics{..} = runAvailableWorkloadStatistics
         hPutStrLn stderr $
           if statMax == 0
             then
@@ -474,7 +474,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                   statMax
                   statMin
     when show_instantaneous_workload_request_rates $ do
-        let StepFunctionOfTimeStatistics{..} = runInstantaneousWorkloadRequestRateStatistics
+        let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadRequestRateStatistics
         hPutStrLn stderr $
             printf
                 (unlines
@@ -487,7 +487,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 statMin
                 statMax
     when show_instantaneous_workload_steal_times $ do
-        let StepFunctionOfTimeStatistics{..} = runInstantaneousWorkloadStealTimeStatistics
+        let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadStealTimeStatistics
         hPutStrLn stderr $
             printf
                 (unlines
@@ -500,7 +500,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                 (showWithUnitPrefix statMin)
                 (showWithUnitPrefix statMax)
     when show_buffer_size $ do
-        let StepFunctionOfTimeStatistics{..} = runBufferSizeStatistics
+        let FunctionOfTimeStatistics{..} = runBufferSizeStatistics
         hPutStrLn stderr $
             printf "On average, the buffer size was %.1f +/ - %.1f (std. dev);  it was never smaller than %i, nor greater than %i.\n"
                 statAverage
