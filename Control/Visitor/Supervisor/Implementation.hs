@@ -263,7 +263,7 @@ data IndependentMeasurements = IndependentMeasurements -- {{{
 $( derive makeMonoid ''IndependentMeasurements )
 -- }}}
 
-data StepFunctionsOfTime α = StepFunctionsOfTime -- {{{
+data StepFunctionOfTime α = StepFunctionOfTime -- {{{
     {   _previous_value :: !α
     ,   _previous_time :: !UTCTime
     ,   _first_moment :: !Double
@@ -271,7 +271,7 @@ data StepFunctionsOfTime α = StepFunctionsOfTime -- {{{
     ,   _minimum_value :: !α
     ,   _maximum_value :: !α
     } deriving (Eq,Show)
-$( makeLenses ''StepFunctionsOfTime )
+$( makeLenses ''StepFunctionOfTime )
 -- }}}
 
 -- }}}
@@ -316,16 +316,16 @@ data SupervisorState result worker_id = -- {{{
     ,   _steal_request_matcher_queue :: !(MultiSet UTCTime)
     ,   _steal_request_failures :: !Int
     ,   _workload_steal_time_statistics :: !IndependentMeasurements
-    ,   _waiting_worker_count_statistics :: !(StepFunctionsOfTime Int)
-    ,   _available_workload_count_statistics :: !(StepFunctionsOfTime Int)
+    ,   _waiting_worker_count_statistics :: !(StepFunctionOfTime Int)
+    ,   _available_workload_count_statistics :: !(StepFunctionOfTime Int)
     ,   _instantaneous_workload_request_rate :: !ExponentiallyDecayingSum
-    ,   _instantaneous_workload_request_rate_statistics :: !(StepFunctionsOfTime Float)
+    ,   _instantaneous_workload_request_rate_statistics :: !(StepFunctionOfTime Float)
     ,   _instantaneous_workload_steal_time :: !ExponentiallyWeightedAverage
-    ,   _instantaneous_workload_steal_time_statistics :: !(StepFunctionsOfTime Float)
+    ,   _instantaneous_workload_steal_time_statistics :: !(StepFunctionOfTime Float)
     ,   _time_spent_in_supervisor_monad :: !NominalDiffTime
     ,   _workload_buffer_size :: !Int
     ,   _workload_buffer_size_parameters :: !WorkloadBufferSizeParameters
-    ,   _workload_buffer_size_statistics :: !(StepFunctionsOfTime Int)
+    ,   _workload_buffer_size_statistics :: !(StepFunctionOfTime Int)
     ,   _number_of_calls :: !Int
     }
 $( makeLenses ''SupervisorState )
@@ -730,7 +730,7 @@ extractStepFunctionOfTimeStatistics :: -- {{{
     ) ⇒
     UTCTime →
     m' α →
-    m' (StepFunctionsOfTime α) →
+    m' (StepFunctionOfTime α) →
     m' (StepFunctionOfTimeStatistics α)
 extractStepFunctionOfTimeStatistics start_time getFinalValue getWeightedStatistics = do
     end_time ← view current_time
@@ -837,13 +837,13 @@ getWorkerDepth worker_id =
     use active_workers
 -- }}}
 
-initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionsOfTime α -- {{{
+initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionOfTime α -- {{{
 initialStepFunctionForStartingTime = flip initialStepFunctionForStartingTimeAndValue 0
 -- }}}
 
-initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionsOfTime α -- {{{
+initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionOfTime α -- {{{
 initialStepFunctionForStartingTimeAndValue starting_time starting_value =
-    StepFunctionsOfTime
+    StepFunctionOfTime
         starting_value
         starting_time
         0
@@ -1310,7 +1310,7 @@ updateInstataneousWorkloadStealTime (fromRational . toRational → current_value
     updateStepFunctionOfTimeUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
 -- }}}
 
-updateStepFunctionOfTime :: (MonadIO m, Real α) ⇒ α → UTCTime → StateT (StepFunctionsOfTime α) m () -- {{{
+updateStepFunctionOfTime :: (MonadIO m, Real α) ⇒ α → UTCTime → StateT (StepFunctionOfTime α) m () -- {{{
 updateStepFunctionOfTime value current_time = do
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
@@ -1325,7 +1325,7 @@ updateStepFunctionOfTime value current_time = do
 updateStepFunctionOfTimeUsingLens :: -- {{{
     ∀ α m result worker_id. 
     (Real α, SupervisorMonadConstraint m) ⇒
-    Lens' (SupervisorState result worker_id) (StepFunctionsOfTime α) →
+    Lens' (SupervisorState result worker_id) (StepFunctionOfTime α) →
     α →
     ContextMonad result worker_id m ()
 updateStepFunctionOfTimeUsingLens field value =
