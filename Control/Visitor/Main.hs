@@ -391,16 +391,16 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
             printf "Workers were occupied %.2f%% of the time on average.\n"
                 (runWorkerOccupation*100)
     when show_worker_wait_times $ do
-        let IndependentMeasurementsStatistics{..} = runWorkerWaitTimes
+        let FunctionOfTimeStatistics{..} = runWorkerWaitTimes
         hPutStrLn stderr $
-          if timeCount == 0
+          if statCount == 0
             then
               "At no point did a worker receive a new workload after finishing a workload."
             else
-              if timeMax == 0
+              if statMax == 0
                 then
                   printf "Workers completed their task and obtained a new workload %i times and never had to wait to receive the new workload."
-                    timeCount
+                    statCount
                 else
                   printf
                     (unlines
@@ -409,13 +409,13 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
                         ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
                         ]
                     )
-                    timeCount
-                    (showWithUnitPrefix $ total_time / fromIntegral timeCount)
-                    (fromIntegral timeCount / total_time)
-                    (showWithUnitPrefix timeMin)
-                    (showWithUnitPrefix timeMax)
-                    (showWithUnitPrefix timeMean)
-                    (showWithUnitPrefix timeStdDev)
+                    statCount
+                    (showWithUnitPrefix $ total_time / fromIntegral statCount)
+                    (fromIntegral statCount / total_time)
+                    (showWithUnitPrefix statMin)
+                    (showWithUnitPrefix statMax)
+                    (showWithUnitPrefix statAverage)
+                    (showWithUnitPrefix statStdDev)
     when show_steal_wait_times $ do
         let IndependentMeasurementsStatistics{..} = runStealWaitTimes
         hPutStrLn stderr $

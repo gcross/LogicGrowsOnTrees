@@ -2,6 +2,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -101,6 +102,7 @@ import Data.Sequence ((><),Seq)
 import Data.Typeable (Typeable)
 import qualified Data.Time.Clock as Clock
 import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime)
+import Data.Word (Word)
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
@@ -203,7 +205,8 @@ $( makeLenses ''ExponentiallyWeightedAverage )
 -- }}}
 
 data FunctionOfTimeStatistics α = FunctionOfTimeStatistics -- {{{
-    {   statAverage :: !Double
+    {   statCount :: !Word
+    ,   statAverage :: !Double
     ,   statStdDev :: !Double
     ,   statMin :: !α
     ,   statMax :: !α
@@ -236,7 +239,7 @@ data RunStatistics = -- {{{
     ,   runNumberOfCalls :: !Int
     ,   runAverageTimePerCall :: !Float
     ,   runWorkerOccupation :: !Float
-    ,   runWorkerWaitTimes :: !IndependentMeasurementsStatistics
+    ,   runWorkerWaitTimes :: !(FunctionOfTimeStatistics NominalDiffTime)
     ,   runStealWaitTimes :: !IndependentMeasurementsStatistics
     ,   runWaitingWorkerStatistics :: !(FunctionOfTimeStatistics Int)
     ,   runAvailableWorkloadStatistics :: !(FunctionOfTimeStatistics Int)
@@ -264,7 +267,8 @@ $( derive makeMonoid ''IndependentMeasurements )
 -- }}}
 
 data FunctionOfTime α = FunctionOfTime -- {{{
-    {   _previous_value :: !α
+    {   _number_of_samples :: !Word
+    ,   _previous_value :: !α
     ,   _previous_time :: !UTCTime
     ,   _first_moment :: !Double
     ,   _second_moment :: !Double
@@ -272,6 +276,10 @@ data FunctionOfTime α = FunctionOfTime -- {{{
     ,   _maximum_value :: !α
     } deriving (Eq,Show)
 $( makeLenses ''FunctionOfTime )
+-- }}}
+
+newtype InterpolatedFunctionOfTime α = InterpolatedFunctionOfTime { _interpolated_function_of_time :: FunctionOfTime α } -- {{{
+$( makeLenses ''InterpolatedFunctionOfTime )
 -- }}}
 
 newtype StepFunctionOfTime α = StepFunctionOfTime { _step_function_of_time :: FunctionOfTime α } -- {{{
@@ -316,7 +324,7 @@ data SupervisorState result worker_id = -- {{{
     ,   _supervisor_occupation_statistics :: !OccupationStatistics
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     ,   _retired_worker_occupation_statistics :: !(Map worker_id RetiredOccupationStatistics)
-    ,   _worker_wait_time_statistics :: !IndependentMeasurements
+    ,   _worker_wait_time_statistics :: !(InterpolatedFunctionOfTime NominalDiffTime)
     ,   _steal_request_matcher_queue :: !(MultiSet UTCTime)
     ,   _steal_request_failures :: !Int
     ,   _workload_steal_time_statistics :: !IndependentMeasurements
@@ -384,7 +392,7 @@ type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker
 -- }}}
 
 -- Classes {{{
-class SpecializationOfFunctionOfTime f where -- {{{
+class SpecializationOfFunctionOfTime f α where -- {{{
     zoomFunctionOfTimeWithInterpolator ::
         Monad m ⇒
         ((α → α → α) → StateT (FunctionOfTime α) m β) →
@@ -445,7 +453,11 @@ instance CalcVariance IndependentMeasurements where -- {{{
     calcVarianceUnbiased = calcVarianceUnbiased . timeDataVariance
 -- }}}
 
-instance SpecializationOfFunctionOfTime StepFunctionOfTime where -- {{{
+instance Fractional α ⇒ SpecializationOfFunctionOfTime InterpolatedFunctionOfTime α where -- {{{
+    zoomFunctionOfTimeWithInterpolator constructAction = zoom interpolated_function_of_time (constructAction $ ((/2) .* (+)))
+-- }}}
+
+instance SpecializationOfFunctionOfTime StepFunctionOfTime α where -- {{{
     zoomFunctionOfTimeWithInterpolator constructAction = zoom step_function_of_time (constructAction . curry $ fst)
 -- }}}
 
@@ -714,7 +726,7 @@ enqueueWorkload workload =
         Left (Map.minViewWithKey → Just ((free_worker_id,maybe_time_started_waiting),remaining_workers)) → do
             waiting_workers_or_available_workloads .= Left remaining_workers
             maybe (return ())
-                  (timePassedSince >=> (worker_wait_time_statistics %=) . pappend)
+                  (timePassedSince >=> updateFunctionOfTimeUsingLens worker_wait_time_statistics)
                   maybe_time_started_waiting
             sendWorkloadTo workload free_worker_id
             updateFunctionOfTimeUsingLens waiting_worker_count_statistics (Map.size remaining_workers)
@@ -734,19 +746,44 @@ extractFunctionOfTimeStatistics :: -- {{{
     , SupervisorMonadConstraint m
     , SupervisorMonadConstraint m'
     , SupervisorReaderConstraint result worker_id m m'
-    , SpecializationOfFunctionOfTime f
+    , SpecializationOfFunctionOfTime f α
+    ) ⇒
+    UTCTime →
+    m' (f α) →
+    m' (FunctionOfTimeStatistics α)
+extractFunctionOfTimeStatistics start_time getWeightedStatistics = do
+    getWeightedStatistics >>= (evalStateT $ do
+        zoomFunctionOfTime $ do
+            total_weight ← realToFrac . (`diffUTCTime` start_time) <$> use previous_time
+            statCount ← use number_of_samples
+            statAverage ← (/total_weight) <$> use first_moment
+            statStdDev ← sqrt . (subtract $ statAverage*statAverage) . (/total_weight) <$> use second_moment
+            statMin ← use minimum_value
+            statMax ← use maximum_value
+            return $ FunctionOfTimeStatistics{..}
+     )
+-- }}}
+
+extractFunctionOfTimeStatisticsWithFinalPoint :: -- {{{
+    ( Ord α
+    , Real α
+    , SupervisorMonadConstraint m
+    , SupervisorMonadConstraint m'
+    , SupervisorReaderConstraint result worker_id m m'
+    , SpecializationOfFunctionOfTime f α
     ) ⇒
     UTCTime →
     m' α →
     m' (f α) →
     m' (FunctionOfTimeStatistics α)
-extractFunctionOfTimeStatistics start_time getFinalValue getWeightedStatistics = do
+extractFunctionOfTimeStatisticsWithFinalPoint start_time getFinalValue getWeightedStatistics = do
     end_time ← view current_time
     let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
     final_value ← getFinalValue
     getWeightedStatistics >>= (evalStateT $ do
         updateFunctionOfTime final_value end_time
         zoomFunctionOfTimeWithInterpolator $ \interpolate → do
+            statCount ← use number_of_samples
             statAverage ← (/total_weight) <$> use first_moment
             statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
             statMin ← min final_value <$> use minimum_value
@@ -802,30 +839,33 @@ getCurrentStatistics = do
         liftM2 (Map.unionWith (<>))
             (use retired_worker_occupation_statistics)
             (use worker_occupation_statistics >>= retireManyOccupationStatistics)
-    runWorkerWaitTimes ← extractIndependentMeasurementsStatistics <$> use worker_wait_time_statistics
+    runWorkerWaitTimes ←
+        extractFunctionOfTimeStatistics
+            runStartTime
+            (use worker_wait_time_statistics)
     runStealWaitTimes ← extractIndependentMeasurementsStatistics <$> use workload_steal_time_statistics
     runWaitingWorkerStatistics ←
-        extractFunctionOfTimeStatistics
+        extractFunctionOfTimeStatisticsWithFinalPoint
             runStartTime
             (either Map.size (const 0) <$> use waiting_workers_or_available_workloads)
             (use waiting_worker_count_statistics)
     runAvailableWorkloadStatistics ←
-        extractFunctionOfTimeStatistics
+        extractFunctionOfTimeStatisticsWithFinalPoint
             runStartTime
             (either (const 0) Set.size <$> use waiting_workers_or_available_workloads)
             (use available_workload_count_statistics)
     runInstantaneousWorkloadRequestRateStatistics ←
-        extractFunctionOfTimeStatistics
+        extractFunctionOfTimeStatisticsWithFinalPoint
             runStartTime
             (use instantaneous_workload_request_rate >>= computeInstantaneousRateFromDecayingSum)
             (use instantaneous_workload_request_rate_statistics)
     runInstantaneousWorkloadStealTimeStatistics ←
-        extractFunctionOfTimeStatistics
+        extractFunctionOfTimeStatisticsWithFinalPoint
             runStartTime
             (use $ instantaneous_workload_steal_time . current_average_value)
             (use instantaneous_workload_steal_time_statistics)
     runBufferSizeStatistics ←
-        extractFunctionOfTimeStatistics
+        extractFunctionOfTimeStatisticsWithFinalPoint
             runStartTime
             (use workload_buffer_size)
             (use workload_buffer_size_statistics)
@@ -859,12 +899,21 @@ getWorkerDepth worker_id =
 initialFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → FunctionOfTime α -- {{{
 initialFunctionForStartingTimeAndValue starting_time starting_value =
     FunctionOfTime
+        0
         starting_value
         starting_time
         0
         0
         (fromIntegral (maxBound :: Int))
         (fromIntegral (minBound :: Int))
+-- }}}
+
+initialInterpolatedFunctionForStartingTime :: Num α ⇒ UTCTime → InterpolatedFunctionOfTime α -- {{{
+initialInterpolatedFunctionForStartingTime = flip initialInterpolatedFunctionForStartingTimeAndValue 0
+-- }}}
+
+initialInterpolatedFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → InterpolatedFunctionOfTime α -- {{{
+initialInterpolatedFunctionForStartingTimeAndValue = InterpolatedFunctionOfTime .* initialFunctionForStartingTimeAndValue
 -- }}}
 
 initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionOfTime α -- {{{
@@ -1182,7 +1231,7 @@ runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCu
                 }
             ,   _worker_occupation_statistics = mempty
             ,   _retired_worker_occupation_statistics = mempty
-            ,   _worker_wait_time_statistics = mempty
+            ,   _worker_wait_time_statistics = initialInterpolatedFunctionForStartingTime start_time
             ,   _steal_request_matcher_queue = mempty
             ,   _steal_request_failures = 0
             ,   _workload_steal_time_statistics = mempty
@@ -1285,7 +1334,7 @@ tryToObtainWorkloadFor is_new_worker worker_id =
             waiting_workers_or_available_workloads .= Left (Map.singleton worker_id maybe_time_started_waiting)
             updateFunctionOfTimeUsingLens waiting_worker_count_statistics 1
         Right (Set.minView → Just (workload,remaining_workloads)) → do
-            unless is_new_worker $ worker_wait_time_statistics %= (pappend (0 :: NominalDiffTime))
+            unless is_new_worker $ updateFunctionOfTimeUsingLens worker_wait_time_statistics 0
             sendWorkloadTo workload worker_id
             waiting_workers_or_available_workloads .= Right remaining_workloads
             updateFunctionOfTimeUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
@@ -1320,13 +1369,14 @@ updateBuffer = do
 updateFunctionOfTime :: -- {{{
     ( MonadIO m
     , Real α
-    , SpecializationOfFunctionOfTime f
+    , SpecializationOfFunctionOfTime f α
     ) ⇒
     α →
     UTCTime →
     StateT (f α) m ()
 updateFunctionOfTime value current_time =
   zoomFunctionOfTimeWithInterpolator $ \interpolate → do
+    number_of_samples += 1
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
     let weight = realToFrac $ (current_time `diffUTCTime` last_time)
@@ -1340,7 +1390,7 @@ updateFunctionOfTime value current_time =
 updateFunctionOfTimeUsingLens :: -- {{{
     ( Real α
     , SupervisorMonadConstraint m
-    , SpecializationOfFunctionOfTime f
+    , SpecializationOfFunctionOfTime f α
     ) ⇒
     Lens' (SupervisorState result worker_id) (f α) →
     α →
@@ -1403,7 +1453,7 @@ validateWorkerNotKnown action worker_id = do
 -- }}}
 
 zoomFunctionOfTime ::
-    ( SpecializationOfFunctionOfTime f
+    ( SpecializationOfFunctionOfTime f α
     , Monad m
     ) ⇒
     StateT (FunctionOfTime α) m β →
