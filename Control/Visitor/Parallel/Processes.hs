@@ -43,21 +43,19 @@ import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict (get,modify)
 
-import qualified Data.ByteString as BS
-import Data.ByteString (hGet,hPut)
 import qualified Data.Foldable as Fold
 import Data.Function (fix)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromJust,fromMaybe)
 import Data.Monoid (Monoid(mempty))
-import Data.Serialize (Serialize,encode,decode)
+import Data.Serialize (Serialize)
 
 import System.Console.CmdTheLine
 import System.Environment (getArgs,getProgName)
 import System.Environment.FindBin (getProgPath)
 import System.FilePath ((</>))
-import System.IO (Handle,hFlush,hGetLine,hPrint,stdin,stdout)
+import System.IO (Handle,hGetLine,stdin,stdout)
 import System.IO.Error (isEOFError)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO,ERROR))
@@ -71,6 +69,7 @@ import qualified Control.Visitor.Parallel.Process as Process
 import Control.Visitor.Parallel.Process
 import Control.Visitor.Parallel.Workgroup
 import Control.Visitor.Supervisor.RequestQueue
+import Control.Visitor.Utils.Handle
 import Control.Visitor.Worker as Worker hiding (ProgressUpdate,StolenWorkload,runVisitor,runVisitorIO,runVisitorT)
 import Control.Visitor.Workload
 -- }}}
@@ -329,18 +328,6 @@ runWorkerWithVisitorT runInIO = genericRunWorker . flip (forkVisitorTWorkerThrea
 
 fromJustOrBust message = fromMaybe (error message)
 
-receive :: Serialize α ⇒ Handle → IO α -- {{{
-receive handle = hGetLine handle >>= fmap (either error id . decode) . hGet handle . read
--- }}}
-
-send :: Serialize α ⇒ Handle → α → IO () -- {{{
-send handle value = do
-    let encoded_value = encode value
-    hPrint handle . BS.length $ encoded_value
-    hPut handle encoded_value
-    hFlush handle
--- }}}
-
 genericRunVisitor :: -- {{{
     (Serialize configuration, Monoid result, Serialize result) ⇒
     (
@@ -390,11 +377,8 @@ genericRunWorker :: -- {{{
     Handle →
     Handle →
     IO ()
-genericRunWorker spawnWorker read_handle write_handle = debugM "called genericRunWorker" >>
-    Process.runWorker
-        (receive read_handle)
-        (send write_handle)
-        spawnWorker
+genericRunWorker spawnWorker reveive_handle send_handle = debugM "called genericRunWorker" >>
+    Process.runWorkerUsingHandles reveive_handle send_handle spawnWorker
 -- }}}
 
 -- }}}
