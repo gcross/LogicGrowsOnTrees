@@ -8,6 +8,7 @@ module Control.Visitor.Parallel.Process
     ( MessageForSupervisor(..)
     , MessageForWorker(..)
     , runWorker
+    , runWorkerUsingHandles
     ) where
 
 -- Imports {{{
@@ -23,12 +24,14 @@ import Data.Monoid (Monoid)
 import Data.Typeable (Typeable)
 import Data.Serialize
 
+import System.IO (Handle)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
 import Control.Visitor.Supervisor
+import Control.Visitor.Utils.Handle
 import qualified Control.Visitor.Worker as Worker
 import Control.Visitor.Worker hiding (ProgressUpdate,StolenWorkload)
 import Control.Visitor.Workload
@@ -124,6 +127,20 @@ runWorker receiveMessage sendMessage forkVisitorWorkerThread =
         )
         processNextMessage
         (const $ return ())
+-- }}}
+
+runWorkerUsingHandles :: -- {{{
+    Serialize result ⇒
+    Handle →
+    Handle →
+    (
+        (WorkerTerminationReason result → IO ()) →
+        Workload →
+        IO (WorkerEnvironment result)
+    ) →
+    IO ()
+runWorkerUsingHandles receive_handle send_handle =
+    runWorker (receive receive_handle) (send send_handle)
 -- }}}
 
 -- }}}

@@ -67,6 +67,7 @@ Library
         Control.Visitor.Supervisor
         Control.Visitor.Supervisor.Implementation
         Control.Visitor.Supervisor.RequestQueue
+        Control.Visitor.Utils.Handle
         Control.Visitor.Utils.IntSum
         Control.Visitor.Utils.MonadStacks
         Control.Visitor.Utils.WordSum
