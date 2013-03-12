@@ -368,7 +368,7 @@ removeFileIfExists path =
 showStatistics :: MonadIO m ⇒ StatisticsConfiguration → RunStatistics → m () -- {{{
 showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
     let total_time :: Double
-        total_time = fromRational . toRational $ runWallTime
+        total_time = realToFrac runWallTime
     when show_wall_times $
         hPutStrLn stderr $
             printf "Run started at %s, ended at %s, and took %sseconds.\n"
@@ -512,7 +512,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
     showWithUnitPrefix 0 = "0 "
     showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
       where
-        (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . fromRational . toRational $ x 
+        (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
 -- }}}
 
 writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{

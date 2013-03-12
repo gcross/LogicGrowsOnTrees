@@ -437,7 +437,7 @@ instance StatMonoid IndependentMeasurements NominalDiffTime where -- {{{
             <$> (pappend t' . timeDataMin)
             <*> (pappend t' . timeDataMax)
             <*> (pappend t' . timeDataVariance)
-      where t' = fromRational . toRational $ t :: Double
+      where t' = realToFrac t :: Double
 -- }}}
 
 instance CalcCount IndependentMeasurements where -- {{{
@@ -490,7 +490,7 @@ addPointToExponentiallyDecayingSum current_time = execState $ do
 addPointToExponentiallyWeightedAverage :: Float → UTCTime → ExponentiallyWeightedAverage → ExponentiallyWeightedAverage -- {{{
 addPointToExponentiallyWeightedAverage current_value current_time = execState $ do
     previous_time ← last_average_timestamp <<.= current_time
-    let old_value_weight = exp . fromRational . toRational $ (previous_time `diffUTCTime` current_time)
+    let old_value_weight = exp . realToFrac $ (previous_time `diffUTCTime` current_time)
         new_value_weight = 1 - old_value_weight
     current_average_value %= (+ new_value_weight * current_value) . (* old_value_weight)
 -- }}}
@@ -629,7 +629,7 @@ clearPendingProgressUpdate worker_id =
 -- }}}
 
 computeExponentialDecayCoefficient :: UTCTime → UTCTime → Float -- {{{
-computeExponentialDecayCoefficient = (exp . fromRational . toRational) .* diffUTCTime
+computeExponentialDecayCoefficient = (exp . realToFrac) .* diffUTCTime
 -- }}}
 
 computeInstantaneousRateFromDecayingSum :: -- {{{
@@ -778,7 +778,7 @@ extractFunctionOfTimeStatisticsWithFinalPoint :: -- {{{
     m' (FunctionOfTimeStatistics α)
 extractFunctionOfTimeStatisticsWithFinalPoint start_time getFinalValue getWeightedStatistics = do
     end_time ← view current_time
-    let total_weight = fromRational . toRational $ (end_time `diffUTCTime` start_time)
+    let total_weight = realToFrac (end_time `diffUTCTime` start_time)
     final_value ← getFinalValue
     getWeightedStatistics >>= (evalStateT $ do
         updateFunctionOfTime final_value end_time
@@ -824,9 +824,7 @@ getCurrentStatistics = do
         >>=
         return . getOccupationFraction
     runSupervisorMonadOccupation ←
-        fromRational
-        .
-        toRational
+        realToFrac
         .
         (/runWallTime)
         <$>
@@ -877,7 +875,7 @@ getNumberOfWorkers = liftM Set.size . use $ known_workers
 -- }}}
 
 getOccupationFraction :: RetiredOccupationStatistics → Float -- {{{
-getOccupationFraction = fromRational . toRational . liftA2 (/) (^.occupied_time) (^.total_time)
+getOccupationFraction = realToFrac . liftA2 (/) (^.occupied_time) (^.total_time)
 -- }}}
 
 getWorkerDepth :: -- {{{
@@ -1379,7 +1377,7 @@ updateFunctionOfTime value current_time =
     number_of_samples += 1
     last_time ← previous_time <<.= current_time
     last_value ← previous_value <<.= value
-    let weight = realToFrac $ (current_time `diffUTCTime` last_time)
+    let weight = realToFrac (current_time `diffUTCTime` last_time)
         interpolated_value = realToFrac $ interpolate last_value value
     first_moment += weight*interpolated_value
     second_moment += weight*interpolated_value*interpolated_value
@@ -1408,7 +1406,7 @@ updateInstataneousWorkloadRequestRate = do
 -- }}}
 
 updateInstataneousWorkloadStealTime :: SupervisorMonadConstraint m ⇒ NominalDiffTime → ContextMonad result worker_id m () -- {{{
-updateInstataneousWorkloadStealTime (fromRational . toRational → current_value) = do
+updateInstataneousWorkloadStealTime (realToFrac → current_value) = do
     current_time ← view current_time
     previous_value ← instantaneous_workload_steal_time %%= ((^.current_average_value) &&& addPointToExponentiallyWeightedAverage current_value current_time)
     current_value ← use (instantaneous_workload_steal_time . current_average_value)
