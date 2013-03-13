@@ -132,7 +132,7 @@ data Driver result_monad configuration visitor result =  -- {{{
         Term configuration →
         TermInfo →
         (configuration → IO ()) →
-        (configuration → IO (Maybe (Progress result))) →
+        (configuration → IO (Progress result)) →
         (configuration → RunOutcome result → IO ()) →
         (configuration → visitor result) →
         (configuration → manager_monad result ()) →
@@ -299,6 +299,7 @@ managerLoop Configuration{..} = do
 genericMain :: -- {{{
     ( result ~ RequestQueueMonadResult (manager_monad result)
     , RequestQueueMonad (manager_monad result)
+    , Monoid result
     , Serialize result
     , MonadIO result_monad
     ) ⇒
@@ -306,7 +307,7 @@ genericMain :: -- {{{
         Term (Configuration,visitor_configuration) →
         TermInfo →
         ((Configuration,visitor_configuration) → IO ()) →
-        ((Configuration,visitor_configuration) → IO (Maybe (Progress result))) →
+        ((Configuration,visitor_configuration) → IO (Progress result)) →
         ((Configuration,visitor_configuration) → RunOutcome result → IO ()) →
         ((Configuration,visitor_configuration) → visitor) →
         ((Configuration,visitor_configuration) → manager_monad result ()) →
@@ -325,14 +326,14 @@ genericMain run visitor_configuration_term infomod notifyTerminated constructVis
         )
         (\(Configuration{..},_) →
             case maybe_checkpoint_configuration of
-                Nothing → (infoM "Checkpointing is NOT enabled") >> return Nothing
+                Nothing → (infoM "Checkpointing is NOT enabled") >> return mempty
                 Just CheckpointConfiguration{..} → do
                     noticeM $ "Checkpointing enabled"
                     noticeM $ "Checkpoint file is " ++ checkpoint_path
                     noticeM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
                     ifM (doesFileExist checkpoint_path)
-                        (noticeM "Loading existing checkpoint file" >> either error Just . decodeLazy <$> readFile checkpoint_path)
-                        (return Nothing)
+                        (noticeM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
+                        (return mempty)
         )
         (\(Configuration{..},visitor_configuration) run_outcome@RunOutcome{..} →
             (do showStatistics statistics_configuration runStatistics

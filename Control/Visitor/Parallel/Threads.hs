@@ -23,13 +23,10 @@ module Control.Visitor.Parallel.Threads
     , requestProgressUpdate
     , requestProgressUpdateAsync
     , runVisitor
-    , runVisitorMaybeStartingFrom
     , runVisitorStartingFrom
     , runVisitorIO
-    , runVisitorIOMaybeStartingFrom
     , runVisitorIOStartingFrom
     , runVisitorT
-    , runVisitorTMaybeStartingFrom
     , runVisitorTStartingFrom
     ) where
 
@@ -82,9 +79,9 @@ driver :: Driver IO configuration visitor result
 driver = Driver $ \forkVisitorWorkerThread configuration_term term_info initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
     configuration ← mainParser configuration_term term_info
     initializeGlobalState configuration
-    maybe_starting_progress ← getMaybeStartingProgress configuration
+    starting_progress ← getMaybeStartingProgress configuration
     genericRunVisitorStartingFrom
-         maybe_starting_progress
+         starting_progress
         (flip forkVisitorWorkerThread . constructVisitor $ configuration)
         (changeNumberOfWorkersToMatchCPUs >> constructManager configuration)
      >>= notifyTerminated configuration
@@ -102,19 +99,7 @@ runVisitor :: -- {{{
     Visitor result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
-runVisitor = runVisitorMaybeStartingFrom Nothing
--- }}}
-
-runVisitorMaybeStartingFrom :: -- {{{
-    Monoid result ⇒
-    Maybe (Progress result) →
-    Visitor result →
-    ThreadsControllerMonad result () →
-    IO (RunOutcome result)
-runVisitorMaybeStartingFrom maybe_starting_progress =
-    genericRunVisitorStartingFrom maybe_starting_progress
-    .
-    flip forkVisitorWorkerThread
+runVisitor = runVisitorStartingFrom mempty
 -- }}}
 
 runVisitorStartingFrom :: -- {{{
@@ -123,7 +108,10 @@ runVisitorStartingFrom :: -- {{{
     Visitor result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
-runVisitorStartingFrom = runVisitorMaybeStartingFrom . Just
+runVisitorStartingFrom starting_progress =
+    genericRunVisitorStartingFrom starting_progress
+    .
+    flip forkVisitorWorkerThread
 -- }}}
 
 runVisitorIO :: -- {{{
@@ -131,19 +119,7 @@ runVisitorIO :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
-runVisitorIO = runVisitorIOMaybeStartingFrom Nothing
--- }}}
-
-runVisitorIOMaybeStartingFrom :: -- {{{
-    Monoid result ⇒
-    Maybe (Progress result) →
-    VisitorIO result →
-    ThreadsControllerMonad result () →
-    IO (RunOutcome result)
-runVisitorIOMaybeStartingFrom maybe_starting_progress =
-    genericRunVisitorStartingFrom maybe_starting_progress
-    .
-    flip forkVisitorIOWorkerThread
+runVisitorIO = runVisitorIOStartingFrom mempty
 -- }}}
 
 runVisitorIOStartingFrom :: -- {{{
@@ -152,7 +128,10 @@ runVisitorIOStartingFrom :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
-runVisitorIOStartingFrom = runVisitorIOMaybeStartingFrom . Just
+runVisitorIOStartingFrom starting_progress =
+    genericRunVisitorStartingFrom starting_progress
+    .
+    flip forkVisitorIOWorkerThread
 -- }}}
 
 runVisitorT :: -- {{{
@@ -161,20 +140,7 @@ runVisitorT :: -- {{{
     VisitorT m result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
-runVisitorT = flip runVisitorTMaybeStartingFrom Nothing
--- }}}
-
-runVisitorTMaybeStartingFrom :: -- {{{
-    (Monoid result, MonadIO m) ⇒
-    (∀ α. m α → IO α) →
-    Maybe (Progress result) →
-    VisitorT m result →
-    ThreadsControllerMonad result () →
-    IO (RunOutcome result)
-runVisitorTMaybeStartingFrom runMonad maybe_starting_progress =
-    genericRunVisitorStartingFrom maybe_starting_progress
-    .
-    flip (forkVisitorTWorkerThread runMonad)
+runVisitorT = flip runVisitorTStartingFrom mempty
 -- }}}
 
 runVisitorTStartingFrom :: -- {{{
@@ -184,7 +150,10 @@ runVisitorTStartingFrom :: -- {{{
     VisitorT m result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
-runVisitorTStartingFrom runInIO = runVisitorTMaybeStartingFrom runInIO . Just
+runVisitorTStartingFrom runMonad starting_progress =
+    genericRunVisitorStartingFrom starting_progress
+    .
+    flip (forkVisitorTWorkerThread runMonad)
 -- }}}
 
 -- }}}
@@ -195,7 +164,7 @@ fromJustOrBust message = fromMaybe (error message)
 
 genericRunVisitorStartingFrom :: -- {{{
     Monoid result ⇒
-    Maybe (Progress result) →
+    Progress result →
     (
         (WorkerTerminationReason result → IO ()) →
         Workload →
@@ -203,7 +172,7 @@ genericRunVisitorStartingFrom :: -- {{{
     ) →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
-genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller) =
+genericRunVisitorStartingFrom starting_progress spawnWorker (C controller) =
     runWorkgroup
         mempty
         (\WorkgroupReceivers{..} →
@@ -265,7 +234,7 @@ genericRunVisitorStartingFrom maybe_starting_progress spawnWorker (C controller)
                 -- }}}
             in WorkgroupCallbacks{..}
         )
-        maybe_starting_progress
+        starting_progress
         controller
 -- }}}
 

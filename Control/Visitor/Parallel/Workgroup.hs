@@ -147,10 +147,10 @@ runWorkgroup :: -- {{{
     Monoid result ⇒
     inner_state →
     (WorkgroupReceivers result → WorkgroupCallbacks inner_state) →
-    Maybe (Progress result) →
+    Progress result →
     WorkgroupControllerMonad inner_state result () →
     IO (RunOutcome result)
-runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C controller) = do
+runWorkgroup initial_inner_state constructCallbacks starting_progress (C controller) = do
     request_queue ← newRequestQueue
     let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
@@ -187,8 +187,8 @@ runWorkgroup initial_inner_state constructCallbacks maybe_starting_progress (C c
         flip evalStateT initial_state
         $
         do  SupervisorOutcome termination_reason run_statistics worker_ids ←
-                runSupervisorMaybeStartingFrom
-                    maybe_starting_progress
+                runSupervisorStartingFrom
+                    starting_progress
                     SupervisorCallbacks{..}
                     (requestQueueProgram (return ()) request_queue)
             asks killAllWorkers >>= liftInner . ($ worker_ids)

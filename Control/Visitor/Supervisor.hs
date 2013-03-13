@@ -46,10 +46,8 @@ module Control.Visitor.Supervisor -- {{{
     , removeWorker
     , removeWorkerIfPresent
     , runSupervisor
-    , runSupervisorMaybeStartingFrom
     , runSupervisorStartingFrom
     , runUnrestrictedSupervisor
-    , runUnrestrictedSupervisorMaybeStartingFrom
     , runUnrestrictedSupervisorStartingFrom
     , setSupervisorDebugMode
     , tryGetWaitingWorker
@@ -311,19 +309,6 @@ runSupervisor :: -- {{{
 runSupervisor = runSupervisorStartingFrom mempty
 -- }}}
 
-runSupervisorMaybeStartingFrom :: -- {{{
-    ( Monoid result
-    , SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    ) ⇒
-    Maybe (Progress result) →
-    SupervisorCallbacks result worker_id m →
-    SupervisorProgram result worker_id m →
-    m (SupervisorOutcome result worker_id)
-runSupervisorMaybeStartingFrom Nothing = runSupervisor
-runSupervisorMaybeStartingFrom (Just progress) = runSupervisorStartingFrom progress
--- }}}
-
 runSupervisorStartingFrom :: -- {{{
     ( Monoid result
     , SupervisorMonadConstraint m
@@ -372,19 +357,6 @@ runUnrestrictedSupervisor :: -- {{{
     (∀ α. SupervisorMonad result worker_id m α) →
     m (SupervisorOutcome result worker_id)
 runUnrestrictedSupervisor callbacks = runSupervisorStartingFrom mempty callbacks . UnrestrictedProgram
--- }}}
-
-runUnrestrictedSupervisorMaybeStartingFrom :: -- {{{
-    ( Monoid result
-    , SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    ) ⇒
-    Maybe (Progress result) →
-    SupervisorCallbacks result worker_id m →
-    (∀ α. SupervisorMonad result worker_id m α) →
-    m (SupervisorOutcome result worker_id)
-runUnrestrictedSupervisorMaybeStartingFrom Nothing = runUnrestrictedSupervisor
-runUnrestrictedSupervisorMaybeStartingFrom (Just progress) = runUnrestrictedSupervisorStartingFrom progress
 -- }}}
 
 runUnrestrictedSupervisorStartingFrom :: -- {{{
