@@ -15,7 +15,7 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.Functor ((<$>))
 import Data.IORef (modifyIORef,newIORef,readIORef)
-import Data.Monoid ((<>),Sum(..))
+import Data.Monoid ((<>),Sum(..),mempty)
 import Data.Serialize (Serialize(..))
 
 import System.Environment (getArgs)
@@ -90,7 +90,7 @@ tests = -- {{{
                 filepath
                 ["nqueens","13"]
                 (const $ return ())
-                Nothing
+                mempty
                 (forever $ requestProgressUpdate >>= (liftIO . modifyIORef progresses_ref . (:)) >> generateNoise)
         result ← case termination_reason of
             Aborted _ → error "prematurely aborted"

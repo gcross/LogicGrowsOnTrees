@@ -103,12 +103,12 @@ instance RequestQueueMonad (ProcessesControllerMonad result) where
 
 -- Drivers {{{
 driver :: Serialize configuration ⇒ Driver IO configuration visitor result -- {{{
-driver = Driver $ \forkVisitorWorkerThread configuration_term term_info initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager →
+driver = Driver $ \forkVisitorWorkerThread configuration_term term_info initializeGlobalState getStartingProgress notifyTerminated constructVisitor constructManager →
     genericRunVisitor
         forkVisitorWorkerThread
         (mainParser (liftA2 (,) number_of_processes_term configuration_term) term_info)
         (initializeGlobalState . snd)
-        (getMaybeStartingProgress . snd)
+        (getStartingProgress . snd)
         (\(number_of_processes,configuration) → do
             changeNumberOfWorkers (const $ return number_of_processes)
             constructManager configuration
@@ -137,10 +137,10 @@ runSupervisor :: -- {{{
     String →
     [String] →
     (Handle → IO ()) →
-    Maybe (Progress result) →
+    Progress result →
     ProcessesControllerMonad result () →
     IO (RunOutcome result)
-runSupervisor worker_filepath worker_arguments sendConfigurationTo maybe_starting_progress (C controller) = do
+runSupervisor worker_filepath worker_arguments sendConfigurationTo starting_progress (C controller) = do
     request_queue ← newRequestQueue
     runWorkgroup
         mempty
@@ -235,7 +235,7 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo maybe_startin
                 sendWorkloadTo worker_id workload = sendMessageToWorker (StartWorkload workload) worker_id
             in WorkgroupCallbacks{..}
         ) -- }}}
-        maybe_starting_progress
+        starting_progress
         controller
 -- }}}
 
@@ -243,7 +243,7 @@ runVisitor :: -- {{{
     (Serialize configuration, Monoid result, Serialize result) ⇒
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (Progress result))) →
+    (configuration → IO (Progress result)) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → Visitor result) →
     IO (Maybe (configuration,RunOutcome result))
@@ -261,7 +261,7 @@ runVisitorIO :: -- {{{
     (Serialize configuration, Monoid result, Serialize result) ⇒
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (Progress result))) →
+    (configuration → IO (Progress result)) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → VisitorIO result) →
     IO (Maybe (configuration,RunOutcome result))
@@ -280,7 +280,7 @@ runVisitorT :: -- {{{
     (∀ α. m α → IO α) →
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (Progress result))) →
+    (configuration → IO (Progress result)) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → VisitorT m result) →
     IO (Maybe (configuration,RunOutcome result))
@@ -338,7 +338,7 @@ genericRunVisitor :: -- {{{
     ) →
     IO configuration →
     (configuration → IO ()) →
-    (configuration → IO (Maybe (Progress result))) →
+    (configuration → IO (Progress result)) →
     (configuration → ProcessesControllerMonad result ()) →
     (configuration → visitor result) →
     IO (Maybe (configuration,RunOutcome result))
@@ -354,13 +354,13 @@ genericRunVisitor forkVisitorWorkerThread getConfiguration initializeGlobalState
             configuration ← getConfiguration
             initializeGlobalState configuration
             program_filepath ← getProgFilepath
-            maybe_starting_progress ← getStartingProgress configuration
+            starting_progress ← getStartingProgress configuration
             termination_result ←
                 runSupervisor
                     program_filepath
                     sentinel
                     (flip send configuration)
-                    maybe_starting_progress
+                    starting_progress
                     (constructManager configuration)
             return $ Just (configuration,termination_result)
   where
