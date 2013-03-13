@@ -65,6 +65,7 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
 import Control.Visitor.Main (Driver(Driver),RunOutcome,mainParser)
+import Control.Visitor.Parallel.Message
 import qualified Control.Visitor.Parallel.Process as Process
 import Control.Visitor.Parallel.Process
 import Control.Visitor.Parallel.Workgroup
@@ -144,7 +145,7 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo starting_prog
     request_queue ← newRequestQueue
     runWorkgroup
         mempty
-        (\WorkgroupReceivers{..} → -- {{{
+        (\message_receivers@MessageForSupervisorReceivers{..} → -- {{{
             let createWorker worker_id = do -- {{{
                     debugM $ "Launching worker process: " ++ worker_filepath ++ " " ++ unwords worker_arguments
                     (Just write_handle,Just read_handle,Just error_handle,process_handle) ← liftIO . createProcess $
@@ -166,24 +167,8 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo starting_prog
                                 (const $ return ())
                              `catch`
                                 (\(e::SomeException) → errorM $ "Error reading stderr for worker " ++ show worker_id ++ ": " ++ show e)
-                        _ ← forkIO $ (
-                            (fix $ \receiveNextMessage → receive read_handle >>= (\message →
-                                case message of
-                                    Failed message → do
-                                        receiveFailureFromWorker worker_id message
-                                        receiveNextMessage
-                                    Finished final_progress → do
-                                        receiveFinishedFromWorker worker_id final_progress
-                                        receiveNextMessage
-                                    ProgressUpdate progress_update → do
-                                        receiveProgressUpdateFromWorker worker_id progress_update
-                                        receiveNextMessage
-                                    StolenWorkload stolen_workload → do
-                                        receiveStolenWorkloadFromWorker worker_id stolen_workload
-                                        receiveNextMessage
-                                    WorkerQuit →
-                                        receiveQuitFromWorker worker_id
-                            ))
+                        _ ← forkIO $
+                            receiveAndProcessMessagesFromWorker message_receivers (receive read_handle) worker_id
                             `catch`
                             (\(e::SomeException) →
                             case fromException e of
@@ -194,7 +179,6 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo starting_prog
                                     interruptProcessGroupOf process_handle
                                     receiveFailureFromWorker worker_id (show e)
                             )
-                         )
                         sendConfigurationTo write_handle
                     modify . IntMap.insert worker_id $ Worker{..}
                 -- }}}
