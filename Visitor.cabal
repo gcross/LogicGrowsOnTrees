@@ -59,20 +59,20 @@ Library
         Control.Visitor.Examples.Queens.Implementation
         Control.Visitor.Examples.Tree
         Control.Visitor.Label
-        Control.Visitor.Main
-        Control.Visitor.Parallel.Message
-        Control.Visitor.Parallel.Process
-        Control.Visitor.Parallel.Threads
-        Control.Visitor.Parallel.Workgroup
+        Control.Visitor.Parallel.BackEnd.Threads
+        Control.Visitor.Parallel.Common.Message
+        Control.Visitor.Parallel.Common.Process
+        Control.Visitor.Parallel.Common.Supervisor
+        Control.Visitor.Parallel.Common.Supervisor.Implementation
+        Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+        Control.Visitor.Parallel.Common.Workgroup
+        Control.Visitor.Parallel.Common.Worker
+        Control.Visitor.Parallel.Main
         Control.Visitor.Path
-        Control.Visitor.Supervisor
-        Control.Visitor.Supervisor.Implementation
-        Control.Visitor.Supervisor.RequestQueue
         Control.Visitor.Utils.Handle
         Control.Visitor.Utils.IntSum
         Control.Visitor.Utils.MonadStacks
         Control.Visitor.Utils.WordSum
-        Control.Visitor.Worker
         Control.Visitor.Workload
         Data.Semiring
         Data.Semiring.NaturalInstances

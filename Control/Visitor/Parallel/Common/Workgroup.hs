@@ -7,7 +7,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Workgroup -- {{{
+module Control.Visitor.Parallel.Common.Workgroup -- {{{
     ( MessageForSupervisorReceivers(..)
     , WorkerId
     , WorkgroupCallbacks(..)
@@ -50,11 +50,11 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
-import Control.Visitor.Parallel.Message
-import Control.Visitor.Supervisor
-import Control.Visitor.Supervisor.RequestQueue
-import Control.Visitor.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
+import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
+import Control.Visitor.Parallel.Common.Message
+import Control.Visitor.Parallel.Common.Supervisor
+import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Common.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
 import Control.Visitor.Workload
 -- }}}
 

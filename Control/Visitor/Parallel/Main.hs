@@ -13,7 +13,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Visitor.Main -- {{{
+module Control.Visitor.Parallel.Main -- {{{
     ( Driver(..)
     , RunOutcome(..)
     , TerminationReason(..)
@@ -59,9 +59,9 @@ import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Supervisor (IndependentMeasurementsStatistics(..),RunStatistics(..),FunctionOfTimeStatistics(..))
-import Control.Visitor.Supervisor.RequestQueue
-import Control.Visitor.Worker
+import Control.Visitor.Parallel.Common.Supervisor (IndependentMeasurementsStatistics(..),RunStatistics(..),FunctionOfTimeStatistics(..))
+import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Common.Worker
 import Control.Visitor.Workload
 -- }}}
 

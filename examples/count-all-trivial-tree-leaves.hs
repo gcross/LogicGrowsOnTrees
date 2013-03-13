@@ -13,8 +13,8 @@ import System.Console.CmdTheLine
 import System.Environment
 
 import Control.Visitor.Examples.Tree
-import Control.Visitor.Main
-import Control.Visitor.Parallel.Threads
+import Control.Visitor.Parallel.Main
+import Control.Visitor.Parallel.BackEnd.Threads
 import Control.Visitor.Utils.WordSum
 
 -- }}}

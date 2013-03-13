@@ -12,7 +12,7 @@ import Control.Visitor
 import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Tree
 import Control.Visitor.Utils.WordSum
-import qualified Control.Visitor.Worker as Worker
+import qualified Control.Visitor.Parallel.Common.Worker as Worker
 import Control.Visitor.Workload
 -- }}}
 

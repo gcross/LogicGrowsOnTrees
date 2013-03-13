@@ -8,7 +8,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Supervisor.RequestQueue where
+module Control.Visitor.Parallel.Common.Supervisor.RequestQueue where
 
 -- Imports {{{
 import Prelude hiding (catch)
@@ -31,8 +31,8 @@ import Data.Monoid (Monoid)
 import Data.Typeable (Typeable)
 
 import Control.Visitor.Checkpoint (Progress)
-import qualified Control.Visitor.Supervisor as Supervisor
-import Control.Visitor.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
+import qualified Control.Visitor.Parallel.Common.Supervisor as Supervisor
+import Control.Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
 -- }}}
 
 -- Classes {{{

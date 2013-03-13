@@ -16,7 +16,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Visitor.Supervisor.Implementation -- {{{
+module Control.Visitor.Parallel.Common.Supervisor.Implementation -- {{{
     ( AbortMonad()
     , ContextMonad()
     , FunctionOfTimeStatistics(..)
@@ -112,7 +112,7 @@ import Text.Printf
 
 import Control.Visitor.Checkpoint
 import Control.Visitor.Path
-import Control.Visitor.Worker
+import Control.Visitor.Parallel.Common.Worker
 import Control.Visitor.Workload
 -- }}}
 

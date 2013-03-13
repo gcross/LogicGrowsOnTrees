@@ -93,16 +93,16 @@ import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Queens
 import Control.Visitor.Examples.Tree
 import Control.Visitor.Label
-import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
-import qualified Control.Visitor.Parallel.Threads as Threads
-import qualified Control.Visitor.Parallel.Workgroup as Workgroup
+import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
+import qualified Control.Visitor.Parallel.BackEnd.Threads as Threads
+import qualified Control.Visitor.Parallel.Common.Workgroup as Workgroup
 import Control.Visitor.Path
-import Control.Visitor.Supervisor
-import Control.Visitor.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Common.Supervisor
+import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
 import Control.Visitor.Utils.IntSum
 import Control.Visitor.Utils.WordSum
 import Control.Visitor.Workload
-import Control.Visitor.Worker hiding (runVisitor,runVisitorIO,runVisitorT)
+import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT)
 -- }}}
 
 -- Helpers {{{
@@ -810,7 +810,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Parallel.Threads" $ -- {{{
+    ,testGroup "Control.Visitor.Parallel.BackEnd.Threads" $ -- {{{
         let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
                 termination_reason_ivar ← IVar.new
                 token_mvar ← newEmptyMVar
@@ -935,7 +935,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Supervisor" -- {{{
+    ,testGroup "Control.Visitor.Parallel.Common.Supervisor" -- {{{
         [testCase "immediately abort" $ do -- {{{
             SupervisorOutcome{..} ← runSupervisor bad_test_supervisor_actions (UnrestrictedProgram abortSupervisor)
             supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
@@ -1182,7 +1182,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Worker" -- {{{
+    ,testGroup "Control.Visitor.Parallel.Common.Worker" -- {{{
         [testGroup "forkVisitor(X)WorkerThread" -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new

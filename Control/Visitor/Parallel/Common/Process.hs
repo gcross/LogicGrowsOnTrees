@@ -4,7 +4,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Process
+module Control.Visitor.Parallel.Common.Process
     ( runWorker
     , runWorkerUsingHandles
     ) where
@@ -26,11 +26,11 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
-import Control.Visitor.Parallel.Message (MessageForSupervisor(..),MessageForWorker(..))
-import Control.Visitor.Supervisor
+import Control.Visitor.Parallel.Common.Message (MessageForSupervisor(..),MessageForWorker(..))
+import Control.Visitor.Parallel.Common.Supervisor
 import Control.Visitor.Utils.Handle
-import qualified Control.Visitor.Worker as Worker
-import Control.Visitor.Worker hiding (ProgressUpdate,StolenWorkload)
+import qualified Control.Visitor.Parallel.Common.Worker as Worker
+import Control.Visitor.Parallel.Common.Worker hiding (ProgressUpdate,StolenWorkload)
 import Control.Visitor.Workload
 -- }}}
 

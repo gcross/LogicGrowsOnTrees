@@ -10,7 +10,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Visitor.Worker
+module Control.Visitor.Parallel.Common.Worker
     ( ProgressUpdate(..)
     , StolenWorkload(..)
     , WorkerRequestQueue

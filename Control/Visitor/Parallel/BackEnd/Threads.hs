@@ -8,7 +8,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Threads
+module Control.Visitor.Parallel.BackEnd.Threads
     ( ThreadsControllerMonad
     , abort
     , changeNumberOfWorkers
@@ -49,10 +49,10 @@ import System.Log.Logger.TH
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (Driver(Driver),RunOutcome,mainParser)
-import Control.Visitor.Parallel.Workgroup
-import Control.Visitor.Supervisor.RequestQueue
-import Control.Visitor.Worker as Worker hiding (runVisitor,runVisitorIO,runVisitorT)
+import Control.Visitor.Parallel.Main (Driver(Driver),RunOutcome,mainParser)
+import Control.Visitor.Parallel.Common.Workgroup
+import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Common.Worker as Worker hiding (runVisitor,runVisitorIO,runVisitorT)
 import Control.Visitor.Workload
 -- }}}
 

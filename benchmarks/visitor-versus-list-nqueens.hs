@@ -11,7 +11,7 @@ import Control.Visitor
 import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Queens
 import Control.Visitor.Utils.WordSum
-import qualified Control.Visitor.Worker as Worker
+import qualified Control.Visitor.Parallel.Common.Worker as Worker
 -- }}}
 
 main = defaultMain

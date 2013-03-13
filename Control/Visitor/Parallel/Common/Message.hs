@@ -4,7 +4,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Message where
+module Control.Visitor.Parallel.Common.Message where
 
 -- Imports {{{
 import Data.Derive.Serialize
@@ -12,7 +12,7 @@ import Data.DeriveTH
 import Data.Serialize
 
 import Control.Visitor.Checkpoint
-import qualified Control.Visitor.Worker as Worker
+import qualified Control.Visitor.Parallel.Common.Worker as Worker
 import Control.Visitor.Workload
 -- }}}
 

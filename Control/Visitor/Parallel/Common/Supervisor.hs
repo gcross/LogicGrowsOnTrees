@@ -16,7 +16,7 @@
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
 
-module Control.Visitor.Supervisor -- {{{
+module Control.Visitor.Parallel.Common.Supervisor -- {{{
     ( FunctionOfTimeStatistics(..)
     , IndependentMeasurementsStatistics(..)
     , RunStatistics(..)
@@ -71,10 +71,10 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint (Progress)
-import Control.Visitor.Worker (ProgressUpdate,StolenWorkload)
+import Control.Visitor.Parallel.Common.Worker (ProgressUpdate,StolenWorkload)
 
-import qualified Control.Visitor.Supervisor.Implementation as Implementation
-import Control.Visitor.Supervisor.Implementation -- {{{
+import qualified Control.Visitor.Parallel.Common.Supervisor.Implementation as Implementation
+import Control.Visitor.Parallel.Common.Supervisor.Implementation -- {{{
     ( AbortMonad()
     , ContextMonad()
     , FunctionOfTimeStatistics(..)
