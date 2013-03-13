@@ -5,9 +5,7 @@
 -- }}}
 
 module Control.Visitor.Parallel.Process
-    ( MessageForSupervisor(..)
-    , MessageForWorker(..)
-    , runWorker
+    ( runWorker
     , runWorkerUsingHandles
     ) where
 
@@ -17,8 +15,6 @@ import Control.Concurrent.MVar (isEmptyMVar,newEmptyMVar,putMVar,takeMVar,tryTak
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
 import Control.Monad.IO.Class
 
-import Data.Derive.Serialize
-import Data.DeriveTH
 import Data.Functor ((<$>))
 import Data.Monoid (Monoid)
 import Data.Typeable (Typeable)
@@ -30,6 +26,7 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
+import Control.Visitor.Parallel.Message (MessageForSupervisor(..),MessageForWorker(..))
 import Control.Visitor.Supervisor
 import Control.Visitor.Utils.Handle
 import qualified Control.Visitor.Worker as Worker
@@ -39,29 +36,6 @@ import Control.Visitor.Workload
 
 -- Logging Functions {{{
 deriveLoggers "Logger" [DEBUG,INFO]
--- }}}
-
--- Types {{{
-
-data MessageForSupervisor result = -- {{{
-    Failed String
-  | Finished (Progress result)
-  | ProgressUpdate (Worker.ProgressUpdate result)
-  | StolenWorkload (Maybe (Worker.StolenWorkload result))
-  | WorkerQuit
-  deriving (Eq,Show)
-$(derive makeSerialize ''MessageForSupervisor)
--- }}}
-
-data MessageForWorker result = -- {{{
-    RequestProgressUpdate
-  | RequestWorkloadSteal
-  | StartWorkload Workload
-  | QuitWorker
-  deriving (Eq,Show)
-$(derive makeSerialize ''MessageForWorker)
--- }}}
-
 -- }}}
 
 -- Functions {{{

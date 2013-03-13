@@ -60,6 +60,7 @@ Library
         Control.Visitor.Examples.Tree
         Control.Visitor.Label
         Control.Visitor.Main
+        Control.Visitor.Parallel.Message
         Control.Visitor.Parallel.Process
         Control.Visitor.Parallel.Threads
         Control.Visitor.Parallel.Workgroup

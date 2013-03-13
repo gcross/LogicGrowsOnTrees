@@ -175,7 +175,7 @@ genericRunVisitorStartingFrom :: -- {{{
 genericRunVisitorStartingFrom starting_progress spawnWorker (C controller) =
     runWorkgroup
         mempty
-        (\WorkgroupReceivers{..} →
+        (\MessageForSupervisorReceivers{..} →
             let createWorker _ = return ()
                 destroyWorker worker_id False = liftIO $ receiveQuitFromWorker worker_id
                 destroyWorker worker_id True = do -- {{{

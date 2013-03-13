@@ -8,10 +8,10 @@
 -- }}}
 
 module Control.Visitor.Parallel.Workgroup -- {{{
-    ( WorkerId
+    ( MessageForSupervisorReceivers(..)
+    , WorkerId
     , WorkgroupCallbacks(..)
     , WorkgroupControllerMonad
-    , WorkgroupReceivers(..)
     , WorkgroupRequestQueueMonad(..)
     , changeNumberOfWorkers
     , runWorkgroup
@@ -51,6 +51,7 @@ import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
 import Control.Visitor.Main (RunOutcome(..),TerminationReason(..))
+import Control.Visitor.Parallel.Message
 import Control.Visitor.Supervisor
 import Control.Visitor.Supervisor.RequestQueue
 import Control.Visitor.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
@@ -76,15 +77,6 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
     ,   sendProgressUpdateRequestTo :: WorkerId → InnerMonad inner_state ()
     ,   sendWorkloadStealRequestTo :: WorkerId → InnerMonad inner_state ()
     ,   sendWorkloadTo :: WorkerId → Workload → InnerMonad inner_state ()
-    }
--- }}}
-
-data WorkgroupReceivers result = WorkgroupReceivers -- {{{
-    {   receiveProgressUpdateFromWorker :: WorkerId → ProgressUpdate result → IO ()
-    ,   receiveStolenWorkloadFromWorker :: WorkerId → Maybe (StolenWorkload result) → IO ()
-    ,   receiveFailureFromWorker :: WorkerId → String → IO ()
-    ,   receiveFinishedFromWorker :: WorkerId → (Progress result) → IO ()
-    ,   receiveQuitFromWorker :: WorkerId → IO ()
     }
 -- }}}
 
@@ -146,7 +138,7 @@ changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 runWorkgroup :: -- {{{
     Monoid result ⇒
     inner_state →
-    (WorkgroupReceivers result → WorkgroupCallbacks inner_state) →
+    (MessageForSupervisorReceivers WorkerId result → WorkgroupCallbacks inner_state) →
     Progress result →
     WorkgroupControllerMonad inner_state result () →
     IO (RunOutcome result)
@@ -182,7 +174,7 @@ runWorkgroup initial_inner_state constructCallbacks starting_progress (C control
     run_outcome ←
         flip evalStateT initial_inner_state
         .
-        flip runReaderT (constructCallbacks WorkgroupReceivers{..})
+        flip runReaderT (constructCallbacks MessageForSupervisorReceivers{..})
         .
         flip evalStateT initial_state
         $
