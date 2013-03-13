@@ -12,7 +12,7 @@ import System.Console.CmdTheLine
 import System.Environment
 
 import Control.Visitor.Examples.Queens
-import Control.Visitor.Main
+import Control.Visitor.Parallel.Main
 import Control.Visitor.Parallel.Processes
 import Control.Visitor.Utils.WordSum
 -- }}}

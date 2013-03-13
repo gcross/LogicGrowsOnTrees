@@ -37,7 +37,7 @@ Library
         process == 1.1.*,
         transformers >= 0.2 && < 0.4
     Exposed-modules:
-        Control.Visitor.Parallel.Processes
+        Control.Visitor.Parallel.BackEnd.Processes
     Extensions:
 
 Flag examples

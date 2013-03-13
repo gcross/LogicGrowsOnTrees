@@ -9,7 +9,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Processes -- {{{
+module Control.Visitor.Parallel.BackEnd.Processes -- {{{
     ( ProcessesControllerMonad
     , abort
     , changeNumberOfWorkers
@@ -64,14 +64,14 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Main (Driver(Driver),RunOutcome,mainParser)
-import Control.Visitor.Parallel.Message
-import qualified Control.Visitor.Parallel.Process as Process
-import Control.Visitor.Parallel.Process
-import Control.Visitor.Parallel.Workgroup
-import Control.Visitor.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Main (Driver(Driver),RunOutcome,mainParser)
+import Control.Visitor.Parallel.Common.Message
+import qualified Control.Visitor.Parallel.Common.Process as Process
+import Control.Visitor.Parallel.Common.Process
+import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,runVisitor,runVisitorIO,runVisitorT)
+import Control.Visitor.Parallel.Common.Workgroup
 import Control.Visitor.Utils.Handle
-import Control.Visitor.Worker as Worker hiding (ProgressUpdate,StolenWorkload,runVisitor,runVisitorIO,runVisitorT)
 import Control.Visitor.Workload
 -- }}}
 

@@ -32,8 +32,8 @@ import Test.HUnit
 import qualified Control.Visitor as V
 import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Queens
-import Control.Visitor.Main
-import Control.Visitor.Parallel.Processes
+import Control.Visitor.Parallel.Main
+import Control.Visitor.Parallel.BackEnd.Processes
 -- }}}
 
 -- Logging Functions {{{
