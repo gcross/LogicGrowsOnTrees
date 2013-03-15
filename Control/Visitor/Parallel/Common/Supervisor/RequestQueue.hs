@@ -56,7 +56,7 @@ data RequestQueue result worker_id m = RequestQueue -- {{{
     ,   receivers :: !(IORef [Progress result → IO ()])
     }
 -- }}}
-type RequestQueueReader result worker_id m  = ReaderT (RequestQueue result worker_id m) IO
+type RequestQueueReader result worker_id m = ReaderT (RequestQueue result worker_id m) IO
 
 -- }}}
 
