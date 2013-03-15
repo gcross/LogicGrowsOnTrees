@@ -46,7 +46,7 @@ data MessageForWorker result = -- {{{
 $(derive makeSerialize ''MessageForWorker)
 -- }}}
 
-receiveAndProcessMessagesFromWorker ::
+receiveAndProcessMessagesFromWorker :: -- {{{
     MessageForSupervisorReceivers worker_id result →
     IO (MessageForSupervisor result) →
     worker_id →
@@ -72,5 +72,6 @@ receiveAndProcessMessagesFromWorker
         receiveNextMessage
     processMessage WorkerQuit =
         receiveQuitFromWorker worker_id
+-- }}}
 
 -- }}}
