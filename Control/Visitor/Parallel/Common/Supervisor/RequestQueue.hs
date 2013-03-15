@@ -2,13 +2,35 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Control.Visitor.Parallel.Common.Supervisor.RequestQueue where
+module Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+    ( Request
+    , RequestQueue
+    , RequestQueueMonad(..)
+    , RequestQueueReader
+    , addProgressReceiver
+    , constructMessageReceiversWithPendingQuit
+    , enqueueRequest
+    , getCurrentProgress
+    , getQuantityAsync
+    , getNumberOfWorkers
+    , newRequestQueue
+    , processAllRequests
+    , processRequest
+    , receiveProgress
+    , requestProgressUpdate
+    , requestQueueProgram
+    , syncAsync
+    , tryDequeueRequest
+    ) where
 
 -- Imports {{{
 import Prelude hiding (catch)
@@ -20,19 +42,33 @@ import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,tryReadTChan,writeTChan)
 import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
+import Control.Lens ((<<%=),Lens',use)
+import Control.Monad (join,liftM,liftM2,when)
 import Control.Monad.CatchIO (MonadCatchIO)
-import Control.Monad (join,liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition ((.*))
+import Data.Functor ((<$>))
 import Data.IORef (IORef,atomicModifyIORef,newIORef)
 import Data.Monoid (Monoid)
+import qualified Data.Set as Set
+import Data.Set (Set)
 import Data.Typeable (Typeable)
 
+import qualified System.Log.Logger as Logger
+import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger.TH
+
 import Control.Visitor.Checkpoint (Progress)
+import Control.Visitor.Parallel.Common.Message
 import qualified Control.Visitor.Parallel.Common.Supervisor as Supervisor
 import Control.Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
+-- }}}
+
+-- Logging Functions {{{
+deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Classes {{{
@@ -94,6 +130,37 @@ addProgressReceiver receiver =
     flip atomicModifyIORef ((receiver:) &&& const ())
     .
     receivers
+-- }}}
+
+constructMessageReceiversWithPendingQuit :: -- {{{
+    ( Monoid result
+    , SupervisorFullConstraint worker_id m
+    , MonadState s m
+    ) ⇒
+    Bool →
+    Lens' s (Set worker_id) →
+    RequestQueue result worker_id m →
+    MessageForSupervisorReceivers worker_id result
+constructMessageReceiversWithPendingQuit fail_on_unexpected_quit pending_quit request_queue =
+    MessageForSupervisorReceivers{..}
+  where
+    receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* Supervisor.receiveProgressUpdate
+    receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* Supervisor.receiveStolenWorkload
+    receiveFailureFromWorker = flip enqueueRequest request_queue .* Supervisor.receiveWorkerFailure
+    receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do -- {{{
+        removal_flag ← Set.member worker_id <$> use pending_quit
+        infoM $ if removal_flag
+            then "Worker " ++ show worker_id ++ " has finished, and will be removed."
+            else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
+        Supervisor.receiveWorkerFinishedWithRemovalFlag removal_flag worker_id final_progress
+    -- }}}
+    receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do -- {{{
+        infoM $ "Worker " ++ show worker_id ++ " has quit."
+        is_pending_quit ← Set.member worker_id <$> (pending_quit <<%= Set.delete worker_id)
+        if not is_pending_quit && fail_on_unexpected_quit
+            then Supervisor.receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
+            else Supervisor.removeWorkerIfPresent worker_id
+    -- }}}
 -- }}}
 
 tryDequeueRequest :: -- {{{
