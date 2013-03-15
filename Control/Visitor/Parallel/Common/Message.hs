@@ -7,6 +7,7 @@
 module Control.Visitor.Parallel.Common.Message where
 
 -- Imports {{{
+
 import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Serialize
