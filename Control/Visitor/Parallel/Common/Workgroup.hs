@@ -36,10 +36,10 @@ import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 import Data.Composition ((.*))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
-import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.PSQueue (Binding((:->)),PSQ)
 import qualified Data.PSQueue as PSQ
 import qualified Data.Set as Set
@@ -81,7 +81,7 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
 -- }}}
 
 data WorkgroupState = WorkgroupState -- {{{
-    {   _pending_quit :: !(Set WorkerId)
+    {   _pending_quit :: !IntSet
     ,   _next_worker_id :: !WorkerId
     ,   _next_priority :: !RemovalPriority
     ,   _removal_queue :: !(PSQ WorkerId RemovalPriority)
@@ -144,7 +144,24 @@ runWorkgroup :: -- {{{
     IO (RunOutcome result)
 runWorkgroup initial_inner_state constructCallbacks starting_progress (C controller) = do
     request_queue ← newRequestQueue
-    let broadcastProgressUpdateToWorkers = \worker_ids →
+    let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
+        receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
+        receiveFailureFromWorker = flip enqueueRequest request_queue .* receiveWorkerFailure
+        receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do -- {{{
+            removal_flag ← IntSet.member worker_id <$> use pending_quit
+            infoM $ if removal_flag
+                then "Worker " ++ show worker_id ++ " has finished, and will be removed."
+                else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
+            receiveWorkerFinishedWithRemovalFlag removal_flag worker_id final_progress
+        -- }}}
+        receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do -- {{{
+            infoM $ "Worker " ++ show worker_id ++ " has quit."
+            quitting ← IntSet.member worker_id <$> (pending_quit <<%= IntSet.delete worker_id)
+            if quitting
+                then removeWorkerIfPresent worker_id
+                else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
+        -- }}}
+        broadcastProgressUpdateToWorkers = \worker_ids →
             asks sendProgressUpdateRequestTo >>= liftInner . forM_ worker_ids
         broadcastWorkloadStealToWorkers = \worker_ids →
             asks sendWorkloadStealRequestTo >>= liftInner . forM_ worker_ids
@@ -157,7 +174,7 @@ runWorkgroup initial_inner_state constructCallbacks starting_progress (C control
     run_outcome ←
         flip evalStateT initial_inner_state
         .
-        flip runReaderT (constructCallbacks (constructMessageReceiversWithPendingQuit True pending_quit request_queue))
+        flip runReaderT (constructCallbacks MessageForSupervisorReceivers{..})
         .
         flip evalStateT initial_state
         $
@@ -205,7 +222,7 @@ fireAWorker =
             infoM $ "Removing waiting worker " ++ show worker_id ++ "."
             removeWorker worker_id
             removeWorkerFromRemovalQueue worker_id
-            pending_quit %= Set.insert worker_id
+            pending_quit %= IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ False) . ($ worker_id)
         Nothing → do
             (worker_id,new_removal_queue) ← do
@@ -215,7 +232,7 @@ fireAWorker =
                         Just (worker_id :-> _,rest_queue) → return (worker_id,rest_queue)
             infoM $ "Removing active worker " ++ show worker_id ++ "."
             removal_queue .= new_removal_queue
-            pending_quit %= Set.insert worker_id
+            pending_quit %= IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ True) . ($ worker_id)
 
 -- }}}
