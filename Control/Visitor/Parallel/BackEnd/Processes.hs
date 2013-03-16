@@ -361,8 +361,8 @@ genericRunWorker :: -- {{{
     Handle →
     Handle →
     IO ()
-genericRunWorker spawnWorker reveive_handle send_handle = debugM "called genericRunWorker" >>
-    Process.runWorkerUsingHandles reveive_handle send_handle spawnWorker
+genericRunWorker spawnWorker receive_handle send_handle = debugM "called genericRunWorker" >>
+    Process.runWorkerUsingHandles receive_handle send_handle spawnWorker
 -- }}}
 
 -- }}}
