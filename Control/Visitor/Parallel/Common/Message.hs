@@ -14,7 +14,10 @@ import Data.Serialize
 
 import Control.Visitor.Checkpoint
 import qualified Control.Visitor.Parallel.Common.Worker as Worker
+import Control.Visitor.Utils.Handle
 import Control.Visitor.Workload
+
+import System.IO (Handle)
 -- }}}
 
 -- Types {{{
@@ -72,6 +75,16 @@ receiveAndProcessMessagesFromWorker
         receiveNextMessage
     processMessage WorkerQuit =
         receiveQuitFromWorker worker_id
+-- }}}
+
+receiveAndProcessMessagesFromWorkerUsingHandle :: -- {{{
+    Serialize result ⇒
+    MessageForSupervisorReceivers worker_id result →
+    Handle →
+    worker_id →
+    IO ()
+receiveAndProcessMessagesFromWorkerUsingHandle receivers handle worker_id =
+    receiveAndProcessMessagesFromWorker receivers (receive handle) worker_id
 -- }}}
 
 -- }}}
