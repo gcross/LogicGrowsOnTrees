@@ -168,7 +168,7 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo starting_prog
                              `catch`
                                 (\(e::SomeException) → errorM $ "Error reading stderr for worker " ++ show worker_id ++ ": " ++ show e)
                         _ ← forkIO $
-                            receiveAndProcessMessagesFromWorker message_receivers (receive read_handle) worker_id
+                            receiveAndProcessMessagesFromWorkerUsingHandle message_receivers read_handle worker_id
                             `catch`
                             (\(e::SomeException) →
                             case fromException e of
