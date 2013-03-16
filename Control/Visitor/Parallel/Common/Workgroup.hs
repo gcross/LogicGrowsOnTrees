@@ -1,6 +1,7 @@
 -- Language extensions {{{
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -50,7 +51,7 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint
-import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
+import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..),extractRunOutcomeFromSupervisorOutcome)
 import Control.Visitor.Parallel.Common.Message
 import Control.Visitor.Parallel.Common.Supervisor
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
@@ -178,17 +179,13 @@ runWorkgroup initial_inner_state constructCallbacks starting_progress (C control
         .
         flip evalStateT initial_state
         $
-        do  SupervisorOutcome termination_reason run_statistics worker_ids ←
+        do  supervisor_outcome@SupervisorOutcome{supervisorRemainingWorkers} ←
                 runSupervisorStartingFrom
                     starting_progress
                     SupervisorCallbacks{..}
                     (requestQueueProgram (return ()) request_queue)
-            asks killAllWorkers >>= liftInner . ($ worker_ids)
-            return . (RunOutcome run_statistics) $ case termination_reason of
-                SupervisorAborted remaining_progress → Aborted remaining_progress
-                SupervisorCompleted result → Completed result
-                SupervisorFailure worker_id message →
-                    Failure $ "Worker " ++ show worker_id ++ " failed with message: " ++ message
+            asks killAllWorkers >>= liftInner . ($ supervisorRemainingWorkers)
+            return $ extractRunOutcomeFromSupervisorOutcome supervisor_outcome
     killThread manager_thread_id
     return run_outcome
   where

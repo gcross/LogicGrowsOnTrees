@@ -17,6 +17,7 @@ module Control.Visitor.Parallel.Main -- {{{
     ( Driver(..)
     , RunOutcome(..)
     , TerminationReason(..)
+    , extractRunOutcomeFromSupervisorOutcome
     , mainParser
     , mainVisitor
     , mainVisitorIO
@@ -59,7 +60,14 @@ import Text.Printf (printf)
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Parallel.Common.Supervisor (IndependentMeasurementsStatistics(..),RunStatistics(..),FunctionOfTimeStatistics(..))
+import Control.Visitor.Parallel.Common.Supervisor -- {{{
+    ( FunctionOfTimeStatistics(..)
+    , IndependentMeasurementsStatistics(..)
+    , RunStatistics(..)
+    , SupervisorTerminationReason(..)
+    , SupervisorOutcome(..)
+    )
+-- }}}
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
 import Control.Visitor.Parallel.Common.Worker
 import Control.Visitor.Workload
@@ -226,6 +234,21 @@ configuration_term =
 -- }}}
 
 -- Exposed Functions {{{
+
+extractRunOutcomeFromSupervisorOutcome :: -- {{{
+    Show worker_id ⇒
+    SupervisorOutcome result worker_id →
+    RunOutcome result
+extractRunOutcomeFromSupervisorOutcome SupervisorOutcome{..} = RunOutcome{..}
+  where
+    runTerminationReason =
+        case supervisorTerminationReason of
+            SupervisorAborted remaining_progress → Aborted remaining_progress
+            SupervisorCompleted result → Completed result
+            SupervisorFailure worker_id message →
+                Failure $ "Worker " ++ show worker_id ++ " failed with message: " ++ message
+    runStatistics = supervisorRunStatistics
+-- }}}
 
 mainParser :: Term α → TermInfo → IO α -- {{{
 mainParser term term_info =
