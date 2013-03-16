@@ -80,7 +80,7 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
     }
 -- }}}
 
-data WorkgroupState result = WorkgroupState -- {{{
+data WorkgroupState = WorkgroupState -- {{{
     {   _pending_quit :: !(Set WorkerId)
     ,   _next_worker_id :: !WorkerId
     ,   _next_priority :: !RemovalPriority
@@ -89,7 +89,7 @@ data WorkgroupState result = WorkgroupState -- {{{
 $( makeLenses ''WorkgroupState )
 -- }}}
 
-type WorkgroupStateMonad inner_state result = StateT (WorkgroupState result) (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
+type WorkgroupStateMonad inner_state result = StateT WorkgroupState (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
 
 type WorkgroupRequestQueue inner_state result = RequestQueue result WorkerId (WorkgroupStateMonad inner_state result)
 
@@ -189,7 +189,7 @@ runWorkgroup initial_inner_state constructCallbacks starting_progress (C control
 -- Internal Functions {{{
 
 bumpWorkerRemovalPriority :: -- {{{
-    (MonadState (WorkgroupState result) m) ⇒
+    (MonadState WorkgroupState m) ⇒
     WorkerId →
     m ()
 bumpWorkerRemovalPriority worker_id =
