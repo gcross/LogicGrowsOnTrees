@@ -35,7 +35,8 @@ module Control.Visitor.Parallel.BackEnd.Processes -- {{{
 -- Imports {{{
 import Prelude hiding (catch)
 
-import Control.Applicative (Applicative,liftA2)
+import Control.Applicative ((<$>),(<*>),Applicative,liftA2)
+import Control.Arrow (second)
 import Control.Concurrent (ThreadId,forkIO,getNumCapabilities,killThread)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),SomeException,catch,catchJust,fromException)
 import Control.Monad (forever,liftM2,unless,void)
@@ -103,20 +104,36 @@ instance RequestQueueMonad (ProcessesControllerMonad result) where
 -- }}}
 
 -- Drivers {{{
-driver :: Serialize configuration ⇒ Driver IO configuration visitor result -- {{{
-driver = Driver $ \forkVisitorWorkerThread configuration_term term_info initializeGlobalState getStartingProgress notifyTerminated constructVisitor constructManager →
+driver :: -- {{{
+    Serialize shared_configuration ⇒
+    Driver
+        IO
+        shared_configuration
+        supervisor_configuration
+        visitor
+        result
+driver = Driver $
+    \forkVisitorWorkerThread
+     shared_configuration_term
+     supervisor_configuration_term
+     term_info
+     initializeGlobalState
+     constructVisitor
+     getStartingProgress
+     notifyTerminated
+     constructManager →
     genericRunVisitor
         forkVisitorWorkerThread
-        (mainParser (liftA2 (,) number_of_processes_term configuration_term) term_info)
-        (initializeGlobalState . snd)
-        (getStartingProgress . snd)
-        (\(number_of_processes,configuration) → do
+        (mainParser (liftA2 (,) shared_configuration_term (liftA2 (,) number_of_processes_term supervisor_configuration_term)) term_info)
+        initializeGlobalState
+        constructVisitor
+        (curry $ uncurry getStartingProgress . second snd)
+        (\shared_configuration (number_of_processes,supervisor_configuration) → do
             changeNumberOfWorkers (const $ return number_of_processes)
-            constructManager configuration
+            constructManager shared_configuration supervisor_configuration
         )
-        (constructVisitor . snd)
     >>=
-    maybe (return ()) (uncurry $ notifyTerminated . snd)
+    maybe (return ()) (notifyTerminated <$> fst . fst <*> snd . snd . fst <*> snd)
   where
     number_of_processes_term = required (flip opt (
         (optInfo ["n","number-of-processes"])
@@ -224,58 +241,58 @@ runSupervisor worker_filepath worker_arguments sendConfigurationTo starting_prog
 -- }}}
 
 runVisitor :: -- {{{
-    (Serialize configuration, Monoid result, Serialize result) ⇒
-    IO configuration →
-    (configuration → IO ()) →
-    (configuration → IO (Progress result)) →
-    (configuration → ProcessesControllerMonad result ()) →
-    (configuration → Visitor result) →
-    IO (Maybe (configuration,RunOutcome result))
-runVisitor getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+    (Serialize shared_configuration, Monoid result, Serialize result) ⇒
+    IO (shared_configuration,supervisor_configuration) →
+    (shared_configuration → IO ()) →
+    (shared_configuration → Visitor result) →
+    (shared_configuration → supervisor_configuration → IO (Progress result)) →
+    (shared_configuration → supervisor_configuration → ProcessesControllerMonad result ()) →
+    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcome result))
+runVisitor getConfiguration initializeGlobalState constructVisitor getStartingProgress constructManager =
     genericRunVisitor
         forkVisitorWorkerThread
         getConfiguration
         initializeGlobalState
+        constructVisitor
         getStartingProgress
         constructManager
-        constructVisitor
 -- }}}
 
 runVisitorIO :: -- {{{
-    (Serialize configuration, Monoid result, Serialize result) ⇒
-    IO configuration →
-    (configuration → IO ()) →
-    (configuration → IO (Progress result)) →
-    (configuration → ProcessesControllerMonad result ()) →
-    (configuration → VisitorIO result) →
-    IO (Maybe (configuration,RunOutcome result))
-runVisitorIO getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+    (Serialize shared_configuration, Monoid result, Serialize result) ⇒
+    IO (shared_configuration,supervisor_configuration) →
+    (shared_configuration → IO ()) →
+    (shared_configuration → VisitorIO result) →
+    (shared_configuration → supervisor_configuration → IO (Progress result)) →
+    (shared_configuration → supervisor_configuration → ProcessesControllerMonad result ()) →
+    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcome result))
+runVisitorIO getConfiguration initializeGlobalState constructVisitor getStartingProgress constructManager =
     genericRunVisitor
         forkVisitorIOWorkerThread
         getConfiguration
         initializeGlobalState
+        constructVisitor
         getStartingProgress
         constructManager
-        constructVisitor
 -- }}}
 
 runVisitorT :: -- {{{
-    (Serialize configuration, Monoid result, Serialize result, Functor m, MonadIO m) ⇒
+    (Serialize shared_configuration, Monoid result, Serialize result, Functor m, MonadIO m) ⇒
     (∀ α. m α → IO α) →
-    IO configuration →
-    (configuration → IO ()) →
-    (configuration → IO (Progress result)) →
-    (configuration → ProcessesControllerMonad result ()) →
-    (configuration → VisitorT m result) →
-    IO (Maybe (configuration,RunOutcome result))
-runVisitorT runInBase getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+    IO (shared_configuration,supervisor_configuration) →
+    (shared_configuration → IO ()) →
+    (shared_configuration → VisitorT m result) →
+    (shared_configuration → supervisor_configuration → IO (Progress result)) →
+    (shared_configuration → supervisor_configuration → ProcessesControllerMonad result ()) →
+    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcome result))
+runVisitorT runInBase getConfiguration initializeGlobalState constructVisitor getStartingProgress constructManager =
     genericRunVisitor
         (forkVisitorTWorkerThread runInBase)
         getConfiguration
         initializeGlobalState
+        constructVisitor
         getStartingProgress
         constructManager
-        constructVisitor
 -- }}}
 
 runWorkerWithVisitor :: -- {{{
@@ -313,39 +330,39 @@ runWorkerWithVisitorT runInIO = genericRunWorker . flip (forkVisitorTWorkerThrea
 fromJustOrBust message = fromMaybe (error message)
 
 genericRunVisitor :: -- {{{
-    (Serialize configuration, Monoid result, Serialize result) ⇒
+    (Serialize shared_configuration, Monoid result, Serialize result) ⇒
     (
         (WorkerTerminationReason result → IO ()) →
         visitor result →
         Workload →
         IO (WorkerEnvironment result)
     ) →
-    IO configuration →
-    (configuration → IO ()) →
-    (configuration → IO (Progress result)) →
-    (configuration → ProcessesControllerMonad result ()) →
-    (configuration → visitor result) →
-    IO (Maybe (configuration,RunOutcome result))
-genericRunVisitor forkVisitorWorkerThread getConfiguration initializeGlobalState getStartingProgress constructManager constructVisitor =
+    IO (shared_configuration,supervisor_configuration) →
+    (shared_configuration → IO ()) →
+    (shared_configuration → visitor result) →
+    (shared_configuration → supervisor_configuration → IO (Progress result)) →
+    (shared_configuration → supervisor_configuration → ProcessesControllerMonad result ()) →
+    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcome result))
+genericRunVisitor forkVisitorWorkerThread getConfiguration initializeGlobalState constructVisitor getStartingProgress constructManager =
     getArgs >>= \args →
     if args == sentinel
         then do
-            configuration ← receive stdin
-            initializeGlobalState configuration
-            genericRunWorker (flip forkVisitorWorkerThread . constructVisitor $ configuration) stdin stdout
+            shared_configuration ← receive stdin
+            initializeGlobalState shared_configuration
+            genericRunWorker (flip forkVisitorWorkerThread . constructVisitor $ shared_configuration) stdin stdout
             return Nothing
         else do
-            configuration ← getConfiguration
-            initializeGlobalState configuration
+            configuration@(shared_configuration,supervisor_configuration) ← getConfiguration
+            initializeGlobalState shared_configuration
             program_filepath ← getProgFilepath
-            starting_progress ← getStartingProgress configuration
+            starting_progress ← getStartingProgress shared_configuration supervisor_configuration
             termination_result ←
                 runSupervisor
                     program_filepath
                     sentinel
-                    (flip send configuration)
+                    (flip send shared_configuration)
                     starting_progress
-                    (constructManager configuration)
+                    (constructManager shared_configuration supervisor_configuration)
             return $ Just (configuration,termination_result)
   where
     sentinel = ["visitor-worker-bee"]
