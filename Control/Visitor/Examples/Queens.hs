@@ -46,21 +46,6 @@ instance ArgVal (Maybe BoardSize) where
 
 -- Values -- {{{
 
-makeBoardSizeTermAtPosition :: Int → Term Word -- {{{
-makeBoardSizeTermAtPosition position =
-    getBoardSize
-    <$>
-    (required
-     $
-     pos position
-        Nothing
-        posInfo
-          { posName = "BOARD_SIZE"
-          , posDoc = "board size"
-          }
-    )
--- }}}
-
 nqueens_correct_counts :: IntMap Word
 nqueens_correct_counts = IntMap.fromDistinctAscList $
     [( 1,1)
@@ -97,6 +82,21 @@ nqueens_maximum_size = fst . IntMap.findMax $ nqueens_correct_counts
 -- }}}
 
 -- Functions {{{
+
+makeBoardSizeTermAtPosition :: Int → Term Word -- {{{
+makeBoardSizeTermAtPosition position =
+    getBoardSize
+    <$>
+    (required
+     $
+     pos position
+        Nothing
+        posInfo
+          { posName = "BOARD_SIZE"
+          , posDoc = "board size"
+          }
+    )
+-- }}}
 
 nqueensCorrectCount :: Word → Word -- {{{
 nqueensCorrectCount =
