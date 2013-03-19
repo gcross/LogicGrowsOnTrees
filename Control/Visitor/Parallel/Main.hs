@@ -84,7 +84,6 @@ data CheckpointConfiguration = CheckpointConfiguration -- {{{
     {   checkpoint_path :: FilePath
     ,   checkpoint_interval :: Float
     } deriving (Eq,Show)
-$( derive makeSerialize ''CheckpointConfiguration )
 -- }}}
 
 data LoggingConfiguration = LoggingConfiguration -- {{{
@@ -109,20 +108,28 @@ data StatisticsConfiguration = StatisticsConfiguration -- {{{
     ,   show_instantaneous_workload_steal_times :: !Bool
     ,   show_buffer_size :: !Bool
     } deriving (Eq,Show)
-$( derive makeSerialize ''StatisticsConfiguration )
 -- }}}
 
-data Configuration = Configuration -- {{{
+data SupervisorConfiguration = SupervisorConfiguration -- {{{
     {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
-    ,   logging_configuration :: LoggingConfiguration
     ,   statistics_configuration :: StatisticsConfiguration
     } deriving (Eq,Show)
-$( derive makeSerialize ''Configuration )
--- }}}
 -- }}}
 
-data Driver result_monad configuration visitor result =  -- {{{
-    ∀ manager_monad.
+data SharedConfiguration visitor_configuration = SharedConfiguration -- {{{
+    {   logging_configuration :: LoggingConfiguration
+    ,   visitor_configuration :: visitor_configuration
+    } deriving (Eq,Show)
+$( derive makeSerialize ''SharedConfiguration )
+-- }}}
+
+data Driver -- {{{
+    result_monad
+    shared_configuration
+    supervisor_configuration
+    visitor
+    result
+  = ∀ manager_monad.
     ( RequestQueueMonad (manager_monad result)
     , RequestQueueMonadResult (manager_monad result) ~ result
     ) ⇒
@@ -137,13 +144,14 @@ data Driver result_monad configuration visitor result =  -- {{{
             Workload →
             IO (WorkerEnvironment result)
         ) →
-        Term configuration →
+        Term shared_configuration →
+        Term supervisor_configuration →
         TermInfo →
-        (configuration → IO ()) →
-        (configuration → IO (Progress result)) →
-        (configuration → RunOutcome result → IO ()) →
-        (configuration → visitor result) →
-        (configuration → manager_monad result ()) →
+        (shared_configuration → IO ()) →
+        (shared_configuration → visitor result) →
+        (shared_configuration → supervisor_configuration → IO (Progress result)) →
+        (shared_configuration → supervisor_configuration → RunOutcome result → IO ()) →
+        (shared_configuration → supervisor_configuration → manager_monad result ()) →
         result_monad ()
     )
 -- }}}
@@ -223,12 +231,18 @@ statistics_configuration_term =
         )
 -- }}}
 
-configuration_term :: Term Configuration -- {{{
-configuration_term =
-    Configuration
+supervisor_configuration_term :: Term SupervisorConfiguration -- {{{
+supervisor_configuration_term =
+    SupervisorConfiguration
         <$> checkpoint_configuration_term
-        <*> logging_configuration_term
         <*> statistics_configuration_term
+-- }}}
+
+makeSharedConfigurationTerm :: Term visitor_configuration → Term (SharedConfiguration visitor_configuration) -- {{{
+makeSharedConfigurationTerm visitor_configuration_term =
+    SharedConfiguration
+        <$> logging_configuration_term
+        <*> visitor_configuration_term
 -- }}}
 -- }}}
 -- }}}
@@ -260,7 +274,12 @@ mainParser term term_info =
 
 mainVisitor :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (Configuration,visitor_configuration) Visitor result →
+    Driver
+        result_monad
+        (SharedConfiguration visitor_configuration)
+        SupervisorConfiguration
+        Visitor
+        result →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome result → IO ()) →
@@ -271,7 +290,12 @@ mainVisitor (Driver runDriver) = genericMain . runDriver $ forkVisitorWorkerThre
 
 mainVisitorIO :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (Configuration,visitor_configuration) VisitorIO result →
+    Driver
+        result_monad
+        (SharedConfiguration visitor_configuration)
+        SupervisorConfiguration
+        VisitorIO
+        result →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome result → IO ()) →
@@ -282,7 +306,12 @@ mainVisitorIO (Driver runDriver) = genericMain . runDriver $ forkVisitorIOWorker
 
 mainVisitorT :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    Driver result_monad (Configuration,visitor_configuration) (VisitorT m) result →
+    Driver
+        result_monad
+        (SharedConfiguration visitor_configuration)
+        SupervisorConfiguration
+        (VisitorT m)
+        result →
     (∀ β. m β → IO β) →
     Term visitor_configuration →
     TermInfo →
@@ -305,8 +334,8 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
     delay = round $ checkpoint_interval * 1000000
 -- }}}
 
-managerLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ Configuration → m () -- {{{
-managerLoop Configuration{..} = do
+managerLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ SupervisorConfiguration → m () -- {{{
+managerLoop SupervisorConfiguration{..} = do
     maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration
     case catMaybes
         [maybe_checkpoint_thread_id
@@ -327,13 +356,14 @@ genericMain :: -- {{{
     , MonadIO result_monad
     ) ⇒
     (
-        Term (Configuration,visitor_configuration) →
+        Term (SharedConfiguration visitor_configuration) →
+        Term SupervisorConfiguration →
         TermInfo →
-        ((Configuration,visitor_configuration) → IO ()) →
-        ((Configuration,visitor_configuration) → IO (Progress result)) →
-        ((Configuration,visitor_configuration) → RunOutcome result → IO ()) →
-        ((Configuration,visitor_configuration) → visitor) →
-        ((Configuration,visitor_configuration) → manager_monad result ()) →
+        (SharedConfiguration visitor_configuration → IO ()) →
+        (SharedConfiguration visitor_configuration → visitor) →
+        (SharedConfiguration visitor_configuration → SupervisorConfiguration → IO (Progress result)) →
+        (SharedConfiguration visitor_configuration → SupervisorConfiguration → RunOutcome result → IO ()) →
+        (SharedConfiguration visitor_configuration → SupervisorConfiguration → manager_monad result ()) →
         result_monad ()
     ) →
     Term visitor_configuration →
@@ -342,12 +372,14 @@ genericMain :: -- {{{
     (visitor_configuration → visitor) →
     result_monad ()
 genericMain run visitor_configuration_term infomod notifyTerminated constructVisitor =
-    run (liftA2 (,) configuration_term visitor_configuration_term)
+    run (makeSharedConfigurationTerm visitor_configuration_term)
+         supervisor_configuration_term
          infomod
-        (\(Configuration{logging_configuration=LoggingConfiguration{..}},_) → do
+        (\SharedConfiguration{logging_configuration=LoggingConfiguration{..}} → do
             updateGlobalLogger rootLoggerName (setLevel log_level)
         )
-        (\(Configuration{..},_) →
+        (constructVisitor . visitor_configuration)
+        (\_ SupervisorConfiguration{..} →
             case maybe_checkpoint_configuration of
                 Nothing → (infoM "Checkpointing is NOT enabled") >> return mempty
                 Just CheckpointConfiguration{..} → do
@@ -358,7 +390,7 @@ genericMain run visitor_configuration_term infomod notifyTerminated constructVis
                         (noticeM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
                         (return mempty)
         )
-        (\(Configuration{..},visitor_configuration) run_outcome@RunOutcome{..} →
+        (\SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} →
             (do showStatistics statistics_configuration runStatistics
                 notifyTerminated visitor_configuration run_outcome
             ) `finally`
@@ -373,8 +405,7 @@ genericMain run visitor_configuration_term infomod notifyTerminated constructVis
                         Completed _ → deleteCheckpointFile
                         Failure _ → deleteCheckpointFile
         )
-        (constructVisitor . snd)
-        (managerLoop . fst)
+        (const managerLoop)
 -- }}}
 
 maybeForkIO :: RequestQueueMonad m ⇒ (α → m ()) → Maybe α → m (Maybe ThreadId) -- {{{

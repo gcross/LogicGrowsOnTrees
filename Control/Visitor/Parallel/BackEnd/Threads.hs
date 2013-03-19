@@ -31,7 +31,7 @@ module Control.Visitor.Parallel.BackEnd.Threads
     ) where
 
 -- Imports {{{
-import Control.Applicative (Applicative)
+import Control.Applicative (Applicative,liftA2)
 import Control.Concurrent (forkIO,getNumCapabilities,killThread)
 import Control.Monad (void)
 import Control.Monad.CatchIO (MonadCatchIO)
@@ -75,16 +75,26 @@ instance RequestQueueMonad (ThreadsControllerMonad result) where
 -- }}}
 
 -- Driver {{{
-driver :: Driver IO configuration visitor result
-driver = Driver $ \forkVisitorWorkerThread configuration_term term_info initializeGlobalState getMaybeStartingProgress notifyTerminated constructVisitor constructManager → do
-    configuration ← mainParser configuration_term term_info
-    initializeGlobalState configuration
-    starting_progress ← getMaybeStartingProgress configuration
+driver :: Driver IO shared_configuration supervisor_configuration visitor result
+driver = Driver $
+    \forkVisitorWorkerThread
+     shared_configuration_term
+     supervisor_configuration_term
+     term_info
+     initializeGlobalState
+     constructVisitor
+     getMaybeStartingProgress
+     notifyTerminated
+     constructManager →
+ do (shared_configuration,supervisor_configuration) ←
+        mainParser (liftA2 (,) shared_configuration_term supervisor_configuration_term) term_info
+    initializeGlobalState shared_configuration
+    starting_progress ← getMaybeStartingProgress shared_configuration supervisor_configuration
     genericRunVisitorStartingFrom
          starting_progress
-        (flip forkVisitorWorkerThread . constructVisitor $ configuration)
-        (changeNumberOfWorkersToMatchCPUs >> constructManager configuration)
-     >>= notifyTerminated configuration
+        (flip forkVisitorWorkerThread . constructVisitor $ shared_configuration)
+        (changeNumberOfWorkersToMatchCPUs >> constructManager shared_configuration supervisor_configuration)
+     >>= notifyTerminated shared_configuration supervisor_configuration
 -- }}}
 
 -- Exposed Functions {{{
