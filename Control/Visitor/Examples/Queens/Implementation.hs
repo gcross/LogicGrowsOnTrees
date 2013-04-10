@@ -78,8 +78,9 @@ allRotationsOf :: Word → NQueensSolution → NQueensSolutions -- {{{
 allRotationsOf n = take 4 . iterate (rotateLeft n)
 -- }}}
 
-convertSolutionToWord :: [(Int,Int)] → [(Word,Word)]
+convertSolutionToWord :: [(Int,Int)] → [(Word,Word)] -- {{{
 convertSolutionToWord = map (fromIntegral *** fromIntegral)
+-- }}}
 
 extractExteriorFromSolution :: Word → Word → NQueensSolution → NQueensSolution -- {{{
 extractExteriorFromSolution size layers = filter . uncurry $ ((||) `on` (liftA2 (||) (< threshold_1) (> threshold_2)))
