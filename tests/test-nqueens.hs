@@ -881,24 +881,9 @@ tests = -- {{{
             | n ← [1..10]
             ]
          -- }}}
-        ,testGroup "have correct size" -- {{{
-            [ testCase ("n = " ++ show n) $
-                (correct_count @=?)
-                .
-                getWordSum
-                .
-                runVisitor
-                .
-                nqueensBruteForceCount
-                $
-                n
-            | n ← [1..10]
-            , let correct_count = nqueensCorrectCount n
-            ]
-         -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getWordSum . runVisitor . nqueensBruteForceCount $ n) @=?)
+                (correct_count @=?)
                 .
                 getWordSum
                 .
