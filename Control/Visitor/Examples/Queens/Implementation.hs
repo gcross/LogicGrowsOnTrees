@@ -1,5 +1,8 @@
 -- Language extensions {{{
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
@@ -8,11 +11,21 @@ module Control.Visitor.Examples.Queens.Implementation where
 -- Imports {{{
 import Control.Applicative ((<$>),liftA2)
 import Control.Arrow ((***))
+import Control.Exception (evaluate)
 import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum,void)
+
 import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
+import Data.IORef (modifyIORef,newIORef,readIORef,writeIORef)
 import Data.List (sort)
+import Data.Maybe (fromJust)
+import Data.Typeable (Typeable(..),cast)
 import Data.Word (Word,Word64)
+
+import Foreign.C.Types (CUInt(..))
+import Foreign.Ptr (FunPtr,freeHaskellFunPtr,nullFunPtr)
+
+import System.IO.Unsafe (unsafePerformIO)
 
 import Control.Visitor (Visitor,between)
 import Control.Visitor.Utils.MonadStacks (addToStacks,emptyStacks,mergeStacks)
@@ -66,6 +79,87 @@ type NQueensSolutions = [NQueensSolution]
 data PositionAndBit = PositionAndBit {-# UNPACK #-} !Int {-# UNPACK #-} !Word64
 data PositionAndBitWithReflection = PositionAndBitWithReflection {-# UNPACK #-} !Int {-# UNPACK #-} !Word64  {-# UNPACK #-} !Int {-# UNPACK #-} !Word64
 
+-- }}}
+
+-- Foreign Functions {{{
+
+foreign import ccall safe "queens.h Visitor_Queens_count_solutions" c_Visitor_Queens_count_solutions ::
+    CUInt →
+    CUInt →
+    CUInt →
+    Word64 →
+    Word64 →
+    Word64 →
+    Word64 →
+    FunPtr (CUInt -> CUInt → IO ()) →
+    FunPtr (IO ()) →
+    FunPtr (IO ()) →
+    IO CUInt
+
+foreign import ccall "wrapper" mkPushValue :: (CUInt → CUInt → IO ()) → IO (FunPtr (CUInt → CUInt → IO ()))
+foreign import ccall "wrapper" mkPopValue :: IO () → IO (FunPtr (IO ()))
+foreign import ccall "wrapper" mkFinalizeValue :: IO () → IO (FunPtr (IO ()))
+
+nqueensCSearch ::
+    ∀ α m β.
+    (MonadPlus m
+    ,Typeable α
+    ,Typeable β
+    ) ⇒
+    ([(Word,Word)] → α → α) →
+    (α → m β) →
+    α →
+    Int →
+    Int →
+    NQueensSearchState → m β
+nqueensCSearch _ finalizeValue value _ _ NQueensSearchState{s_number_of_queens_remaining=0} = finalizeValue value
+nqueensCSearch updateValue finalizeValue value size window_start state@NQueensSearchState{..}
+  | typeOf value == typeOf () && typeOf (undefined :: β) == typeOf (undefined :: WordSum) = do
+        Just (WordSum multiplier) ← liftM cast (finalizeValue value)
+        let number_found =
+                fromIntegral
+                .
+                unsafePerformIO
+                $
+                c_Visitor_Queens_count_solutions
+                    (fromIntegral size)
+                    (fromIntegral s_number_of_queens_remaining)
+                    (fromIntegral s_row)
+                    s_occupied_rows
+                    s_occupied_columns
+                    s_occupied_negative_diagonals
+                    s_occupied_positive_diagonals
+                    nullFunPtr
+                    nullFunPtr
+                    nullFunPtr
+        return . fromJust . cast $ WordSum (multiplier * number_found)
+  | otherwise = unsafePerformIO $ do
+        value_stack_ref ← newIORef [value]
+        finalized_values ← newIORef mzero
+        push_value_funptr ← mkPushValue $ \row offset → modifyIORef value_stack_ref (\stack@(value:rest_value) → updateValue [(fromIntegral row, fromIntegral window_start + fromIntegral offset)] value:stack)
+        pop_value_funptr ← mkPopValue $ modifyIORef value_stack_ref tail
+        finalize_value_funptr ← mkFinalizeValue $ do
+            value ← head <$> readIORef value_stack_ref
+            let finalized_value = finalizeValue value
+            old_value ← readIORef finalized_values
+            new_value ← evaluate $ old_value `mplus` finalized_value
+            writeIORef finalized_values new_value
+        number_of_solutions ←
+            c_Visitor_Queens_count_solutions
+                (fromIntegral size)
+                (fromIntegral s_number_of_queens_remaining)
+                (fromIntegral s_row)
+                s_occupied_rows
+                s_occupied_columns
+                s_occupied_negative_diagonals
+                s_occupied_positive_diagonals
+                push_value_funptr
+                pop_value_funptr
+                finalize_value_funptr
+        freeHaskellFunPtr push_value_funptr
+        freeHaskellFunPtr pop_value_funptr
+        freeHaskellFunPtr finalize_value_funptr
+        readIORef finalized_values
 -- }}}
 
 -- Functions {{{
@@ -702,7 +796,16 @@ nqueensBreak180
     -- }}}
 -- }}}
 
-nqueensBruteForceGeneric :: MonadPlus m ⇒ ([(Word,Word)] → α → α) → (α → m β) → α → Word → m β -- {{{
+nqueensBruteForceGeneric :: -- {{{
+    (MonadPlus m
+    ,Typeable α
+    ,Typeable β
+    ) ⇒
+    ([(Word,Word)] → α → α) →
+    (α → m β) →
+    α →
+    Word →
+    m β
 nqueensBruteForceGeneric updateValue finalizeValue initial_value 1 = finalizeValue . updateValue [(0,0)] $ initial_value
 nqueensBruteForceGeneric updateValue finalizeValue initial_value 2 = mzero
 nqueensBruteForceGeneric updateValue finalizeValue initial_value 3 = mzero
@@ -722,7 +825,45 @@ nqueensBruteForceSolutions = nqueensBruteForceGeneric (++) return []
 {-# SPECIALIZE nqueensBruteForceSolutions :: Word → Visitor NQueensSolution #-}
 -- }}}
 
-nqueensGeneric :: MonadPlus m ⇒ ([(Word,Word)] → α → α) → (Word → NQueensSymmetry → α → m β) → α → Word → m β -- {{{
+nqueensCGeneric :: -- {{{
+    (MonadPlus m
+    ,Typeable α
+    ,Typeable β
+    ) ⇒
+    ([(Word,Word)] → α → α) →
+    (α → m β) →
+    α →
+    Word →
+    m β
+nqueensCGeneric updateValue finalizeValue initial_value 1 = finalizeValue . updateValue [(0,0)] $ initial_value
+nqueensCGeneric updateValue finalizeValue initial_value 2 = mzero
+nqueensCGeneric updateValue finalizeValue initial_value 3 = mzero
+nqueensCGeneric updateValue finalizeValue initial_value n = nqueensCSearch updateValue finalizeValue initial_value (fromIntegral n) 0 $ NQueensSearchState n 0 0 0 0 0
+{-# INLINE nqueensCGeneric #-}
+-- }}}
+
+nqueensCCount :: MonadPlus m ⇒ Word → m WordSum -- {{{
+nqueensCCount = nqueensCGeneric (const id) (const . return $ WordSum 1) ()
+{-# SPECIALIZE nqueensCCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensCCount :: Word → Visitor WordSum #-}
+-- }}}
+
+nqueensCSolutions :: MonadPlus m ⇒ Word → m NQueensSolution -- {{{
+nqueensCSolutions = nqueensCGeneric (++) return []
+{-# SPECIALIZE nqueensCSolutions :: Word → NQueensSolutions #-}
+{-# SPECIALIZE nqueensCSolutions :: Word → Visitor NQueensSolution #-}
+-- }}}
+
+nqueensGeneric :: -- {{{
+    (MonadPlus m
+    ,Typeable α
+    ,Typeable β
+    ) ⇒
+    ([(Word,Word)] → α → α) →
+    (Word → NQueensSymmetry → α → m β) →
+    α →
+    Word →
+    m β
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 1 = finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 2 = mzero
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 3 = mzero
@@ -742,7 +883,17 @@ nqueensGeneric updateValue finalizeValueWithSymmetry initial_value n =
 {-# INLINE nqueensGeneric #-}
 -- }}}
 
-nqueensSearch :: MonadPlus m ⇒ ([(Word,Word)] → α → α) → (α → m β) → α → Int → NQueensSearchState → m β -- {{{
+nqueensSearch :: -- {{{
+    (MonadPlus m
+    ,Typeable α
+    ,Typeable β
+    ) ⇒
+    ([(Word,Word)] → α → α) →
+    (α → m β) →
+    α →
+    Int →
+    NQueensSearchState →
+    m β
 nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
     go initial_value initial_search_state
   where
@@ -755,7 +906,14 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
                     occupied_negative_diagonals
                     occupied_positive_diagonals
                )
-      | number_of_queens_remaining <= 10 = msum (finalizeValue <$> goL value s)
+      | number_of_queens_remaining <= 10 =
+         nqueensCSearch
+            updateValue_
+            finalizeValue
+            value
+            size
+            window_start
+            s
       | occupied_rows .&. 1 == 0 =
          (getOpenings size $
             occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
@@ -773,40 +931,6 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
             )
       | otherwise =
          go value
-            (NQueensSearchState
-                 number_of_queens_remaining
-                (row+1)
-                (occupied_rows `unsafeShiftR` 1)
-                 occupied_columns
-                (occupied_negative_diagonals `unsafeShiftR` 1)
-                (occupied_positive_diagonals `rotateL` 1)
-            )
-    goL !value !(NQueensSearchState 0 _ _ _ _ _) = [value]
-    goL !value !(NQueensSearchState
-                    number_of_queens_remaining
-                    row
-                    occupied_rows
-                    occupied_columns
-                    occupied_negative_diagonals
-                    occupied_positive_diagonals
-               )
-      | occupied_rows .&. 1 == 0 =
-         (getOpeningsAsList size $
-            occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
-         )
-         >>=
-         \(PositionAndBit offset offset_bit) → goL
-            ([(row,window_start+offset)] `updateValue` value)
-            (NQueensSearchState
-                (number_of_queens_remaining-1)
-                (row+1)
-                (occupied_rows `unsafeShiftR` 1)
-                (occupied_columns .|. offset_bit)
-                ((occupied_negative_diagonals .|. offset_bit) `unsafeShiftR` 1)
-                ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
-            )
-      | otherwise =
-         goL value
             (NQueensSearchState
                  number_of_queens_remaining
                 (row+1)

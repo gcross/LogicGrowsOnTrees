@@ -898,6 +898,36 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
+    ,testGroup "C solutions" -- {{{
+        [testGroup "are valid" $ -- {{{
+            map (\n → testCase ("n = " ++ show n) $ checkSolutionsAreValid n (nqueensCSolutions n))
+                [1..10]
+         -- }}}
+        ,testGroup "are unique" $ -- {{{
+            [ testCase ("n = " ++ show n) $
+                let solutions_as_list = nqueensCSolutions n
+                    solutions_as_set = Set.fromList solutions_as_list
+                in length solutions_as_list @?= Set.size solutions_as_set
+            | n ← [1..10]
+            ]
+         -- }}}
+        ,testGroup "match count" -- {{{
+            [ testCase ("n = " ++ show n) $
+                (correct_count @=?)
+                .
+                getWordSum
+                .
+                runVisitor
+                .
+                nqueensCCount
+                $
+                n
+            | n ← [1..10]
+            , let correct_count = nqueensCorrectCount n
+            ]
+         -- }}}
+        ]
+     -- }}}
     ,testGroup "solutions" -- {{{
         [testGroup "are valid" $ -- {{{
             map (\n → testCase ("n = " ++ show n) $ checkSolutionsAreValid n (nqueensSolutions n))
