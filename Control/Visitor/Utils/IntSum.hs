@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
@@ -9,10 +10,11 @@ import Data.List (foldl')
 import Data.Monoid (Monoid(..))
 import Data.Semiring (Semiring(..))
 import Data.Serialize (Serialize(..))
+import Data.Typeable (Typeable)
 -- }}}
 
 -- Types {{{
-data IntSum = IntSum { getIntSum :: {-# UNPACK #-} !Int } deriving (Eq,Show)
+data IntSum = IntSum { getIntSum :: {-# UNPACK #-} !Int } deriving (Eq,Show,Typeable)
 -- }}}
 
 -- Instances {{{
