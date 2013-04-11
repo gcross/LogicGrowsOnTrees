@@ -768,7 +768,7 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
                 (row+1)
                 (occupied_rows `unsafeShiftR` 1)
                 (occupied_columns .|. offset_bit)
-                ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
+                ((occupied_negative_diagonals .|. offset_bit) `unsafeShiftR` 1)
                 ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
             )
       | otherwise =
@@ -802,7 +802,7 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
                 (row+1)
                 (occupied_rows `unsafeShiftR` 1)
                 (occupied_columns .|. offset_bit)
-                ((occupied_negative_diagonals .|. offset_bit) `rotateR` 1)
+                ((occupied_negative_diagonals .|. offset_bit) `unsafeShiftR` 1)
                 ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
             )
       | otherwise =
