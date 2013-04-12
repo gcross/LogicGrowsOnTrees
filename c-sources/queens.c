@@ -35,11 +35,19 @@ unsigned int Visitor_Queens_count_solutions(
     uint64_t blocked = occupied_columns | occupied_negative_diagonals | occupied_positive_diagonals;
     for(column = 0; column < size; ++column, column_bit <<= 1) {
         if((column_bit & blocked) == 0) {
+            #ifdef __GNUC__
+            if(__builtin_expect(pushValue != NULL,0)) {
+            #else
             if(pushValue != NULL) {
+            #endif
                 (*pushValue)(row,column);
             }
             if(number_of_queens_remaining == 1) {
+                #ifdef __GNUC__
+                if(__builtin_expect(finalizeValue != NULL,0)) {
+                #else
                 if(finalizeValue != NULL) {
+                #endif
                     (*finalizeValue)();
                 }
                 number_of_solutions += 1;
@@ -58,7 +66,11 @@ unsigned int Visitor_Queens_count_solutions(
                         finalizeValue
                     );
             }
+            #ifdef __GNUC__
+            if(__builtin_expect(popValue != NULL,0)) {
+            #else
             if(popValue != NULL) {
+            #endif
                 (*popValue)(row,column);
             }
         }
