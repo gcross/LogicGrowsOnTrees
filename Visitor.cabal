@@ -28,7 +28,7 @@ Library
         base > 4 && < 5,
         bytestring >= 0.9 && < 0.11,
         cereal == 0.3.*,
-        cmdtheline >= 0.2.2 && < 0.3,
+        cmdtheline == 0.2.*,
         composition >= 0.2 && < 1.1,
         containers >= 0.4 && < 0.6,
         data-ivar == 0.30.*,
@@ -72,6 +72,7 @@ Library
         Control.Visitor.Utils.Handle
         Control.Visitor.Utils.IntSum
         Control.Visitor.Utils.MonadStacks
+        Control.Visitor.Utils.Word_
         Control.Visitor.Utils.WordSum
         Control.Visitor.Workload
         Data.Semiring

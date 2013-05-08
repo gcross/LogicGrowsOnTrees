@@ -21,6 +21,7 @@ import Text.PrettyPrint (text)
 
 import Control.Visitor (Visitor)
 import Control.Visitor.Examples.Queens.Implementation
+import Control.Visitor.Utils.Word_
 import Control.Visitor.Utils.WordSum
 -- }}}
 
@@ -31,14 +32,14 @@ instance ArgVal BoardSize where -- {{{
       where
         (parseWord,prettyWord) = converter
         parseBoardSize =
-            either Left (\n →
+            either Left (\(Word_ n) →
                 if n >= 1 && n <= fromIntegral nqueens_maximum_size
                     then Right . BoardSize $ n
                     else Left . text $ "bad board size (must be between 1 and " ++ show nqueens_maximum_size ++ " inclusive)"
             )
             .
             parseWord
-        prettyBoardSize = prettyWord . getBoardSize
+        prettyBoardSize = prettyWord . Word_ . getBoardSize
 instance ArgVal (Maybe BoardSize) where
     converter = just
 -- }}}
