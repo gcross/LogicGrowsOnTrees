@@ -130,7 +130,7 @@ Benchmark visitor-versus-list-trivial-tree
     Build-depends:
         Visitor,
         base > 4 && < 5,
-        criterion == 0.6.*
+        criterion >= 0.6 && < 0.9
 
 Benchmark visitor-versus-list-nqueens
     Type: exitcode-stdio-1.0
@@ -139,7 +139,7 @@ Benchmark visitor-versus-list-nqueens
     Build-depends:
         Visitor,
         base > 4 && < 5,
-        criterion == 0.6.*
+        criterion >= 0.6 && < 0.9
 
 Test-Suite tests
     Type: exitcode-stdio-1.0
