@@ -614,6 +614,28 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testGroup "searchVisitor" -- {{{
+            [testCase "return" $ searchVisitor (return 42) @=? (Just 42 :: Maybe Int)
+            ,testCase "null" $ searchVisitor mzero @=? (Nothing :: Maybe Int)
+            ,testProperty "compared to runVisitor" $ \(visitor :: Visitor String) →
+                searchVisitor visitor
+                ==
+                case runVisitor (fmap (:[]) visitor) of
+                    [] → Nothing
+                    (x:_) → Just x
+            ]
+         -- }}}
+        ,testGroup "searchVisitorT" -- {{{
+            [testCase "return" $ runIdentity (searchVisitorT (return 42)) @=? (Just 42 :: Maybe Int)
+            ,testCase "null" $ runIdentity(searchVisitorT mzero) @=? (Nothing :: Maybe Int)
+            ,testProperty "compared to runVisitorT" $ \(visitor :: VisitorT Identity String) →
+                runIdentity (searchVisitorT visitor)
+                ==
+                case runIdentity (runVisitorT (fmap (:[]) visitor)) of
+                    [] → Nothing
+                    (x:_) → Just x
+            ]
+         -- }}}
         ]
      -- }}}
     ,testGroup "Control.Visitor.Checkpoint" -- {{{

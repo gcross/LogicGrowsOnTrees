@@ -26,6 +26,8 @@ module Control.Visitor -- {{{
     , runVisitor
     , runVisitorT
     , runVisitorTAndIgnoreResults
+    , searchVisitor
+    , searchVisitorT
     ) where -- }}}
 
 -- Imports {{{
@@ -37,6 +39,7 @@ import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,vi
 import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.Functor.Identity (Identity(..),runIdentity)
+import Data.Maybe (isJust)
 import Data.Monoid (Monoid(..),Sum())
 import Data.Serialize (Serialize(),encode)
 
@@ -245,6 +248,35 @@ runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
 {-# SPECIALIZE runVisitorTAndIgnoreResults :: Visitor α → Identity () #-}
 {-# SPECIALIZE runVisitorTAndIgnoreResults :: VisitorIO α → IO () #-}
 {-# INLINEABLE runVisitorTAndIgnoreResults #-}
+-- }}}
+
+searchVisitor :: Visitor α → Maybe α -- {{{
+searchVisitor v =
+    case view (unwrapVisitorT v) of
+        Return x → Just x
+        (Cache mx :>>= k) → maybe Nothing (searchVisitor . VisitorT . k) (runIdentity mx)
+        (Choice left right :>>= k) →
+            let x = searchVisitor $ left >>= VisitorT . k
+                y = searchVisitor $ right >>= VisitorT . k
+            in if isJust x then x else y
+        (Null :>>= _) → Nothing
+{-# INLINEABLE searchVisitor #-}
+-- }}}
+
+searchVisitorT :: Monad m ⇒ VisitorT m α → m (Maybe α) -- {{{
+searchVisitorT = viewT . unwrapVisitorT >=> \view →
+    case view of
+        Return !x → return (Just x)
+        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (searchVisitorT . VisitorT . k)
+        (Choice left right :>>= k) → do
+            x ← searchVisitorT $ left >>= VisitorT . k
+            if isJust x
+                then return x
+                else searchVisitorT $ right >>= VisitorT . k
+        (Null :>>= _) → return Nothing
+{-# SPECIALIZE searchVisitorT :: Visitor α → Identity (Maybe α) #-}
+{-# SPECIALIZE searchVisitorT :: VisitorIO α → IO (Maybe α) #-}
+{-# INLINEABLE searchVisitorT #-}
 -- }}}
 
 -- }}}
