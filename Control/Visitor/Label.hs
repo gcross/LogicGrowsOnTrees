@@ -10,7 +10,7 @@ module Control.Visitor.Label where
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
 import Control.Exception (throw)
-import Control.Monad (MonadPlus(..),(>=>),liftM2)
+import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -247,6 +247,35 @@ runVisitorWithLabels = runIdentity . runVisitorTWithLabelsAndGatherResults
 
 runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [Solution α] -- {{{
 runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel
+-- }}}
+
+searchLabeledVisitor :: LabeledVisitor α → Maybe α -- {{{
+searchLabeledVisitor = searchVisitor . runLabeledT . unwrapLabeledVisitorT
+-- }}}
+
+searchLabeledVisitorT :: Monad m ⇒ LabeledVisitorT m α → m (Maybe α) -- {{{
+searchLabeledVisitorT = searchVisitorT . runLabeledT . unwrapLabeledVisitorT
+-- }}}
+
+searchVisitorTWithLabel :: Monad m ⇒ VisitorT m α → m (Maybe (Solution α)) -- {{{
+searchVisitorTWithLabel = searchVisitorTWithStartingLabel rootLabel
+-- }}}
+
+searchVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (Maybe (Solution α)) -- {{{
+searchVisitorTWithStartingLabel = go .* runVisitorTWithStartingLabel
+  where
+    go = liftM $ \solutions →
+        case solutions of
+            [] → Nothing
+            (x:_) → Just x
+-- }}}
+
+searchVisitorWithLabel :: Visitor α → Maybe (Solution α) -- {{{
+searchVisitorWithLabel = runIdentity . searchVisitorTWithLabel
+-- }}}
+
+searchVisitorWithStartingLabel :: VisitorLabel → Visitor α → Maybe (Solution α) -- {{{
+searchVisitorWithStartingLabel = runIdentity .* searchVisitorTWithStartingLabel
 -- }}}
 
 sendVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α -- {{{
