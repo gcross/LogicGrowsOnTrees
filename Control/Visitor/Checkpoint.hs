@@ -13,6 +13,7 @@
 module Control.Visitor.Checkpoint where
 
 -- Imports {{{
+import Control.Arrow (second)
 import Control.Exception (Exception(),throw)
 import Control.Monad ((>=>),join,liftM)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
@@ -23,9 +24,10 @@ import Data.Composition
 import Data.Derive.Monoid
 import Data.Derive.Serialize
 import Data.DeriveTH
+import Data.Either.Unwrap (mapLeft)
 import Data.Functor.Identity (Identity,runIdentity)
-import Data.Maybe (mapMaybe)
-import Data.Monoid (Monoid(..))
+import Data.Maybe (isJust,mapMaybe)
+import Data.Monoid (First(..),Monoid(..))
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
@@ -77,6 +79,16 @@ $( derive makeSerialize ''Progress )
 
 newtype ResultFetcher m α = ResultFetcher -- {{{
     {   fetchResult :: m (Maybe (α, Checkpoint, ResultFetcher m α))
+    }
+-- }}}
+
+data ResultSearcher α = -- {{{
+    DoneSearching (Maybe α)
+  | StillSearching Checkpoint (ResultSearcher α)
+-- }}}
+
+newtype ResultSearcherT m α = ResultSearcherT -- {{{
+    {   searchResultT :: m (Either (Checkpoint, ResultSearcherT m α) (Maybe α))
     }
 -- }}}
 
@@ -186,6 +198,15 @@ gatherResults = go mempty
             (\(result,_,fetcher) → go result fetcher)
 -- }}}
 
+finishSearch :: ResultSearcher α → Maybe α -- {{{
+finishSearch (DoneSearching maybe_result) = maybe_result
+finishSearch (StillSearching _ next_search) = finishSearch next_search
+-- }}}
+
+finishSearchT :: Monad m ⇒ ResultSearcherT m α → m (Maybe α) -- {{{
+finishSearchT = searchResultT >=> either (finishSearchT . snd) return 
+-- }}}
+
 initialVisitorState :: Checkpoint → VisitorT m α → VisitorTState m α -- {{{
 initialVisitorState = VisitorTState Seq.empty
 -- }}}
@@ -253,6 +274,73 @@ runVisitorTThroughCheckpoint = go mempty .* initialVisitorState
             let new_accum = maybe id (flip mappend) maybe_solution accum
             in maybe (return new_accum) (go new_accum) maybe_new_visitor_state
 {-# INLINE runVisitorTThroughCheckpoint #-}
+-- }}}
+
+scanVisitorThroughCheckpoint :: -- {{{
+    Checkpoint →
+    Visitor α →
+    ResultSearcher α
+scanVisitorThroughCheckpoint = go .* initialVisitorState
+  where
+    go visitor_state
+      | isJust maybe_solution = DoneSearching maybe_solution 
+      | otherwise =
+         case maybe_new_state of
+            Nothing → DoneSearching Nothing
+            Just new_state@(VisitorTState context unexplored_checkpoint _) → 
+                StillSearching
+                    (checkpointFromContext context unexplored_checkpoint)
+                    (go new_state)
+      where
+        (maybe_solution,maybe_new_state) = stepVisitorThroughCheckpoint visitor_state
+-- }}}
+
+scanVisitorTThroughCheckpoint :: -- {{{
+    Monad m ⇒
+    Checkpoint →
+    VisitorT m α →
+    ResultSearcherT m α
+scanVisitorTThroughCheckpoint = go .* initialVisitorState
+  where
+    go visitor_state = ResultSearcherT $
+        stepVisitorTThroughCheckpoint visitor_state
+        >>=
+        \(maybe_solution,maybe_new_state) → return $
+            case maybe_solution of
+                Just _ → Right maybe_solution
+                Nothing →
+                    case maybe_new_state of
+                        Nothing → Right Nothing
+                        Just new_state@(VisitorTState context unexplored_checkpoint _) →
+                            Left
+                            $
+                            (checkpointFromContext context unexplored_checkpoint
+                            ,go new_state
+                            )
+{-# INLINE scanVisitorTThroughCheckpoint #-}
+-- }}}
+
+searchVisitorThroughCheckpoint :: -- {{{
+    Checkpoint →
+    Visitor α →
+    Maybe α
+searchVisitorThroughCheckpoint = runIdentity .* searchVisitorTThroughCheckpoint
+-- }}}
+
+searchVisitorTThroughCheckpoint :: -- {{{
+    Monad m ⇒
+    Checkpoint →
+    VisitorT m α →
+    m (Maybe α)
+searchVisitorTThroughCheckpoint = go .* initialVisitorState
+  where
+    go = stepVisitorTThroughCheckpoint
+         >=>
+         \(maybe_solution,maybe_new_visitor_state) →
+            case maybe_solution of
+                Just _ → return maybe_solution
+                Nothing → maybe (return Nothing) go maybe_new_visitor_state
+{-# INLINE searchVisitorTThroughCheckpoint #-}
 -- }}}
 
 stepVisitorThroughCheckpoint :: -- {{{

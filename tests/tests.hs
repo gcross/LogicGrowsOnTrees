@@ -708,6 +708,42 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testGroup "searchVisitorThroughCheckpoint" -- {{{
+            [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
+                randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
+                    let all_results = runVisitorThroughCheckpoint checkpoint visitor
+                        search_result = searchVisitorThroughCheckpoint checkpoint visitor
+                    in case search_result of
+                        Nothing → IntSet.null all_results
+                        Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
+             -- }}}
+            ,testProperty "matches scanVisitorThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+                (_,checkpoint) ← randomCheckpointForVisitor visitor
+                morallyDubiousIOProperty $ do
+                    searchVisitorThroughCheckpoint checkpoint visitor
+                        @?= (finishSearch $ scanVisitorThroughCheckpoint checkpoint visitor)
+                    return True
+             -- }}}
+            ]
+         -- }}}
+        ,testGroup "searchVisitorTThroughCheckpoint" -- {{{
+            [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
+                randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
+                    let all_results = runVisitorThroughCheckpoint checkpoint visitor
+                        search_result = runIdentity $ searchVisitorTThroughCheckpoint checkpoint visitor
+                    in case search_result of
+                        Nothing → IntSet.null all_results
+                        Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
+             -- }}}
+            ,testProperty "matches scanVisitorTThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+                (_,checkpoint) ← randomCheckpointForVisitor visitor
+                morallyDubiousIOProperty $ do
+                    runIdentity (searchVisitorTThroughCheckpoint checkpoint visitor)
+                        @?= (runIdentity . finishSearchT $ scanVisitorTThroughCheckpoint checkpoint visitor)
+                    return True
+             -- }}}
+            ]
+         -- }}}
         ,testGroup "walkVisitorThroughCheckpoint" -- {{{
             [testProperty "matches walk down path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
                 runVisitor (sendVisitorDownPath path visitor)
