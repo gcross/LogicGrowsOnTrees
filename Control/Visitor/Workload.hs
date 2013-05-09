@@ -71,6 +71,56 @@ runVisitorTThroughWorkload :: -- {{{
 runVisitorTThroughWorkload = gatherResults .* walkVisitorTThroughWorkload
 -- }}}
 
+scanVisitorThroughWorkload :: -- {{{
+    Workload →
+    Visitor α →
+    ResultSearcher α
+scanVisitorThroughWorkload Workload{..} =
+    scanVisitorThroughCheckpoint workloadCheckpoint
+    .
+    sendVisitorDownPath workloadPath
+-- }}}
+
+scanVisitorTThroughWorkload :: -- {{{
+    Monad m ⇒
+    Workload →
+    VisitorT m α →
+    ResultSearcherT m α
+scanVisitorTThroughWorkload Workload{..} =
+    ResultSearcherT
+    .
+    join
+    .
+    liftM (
+        searchResultT
+        .
+        scanVisitorTThroughCheckpoint workloadCheckpoint
+    )
+    .
+    sendVisitorTDownPath workloadPath
+-- }}}
+
+searchVisitorThroughWorkload :: -- {{{
+    Workload →
+    Visitor α →
+    Maybe α
+searchVisitorThroughWorkload =
+    finishSearch
+    .*
+    scanVisitorThroughWorkload
+-- }}}
+
+searchVisitorTThroughWorkload :: -- {{{
+    Monad m ⇒
+    Workload →
+    VisitorT m α →
+    m (Maybe α)
+searchVisitorTThroughWorkload =
+    finishSearchT
+    .*
+    scanVisitorTThroughWorkload
+-- }}}
+
 walkVisitorThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
