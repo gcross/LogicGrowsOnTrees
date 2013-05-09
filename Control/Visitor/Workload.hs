@@ -7,7 +7,7 @@
 module Control.Visitor.Workload where
 
 -- Imports {{{
-import Control.Monad (join)
+import Control.Monad (join,liftM)
 import Data.Composition ((.*))
 import Data.Derive.Serialize
 import Data.DeriveTH
@@ -64,7 +64,7 @@ runVisitorThroughWorkload =
 -- }}}
 
 runVisitorTThroughWorkload :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
+    (Monad m, Monoid α) ⇒
     Workload →
     VisitorT m α →
     m α
@@ -83,7 +83,7 @@ walkVisitorThroughWorkload Workload{..} =
 -- }}}
 
 walkVisitorTThroughWorkload :: -- {{{
-    (Functor m, Monad m, Monoid α) ⇒
+    (Monad m, Monoid α) ⇒
     Workload →
     VisitorT m α →
     ResultFetcher m α
@@ -92,7 +92,7 @@ walkVisitorTThroughWorkload Workload{..} =
     .
     join
     .
-    fmap (
+    liftM (
         fetchResult
         .
         walkVisitorTThroughCheckpoint workloadCheckpoint
