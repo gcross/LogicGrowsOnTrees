@@ -1,5 +1,6 @@
 -- Language extensions {{{
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -71,6 +72,11 @@ data ProgressUpdate α = ProgressUpdate -- {{{
 $( derive makeSerialize ''ProgressUpdate )
 -- }}}
 
+data ResultType α β γ where -- {{{
+    RunResult :: Monoid α ⇒ ResultType α α α
+    SearchResult :: ResultType α () (Maybe α)
+-- }}}
+
 data StolenWorkload α = StolenWorkload -- {{{
     {   stolenWorkloadProgressUpdate :: ProgressUpdate α
     ,   stolenWorkload :: Workload
@@ -110,12 +116,12 @@ deriveLoggers "Logger" [DEBUG,INFO]
 -- Functions {{{
 
 computeProgressUpdate :: -- {{{
-    α →
+    β →
     Path →
     CheckpointCursor →
     Context m α →
     Checkpoint →
-    ProgressUpdate α
+    ProgressUpdate β
 computeProgressUpdate result initial_path cursor context checkpoint =
     ProgressUpdate
         (Progress
@@ -145,6 +151,7 @@ forkVisitorWorkerThread :: -- {{{
     IO (WorkerEnvironment α)
 forkVisitorWorkerThread =
     genericForkVisitorTWorkerThread
+        RunResult
         (return .* sendVisitorDownPath)
         (return . stepVisitorThroughCheckpoint)
         id
@@ -168,20 +175,23 @@ forkVisitorTWorkerThread :: -- {{{
     IO (WorkerEnvironment α)
 forkVisitorTWorkerThread =
     genericForkVisitorTWorkerThread
+        RunResult
         sendVisitorTDownPath
         stepVisitorTThroughCheckpoint
 -- }}}
 
 genericForkVisitorTWorkerThread :: -- {{{
-    (MonadIO n, Monoid α) ⇒
+    MonadIO n ⇒
+    ResultType α β γ →
     (Path → VisitorT m α → n (VisitorT m α)) →
     (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
-    (∀ β. n β → IO β) →
-    (WorkerTerminationReason α → IO ()) →
+    (∀ ξ. n ξ → IO ξ) →
+    (WorkerTerminationReason γ → IO ()) →
     VisitorT m α →
     Workload →
-    IO (WorkerEnvironment α)
+    IO (WorkerEnvironment β)
 genericForkVisitorTWorkerThread
+    result_type
     walk
     step
     run
@@ -207,7 +217,7 @@ genericForkVisitorTWorkerThread
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     debugM "Worker thread received progress update request."
                     liftIO . submitProgress $ computeProgressUpdate result initial_path cursor context checkpoint
-                    loop2 mempty cursor visitor_state rest_requests
+                    loop2 (initialIntermediateOf result_type) cursor visitor_state rest_requests
                 WorkloadStealRequested submitMaybeWorkload:rest_requests → do
                     debugM "Worker thread received workload steal."
                     case tryStealWorkload initial_path cursor context of
@@ -219,29 +229,37 @@ genericForkVisitorTWorkerThread
                                 StolenWorkload
                                     (computeProgressUpdate result initial_path new_cursor new_context checkpoint)
                                     workload
-                            loop2 mempty new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
+                            loop2 (initialIntermediateOf result_type) new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
         -- }}}
         loop3 result cursor visitor_state -- Step visitor {{{
           = do
             (maybe_solution,maybe_new_visitor_state) ← step visitor_state
-            new_result ← liftIO $ do
-                case maybe_solution of
-                    Nothing → return result
-                    Just solution → evaluate $ solution `seq` (result `mappend` solution)
-            case maybe_new_visitor_state of
-                Nothing →
+            let returnWithResult result =
                     return
                     .
                     WorkerFinished
                     .
-                    flip Progress new_result
+                    flip Progress result
                     .
                     checkpointFromInitialPath initial_path
                     .
                     checkpointFromCursor cursor
                     $
                     Explored
-                Just new_visitor_state → loop1 new_result cursor new_visitor_state
+            case maybe_new_visitor_state of
+                Nothing → returnWithResult $
+                    case result_type of
+                        RunResult → maybe result (mappend result) maybe_solution
+                        SearchResult → maybe_solution
+                Just new_visitor_state →
+                    case maybe_solution of
+                        Nothing → loop1 result cursor new_visitor_state
+                        Just solution →
+                            case result_type of
+                                RunResult → do
+                                    new_result ← liftIO . evaluate $ solution `seq` (result `mappend` solution)
+                                    loop1 new_result cursor new_visitor_state
+                                SearchResult → returnWithResult maybe_solution
         -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
@@ -251,7 +269,9 @@ genericForkVisitorTWorkerThread
             (run $
                 walk initial_path visitor
                 >>=
-                loop1 mempty Seq.empty . initialVisitorState initial_checkpoint
+                loop1 (initialIntermediateOf result_type) Seq.empty
+                .
+                initialVisitorState initial_checkpoint
             )
             `catch`
             (\e → case fromException e of
@@ -285,6 +305,12 @@ genericRunVisitor forkWorkerThread = do
             (putMVar result_mvar)
             entire_workload
     takeMVar result_mvar
+-- }}}
+
+initialIntermediateOf :: ResultType α β γ → β -- {{{
+initialIntermediateOf RunResult = mempty
+initialIntermediateOf SearchResult = ()
+{-# INLINE initialIntermediateOf #-}
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → IO (WorkerTerminationReason α) -- {{{
