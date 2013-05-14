@@ -149,7 +149,7 @@ data Driver -- {{{
         TermInfo →
         (shared_configuration → IO ()) →
         (shared_configuration → visitor result) →
-        (shared_configuration → supervisor_configuration → IO (Progress result)) →
+        (shared_configuration → supervisor_configuration → IO (RunProgress result)) →
         (shared_configuration → supervisor_configuration → RunOutcome result → IO ()) →
         (shared_configuration → supervisor_configuration → manager_monad result ()) →
         result_monad ()
@@ -163,7 +163,7 @@ data RunOutcome result = RunOutcome -- {{{
 -- }}}
 
 data TerminationReason result = -- {{{
-    Aborted (Progress result)
+    Aborted (RunProgress result)
   | Completed result
   | Failure String
   deriving (Eq,Show)
@@ -361,7 +361,7 @@ genericMain :: -- {{{
         TermInfo →
         (SharedConfiguration visitor_configuration → IO ()) →
         (SharedConfiguration visitor_configuration → visitor) →
-        (SharedConfiguration visitor_configuration → SupervisorConfiguration → IO (Progress result)) →
+        (SharedConfiguration visitor_configuration → SupervisorConfiguration → IO (RunProgress result)) →
         (SharedConfiguration visitor_configuration → SupervisorConfiguration → RunOutcome result → IO ()) →
         (SharedConfiguration visitor_configuration → SupervisorConfiguration → manager_monad result ()) →
         result_monad ()
@@ -570,7 +570,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
 -- }}}
 
-writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{
+writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → RunProgress result → m () -- {{{
 writeCheckpointFile checkpoint_path checkpoint = do
     noticeM $ "Writing checkpoint file"
     liftIO $

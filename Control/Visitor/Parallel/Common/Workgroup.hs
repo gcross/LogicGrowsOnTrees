@@ -140,7 +140,7 @@ runWorkgroup :: -- {{{
     Monoid result ⇒
     inner_state →
     (MessageForSupervisorReceivers WorkerId result → WorkgroupCallbacks inner_state) →
-    Progress result →
+    RunProgress result →
     WorkgroupControllerMonad inner_state result () →
     IO (RunOutcome result)
 runWorkgroup initial_inner_state constructCallbacks starting_progress (C controller) = do

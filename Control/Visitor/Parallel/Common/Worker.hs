@@ -70,7 +70,7 @@ import Control.Visitor.Workload
 -- Types {{{
 
 data ProgressUpdate α = ProgressUpdate -- {{{
-    {   progressUpdateProgress :: Progress α
+    {   progressUpdateProgress :: RunProgress α
     ,   progressUpdateRemainingWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''ProgressUpdate )
@@ -130,7 +130,7 @@ computeProgressUpdate :: -- {{{
     ProgressUpdate β
 computeProgressUpdate result initial_path cursor context checkpoint =
     ProgressUpdate
-        (Progress
+        (RunProgress
             (checkpointFromInitialPath initial_path
              .
              checkpointFromCursor cursor
@@ -242,20 +242,19 @@ genericForkVisitorTWorkerThread
             (maybe_solution,maybe_new_visitor_state) ← step visitor_state
             case maybe_new_visitor_state of
                 Nothing →
-                    case result_type of
-                        RunResult →
-                            return
-                            .
-                            WorkerFinished
-                            .
-                            flip Progress (maybe result (mappend result) maybe_solution)
-                            .
+                    let final_checkpoint =
                             checkpointFromInitialPath initial_path
                             .
                             checkpointFromCursor cursor
                             $
                             Explored
-                        SearchResult → return . WorkerFinished $ maybe_solution
+                    in return . WorkerFinished $
+                        case result_type of
+                            RunResult →
+                                RunProgress
+                                    final_checkpoint
+                                    (maybe result (mappend result) maybe_solution)
+                            SearchResult → SearchIncomplete final_checkpoint
                 Just new_visitor_state →
                     case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
@@ -264,7 +263,14 @@ genericForkVisitorTWorkerThread
                                 RunResult → do
                                     new_result ← liftIO . evaluate $ solution `seq` (result `mappend` solution)
                                     loop1 new_result cursor new_visitor_state
-                                SearchResult → return . WorkerFinished $ maybe_solution
+                                SearchResult →
+                                    return
+                                    .
+                                    WorkerFinished
+                                    .
+                                    SearchComplete
+                                    $
+                                    solution
         -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new

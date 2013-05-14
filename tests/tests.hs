@@ -217,8 +217,8 @@ instance Arbitrary α ⇒ Arbitrary (Solution α) where -- {{{
     arbitrary = Solution <$> arbitrary <*> arbitrary
 -- }}}
 
-instance Arbitrary α ⇒ Arbitrary (Progress α) where -- {{{
-    arbitrary = Progress <$> arbitrary <*> arbitrary
+instance Arbitrary α ⇒ Arbitrary (RunProgress α) where -- {{{
+    arbitrary = RunProgress <$> arbitrary <*> arbitrary
 -- }}}
 
 instance Arbitrary α ⇒ Arbitrary (ProgressUpdate α) where -- {{{
@@ -339,9 +339,9 @@ addAppendProgressBroadcastIdsAction actions = do
 
 addReceiveCurrentProgressAction :: -- {{{
     SupervisorCallbacks result worker_id IO →
-    IO (IORef (Maybe (Progress result)),SupervisorCallbacks result worker_id IO)
+    IO (IORef (Maybe (RunProgress result)),SupervisorCallbacks result worker_id IO)
 addReceiveCurrentProgressAction actions = do
-    maybe_progress_ref ← newIORef (Nothing :: Maybe (Progress result))
+    maybe_progress_ref ← newIORef (Nothing :: Maybe (RunProgress result))
     return (maybe_progress_ref, actions {
         receiveCurrentProgress = \progress → do
             maybe_old_progress ← readIORef maybe_progress_ref
@@ -874,7 +874,7 @@ tests = -- {{{
                 token_mvar ← newEmptyMVar
                 request_mvar ← newEmptyMVar
                 progresses_ref ← newIORef []
-                let receiveProgress (Progress Unexplored _) = return ()
+                let receiveProgress (RunProgress Unexplored _) = return ()
                     receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
                 RunOutcome _ termination_reason ←
                     Threads.runVisitorIO
@@ -895,7 +895,7 @@ tests = -- {{{
                     Failure message → error message
                 let correct_result = runVisitor visitor
                 result @?= correct_result
-                (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
+                (remdups <$> readIORef progresses_ref) >>= mapM_ (\(RunProgress checkpoint result) → do
                     result @=? runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
                     correct_result @=? mappend result (runVisitorThroughCheckpoint checkpoint visitor)
                  )
@@ -996,7 +996,7 @@ tests = -- {{{
     ,testGroup "Control.Visitor.Parallel.Common.Supervisor" -- {{{
         [testCase "immediately abort" $ do -- {{{
             SupervisorOutcome{..} ← runSupervisor bad_test_supervisor_actions (UnrestrictedProgram abortSupervisor)
-            supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+            supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
             supervisorRemainingWorkers @?= ([] :: [Int])
          -- }}}
         ,testCase "failure" $ do -- {{{
@@ -1013,7 +1013,7 @@ tests = -- {{{
                         killWorkloadBuffer
                         addWorker ()
                         abortSupervisor
-                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                     supervisorRemainingWorkers @?= [()]
                     readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
                  -- }}}
@@ -1025,7 +1025,7 @@ tests = -- {{{
                         addWorker ()
                         removeWorker ()
                         abortSupervisor
-                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                     supervisorRemainingWorkers @?= []
                     readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
                  -- }}}
@@ -1038,7 +1038,7 @@ tests = -- {{{
                         removeWorker 1
                         addWorker 2
                         abortSupervisor
-                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                     supervisorRemainingWorkers @?= [2::Int]
                     readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
                  -- }}}
@@ -1052,7 +1052,7 @@ tests = -- {{{
                         addWorker 2
                         removeWorker 1
                         abortSupervisor
-                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                     supervisorRemainingWorkers @?= [2::Int]
                     readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)])
                     readIORef broadcast_ids_list_ref >>= (@?= [[1]])
@@ -1081,7 +1081,7 @@ tests = -- {{{
                             mapM_ addWorker worker_ids_to_add
                             mapM_ removeWorker worker_ids_to_remove
                             abortSupervisor
-                        supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                        supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                         sort supervisorRemainingWorkers @?= worker_ids_left 
                         readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
                         readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
@@ -1096,7 +1096,7 @@ tests = -- {{{
                         enableSupervisorDebugMode
                         addWorker ()
                         abortSupervisor
-                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                     supervisorRemainingWorkers @?= [()]
                     readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload))
                     readIORef broadcasts_ref >>= (@?= [[()]])
@@ -1109,7 +1109,7 @@ tests = -- {{{
                         addWorker ()
                         removeWorker ()
                         abortSupervisor
-                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                     supervisorRemainingWorkers @?= []
                     readIORef maybe_workload_ref >>= (@?= Just ((),entire_workload)) 
                     readIORef broadcasts_ref >>= (@?= [[()]])
@@ -1123,7 +1123,7 @@ tests = -- {{{
                         removeWorker 1
                         addWorker 2
                         abortSupervisor
-                    supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                    supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                     supervisorRemainingWorkers @?= [2::Int]
                     readIORef maybe_workload_ref >>= (@?= [(1,entire_workload),(2,entire_workload)]) 
                     readIORef broadcasts_ref >>= (@?= [[1],[2]])
@@ -1140,9 +1140,9 @@ tests = -- {{{
                     killWorkloadBuffer
                     performGlobalProgressUpdate
                     abortSupervisor
-                supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                 supervisorRemainingWorkers @?= ([] :: [()])
-                readIORef maybe_progress_ref >>= (@?= Just (Progress Unexplored ()))
+                readIORef maybe_progress_ref >>= (@?= Just (RunProgress Unexplored ()))
              -- }}}
             ,testProperty "request progress update when all active workers present leave" $ do -- {{{
                 number_of_active_workers ← choose (1,10 :: Int)
@@ -1154,7 +1154,7 @@ tests = -- {{{
                     (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                     (workload_steal_ids_ref,actions3) ← addSetWorkloadStealBroadcastIdsAction actions2
                     let actions4 = ignoreAcceptWorkloadAction $ actions3
-                    let progress = Progress Unexplored (Sum 0)
+                    let progress = RunProgress Unexplored (Sum 0)
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor actions4 $ do
                         killWorkloadBuffer
                         addWorker 0
@@ -1177,7 +1177,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction actions2
-                let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = RunProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor actions3 $ do
                     enableSupervisorDebugMode
                     killWorkloadBuffer
@@ -1194,7 +1194,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = RunProgress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor actions3 $ do
                     enableSupervisorDebugMode
                     killWorkloadBuffer
@@ -1219,7 +1219,7 @@ tests = -- {{{
                     addWorker 2
                     receiveStolenWorkload 1 Nothing
                     abortSupervisor
-                supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+                supervisorTerminationReason @?= SupervisorAborted (RunProgress Unexplored ())
                 supervisorRemainingWorkers @?= [1,2]
                 readIORef broadcast_ids_list_ref >>= (@?= [[1],[1]])
              -- }}}
@@ -1229,7 +1229,7 @@ tests = -- {{{
             (maybe_workload_ref,actions1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
             (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
             let checkpoint = ChoiceCheckpoint Unexplored Unexplored
-                progress = Progress checkpoint (Sum 1)
+                progress = RunProgress checkpoint (Sum 1)
             SupervisorOutcome{..} ← runUnrestrictedSupervisorStartingFrom progress actions2 $ do
                 addWorker ()
                 abortSupervisor
@@ -1267,7 +1267,7 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
-                    Progress checkpoint solutions ←
+                    RunProgress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
@@ -1284,7 +1284,7 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             (Workload path Unexplored)
-                    Progress checkpoint solutions ←
+                    RunProgress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
                         \termination_reason → case termination_reason of
@@ -1320,7 +1320,7 @@ tests = -- {{{
                             total_solutions
                         let accumulated_update_solutions = scanl1 mappend update_solutions
                         sequence_ $
-                            zipWith (\accumulated_solutions (ProgressUpdate (Progress checkpoint _) remaining_workload) → do
+                            zipWith (\accumulated_solutions (ProgressUpdate (RunProgress checkpoint _) remaining_workload) → do
                                 let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
                                 assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
                                     (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
@@ -1388,7 +1388,7 @@ tests = -- {{{
             ,testGroup "work stealing correctly preserves total workload" $ -- {{{
                 let runManyStealsAnalysis visitor termination_flag termination_result_ivar steals_ref = do -- {{{
                         termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                        (Progress checkpoint remaining_solutions) ← case termination_result of
+                        (RunProgress checkpoint remaining_solutions) ← case termination_result of
                             WorkerFinished final_progress → return final_progress
                             WorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             WorkerAborted → error "worker aborted prematurely"
@@ -1421,7 +1421,7 @@ tests = -- {{{
                             total_solutions
                         let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
                             accumulated_stolen_solutions = scanl1 mappend stolen_solutions
-                        sequence_ $ zipWith3 (\acc_prestolen acc_stolen (StolenWorkload (ProgressUpdate (Progress checkpoint _) remaining_workload) _) → do
+                        sequence_ $ zipWith3 (\acc_prestolen acc_stolen (StolenWorkload (ProgressUpdate (RunProgress checkpoint _) remaining_workload) _) → do
                             let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
                                 accumulated_solutions = acc_prestolen `mappend` acc_stolen
                             assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
@@ -1457,7 +1457,7 @@ tests = -- {{{
                     takeMVar reached_position_mvar
                     sendWorkloadStealRequest workerPendingRequests $ writeIORef maybe_workload_ref
                     IVar.write blocking_value_ivar (IntSet.singleton 202020202)
-                    final_progress@(Progress checkpoint remaining_solutions) ←
+                    final_progress@(RunProgress checkpoint remaining_solutions) ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of
@@ -1465,7 +1465,7 @@ tests = -- {{{
                             WorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             WorkerAborted → error "worker aborted prematurely"
                     (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
-                    StolenWorkload (ProgressUpdate (Progress checkpoint prestolen_solutions) remaining_workload) stolen_workload ←
+                    StolenWorkload (ProgressUpdate (RunProgress checkpoint prestolen_solutions) remaining_workload) stolen_workload ←
                         fmap (fromMaybe (error "stolen workload not available"))
                         $
                         readIORef maybe_workload_ref

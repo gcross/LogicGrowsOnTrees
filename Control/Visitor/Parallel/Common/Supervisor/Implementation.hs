@@ -292,7 +292,7 @@ data SupervisorCallbacks result worker_id m = -- {{{
     SupervisorCallbacks
     {   broadcastProgressUpdateToWorkers :: [worker_id] → m ()
     ,   broadcastWorkloadStealToWorkers :: [worker_id] → m ()
-    ,   receiveCurrentProgress :: Progress result → m ()
+    ,   receiveCurrentProgress :: RunProgress result → m ()
     ,   sendWorkloadToWorker :: Workload → worker_id → m ()
     }
 -- }}}
@@ -319,7 +319,7 @@ data SupervisorState result worker_id = -- {{{
     ,   _available_workers_for_steal :: !(IntMap (Set worker_id))
     ,   _workers_pending_workload_steal :: !(Set worker_id)
     ,   _workers_pending_progress_update :: !(Set worker_id)
-    ,   _current_progress :: !(Progress result)
+    ,   _current_progress :: !(RunProgress result)
     ,   _debug_mode :: !Bool
     ,   _supervisor_occupation_statistics :: !OccupationStatistics
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
@@ -344,7 +344,7 @@ $( makeLenses ''SupervisorState )
 -- }}}
 
 data SupervisorTerminationReason result worker_id = -- {{{
-    SupervisorAborted (Progress result)
+    SupervisorAborted (RunProgress result)
   | SupervisorCompleted result
   | SupervisorFailure worker_id String
   deriving (Eq,Show)
@@ -802,7 +802,7 @@ extractIndependentMeasurementsStatistics =
         <*>  calcStddev
 -- }}}
 
-getCurrentProgress :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m (Progress result) -- {{{
+getCurrentProgress :: SupervisorMonadConstraint m ⇒ ContextMonad result worker_id m (RunProgress result) -- {{{
 getCurrentProgress = use current_progress
 -- }}}
 
@@ -1019,7 +1019,7 @@ postValidate label action = action >>= \result →
                     throw $ ConflictingWorkloads maybe_worker_id initial_path maybe_other_worker_id other_initial_path
           where initial_path_as_list = Fold.toList initial_path
     go workers_and_workloads Map.empty
-    Progress checkpoint _ ← use current_progress
+    RunProgress checkpoint _ ← use current_progress
     let total_workspace =
             mappend checkpoint
             .
@@ -1029,7 +1029,7 @@ postValidate label action = action >>= \result →
             $
             workers_and_workloads
     unless (total_workspace == Explored) $ throw $ IncompleteWorkspace total_workspace
-    Progress checkpoint _ ← use current_progress
+    RunProgress checkpoint _ ← use current_progress
     when (checkpoint == Explored) $
         if null workers_and_workloads
             then throw $ SpaceFullyExploredButSearchNotTerminated
@@ -1088,14 +1088,14 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     ) ⇒
     Bool →
     worker_id →
-    Progress result →
+    RunProgress result →
     AbortMonad result worker_id m ()
 receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = AbortMonad . postValidate ("receiveWorkerFinished " ++ show worker_id ++ " " ++ show (progressCheckpoint final_progress)) $ do
     infoM $ if remove_worker
         then "Worker " ++ show worker_id ++ " finished and removed."
         else "Worker " ++ show worker_id ++ " finished."
     lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
-    Progress checkpoint new_results ← current_progress <%= (<> final_progress)
+    RunProgress checkpoint new_results ← current_progress <%= (<> final_progress)
     when remove_worker . lift $ retireWorker worker_id
     case checkpoint of
         Explored → do
@@ -1203,7 +1203,7 @@ runSupervisorStartingFrom :: -- {{{
     , SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    Progress result →
+    RunProgress result →
     SupervisorCallbacks result worker_id m →
     (∀ α. AbortMonad result worker_id m α) →
     m (SupervisorOutcome result worker_id)
