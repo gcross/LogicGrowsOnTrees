@@ -38,32 +38,32 @@ import Control.Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,Supe
 -- Classes {{{
 
 class MonadCatchIO m ⇒ RequestQueueMonad m where -- {{{
-    type RequestQueueMonadResult m :: *
+    type RequestQueueMonadIntermediateProgress m :: *
     abort :: m ()
     fork :: m () → m ThreadId
-    getCurrentProgressAsync :: (Progress (RequestQueueMonadResult m) → IO ()) → m ()
+    getCurrentProgressAsync :: (RequestQueueMonadIntermediateProgress m → IO ()) → m ()
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
-    requestProgressUpdateAsync :: (Progress (RequestQueueMonadResult m) → IO ()) → m ()
+    requestProgressUpdateAsync :: (RequestQueueMonadIntermediateProgress m → IO ()) → m ()
 -- }}}
 
 -- }}}
 
 -- Types {{{
 
-type Request result worker_id m = SupervisorMonad result worker_id m ()
-data RequestQueue result worker_id m = RequestQueue -- {{{
-    {   requests :: !(TChan (Request result worker_id m))
-    ,   receivers :: !(IORef [Progress result → IO ()])
+type Request r iv ip fv fp worker_id m = SupervisorMonad r iv ip fv fp worker_id m ()
+data RequestQueue r iv ip fv fp worker_id m = RequestQueue -- {{{
+    {   requests :: !(TChan (Request r iv ip fv fp worker_id m))
+    ,   receivers :: !(IORef [ip → IO ()])
     }
 -- }}}
-type RequestQueueReader result worker_id m = ReaderT (RequestQueue result worker_id m) IO
+type RequestQueueReader r iv ip fv fp worker_id m = ReaderT (RequestQueue r iv ip fv fp worker_id m) IO
 
 -- }}}
 
 -- Instances {{{
 
-instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader result worker_id m) where -- {{{
-    type RequestQueueMonadResult (RequestQueueReader result worker_id m) = result
+instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader r iv ip fv fp worker_id m) where -- {{{
+    type RequestQueueMonadIntermediateProgress (RequestQueueReader r iv ip fv fp worker_id m) = ip
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
     fork m = ask >>= liftIO . forkIO . runReaderT m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
@@ -85,8 +85,8 @@ instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueue
 
 addProgressReceiver :: -- {{{
     MonadIO m' ⇒
-    (Progress result → IO ()) →
-    RequestQueue result worker_id m →
+    (ip → IO ()) →
+    RequestQueue r iv ip fv fp worker_id m →
     m' ()
 addProgressReceiver receiver =
     liftIO
@@ -98,8 +98,8 @@ addProgressReceiver receiver =
 
 tryDequeueRequest :: -- {{{
     MonadIO m' ⇒
-    RequestQueue result worker_id m →
-    m' (Maybe (Request result worker_id m))
+    RequestQueue r iv ip fv fp worker_id m →
+    m' (Maybe (Request r iv ip fv fp worker_id m))
 tryDequeueRequest =
     liftIO
     .
@@ -112,8 +112,8 @@ tryDequeueRequest =
 
 enqueueRequest :: -- {{{
     MonadIO m' ⇒
-    Request result worker_id m →
-    RequestQueue result worker_id m →
+    Request r iv ip fv fp worker_id m →
+    RequestQueue r iv ip fv fp worker_id m →
     m' ()
 enqueueRequest = flip $
     (liftIO . atomically)
@@ -121,15 +121,15 @@ enqueueRequest = flip $
     (writeTChan . requests)
 -- }}}
 
-getCurrentProgress :: RequestQueueMonad m ⇒ m (Progress (RequestQueueMonadResult m)) -- {{{
+getCurrentProgress :: RequestQueueMonad m ⇒ m (RequestQueueMonadIntermediateProgress m) -- {{{
 getCurrentProgress = syncAsync getCurrentProgressAsync
 -- }}}
 
 getQuantityAsync :: -- {{{
     (MonadIO m', Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    SupervisorMonad result worker_id m α →
+    SupervisorMonad r iv ip fv fp worker_id m α →
     (α → IO ()) →
-    RequestQueue result worker_id m →
+    RequestQueue r iv ip fv fp worker_id m →
     m' ()
 getQuantityAsync getQuantity receiveQuantity =
     enqueueRequest $ getQuantity >>= liftIO . receiveQuantity
@@ -141,14 +141,14 @@ getNumberOfWorkers = syncAsync getNumberOfWorkersAsync
 
 newRequestQueue ::  -- {{{
     MonadIO m' ⇒
-    m' (RequestQueue result worker_id m)
+    m' (RequestQueue r iv ip fv fp worker_id m)
 newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
 -- }}}
 
 processAllRequests :: -- {{{
     MonadIO m ⇒
-    RequestQueue result worker_id m →
-    SupervisorMonad result worker_id m ()
+    RequestQueue r iv ip fv fp worker_id m →
+    SupervisorMonad r iv ip fv fp worker_id m ()
 processAllRequests (RequestQueue requests _) = go
   where
     go =
@@ -159,8 +159,8 @@ processAllRequests (RequestQueue requests _) = go
 
 processRequest :: -- {{{
     MonadIO m ⇒
-    RequestQueue result worker_id m →
-    SupervisorMonad result worker_id m ()
+    RequestQueue r iv ip fv fp worker_id m →
+    SupervisorMonad r iv ip fv fp worker_id m ()
 processRequest =
     join
     .
@@ -175,8 +175,8 @@ processRequest =
 
 receiveProgress :: -- {{{
     MonadIO m' ⇒
-    RequestQueue result worker_id m →
-    Progress result →
+    RequestQueue r iv ip fv fp worker_id m →
+    ip →
     m' ()
 receiveProgress queue progress =
     liftIO
@@ -192,15 +192,15 @@ receiveProgress queue progress =
     queue
 -- }}}
 
-requestProgressUpdate :: RequestQueueMonad m ⇒ m (Progress (RequestQueueMonadResult m)) -- {{{
+requestProgressUpdate :: RequestQueueMonad m ⇒ m (RequestQueueMonadIntermediateProgress m) -- {{{
 requestProgressUpdate = syncAsync requestProgressUpdateAsync
 -- }}}
 
 requestQueueProgram :: -- {{{
     MonadIO m ⇒
-    SupervisorMonad result worker_id m () →
-    RequestQueue result worker_id m →
-    SupervisorProgram result worker_id m
+    SupervisorMonad r iv ip fv fp worker_id m () →
+    RequestQueue r iv ip fv fp worker_id m →
+    SupervisorProgram r iv ip fv fp worker_id m
 requestQueueProgram initialize =
     flip (BlockingProgram initialize) id
     .

@@ -41,12 +41,12 @@ deriveLoggers "Logger" [DEBUG,INFO]
 -- Functions {{{
 
 runWorker :: -- {{{
-    IO (MessageForWorker result) →
-    (MessageForSupervisor result → IO ()) →
+    IO MessageForWorker →
+    (MessageForSupervisor ip fp → IO ()) →
     (
-        (WorkerTerminationReason result → IO ()) →
+        (WorkerTerminationReason fp → IO ()) →
         Workload →
-        IO (WorkerEnvironment result)
+        IO (WorkerEnvironment ip)
     ) →
     IO ()
 runWorker receiveMessage sendMessage forkVisitorWorkerThread =

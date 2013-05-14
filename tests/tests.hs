@@ -288,8 +288,8 @@ type UniqueVisitor = UniqueVisitorT Identity
 
 -- Functions {{{
 addAcceptOneWorkloadAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    IO (IORef (Maybe (worker_id,Workload)),SupervisorCallbacks result worker_id IO)
+    SupervisorCallbacks ip worker_id IO →
+    IO (IORef (Maybe (worker_id,Workload)),SupervisorCallbacks ip worker_id IO)
 addAcceptOneWorkloadAction actions = do
     maybe_worker_and_workload_ref ← newIORef (Nothing :: Maybe (worker_id,Workload))
     return (maybe_worker_and_workload_ref, actions {
@@ -303,8 +303,8 @@ addAcceptOneWorkloadAction actions = do
 -- }}}
 
 addAcceptMultipleWorkloadsAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    IO (IORef [(worker_id,Workload)],SupervisorCallbacks result worker_id IO)
+    SupervisorCallbacks ip worker_id IO →
+    IO (IORef [(worker_id,Workload)],SupervisorCallbacks ip worker_id IO)
 addAcceptMultipleWorkloadsAction actions = do
     workers_and_workloads_ref ← newIORef []
     return (workers_and_workloads_ref, actions {
@@ -316,8 +316,8 @@ addAcceptMultipleWorkloadsAction actions = do
 -- }}}
 
 addAppendWorkloadStealBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    IO (IORef [[worker_id]],SupervisorCallbacks result worker_id IO)
+    SupervisorCallbacks ip worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks ip worker_id IO)
 addAppendWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
@@ -327,8 +327,8 @@ addAppendWorkloadStealBroadcastIdsAction actions = do
 -- }}}
 
 addAppendProgressBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    IO (IORef [[worker_id]],SupervisorCallbacks result worker_id IO)
+    SupervisorCallbacks ip worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks ip worker_id IO)
 addAppendProgressBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
@@ -338,10 +338,10 @@ addAppendProgressBroadcastIdsAction actions = do
 -- }}}
 
 addReceiveCurrentProgressAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    IO (IORef (Maybe (Progress result)),SupervisorCallbacks result worker_id IO)
+    SupervisorCallbacks ip worker_id IO →
+    IO (IORef (Maybe ip),SupervisorCallbacks ip worker_id IO)
 addReceiveCurrentProgressAction actions = do
-    maybe_progress_ref ← newIORef (Nothing :: Maybe (Progress result))
+    maybe_progress_ref ← newIORef (Nothing :: Maybe ip)
     return (maybe_progress_ref, actions {
         receiveCurrentProgress = \progress → do
             maybe_old_progress ← readIORef maybe_progress_ref
@@ -353,8 +353,8 @@ addReceiveCurrentProgressAction actions = do
 -- }}}
 
 addSetWorkloadStealBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    IO (IORef [worker_id],SupervisorCallbacks result worker_id IO)
+    SupervisorCallbacks ip worker_id IO →
+    IO (IORef [worker_id],SupervisorCallbacks ip worker_id IO)
 addSetWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [worker_id])
     return (broadcasts_ref, actions {
@@ -371,14 +371,14 @@ echoWithLabel label x = trace (label ++ " " ++ show x) x
 -- }}}
 
 ignoreAcceptWorkloadAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    SupervisorCallbacks result worker_id IO
+    SupervisorCallbacks ip worker_id IO →
+    SupervisorCallbacks ip worker_id IO
 ignoreAcceptWorkloadAction actions = actions { sendWorkloadToWorker = \_ _ → return () }
 -- }}}
 
 ignoreWorkloadStealAction :: -- {{{
-    SupervisorCallbacks result worker_id IO →
-    SupervisorCallbacks result worker_id IO
+    SupervisorCallbacks ip worker_id IO →
+    SupervisorCallbacks ip worker_id IO
 ignoreWorkloadStealAction actions = actions { broadcastWorkloadStealToWorkers = \_ → return () }
 -- }}}
 
@@ -466,7 +466,7 @@ remdups (x : xx : xs)
 -- }}}
 
 -- Values {{{
-bad_test_supervisor_actions :: SupervisorCallbacks result worker_id m -- {{{
+bad_test_supervisor_actions :: SupervisorCallbacks ip worker_id m -- {{{
 bad_test_supervisor_actions =
     SupervisorCallbacks
     {   broadcastProgressUpdateToWorkers =
@@ -995,12 +995,12 @@ tests = -- {{{
      -- }}}
     ,testGroup "Control.Visitor.Parallel.Common.Supervisor" -- {{{
         [testCase "immediately abort" $ do -- {{{
-            SupervisorOutcome{..} ← runSupervisor bad_test_supervisor_actions (UnrestrictedProgram abortSupervisor)
+            SupervisorOutcome{..} ← runSupervisorInAllMode bad_test_supervisor_actions (UnrestrictedProgram abortSupervisor)
             supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
             supervisorRemainingWorkers @?= ([] :: [Int])
          -- }}}
         ,testCase "failure" $ do -- {{{
-            SupervisorOutcome{..} ← runUnrestrictedSupervisor bad_test_supervisor_actions (receiveWorkerFailure () "FAIL" :: ∀ α. SupervisorMonad () () IO α)
+            SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode bad_test_supervisor_actions (receiveWorkerFailure () "FAIL" :: ∀ α. SupervisorMonad () () (Progress ()) () (Progress ()) () IO α)
             supervisorTerminationReason @?= SupervisorFailure () "FAIL"
             supervisorRemainingWorkers @?= []
          -- }}}
@@ -1008,7 +1008,7 @@ tests = -- {{{
             [testGroup "without workload buffer" -- {{{
                 [testCase "add one worker then abort" $ do -- {{{
                     (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions $ do
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker ()
@@ -1019,7 +1019,7 @@ tests = -- {{{
                  -- }}}
                 ,testCase "add then remove one worker then abort" $ do -- {{{
                     (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions $ do
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker ()
@@ -1031,7 +1031,7 @@ tests = -- {{{
                  -- }}}
                 ,testCase "add then remove then add one worker then abort" $ do -- {{{
                     (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions $ do
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker 1
@@ -1045,7 +1045,7 @@ tests = -- {{{
                 ,testCase "add two workers then remove first worker then abort" $ do -- {{{
                     (maybe_workload_ref,actions1) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
                     (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions2 $ do
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker 1
@@ -1075,7 +1075,7 @@ tests = -- {{{
                     monadicIO . run $ do
                         (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                         (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
-                        SupervisorOutcome{..} ← runUnrestrictedSupervisor actions_2 $ do
+                        SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions_2 $ do
                             enableSupervisorDebugMode
                             killWorkloadBuffer
                             mapM_ addWorker worker_ids_to_add
@@ -1092,7 +1092,7 @@ tests = -- {{{
                 [testCase "add one worker then abort" $ do -- {{{
                     (maybe_workload_ref,actions1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                     (broadcasts_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions2 $ do
                         enableSupervisorDebugMode
                         addWorker ()
                         abortSupervisor
@@ -1104,7 +1104,7 @@ tests = -- {{{
                 ,testCase "add then remove one worker then abort" $ do -- {{{
                     (maybe_workload_ref,actions1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                     (broadcasts_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions2 $ do
                         enableSupervisorDebugMode
                         addWorker ()
                         removeWorker ()
@@ -1117,7 +1117,7 @@ tests = -- {{{
                 ,testCase "add then remove then add one worker then abort" $ do -- {{{
                     (maybe_workload_ref,actions1) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
                     (broadcasts_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions2 $ do
                         enableSupervisorDebugMode
                         addWorker 1
                         removeWorker 1
@@ -1135,7 +1135,7 @@ tests = -- {{{
         ,testGroup "progress updates" -- {{{
             [testCase "request progress update when no workers present" $ do -- {{{
                 (maybe_progress_ref,actions) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions $ do
+                SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions $ do
                     enableSupervisorDebugMode
                     killWorkloadBuffer
                     performGlobalProgressUpdate
@@ -1155,7 +1155,7 @@ tests = -- {{{
                     (workload_steal_ids_ref,actions3) ← addSetWorkloadStealBroadcastIdsAction actions2
                     let actions4 = ignoreAcceptWorkloadAction $ actions3
                     let progress = Progress Unexplored (Sum 0)
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisor actions4 $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions4 $ do
                         killWorkloadBuffer
                         addWorker 0
                         forM_ (zip [0..] (tail active_workers)) $ \(prefix_count,worker_id) → do
@@ -1178,7 +1178,7 @@ tests = -- {{{
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction actions2
                 let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions3 $ do
+                SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions3 $ do
                     enableSupervisorDebugMode
                     killWorkloadBuffer
                     addWorker ()
@@ -1195,7 +1195,7 @@ tests = -- {{{
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
                 let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions3 $ do
+                SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions3 $ do
                     enableSupervisorDebugMode
                     killWorkloadBuffer
                     addWorker (1 :: Int)
@@ -1214,7 +1214,7 @@ tests = -- {{{
             [testCase "failure to steal from a worker leads to second attempt" $ do -- {{{ 
                 (broadcast_ids_list_ref,actions1) ← addAppendWorkloadStealBroadcastIdsAction bad_test_supervisor_actions
                 let actions2 = ignoreAcceptWorkloadAction actions1
-                SupervisorOutcome{..} ← runUnrestrictedSupervisor actions2 $ do
+                SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions2 $ do
                     addWorker (1::Int)
                     addWorker 2
                     receiveStolenWorkload 1 Nothing
@@ -1230,7 +1230,7 @@ tests = -- {{{
             (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
             let checkpoint = ChoiceCheckpoint Unexplored Unexplored
                 progress = Progress checkpoint (Sum 1)
-            SupervisorOutcome{..} ← runUnrestrictedSupervisorStartingFrom progress actions2 $ do
+            SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllModeStartingFrom progress actions2 $ do
                 addWorker ()
                 abortSupervisor
             supervisorTerminationReason @?= SupervisorAborted progress

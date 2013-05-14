@@ -69,6 +69,7 @@ import Control.Visitor.Parallel.Common.Supervisor -- {{{
     )
 -- }}}
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Common.VisitorMode
 import Control.Visitor.Parallel.Common.Worker
 import Control.Visitor.Workload
 -- }}}
@@ -122,49 +123,50 @@ data SharedConfiguration visitor_configuration = SharedConfiguration -- {{{
     } deriving (Eq,Show)
 $( derive makeSerialize ''SharedConfiguration )
 -- }}}
+-- }}}
 
 data Driver -- {{{
     result_monad
     shared_configuration
     supervisor_configuration
     visitor
-    result
+    r iv ip fv fp
   = ∀ manager_monad.
-    ( RequestQueueMonad (manager_monad result)
-    , RequestQueueMonadResult (manager_monad result) ~ result
+    ( RequestQueueMonad (manager_monad r iv ip fv fp)
+    , RequestQueueMonadIntermediateProgress (manager_monad r iv ip fv fp) ~ ip
     ) ⇒
     Driver (
-        ( Monoid result
-        , Serialize result
+        ( Serialize r
         , MonadIO result_monad
         ) ⇒
+        VisitorMode r iv ip fv fp →
         (
-            (WorkerTerminationReason result → IO ()) →
+            (WorkerTerminationReason fp → IO ()) →
             visitor result →
             Workload →
-            IO (WorkerEnvironment result)
+            IO (WorkerEnvironment ip)
         ) →
         Term shared_configuration →
         Term supervisor_configuration →
         TermInfo →
         (shared_configuration → IO ()) →
         (shared_configuration → visitor result) →
-        (shared_configuration → supervisor_configuration → IO (Progress result)) →
-        (shared_configuration → supervisor_configuration → RunOutcome result → IO ()) →
-        (shared_configuration → supervisor_configuration → manager_monad result ()) →
+        (shared_configuration → supervisor_configuration → IO ip) →
+        (shared_configuration → supervisor_configuration → RunOutcome ip fv → IO ()) →
+        (shared_configuration → supervisor_configuration → manager_monad r iv ip fv fp ()) →
         result_monad ()
     )
 -- }}}
 
-data RunOutcome result = RunOutcome -- {{{
+data RunOutcome ip fv = RunOutcome -- {{{
     {   runStatistics :: RunStatistics
-    ,   runTerminationReason :: TerminationReason result
+    ,   runTerminationReason :: TerminationReason fv ip
     } deriving (Eq,Show)
 -- }}}
 
-data TerminationReason result = -- {{{
-    Aborted (Progress result)
-  | Completed result
+data TerminationReason fv ip = -- {{{
+    Aborted ip
+  | Completed fv
   | Failure String
   deriving (Eq,Show)
 -- }}}
@@ -251,8 +253,8 @@ makeSharedConfigurationTerm visitor_configuration_term =
 
 extractRunOutcomeFromSupervisorOutcome :: -- {{{
     Show worker_id ⇒
-    SupervisorOutcome result worker_id →
-    RunOutcome result
+    SupervisorOutcome fv ip worker_id →
+    RunOutcome ip fv
 extractRunOutcomeFromSupervisorOutcome SupervisorOutcome{..} = RunOutcome{..}
   where
     runTerminationReason =
@@ -279,13 +281,13 @@ mainVisitor :: -- {{{
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
         Visitor
-        result →
+        result result (Progress result) result (Progress result) →
     Term visitor_configuration →
     TermInfo →
-    (visitor_configuration → RunOutcome result → IO ()) →
+    (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
-mainVisitor (Driver runDriver) = genericMain . runDriver $ forkVisitorWorkerThread
+mainVisitor (Driver runDriver) = genericMain AllMode . flip runDriver $ forkVisitorWorkerThread
 -- }}}
 
 mainVisitorIO :: -- {{{
@@ -295,13 +297,13 @@ mainVisitorIO :: -- {{{
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
         VisitorIO
-        result →
+        result result (Progress result) result (Progress result) →
     Term visitor_configuration →
     TermInfo →
-    (visitor_configuration → RunOutcome result → IO ()) →
+    (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorIO result) →
     result_monad ()
-mainVisitorIO (Driver runDriver) = genericMain . runDriver $ forkVisitorIOWorkerThread
+mainVisitorIO (Driver runDriver) = genericMain AllMode . flip runDriver $ forkVisitorIOWorkerThread
 -- }}}
 
 mainVisitorT :: -- {{{
@@ -311,14 +313,14 @@ mainVisitorT :: -- {{{
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
         (VisitorT m)
-        result →
+        result result (Progress result) result (Progress result) →
     (∀ β. m β → IO β) →
     Term visitor_configuration →
     TermInfo →
-    (visitor_configuration → RunOutcome result → IO ()) →
+    (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
-mainVisitorT (Driver runDriver) = genericMain . runDriver . forkVisitorTWorkerThread
+mainVisitorT (Driver runDriver) = genericMain AllMode . flip runDriver . forkVisitorTWorkerThread
 -- }}}
 
 -- }}}
@@ -326,7 +328,7 @@ mainVisitorT (Driver runDriver) = genericMain . runDriver . forkVisitorTWorkerTh
 -- Internal Functions {{{
 
 -- Loops {{{
-checkpointLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ CheckpointConfiguration → m α -- {{{
+checkpointLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadIntermediateProgress m)) ⇒ CheckpointConfiguration → m α -- {{{
 checkpointLoop CheckpointConfiguration{..} = forever $ do
     liftIO $ threadDelay delay
     requestProgressUpdate >>= writeCheckpointFile checkpoint_path
@@ -334,7 +336,7 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
     delay = round $ checkpoint_interval * 1000000
 -- }}}
 
-managerLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadResult m)) ⇒ SupervisorConfiguration → m () -- {{{
+managerLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadIntermediateProgress m)) ⇒ SupervisorConfiguration → m () -- {{{
 managerLoop SupervisorConfiguration{..} = do
     maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration
     case catMaybes
@@ -349,30 +351,32 @@ managerLoop SupervisorConfiguration{..} = do
 -- }}}
 
 genericMain :: -- {{{
-    ( result ~ RequestQueueMonadResult (manager_monad result)
-    , RequestQueueMonad (manager_monad result)
-    , Monoid result
-    , Serialize result
+    ( ip ~ RequestQueueMonadIntermediateProgress (manager_monad r iv ip fv fp)
+    , RequestQueueMonad (manager_monad r iv ip fv fp)
+    , Serialize ip
     , MonadIO result_monad
     ) ⇒
+    VisitorMode r iv ip fv fp →
     (
+        VisitorMode r iv ip fv fp →
         Term (SharedConfiguration visitor_configuration) →
         Term SupervisorConfiguration →
         TermInfo →
         (SharedConfiguration visitor_configuration → IO ()) →
         (SharedConfiguration visitor_configuration → visitor) →
-        (SharedConfiguration visitor_configuration → SupervisorConfiguration → IO (Progress result)) →
-        (SharedConfiguration visitor_configuration → SupervisorConfiguration → RunOutcome result → IO ()) →
-        (SharedConfiguration visitor_configuration → SupervisorConfiguration → manager_monad result ()) →
+        (SharedConfiguration visitor_configuration → SupervisorConfiguration → IO ip) →
+        (SharedConfiguration visitor_configuration → SupervisorConfiguration → RunOutcome ip fv → IO ()) →
+        (SharedConfiguration visitor_configuration → SupervisorConfiguration → manager_monad r iv ip fv fp ()) →
         result_monad ()
     ) →
     Term visitor_configuration →
     TermInfo →
-    (visitor_configuration → RunOutcome result → IO ()) →
+    (visitor_configuration → RunOutcome ip fv → IO ()) →
     (visitor_configuration → visitor) →
     result_monad ()
-genericMain run visitor_configuration_term infomod notifyTerminated constructVisitor =
-    run (makeSharedConfigurationTerm visitor_configuration_term)
+genericMain visitor_mode run visitor_configuration_term infomod notifyTerminated constructVisitor =
+    run  visitor_mode
+        (makeSharedConfigurationTerm visitor_configuration_term)
          supervisor_configuration_term
          infomod
         (\SharedConfiguration{logging_configuration=LoggingConfiguration{..}} → do
@@ -381,14 +385,14 @@ genericMain run visitor_configuration_term infomod notifyTerminated constructVis
         (constructVisitor . visitor_configuration)
         (\_ SupervisorConfiguration{..} →
             case maybe_checkpoint_configuration of
-                Nothing → (infoM "Checkpointing is NOT enabled") >> return mempty
+                Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
                 Just CheckpointConfiguration{..} → do
                     noticeM $ "Checkpointing enabled"
                     noticeM $ "Checkpoint file is " ++ checkpoint_path
                     noticeM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
                     ifM (doesFileExist checkpoint_path)
                         (noticeM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
-                        (return mempty)
+                        (return initial_progress)
         )
         (\SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} →
             (do showStatistics statistics_configuration runStatistics
@@ -406,6 +410,8 @@ genericMain run visitor_configuration_term infomod notifyTerminated constructVis
                         Failure _ → deleteCheckpointFile
         )
         (const managerLoop)
+  where
+    initial_progress = initialIntermediateProgressOf visitor_mode
 -- }}}
 
 maybeForkIO :: RequestQueueMonad m ⇒ (α → m ()) → Maybe α → m (Maybe ThreadId) -- {{{
@@ -570,7 +576,7 @@ showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
         (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
 -- }}}
 
-writeCheckpointFile :: (Serialize result, MonadIO m) ⇒ FilePath → Progress result → m () -- {{{
+writeCheckpointFile :: (Serialize ip, MonadIO m) ⇒ FilePath → ip → m () -- {{{
 writeCheckpointFile checkpoint_path checkpoint = do
     noticeM $ "Writing checkpoint file"
     liftIO $

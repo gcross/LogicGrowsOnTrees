@@ -65,6 +65,7 @@ Library
         Control.Visitor.Parallel.Common.Supervisor
         Control.Visitor.Parallel.Common.Supervisor.Implementation
         Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+        Control.Visitor.Parallel.Common.VisitorMode
         Control.Visitor.Parallel.Common.Workgroup
         Control.Visitor.Parallel.Common.Worker
         Control.Visitor.Parallel.Main

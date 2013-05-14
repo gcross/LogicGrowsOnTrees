@@ -55,6 +55,7 @@ import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..),extra
 import Control.Visitor.Parallel.Common.Message
 import Control.Visitor.Parallel.Common.Supervisor
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
+import Control.Visitor.Parallel.Common.VisitorMode
 import Control.Visitor.Parallel.Common.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
 import Control.Visitor.Workload
 -- }}}
@@ -90,13 +91,13 @@ data WorkgroupState = WorkgroupState -- {{{
 $( makeLenses ''WorkgroupState )
 -- }}}
 
-type WorkgroupStateMonad inner_state result = StateT WorkgroupState (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
+type WorkgroupStateMonad inner_state = StateT WorkgroupState (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
 
-type WorkgroupRequestQueue inner_state result = RequestQueue result WorkerId (WorkgroupStateMonad inner_state result)
+type WorkgroupRequestQueue inner_state r iv ip fv fp = RequestQueue r iv ip fv fp WorkerId (WorkgroupStateMonad inner_state)
 
-type WorkgroupMonad inner_state result = SupervisorMonad result WorkerId (WorkgroupStateMonad inner_state result)
+type WorkgroupMonad inner_state r iv ip fv fp = SupervisorMonad r iv ip fv fp WorkerId (WorkgroupStateMonad inner_state)
 
-newtype WorkgroupControllerMonad inner_state result α = C { unwrapC :: RequestQueueReader result WorkerId (WorkgroupStateMonad inner_state result) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO)
+newtype WorkgroupControllerMonad inner_state r iv ip fv fp α = C { unwrapC :: RequestQueueReader r iv ip fv fp WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO)
 -- }}}
 
 -- Classes {{{
@@ -106,15 +107,15 @@ class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where -- {{{
 -- }}}
 
 -- Instances {{{
-instance RequestQueueMonad (WorkgroupControllerMonad inner_state result) where -- {{{
-    type RequestQueueMonadResult (WorkgroupControllerMonad inner_state result) = result
+instance RequestQueueMonad (WorkgroupControllerMonad inner_state r iv ip fv fp) where -- {{{
+    type RequestQueueMonadIntermediateProgress (WorkgroupControllerMonad inner_state r iv ip fv fp) = ip
     abort = C abort
     fork = C . fork . unwrapC
     getCurrentProgressAsync = C . getCurrentProgressAsync
     getNumberOfWorkersAsync = C . getNumberOfWorkersAsync
     requestProgressUpdateAsync = C . requestProgressUpdateAsync
 -- }}}
-instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state result) where -- {{{
+instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state r iv ip fv fp) where -- {{{
     changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
         old_number_of_workers ← numberOfWorkers
         new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
@@ -137,13 +138,13 @@ changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 -- }}}
 
 runWorkgroup :: -- {{{
-    Monoid result ⇒
+    VisitorMode r iv ip fv fp →
     inner_state →
-    (MessageForSupervisorReceivers WorkerId result → WorkgroupCallbacks inner_state) →
-    Progress result →
-    WorkgroupControllerMonad inner_state result () →
-    IO (RunOutcome result)
-runWorkgroup initial_inner_state constructCallbacks starting_progress (C controller) = do
+    (MessageForSupervisorReceivers WorkerId ip fp → WorkgroupCallbacks inner_state) →
+    ip →
+    WorkgroupControllerMonad inner_state r iv ip fv fp () →
+    IO (RunOutcome ip fv)
+runWorkgroup visitor_mode initial_inner_state constructCallbacks starting_progress (C controller) = do
     request_queue ← newRequestQueue
     let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
@@ -181,6 +182,7 @@ runWorkgroup initial_inner_state constructCallbacks starting_progress (C control
         $
         do  supervisor_outcome@SupervisorOutcome{supervisorRemainingWorkers} ←
                 runSupervisorStartingFrom
+                    visitor_mode
                     starting_progress
                     SupervisorCallbacks{..}
                     (requestQueueProgram (return ()) request_queue)
@@ -211,7 +213,7 @@ bumpWorkerRemovalPriority worker_id =
 -- }}}
 
 fireAWorker :: -- {{{
-    WorkgroupMonad inner_state result ()
+    WorkgroupMonad inner_state r iv ip fv fp ()
 fireAWorker =
     tryGetWaitingWorker
     >>= \x → case x of
@@ -235,7 +237,7 @@ fireAWorker =
 -- }}}
 
 hireAWorker :: -- {{{
-    WorkgroupMonad inner_state result ()
+    WorkgroupMonad inner_state r iv ip fv fp ()
 hireAWorker = do
     worker_id ← next_worker_id <<%= succ
     bumpWorkerRemovalPriority worker_id
@@ -243,19 +245,19 @@ hireAWorker = do
     addWorker worker_id
 -- }}}
 
-liftInner :: InnerMonad inner_state α → WorkgroupStateMonad inner_state result α -- {{{
+liftInner :: InnerMonad inner_state α → WorkgroupStateMonad inner_state α -- {{{
 liftInner = lift . lift
 -- }}}
 
-liftInnerToSupervisor :: InnerMonad inner_state α → WorkgroupMonad inner_state result α -- {{{
+liftInnerToSupervisor :: InnerMonad inner_state α → WorkgroupMonad inner_state r iv ip fv fp α -- {{{
 liftInnerToSupervisor = lift . liftInner
 -- }}}
 
-numberOfWorkers :: WorkgroupMonad inner_state result Int -- {{{
+numberOfWorkers :: WorkgroupMonad inner_state r iv ip fv fp Int -- {{{
 numberOfWorkers = PSQ.size <$> use removal_queue
 -- }}}
 
-removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state result () -- {{{
+removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state r iv ip fv fp () -- {{{
 removeWorkerFromRemovalQueue = (removal_queue %=) . PSQ.delete
 -- }}}
 

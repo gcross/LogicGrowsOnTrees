@@ -21,26 +21,26 @@ import System.IO (Handle)
 -- }}}
 
 -- Types {{{
-data MessageForSupervisor result = -- {{{
+data MessageForSupervisor ip fp = -- {{{
     Failed String
-  | Finished (Progress result)
-  | ProgressUpdate (Worker.ProgressUpdate result)
-  | StolenWorkload (Maybe (Worker.StolenWorkload result))
+  | Finished fp
+  | ProgressUpdate (Worker.ProgressUpdate ip)
+  | StolenWorkload (Maybe (Worker.StolenWorkload ip))
   | WorkerQuit
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForSupervisor)
 -- }}}
 
-data MessageForSupervisorReceivers worker_id result = MessageForSupervisorReceivers -- {{{
-    {   receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate result → IO ()
-    ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload result) → IO ()
+data MessageForSupervisorReceivers worker_id ip fp = MessageForSupervisorReceivers -- {{{
+    {   receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate ip → IO ()
+    ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload ip) → IO ()
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
-    ,   receiveFinishedFromWorker :: worker_id → (Progress result) → IO ()
+    ,   receiveFinishedFromWorker :: worker_id → fp → IO ()
     ,   receiveQuitFromWorker :: worker_id → IO ()
     }
 -- }}}
 
-data MessageForWorker result = -- {{{
+data MessageForWorker = -- {{{
     RequestProgressUpdate
   | RequestWorkloadSteal
   | StartWorkload Workload
@@ -50,8 +50,8 @@ $(derive makeSerialize ''MessageForWorker)
 -- }}}
 
 receiveAndProcessMessagesFromWorker :: -- {{{
-    MessageForSupervisorReceivers worker_id result →
-    IO (MessageForSupervisor result) →
+    MessageForSupervisorReceivers worker_id ip fp →
+    IO (MessageForSupervisor ip fp) →
     worker_id →
     IO ()
 receiveAndProcessMessagesFromWorker
@@ -78,8 +78,8 @@ receiveAndProcessMessagesFromWorker
 -- }}}
 
 receiveAndProcessMessagesFromWorkerUsingHandle :: -- {{{
-    Serialize result ⇒
-    MessageForSupervisorReceivers worker_id result →
+    (Serialize ip, Serialize fp) ⇒
+    MessageForSupervisorReceivers worker_id ip fp →
     Handle →
     worker_id →
     IO ()
