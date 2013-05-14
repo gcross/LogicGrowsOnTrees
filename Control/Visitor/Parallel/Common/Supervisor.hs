@@ -70,7 +70,7 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
-import Control.Visitor.Checkpoint (RunProgress)
+import Control.Visitor.Checkpoint (Progress)
 import Control.Visitor.Parallel.Common.Worker (ProgressUpdate,StolenWorkload)
 
 import qualified Control.Visitor.Parallel.Common.Supervisor.Implementation as Implementation
@@ -195,7 +195,7 @@ endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad result 
 endSupervisorOccupied = changeSupervisorOccupiedStatus False
 -- }}}
 
-getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m (RunProgress result) -- {{{
+getCurrentProgress :: SupervisorMonadConstraint m ⇒ SupervisorMonad result worker_id m (Progress result) -- {{{
 getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
 -- }}}
 
@@ -252,7 +252,7 @@ receiveWorkerFinished :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    RunProgress result →
+    Progress result →
     SupervisorMonad result worker_id m ()
 receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
 -- }}}
@@ -263,7 +263,7 @@ receiveWorkerFinishedAndRemoved :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    RunProgress result →
+    Progress result →
     SupervisorMonad result worker_id m ()
 receiveWorkerFinishedAndRemoved = receiveWorkerFinishedWithRemovalFlag True
 -- }}}
@@ -275,7 +275,7 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     ) ⇒
     Bool →
     worker_id →
-    RunProgress result →
+    Progress result →
     SupervisorMonad result worker_id m ()
 receiveWorkerFinishedWithRemovalFlag = wrapIntoSupervisorMonad .** Implementation.receiveWorkerFinishedWithRemovalFlag
 -- }}}
@@ -314,7 +314,7 @@ runSupervisorStartingFrom :: -- {{{
     , SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    RunProgress result →
+    Progress result →
     SupervisorCallbacks result worker_id m →
     SupervisorProgram result worker_id m →
     m (SupervisorOutcome result worker_id)
@@ -364,7 +364,7 @@ runUnrestrictedSupervisorStartingFrom :: -- {{{
     , SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    RunProgress result →
+    Progress result →
     SupervisorCallbacks result worker_id m →
     (∀ α. SupervisorMonad result worker_id m α) →
     m (SupervisorOutcome result worker_id)

@@ -44,7 +44,7 @@ runWorker :: -- {{{
     IO (MessageForWorker result) →
     (MessageForSupervisor result → IO ()) →
     (
-        (WorkerRunTerminationReason result → IO ()) →
+        (WorkerTerminationReason result → IO ()) →
         Workload →
         IO (WorkerEnvironment result)
     ) →
@@ -108,7 +108,7 @@ runWorkerUsingHandles :: -- {{{
     Handle →
     Handle →
     (
-        (WorkerRunTerminationReason result → IO ()) →
+        (WorkerTerminationReason result → IO ()) →
         Workload →
         IO (WorkerEnvironment result)
     ) →

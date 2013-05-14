@@ -55,7 +55,7 @@ import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..),extra
 import Control.Visitor.Parallel.Common.Message
 import Control.Visitor.Parallel.Common.Supervisor
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
-import Control.Visitor.Parallel.Common.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerRunTerminationReason(..))
+import Control.Visitor.Parallel.Common.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
 import Control.Visitor.Workload
 -- }}}
 
@@ -140,7 +140,7 @@ runWorkgroup :: -- {{{
     Monoid result ⇒
     inner_state →
     (MessageForSupervisorReceivers WorkerId result → WorkgroupCallbacks inner_state) →
-    RunProgress result →
+    Progress result →
     WorkgroupControllerMonad inner_state result () →
     IO (RunOutcome result)
 runWorkgroup initial_inner_state constructCallbacks starting_progress (C controller) = do

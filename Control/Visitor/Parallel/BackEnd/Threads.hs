@@ -114,7 +114,7 @@ runVisitor = runVisitorStartingFrom mempty
 
 runVisitorStartingFrom :: -- {{{
     Monoid result ⇒
-    RunProgress result →
+    Progress result →
     Visitor result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
@@ -134,7 +134,7 @@ runVisitorIO = runVisitorIOStartingFrom mempty
 
 runVisitorIOStartingFrom :: -- {{{
     Monoid result ⇒
-    RunProgress result →
+    Progress result →
     VisitorIO result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
@@ -156,7 +156,7 @@ runVisitorT = flip runVisitorTStartingFrom mempty
 runVisitorTStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
-    RunProgress result →
+    Progress result →
     VisitorT m result →
     ThreadsControllerMonad result () →
     IO (RunOutcome result)
@@ -174,9 +174,9 @@ fromJustOrBust message = fromMaybe (error message)
 
 genericRunVisitorStartingFrom :: -- {{{
     Monoid result ⇒
-    RunProgress result →
+    Progress result →
     (
-        (WorkerRunTerminationReason result → IO ()) →
+        (WorkerTerminationReason result → IO ()) →
         Workload →
         IO (WorkerEnvironment result)
     ) →

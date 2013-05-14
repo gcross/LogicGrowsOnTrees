@@ -69,6 +69,14 @@ type ContextUpdate m α = -- {{{
     Maybe (Context m α, Checkpoint, VisitorT m α)
 -- }}}
 
+data Progress α = Progress -- {{{
+    {   progressCheckpoint :: Checkpoint
+    ,   progressResult :: α
+    } deriving (Eq,Show)
+$( derive makeMonoid ''Progress )
+$( derive makeSerialize ''Progress )
+-- }}}
+
 newtype ResultFetcher m α = ResultFetcher -- {{{
     {   fetchResult :: m (Maybe (α, Checkpoint, ResultFetcher m α))
     }
@@ -82,20 +90,6 @@ data ResultSearcher α = -- {{{
 newtype ResultSearcherT m α = ResultSearcherT -- {{{
     {   searchResultT :: m (Either (Checkpoint, ResultSearcherT m α) (Maybe α))
     }
--- }}}
-
-data RunProgress α = RunProgress -- {{{
-    {   progressCheckpoint :: Checkpoint
-    ,   progressResult :: α
-    } deriving (Eq,Show)
-$( derive makeMonoid ''RunProgress )
-$( derive makeSerialize ''RunProgress )
--- }}}
-
-data SearchProgress α = -- {{{
-    SearchComplete α
-  | SearchIncomplete Checkpoint
-$( derive makeSerialize ''SearchProgress )
 -- }}}
 
 data VisitorTState m α = VisitorTState -- {{{

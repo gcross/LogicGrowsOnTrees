@@ -23,7 +23,7 @@ import System.IO (Handle)
 -- Types {{{
 data MessageForSupervisor result = -- {{{
     Failed String
-  | Finished (RunProgress result)
+  | Finished (Progress result)
   | ProgressUpdate (Worker.ProgressUpdate result)
   | StolenWorkload (Maybe (Worker.StolenWorkload result))
   | WorkerQuit
@@ -35,7 +35,7 @@ data MessageForSupervisorReceivers worker_id result = MessageForSupervisorReceiv
     {   receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate result → IO ()
     ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload result) → IO ()
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
-    ,   receiveFinishedFromWorker :: worker_id → (RunProgress result) → IO ()
+    ,   receiveFinishedFromWorker :: worker_id → (Progress result) → IO ()
     ,   receiveQuitFromWorker :: worker_id → IO ()
     }
 -- }}}
