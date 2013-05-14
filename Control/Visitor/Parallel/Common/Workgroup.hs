@@ -55,7 +55,7 @@ import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..),extra
 import Control.Visitor.Parallel.Common.Message
 import Control.Visitor.Parallel.Common.Supervisor
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
-import Control.Visitor.Parallel.Common.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
+import Control.Visitor.Parallel.Common.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerRunTerminationReason(..))
 import Control.Visitor.Workload
 -- }}}
 

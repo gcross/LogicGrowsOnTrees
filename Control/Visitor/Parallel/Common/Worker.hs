@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 -- }}}
@@ -16,6 +17,8 @@ module Control.Visitor.Parallel.Common.Worker
     , StolenWorkload(..)
     , WorkerRequestQueue
     , WorkerEnvironment(..)
+    , WorkerRunTerminationReason
+    , WorkerSearchTerminationReason
     , WorkerTerminationReason(..)
     , forkVisitorWorkerThread
     , forkVisitorIOWorkerThread
@@ -59,6 +62,7 @@ import System.Log.Logger.TH
 
 import Control.Visitor hiding (runVisitor,runVisitorT)
 import Control.Visitor.Checkpoint
+import Control.Visitor.Parallel.Common.ResultType
 import Control.Visitor.Path
 import Control.Visitor.Workload
 -- }}}
@@ -70,11 +74,6 @@ data ProgressUpdate α = ProgressUpdate -- {{{
     ,   progressUpdateRemainingWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''ProgressUpdate )
--- }}}
-
-data ResultType α β γ where -- {{{
-    RunResult :: Monoid α ⇒ ResultType α α α
-    SearchResult :: ResultType α () (Maybe α)
 -- }}}
 
 data StolenWorkload α = StolenWorkload -- {{{
@@ -100,12 +99,19 @@ data WorkerEnvironment α = WorkerEnvironment -- {{{
     }
 -- }}}
 
-data WorkerTerminationReason α = -- {{{
-    WorkerFinished (Progress α)
+data WorkerTerminationReason result_kind result = -- {{{
+    WorkerFinished (FinalProgressTypeOf result_kind result)
   | WorkerFailed String
   | WorkerAborted
-  deriving (Show)
 -- }}}
+
+instance Show (FinalProgressTypeOf result_kind result) ⇒ Show (WorkerTerminationReason result_kind result) where
+    show (WorkerFinished final_progress) = "WorkerFinished (" ++ show final_progress ++ ")"
+    show (WorkerFailed reason) = "WorkerFailed " ++ show reason
+    show (WorkerAborted) = "WorkerAborted"
+
+type WorkerRunTerminationReason = WorkerTerminationReason RunResult
+type WorkerSearchTerminationReason = WorkerTerminationReason RunResult
 
 -- }}}
 
@@ -145,7 +151,7 @@ computeProgressUpdate result initial_path cursor context checkpoint =
 
 forkVisitorWorkerThread :: -- {{{
     Monoid α ⇒
-    (WorkerTerminationReason α → IO ()) →
+    (WorkerRunTerminationReason α → IO ()) →
     Visitor α →
     Workload →
     IO (WorkerEnvironment α)
@@ -159,7 +165,7 @@ forkVisitorWorkerThread =
 
 forkVisitorIOWorkerThread :: -- {{{
     Monoid α ⇒
-    (WorkerTerminationReason α → IO ()) →
+    (WorkerRunTerminationReason α → IO ()) →
     VisitorIO α →
     Workload →
     IO (WorkerEnvironment α)
@@ -169,7 +175,7 @@ forkVisitorIOWorkerThread = forkVisitorTWorkerThread id
 forkVisitorTWorkerThread :: -- {{{
     (MonadIO m, Monoid α) ⇒
     (∀ β. m β → IO β) →
-    (WorkerTerminationReason α → IO ()) →
+    (WorkerRunTerminationReason α → IO ()) →
     VisitorT m α →
     Workload →
     IO (WorkerEnvironment α)
@@ -182,14 +188,14 @@ forkVisitorTWorkerThread =
 
 genericForkVisitorTWorkerThread :: -- {{{
     MonadIO n ⇒
-    ResultType α β γ →
-    (Path → VisitorT m α → n (VisitorT m α)) →
-    (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
+    ResultType result_kind result →
+    (Path → VisitorT m result → n (VisitorT m result)) →
+    (VisitorTState m result → n (Maybe result,Maybe (VisitorTState m result))) →
     (∀ ξ. n ξ → IO ξ) →
-    (WorkerTerminationReason γ → IO ()) →
-    VisitorT m α →
+    (WorkerTerminationReason result_kind result → IO ()) →
+    VisitorT m result →
     Workload →
-    IO (WorkerEnvironment β)
+    IO (WorkerEnvironment (IntermediateTypeOf result_kind result))
 genericForkVisitorTWorkerThread
     result_type
     walk
@@ -234,23 +240,22 @@ genericForkVisitorTWorkerThread
         loop3 result cursor visitor_state -- Step visitor {{{
           = do
             (maybe_solution,maybe_new_visitor_state) ← step visitor_state
-            let returnWithResult result =
-                    return
-                    .
-                    WorkerFinished
-                    .
-                    flip Progress result
-                    .
-                    checkpointFromInitialPath initial_path
-                    .
-                    checkpointFromCursor cursor
-                    $
-                    Explored
             case maybe_new_visitor_state of
-                Nothing → returnWithResult $
+                Nothing →
                     case result_type of
-                        RunResult → maybe result (mappend result) maybe_solution
-                        SearchResult → maybe_solution
+                        RunResult →
+                            return
+                            .
+                            WorkerFinished
+                            .
+                            flip Progress (maybe result (mappend result) maybe_solution)
+                            .
+                            checkpointFromInitialPath initial_path
+                            .
+                            checkpointFromCursor cursor
+                            $
+                            Explored
+                        SearchResult → return . WorkerFinished $ maybe_solution
                 Just new_visitor_state →
                     case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
@@ -259,7 +264,7 @@ genericForkVisitorTWorkerThread
                                 RunResult → do
                                     new_result ← liftIO . evaluate $ solution `seq` (result `mappend` solution)
                                     loop1 new_result cursor new_visitor_state
-                                SearchResult → returnWithResult maybe_solution
+                                SearchResult → return . WorkerFinished $ maybe_solution
         -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
@@ -297,8 +302,8 @@ genericForkVisitorTWorkerThread
 
 genericRunVisitor :: -- {{{
     Monoid α ⇒
-    ((WorkerTerminationReason α → IO ()) → Workload → IO (WorkerEnvironment α)) →
-    IO (WorkerTerminationReason α)
+    ((WorkerRunTerminationReason α → IO ()) → Workload → IO (WorkerEnvironment α)) →
+    IO (WorkerRunTerminationReason α)
 genericRunVisitor forkWorkerThread = do
     result_mvar ← newEmptyMVar
     _ ← forkWorkerThread
@@ -307,21 +312,15 @@ genericRunVisitor forkWorkerThread = do
     takeMVar result_mvar
 -- }}}
 
-initialIntermediateOf :: ResultType α β γ → β -- {{{
-initialIntermediateOf RunResult = mempty
-initialIntermediateOf SearchResult = ()
-{-# INLINE initialIntermediateOf #-}
--- }}}
-
-runVisitor :: Monoid α ⇒ Visitor α → IO (WorkerTerminationReason α) -- {{{
+runVisitor :: Monoid α ⇒ Visitor α → IO (WorkerRunTerminationReason α) -- {{{
 runVisitor = genericRunVisitor . flip forkVisitorWorkerThread
 -- }}}
 
-runVisitorIO :: Monoid α ⇒ VisitorIO α → IO (WorkerTerminationReason α) -- {{{
+runVisitorIO :: Monoid α ⇒ VisitorIO α → IO (WorkerRunTerminationReason α) -- {{{
 runVisitorIO = genericRunVisitor . flip forkVisitorIOWorkerThread
 -- }}}
 
-runVisitorT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason α) -- {{{
+runVisitorT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerRunTerminationReason α) -- {{{
 runVisitorT runInIO = genericRunVisitor . flip (forkVisitorTWorkerThread runInIO)
 -- }}}
 

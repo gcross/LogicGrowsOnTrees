@@ -139,7 +139,7 @@ data Driver -- {{{
         , MonadIO result_monad
         ) ⇒
         (
-            (WorkerTerminationReason result → IO ()) →
+            (WorkerRunTerminationReason result → IO ()) →
             visitor result →
             Workload →
             IO (WorkerEnvironment result)

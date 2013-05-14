@@ -176,7 +176,7 @@ genericRunVisitorStartingFrom :: -- {{{
     Monoid result ⇒
     Progress result →
     (
-        (WorkerTerminationReason result → IO ()) →
+        (WorkerRunTerminationReason result → IO ()) →
         Workload →
         IO (WorkerEnvironment result)
     ) →

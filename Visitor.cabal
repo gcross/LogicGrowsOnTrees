@@ -62,6 +62,7 @@ Library
         Control.Visitor.Parallel.BackEnd.Threads
         Control.Visitor.Parallel.Common.Message
         Control.Visitor.Parallel.Common.Process
+        Control.Visitor.Parallel.Common.ResultType
         Control.Visitor.Parallel.Common.Supervisor
         Control.Visitor.Parallel.Common.Supervisor.Implementation
         Control.Visitor.Parallel.Common.Supervisor.RequestQueue
