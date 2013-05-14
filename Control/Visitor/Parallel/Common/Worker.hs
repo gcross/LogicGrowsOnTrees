@@ -105,10 +105,11 @@ data WorkerTerminationReason result_kind result = -- {{{
   | WorkerAborted
 -- }}}
 
-instance Show (FinalProgressTypeOf result_kind result) ⇒ Show (WorkerTerminationReason result_kind result) where
+instance Show (FinalProgressTypeOf result_kind result) ⇒ Show (WorkerTerminationReason result_kind result) where -- {{{
     show (WorkerFinished final_progress) = "WorkerFinished (" ++ show final_progress ++ ")"
     show (WorkerFailed reason) = "WorkerFailed " ++ show reason
     show (WorkerAborted) = "WorkerAborted"
+-- }}}
 
 type WorkerRunTerminationReason = WorkerTerminationReason RunResult
 type WorkerSearchTerminationReason = WorkerTerminationReason RunResult

@@ -19,17 +19,20 @@ data ResultType result_kind result where -- {{{
     SearchResult :: ResultType SearchResult result
 -- }}}
 
-type family IntermediateTypeOf result_kind result
+type family IntermediateTypeOf result_kind result -- {{{
 type instance IntermediateTypeOf RunResult result = result
 type instance IntermediateTypeOf SearchResult result = ()
+-- }}}
 
-type family FinalTypeOf result_kind result
+type family FinalTypeOf result_kind result -- {{{
 type instance FinalTypeOf RunResult result = result
 type instance FinalTypeOf SearchResult result = Maybe result
+-- }}}
 
-type family FinalProgressTypeOf result_kind result
+type family FinalProgressTypeOf result_kind result -- {{{
 type instance FinalProgressTypeOf RunResult result = RunProgress result
 type instance FinalProgressTypeOf SearchResult result = SearchProgress result
+-- }}}
 
 initialIntermediateOf :: ResultType result_kind result → IntermediateTypeOf result_kind result -- {{{
 initialIntermediateOf RunResult = mempty
