@@ -72,9 +72,9 @@ data ProgressUpdate α = ProgressUpdate -- {{{
 $( derive makeSerialize ''ProgressUpdate )
 -- }}}
 
-data ResultType α β γ where -- {{{
-    RunResult :: Monoid α ⇒ ResultType α α α
-    SearchResult :: ResultType α () (Maybe α)
+data VisitorMode α β γ where -- {{{
+    AllMode :: Monoid α ⇒ VisitorMode α α α
+    FirstMode :: VisitorMode α () (Maybe α)
 -- }}}
 
 data StolenWorkload α = StolenWorkload -- {{{
@@ -151,7 +151,7 @@ forkVisitorWorkerThread :: -- {{{
     IO (WorkerEnvironment α)
 forkVisitorWorkerThread =
     genericForkVisitorTWorkerThread
-        RunResult
+        AllMode
         (return .* sendVisitorDownPath)
         (return . stepVisitorThroughCheckpoint)
         id
@@ -175,14 +175,14 @@ forkVisitorTWorkerThread :: -- {{{
     IO (WorkerEnvironment α)
 forkVisitorTWorkerThread =
     genericForkVisitorTWorkerThread
-        RunResult
+        AllMode
         sendVisitorTDownPath
         stepVisitorTThroughCheckpoint
 -- }}}
 
 genericForkVisitorTWorkerThread :: -- {{{
     MonadIO n ⇒
-    ResultType α β γ →
+    VisitorMode α β γ →
     (Path → VisitorT m α → n (VisitorT m α)) →
     (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
     (∀ ξ. n ξ → IO ξ) →
@@ -249,17 +249,17 @@ genericForkVisitorTWorkerThread
             case maybe_new_visitor_state of
                 Nothing → returnWithResult $
                     case result_type of
-                        RunResult → maybe result (mappend result) maybe_solution
-                        SearchResult → maybe_solution
+                        AllMode → maybe result (mappend result) maybe_solution
+                        FirstMode → maybe_solution
                 Just new_visitor_state →
                     case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
                         Just solution →
                             case result_type of
-                                RunResult → do
+                                AllMode → do
                                     new_result ← liftIO . evaluate $ solution `seq` (result `mappend` solution)
                                     loop1 new_result cursor new_visitor_state
-                                SearchResult → returnWithResult maybe_solution
+                                FirstMode → returnWithResult maybe_solution
         -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
@@ -307,9 +307,9 @@ genericRunVisitor forkWorkerThread = do
     takeMVar result_mvar
 -- }}}
 
-initialIntermediateOf :: ResultType α β γ → β -- {{{
-initialIntermediateOf RunResult = mempty
-initialIntermediateOf SearchResult = ()
+initialIntermediateOf :: VisitorMode α β γ → β -- {{{
+initialIntermediateOf AllMode = mempty
+initialIntermediateOf FirstMode = ()
 {-# INLINE initialIntermediateOf #-}
 -- }}}
 
