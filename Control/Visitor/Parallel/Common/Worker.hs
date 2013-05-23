@@ -1,4 +1,6 @@
 -- Language extensions {{{
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
@@ -14,11 +16,16 @@
 
 module Control.Visitor.Parallel.Common.Worker
     ( ProgressUpdate(..)
+    , ProgressUpdateFor
     , StolenWorkload(..)
-    , VisitorKind(..)
+    , StolenWorkloadFor
     , WorkerRequestQueue
+    , WorkerRequestQueueFor
     , WorkerEnvironment(..)
+    , WorkerEnvironmentFor
     , WorkerTerminationReason(..)
+    , WorkerTerminationReasonFor
+    , VisitorKind(..)
     , forkWorkerThread
     , genericRunVisitor
     , runVisitor
@@ -71,19 +78,21 @@ import Control.Visitor.Workload
 
 -- Types {{{
 
-data ProgressUpdate ip = ProgressUpdate -- {{{
-    {   progressUpdateProgress :: ip
+data ProgressUpdate progress = ProgressUpdate -- {{{
+    {   progressUpdateProgress :: progress
     ,   progressUpdateRemainingWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''ProgressUpdate )
 -- }}}
+type ProgressUpdateFor visitor_mode = ProgressUpdate (ProgressFor visitor_mode)
 
-data StolenWorkload ip = StolenWorkload -- {{{
-    {   stolenWorkloadProgressUpdate :: ProgressUpdate ip
+data StolenWorkload progress = StolenWorkload -- {{{
+    {   stolenWorkloadProgressUpdate :: ProgressUpdate progress
     ,   stolenWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''StolenWorkload )
 -- }}}
+type StolenWorkloadFor visitor_mode = StolenWorkload (ProgressFor visitor_mode)
 
 data VisitorKind (m :: * → *) (n :: * → *) where -- {{{
     PureVisitor :: VisitorKind Identity IO
@@ -99,28 +108,32 @@ data VisitorFunctions (m :: * → *) (n :: * → *) (α :: *) = -- {{{
     }
 -- }}}
 
-data WorkerRequest ip = -- {{{
+data WorkerRequest progress = -- {{{
     AbortRequested
-  | ProgressUpdateRequested (ProgressUpdate ip → IO ())
-  | WorkloadStealRequested (Maybe (StolenWorkload ip) → IO ())
+  | ProgressUpdateRequested (ProgressUpdate progress → IO ())
+  | WorkloadStealRequested (Maybe (StolenWorkload progress) → IO ())
 -- }}}
+type WorkerRequestFor visitor_mode = WorkerRequest (ProgressFor visitor_mode)
 
-type WorkerRequestQueue ip = IORef [WorkerRequest ip]
+type WorkerRequestQueue progress = IORef [WorkerRequest progress]
+type WorkerRequestQueueFor visitor_mode = WorkerRequestQueue (ProgressFor visitor_mode)
 
-data WorkerEnvironment ip = WorkerEnvironment -- {{{
+data WorkerEnvironment progress = WorkerEnvironment -- {{{
     {   workerInitialPath :: Path
     ,   workerThreadId :: ThreadId
-    ,   workerPendingRequests :: WorkerRequestQueue ip
+    ,   workerPendingRequests :: WorkerRequestQueue progress
     ,   workerTerminationFlag :: IVar ()
     }
 -- }}}
+type WorkerEnvironmentFor visitor_mode = WorkerEnvironment (ProgressFor visitor_mode)
 
-data WorkerTerminationReason fp = -- {{{
-    WorkerFinished fp
+data WorkerTerminationReason worker_final_progress = -- {{{
+    WorkerFinished worker_final_progress
   | WorkerFailed String
   | WorkerAborted
   deriving (Eq,Show)
 -- }}}
+type WorkerTerminationReasonFor visitor_mode = WorkerTerminationReason (WorkerFinalProgressFor visitor_mode)
 
 -- }}}
 
@@ -131,18 +144,27 @@ deriveLoggers "Logger" [DEBUG,INFO]
 -- Functions {{{
 
 computeProgressUpdate :: -- {{{
-    VisitorMode α iv ip fv fp →
-    iv →
+    ( VisitorMode visitor_mode
+    , ResultFor visitor_mode ~ α
+    ) ⇒
+    visitor_mode →
+    WorkerIntermediateValueFor visitor_mode →
     Path →
     CheckpointCursor →
     Context m α →
     Checkpoint →
-    ProgressUpdate ip
+    ProgressUpdate (ProgressFor visitor_mode)
 computeProgressUpdate visitor_mode result initial_path cursor context checkpoint =
     ProgressUpdate
-        (case visitor_mode of
-            AllMode → Progress current_checkpoint result
-            FirstMode → current_checkpoint
+        (progressFrom visitor_mode result
+         .
+         checkpointFromInitialPath initial_path
+         .
+         checkpointFromCursor cursor
+         .
+         checkpointFromContext context
+         $
+         checkpoint
         )
         (Workload (initial_path >< pathFromCursor cursor)
          .
@@ -150,24 +172,16 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
          $
          checkpoint
         )
-  where
-    current_checkpoint =
-        checkpointFromInitialPath initial_path
-        .
-        checkpointFromCursor cursor
-        .
-        checkpointFromContext context
-        $
-        checkpoint
 -- }}}
 
 forkWorkerThread :: -- {{{
-    VisitorMode α iv ip fv fp →
+    (VisitorMode visitor_mode, ResultFor visitor_mode ~ α) ⇒
+    visitor_mode →
     VisitorKind m n →
-    (WorkerTerminationReason fp → IO ()) →
+    (WorkerTerminationReasonFor visitor_mode → IO ()) →
     VisitorT m α →
     Workload →
-    IO (WorkerEnvironment ip)
+    IO (WorkerEnvironmentFor visitor_mode)
 forkWorkerThread
     visitor_mode
     visitor_kind
@@ -180,7 +194,7 @@ forkWorkerThread
     --        GHC's head will explode!
     VisitorFunctions{..} ← case getVisitorFunctions visitor_kind of x → return x
     pending_requests_ref ← newIORef []
-    let loop1 result cursor visitor_state = -- Check for requests {{{
+    let loop1 (!result) cursor visitor_state = -- Check for requests {{{
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
                 [] → loop3 result cursor visitor_state
@@ -197,7 +211,7 @@ forkWorkerThread
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     debugM "Worker thread received progress update request."
                     liftIO . submitProgress $ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
-                    loop2 (initialIntermediateValueOf visitor_mode) cursor visitor_state rest_requests
+                    loop2 initial_intermediate_value cursor visitor_state rest_requests
                 WorkloadStealRequested submitMaybeWorkload:rest_requests → do
                     debugM "Worker thread received workload steal."
                     case tryStealWorkload initial_path cursor context of
@@ -209,7 +223,7 @@ forkWorkerThread
                                 StolenWorkload
                                     (computeProgressUpdate visitor_mode result initial_path new_cursor new_context checkpoint)
                                     workload
-                            loop2 (initialIntermediateValueOf visitor_mode) new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
+                            loop2 initial_intermediate_value new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
         -- }}}
         loop3 result cursor visitor_state -- Step visitor {{{
           = do
@@ -223,21 +237,18 @@ forkWorkerThread
                             $
                             Explored
                     in return . WorkerFinished $
-                    case visitor_mode of
-                        AllMode →
-                            Progress
-                                explored_checkpoint
-                                (maybe result (mappend result) maybe_solution)
-                        FirstMode → maybe (Left explored_checkpoint) Right maybe_solution
+                        constructWorkerFinishedProgress
+                            visitor_mode
+                            result
+                            maybe_solution
+                            explored_checkpoint
                 Just new_visitor_state →
                     case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
-                        Just solution →
-                            case visitor_mode of
-                                AllMode → do
-                                    new_result ← liftIO . evaluate $ solution `seq` (result `mappend` solution)
-                                    loop1 new_result cursor new_visitor_state
-                                FirstMode → return . WorkerFinished . Right $ solution
+                        Just (!solution) →
+                            reactToSolutionFound visitor_mode result solution
+                                (\new_result → loop1 new_result cursor new_visitor_state)
+                                (return . WorkerFinished)
         -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
@@ -247,7 +258,7 @@ forkWorkerThread
             (run $
                 walk initial_path visitor
                 >>=
-                loop1 (initialIntermediateValueOf visitor_mode) Seq.empty
+                loop1 initial_intermediate_value Seq.empty
                 .
                 initialVisitorState initial_checkpoint
             )
@@ -270,14 +281,17 @@ forkWorkerThread
             thread_id
             pending_requests_ref
             finished_flag
+  where
+    initial_intermediate_value = initialWorkerIntermediateValue visitor_mode
 {-# INLINE forkWorkerThread #-}
 -- }}}
 
 genericRunVisitor :: -- {{{
-    VisitorMode α iv ip fv fp →
+    (VisitorMode visitor_mode, ResultFor visitor_mode ~ α) ⇒
+    visitor_mode →
     VisitorKind m n →
     VisitorT m α →
-    IO (WorkerTerminationReason fv)
+    IO (WorkerTerminationReason (FinalResultFor visitor_mode))
 genericRunVisitor visitor_mode visitor_kind visitor = do
     final_progress_mvar ← newEmptyMVar
     _ ← forkWorkerThread
@@ -291,9 +305,7 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
         WorkerAborted → WorkerAborted
         WorkerFailed message → WorkerFailed message
         WorkerFinished progress → WorkerFinished $
-            case visitor_mode of
-                AllMode → progressResult progress
-                FirstMode → either (const Nothing) Just progress
+            extractFinalValueFromFinalProgress visitor_mode progress
 -- }}}
 
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
@@ -338,24 +350,24 @@ searchVisitorT ::MonadIO m ⇒ (∀ β. m β → IO β) → VisitorT m α → IO
 searchVisitorT = genericRunVisitor FirstMode . ImpureVisitor
 -- }}}
 
-sendAbortRequest :: WorkerRequestQueue ip → IO () -- {{{
+sendAbortRequest :: WorkerRequestQueue progress → IO () -- {{{
 sendAbortRequest = flip sendRequest AbortRequested
 -- }}}
 
 sendProgressUpdateRequest :: -- {{{
-    WorkerRequestQueue ip →
-    (ProgressUpdate ip → IO ()) →
+    WorkerRequestQueue progress →
+    (ProgressUpdate progress → IO ()) →
     IO ()
 sendProgressUpdateRequest queue = sendRequest queue . ProgressUpdateRequested
 -- }}}
 
-sendRequest :: WorkerRequestQueue ip → WorkerRequest ip → IO () -- {{{
+sendRequest :: WorkerRequestQueue progress → WorkerRequest progress → IO () -- {{{
 sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
 -- }}}
 
 sendWorkloadStealRequest :: -- {{{
-    WorkerRequestQueue ip →
-    (Maybe (StolenWorkload ip) → IO ()) →
+    WorkerRequestQueue progress →
+    (Maybe (StolenWorkload progress) → IO ()) →
     IO ()
 sendWorkloadStealRequest queue = sendRequest queue . WorkloadStealRequested
 -- }}}

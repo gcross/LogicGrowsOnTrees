@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -13,6 +14,7 @@ import Data.DeriveTH
 import Data.Serialize
 
 import Control.Visitor.Checkpoint
+import Control.Visitor.Parallel.Common.VisitorMode
 import qualified Control.Visitor.Parallel.Common.Worker as Worker
 import Control.Visitor.Utils.Handle
 import Control.Visitor.Workload
@@ -21,21 +23,22 @@ import System.IO (Handle)
 -- }}}
 
 -- Types {{{
-data MessageForSupervisor ip fp = -- {{{
+data MessageForSupervisor progress worker_final_progress = -- {{{
     Failed String
-  | Finished fp
-  | ProgressUpdate (Worker.ProgressUpdate ip)
-  | StolenWorkload (Maybe (Worker.StolenWorkload ip))
+  | Finished worker_final_progress
+  | ProgressUpdate (Worker.ProgressUpdate progress)
+  | StolenWorkload (Maybe (Worker.StolenWorkload progress))
   | WorkerQuit
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForSupervisor)
 -- }}}
+type MessageForSupervisorForMode visitor_mode = MessageForSupervisor (ProgressFor visitor_mode) (WorkerFinalProgressFor visitor_mode)
 
-data MessageForSupervisorReceivers worker_id ip fp = MessageForSupervisorReceivers -- {{{
-    {   receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate ip → IO ()
-    ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload ip) → IO ()
+data MessageForSupervisorReceivers visitor_mode worker_id = MessageForSupervisorReceivers -- {{{
+    {   receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate (ProgressFor visitor_mode) → IO ()
+    ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload (ProgressFor visitor_mode)) → IO ()
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
-    ,   receiveFinishedFromWorker :: worker_id → fp → IO ()
+    ,   receiveFinishedFromWorker :: worker_id → WorkerFinalProgressFor visitor_mode → IO ()
     ,   receiveQuitFromWorker :: worker_id → IO ()
     }
 -- }}}
@@ -50,8 +53,8 @@ $(derive makeSerialize ''MessageForWorker)
 -- }}}
 
 receiveAndProcessMessagesFromWorker :: -- {{{
-    MessageForSupervisorReceivers worker_id ip fp →
-    IO (MessageForSupervisor ip fp) →
+    MessageForSupervisorReceivers visitor_mode worker_id →
+    IO (MessageForSupervisorForMode visitor_mode) →
     worker_id →
     IO ()
 receiveAndProcessMessagesFromWorker
@@ -78,8 +81,10 @@ receiveAndProcessMessagesFromWorker
 -- }}}
 
 receiveAndProcessMessagesFromWorkerUsingHandle :: -- {{{
-    (Serialize ip, Serialize fp) ⇒
-    MessageForSupervisorReceivers worker_id ip fp →
+    ( Serialize (ProgressFor visitor_mode)
+    , Serialize (WorkerFinalProgressFor visitor_mode)
+    ) ⇒
+    MessageForSupervisorReceivers visitor_mode worker_id →
     Handle →
     worker_id →
     IO ()

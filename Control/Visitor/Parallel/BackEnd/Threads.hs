@@ -50,7 +50,7 @@ import System.Log.Logger.TH
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
 import Control.Visitor.Checkpoint
-import Control.Visitor.Parallel.Main (Driver(Driver),RunOutcome,mainParser)
+import Control.Visitor.Parallel.Main (Driver(Driver),RunOutcome,RunOutcomeFor,mainParser)
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
 import Control.Visitor.Parallel.Common.VisitorMode
 import Control.Visitor.Parallel.Common.Worker as Worker hiding (runVisitor,runVisitorIO,runVisitorT)
@@ -63,26 +63,28 @@ deriveLoggers "Logger" [DEBUG,INFO]
 -- }}}
 
 -- Types {{{
-newtype ThreadsControllerMonad r iv ip fv fp α =
-    C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment ip)) r iv ip fv fp α
+newtype ThreadsControllerMonad visitor_mode α =
+    C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor visitor_mode))) visitor_mode α
       } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,WorkgroupRequestQueueMonad)
 -- }}}
 
 -- Instances {{{
-instance RequestQueueMonad (ThreadsControllerMonad r iv ip fv fp) where
-    type RequestQueueMonadIntermediateProgress (ThreadsControllerMonad r iv ip fv fp) = ip
+instance HasVisitorMode (ThreadsControllerMonad visitor_mode) where -- {{{
+    type VisitorModeFor (ThreadsControllerMonad visitor_mode) = visitor_mode
+-- }}}
+instance VisitorMode visitor_mode ⇒ RequestQueueMonad (ThreadsControllerMonad visitor_mode) where -- {{{
     abort = C abort
     fork = C . fork . unwrapC
     getCurrentProgressAsync = C . getCurrentProgressAsync
     getNumberOfWorkersAsync = C . getNumberOfWorkersAsync
     requestProgressUpdateAsync = C . requestProgressUpdateAsync
 -- }}}
+-- }}}
 
 -- Driver {{{
-driver :: Driver IO shared_configuration supervisor_configuration m n r iv ip fv fp
+driver :: VisitorMode visitor_mode ⇒ Driver IO shared_configuration supervisor_configuration m n visitor_mode
 driver = Driver $
-    \visitor_mode
-     visitor_kind
+    \visitor_kind
      shared_configuration_term
      supervisor_configuration_term
      term_info
@@ -96,7 +98,6 @@ driver = Driver $
     initializeGlobalState shared_configuration
     starting_progress ← getMaybeStartingProgress shared_configuration supervisor_configuration
     genericRunVisitorStartingFrom
-         visitor_mode
          visitor_kind
          starting_progress
         (constructVisitor shared_configuration)
@@ -106,7 +107,7 @@ driver = Driver $
 
 -- Exposed Functions {{{
 
-changeNumberOfWorkersToMatchCPUs :: ThreadsControllerMonad r iv ip fv fp () -- {{{
+changeNumberOfWorkersToMatchCPUs :: VisitorMode visitor_mode ⇒ ThreadsControllerMonad visitor_mode () -- {{{
 changeNumberOfWorkersToMatchCPUs =
     liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
 -- }}}
@@ -114,7 +115,7 @@ changeNumberOfWorkersToMatchCPUs =
 runVisitor :: -- {{{
     Monoid result ⇒
     Visitor result →
-    ThreadsControllerMonad result result (Progress result) result (Progress result) () →
+    ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 runVisitor = runVisitorStartingFrom mempty
 -- }}}
@@ -123,15 +124,15 @@ runVisitorStartingFrom :: -- {{{
     Monoid result ⇒
     Progress result →
     Visitor result →
-    ThreadsControllerMonad result result (Progress result) result (Progress result) () →
+    ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorStartingFrom = genericRunVisitorStartingFrom AllMode PureVisitor
+runVisitorStartingFrom = genericRunVisitorStartingFrom PureVisitor
 -- }}}
 
 runVisitorIO :: -- {{{
     Monoid result ⇒
     VisitorIO result →
-    ThreadsControllerMonad result result (Progress result) result (Progress result) () →
+    ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 runVisitorIO = runVisitorIOStartingFrom mempty
 -- }}}
@@ -140,16 +141,16 @@ runVisitorIOStartingFrom :: -- {{{
     Monoid result ⇒
     Progress result →
     VisitorIO result →
-    ThreadsControllerMonad result result (Progress result) result (Progress result) () →
+    ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorIOStartingFrom = genericRunVisitorStartingFrom AllMode IOVisitor
+runVisitorIOStartingFrom = genericRunVisitorStartingFrom IOVisitor
 -- }}}
 
 runVisitorT :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
     VisitorT m result →
-    ThreadsControllerMonad result result (Progress result) result (Progress result) () →
+    ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 runVisitorT = flip runVisitorTStartingFrom mempty
 -- }}}
@@ -159,9 +160,9 @@ runVisitorTStartingFrom :: -- {{{
     (∀ α. m α → IO α) →
     Progress result →
     VisitorT m result →
-    ThreadsControllerMonad result result (Progress result) result (Progress result) () →
+    ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorTStartingFrom = genericRunVisitorStartingFrom AllMode . ImpureVisitor
+runVisitorTStartingFrom = genericRunVisitorStartingFrom . ImpureVisitor
 -- }}}
 
 -- }}}
@@ -171,15 +172,15 @@ runVisitorTStartingFrom = genericRunVisitorStartingFrom AllMode . ImpureVisitor
 fromJustOrBust message = fromMaybe (error message)
 
 genericRunVisitorStartingFrom :: -- {{{
-    VisitorMode r iv ip fv fp →
+    ∀ visitor_mode m n.
+    VisitorMode visitor_mode ⇒
     VisitorKind m n →
-    ip →
-    VisitorT m r →
-    ThreadsControllerMonad r iv ip fv fp () →
-    IO (RunOutcome ip fv)
-genericRunVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C controller) =
+    (ProgressFor visitor_mode) →
+    VisitorT m (ResultFor visitor_mode) →
+    ThreadsControllerMonad visitor_mode () →
+    IO (RunOutcomeFor visitor_mode)
+genericRunVisitorStartingFrom visitor_kind starting_progress visitor (C controller) =
     runWorkgroup
-        visitor_mode
         mempty
         (\MessageForSupervisorReceivers{..} →
             let createWorker _ = return ()
@@ -224,7 +225,7 @@ genericRunVisitorStartingFrom visitor_mode visitor_kind starting_progress visito
                     >>
                     (liftIO $
                         forkWorkerThread
-                            visitor_mode
+                            (constructVisitorMode :: visitor_mode)
                             visitor_kind
                             (\termination_reason →
                                 case termination_reason of

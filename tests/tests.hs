@@ -290,8 +290,8 @@ type UniqueVisitor = UniqueVisitorT Identity
 
 -- Functions {{{
 addAcceptOneWorkloadAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    IO (IORef (Maybe (worker_id,Workload)),SupervisorCallbacks ip worker_id IO)
+    SupervisorCallbacks visitor_mode worker_id IO →
+    IO (IORef (Maybe (worker_id,Workload)),SupervisorCallbacks visitor_mode worker_id IO)
 addAcceptOneWorkloadAction actions = do
     maybe_worker_and_workload_ref ← newIORef (Nothing :: Maybe (worker_id,Workload))
     return (maybe_worker_and_workload_ref, actions {
@@ -305,8 +305,8 @@ addAcceptOneWorkloadAction actions = do
 -- }}}
 
 addAcceptMultipleWorkloadsAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    IO (IORef [(worker_id,Workload)],SupervisorCallbacks ip worker_id IO)
+    SupervisorCallbacks visitor_mode worker_id IO →
+    IO (IORef [(worker_id,Workload)],SupervisorCallbacks visitor_mode worker_id IO)
 addAcceptMultipleWorkloadsAction actions = do
     workers_and_workloads_ref ← newIORef []
     return (workers_and_workloads_ref, actions {
@@ -318,8 +318,8 @@ addAcceptMultipleWorkloadsAction actions = do
 -- }}}
 
 addAppendWorkloadStealBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    IO (IORef [[worker_id]],SupervisorCallbacks ip worker_id IO)
+    SupervisorCallbacks visitor_mode worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks visitor_mode worker_id IO)
 addAppendWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
@@ -329,8 +329,8 @@ addAppendWorkloadStealBroadcastIdsAction actions = do
 -- }}}
 
 addAppendProgressBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    IO (IORef [[worker_id]],SupervisorCallbacks ip worker_id IO)
+    SupervisorCallbacks visitor_mode worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks visitor_mode worker_id IO)
 addAppendProgressBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
@@ -340,8 +340,8 @@ addAppendProgressBroadcastIdsAction actions = do
 -- }}}
 
 addReceiveCurrentProgressAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    IO (IORef (Maybe ip),SupervisorCallbacks ip worker_id IO)
+    SupervisorCallbacks visitor_mode worker_id IO →
+    IO (IORef (Maybe (ProgressFor visitor_mode)),SupervisorCallbacks visitor_mode worker_id IO)
 addReceiveCurrentProgressAction actions = do
     maybe_progress_ref ← newIORef (Nothing :: Maybe ip)
     return (maybe_progress_ref, actions {
@@ -355,8 +355,8 @@ addReceiveCurrentProgressAction actions = do
 -- }}}
 
 addSetWorkloadStealBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    IO (IORef [worker_id],SupervisorCallbacks ip worker_id IO)
+    SupervisorCallbacks visitor_mode worker_id IO →
+    IO (IORef [worker_id],SupervisorCallbacks visitor_mode worker_id IO)
 addSetWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [worker_id])
     return (broadcasts_ref, actions {
@@ -373,14 +373,14 @@ echoWithLabel label x = trace (label ++ " " ++ show x) x
 -- }}}
 
 ignoreAcceptWorkloadAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    SupervisorCallbacks ip worker_id IO
+    SupervisorCallbacks visitor_mode worker_id IO →
+    SupervisorCallbacks visitor_mode worker_id IO
 ignoreAcceptWorkloadAction actions = actions { sendWorkloadToWorker = \_ _ → return () }
 -- }}}
 
 ignoreWorkloadStealAction :: -- {{{
-    SupervisorCallbacks ip worker_id IO →
-    SupervisorCallbacks ip worker_id IO
+    SupervisorCallbacks visitor_mode worker_id IO →
+    SupervisorCallbacks visitor_mode worker_id IO
 ignoreWorkloadStealAction actions = actions { broadcastWorkloadStealToWorkers = \_ → return () }
 -- }}}
 
@@ -468,7 +468,7 @@ remdups (x : xx : xs)
 -- }}}
 
 -- Values {{{
-bad_test_supervisor_actions :: SupervisorCallbacks ip worker_id m -- {{{
+bad_test_supervisor_actions :: SupervisorCallbacks visitor_mode worker_id m -- {{{
 bad_test_supervisor_actions =
     SupervisorCallbacks
     {   broadcastProgressUpdateToWorkers =
@@ -927,7 +927,7 @@ tests = -- {{{
             supervisorRemainingWorkers @?= ([] :: [Int])
          -- }}}
         ,testCase "failure" $ do -- {{{
-            SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode bad_test_supervisor_actions (receiveWorkerFailure () "FAIL" :: ∀ α. SupervisorMonad () () (Progress ()) () (Progress ()) () IO α)
+            SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode bad_test_supervisor_actions (receiveWorkerFailure () "FAIL" :: ∀ α. SupervisorMonad (AllMode ()) () IO α)
             supervisorTerminationReason @?= SupervisorFailure () "FAIL"
             supervisorRemainingWorkers @?= []
          -- }}}

@@ -19,7 +19,9 @@ module Control.Visitor.Parallel.Main -- {{{
     , AllModeImpureKindDriver
     , Driver(..)
     , RunOutcome(..)
+    , RunOutcomeFor
     , TerminationReason(..)
+    , TerminationReasonFor
     , extractRunOutcomeFromSupervisorOutcome
     , mainParser
     , mainVisitor
@@ -134,25 +136,25 @@ data Driver -- {{{
     shared_configuration
     supervisor_configuration
     m n
-    r iv ip fv fp
+    visitor_mode
   = ∀ manager_monad.
-    ( RequestQueueMonad (manager_monad r iv ip fv fp)
-    , RequestQueueMonadIntermediateProgress (manager_monad r iv ip fv fp) ~ ip
+    ( RequestQueueMonad (manager_monad visitor_mode)
+    , VisitorModeFor (manager_monad visitor_mode) ~ visitor_mode
     ) ⇒
     Driver (
-        ( Serialize ip
+        ( Serialize (ProgressFor visitor_mode)
         , MonadIO result_monad
+        , VisitorMode visitor_mode
         ) ⇒
-        VisitorMode r iv ip fv fp →
         VisitorKind m n →
         Term shared_configuration →
         Term supervisor_configuration →
         TermInfo →
         (shared_configuration → IO ()) →
-        (shared_configuration → VisitorT m r) →
-        (shared_configuration → supervisor_configuration → IO ip) →
-        (shared_configuration → supervisor_configuration → RunOutcome ip fv → IO ()) →
-        (shared_configuration → supervisor_configuration → manager_monad r iv ip fv fp ()) →
+        (shared_configuration → VisitorT m (ResultFor visitor_mode)) →
+        (shared_configuration → supervisor_configuration → IO (ProgressFor visitor_mode)) →
+        (shared_configuration → supervisor_configuration → RunOutcomeFor visitor_mode → IO ()) →
+        (shared_configuration → supervisor_configuration → manager_monad visitor_mode ()) →
         result_monad ()
     )
 -- }}}
@@ -164,7 +166,7 @@ type AllModePureKindDriver visitor_configuration result_monad result = -- {{{
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
         Identity IO
-        result result (Progress result) result (Progress result)
+        (AllMode result)
 -- }}}
 type AllModeIOKindDriver visitor_configuration result_monad result = -- {{{
     Driver
@@ -172,30 +174,32 @@ type AllModeIOKindDriver visitor_configuration result_monad result = -- {{{
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
         IO IO
-        result result (Progress result) result (Progress result)
+        (AllMode result)
 -- }}}
-type AllModeImpureKindDriver visitor_configuration result_monad m result= -- {{{
+type AllModeImpureKindDriver visitor_configuration result_monad m result = -- {{{
     Driver
         result_monad
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
         m m
-        result result (Progress result) result (Progress result)
+        (AllMode result)
 -- }}}
 -- }}}
 
-data RunOutcome ip fv = RunOutcome -- {{{
+data RunOutcome progress final_result = RunOutcome -- {{{
     {   runStatistics :: RunStatistics
-    ,   runTerminationReason :: TerminationReason fv ip
+    ,   runTerminationReason :: TerminationReason progress final_result
     } deriving (Eq,Show)
 -- }}}
+type RunOutcomeFor visitor_mode = RunOutcome (ProgressFor visitor_mode) (FinalResultFor visitor_mode)
 
-data TerminationReason fv ip = -- {{{
-    Aborted ip
-  | Completed fv
+data TerminationReason progress final_result = -- {{{
+    Aborted progress
+  | Completed final_result
   | Failure String
   deriving (Eq,Show)
 -- }}}
+type TerminationReasonFor visitor_mode = TerminationReason (ProgressFor visitor_mode) (FinalResultFor visitor_mode)
 
 -- }}}
 
@@ -308,7 +312,7 @@ mainVisitor :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
-mainVisitor = genericMain AllMode PureVisitor
+mainVisitor = genericMain PureVisitor
 -- }}}
 
 mainVisitorIO :: -- {{{
@@ -319,7 +323,7 @@ mainVisitorIO :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorIO result) →
     result_monad ()
-mainVisitorIO = genericMain AllMode IOVisitor
+mainVisitorIO = genericMain IOVisitor
 -- }}}
 
 mainVisitorT :: -- {{{
@@ -331,7 +335,7 @@ mainVisitorT :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
-mainVisitorT = genericMain AllMode . ImpureVisitor 
+mainVisitorT = genericMain . ImpureVisitor 
 -- }}}
 
 -- }}}
@@ -339,7 +343,10 @@ mainVisitorT = genericMain AllMode . ImpureVisitor
 -- Internal Functions {{{
 
 -- Loops {{{
-checkpointLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadIntermediateProgress m)) ⇒ CheckpointConfiguration → m α -- {{{
+checkpointLoop :: -- {{{
+    ( RequestQueueMonad m
+    , Serialize (ProgressFor (VisitorModeFor m))
+    ) ⇒ CheckpointConfiguration → m α
 checkpointLoop CheckpointConfiguration{..} = forever $ do
     liftIO $ threadDelay delay
     requestProgressUpdate >>= writeCheckpointFile checkpoint_path
@@ -347,7 +354,10 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
     delay = round $ checkpoint_interval * 1000000
 -- }}}
 
-managerLoop :: (RequestQueueMonad m, Serialize (RequestQueueMonadIntermediateProgress m)) ⇒ SupervisorConfiguration → m () -- {{{
+managerLoop :: -- {{{
+    ( RequestQueueMonad m
+    , Serialize (ProgressFor (VisitorModeFor m))
+    ) ⇒ SupervisorConfiguration → m ()
 managerLoop SupervisorConfiguration{..} = do
     maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration
     case catMaybes
@@ -362,25 +372,25 @@ managerLoop SupervisorConfiguration{..} = do
 -- }}}
 
 genericMain :: -- {{{
-    ( Serialize ip
-    , MonadIO result_monad
+    ( MonadIO result_monad
+    , VisitorMode visitor_mode
+    , ResultFor visitor_mode ~ result
+    , Serialize (ProgressFor visitor_mode)
     ) ⇒
-    VisitorMode r iv ip fv fp →
     VisitorKind m n →
     Driver
         result_monad
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
         m n
-        r iv ip fv fp →
+        visitor_mode →
     Term visitor_configuration →
     TermInfo →
-    (visitor_configuration → RunOutcome ip fv → IO ()) →
-    (visitor_configuration → VisitorT m r) →
+    (visitor_configuration → RunOutcomeFor visitor_mode → IO ()) →
+    (visitor_configuration → VisitorT m result) →
     result_monad ()
-genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
-    run  visitor_mode
-         visitor_kind
+genericMain visitor_kind (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
+    run  visitor_kind
         (makeSharedConfigurationTerm visitor_configuration_term)
          supervisor_configuration_term
          infomod
@@ -390,14 +400,14 @@ genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term in
         (constructVisitor . visitor_configuration)
         (\_ SupervisorConfiguration{..} →
             case maybe_checkpoint_configuration of
-                Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
+                Nothing → (infoM "Checkpointing is NOT enabled") >> return mempty
                 Just CheckpointConfiguration{..} → do
                     noticeM $ "Checkpointing enabled"
                     noticeM $ "Checkpoint file is " ++ checkpoint_path
                     noticeM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
                     ifM (doesFileExist checkpoint_path)
                         (noticeM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
-                        (return initial_progress)
+                        (return mempty)
         )
         (\SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} →
             (do showStatistics statistics_configuration runStatistics
@@ -415,8 +425,6 @@ genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term in
                         Failure _ → deleteCheckpointFile
         )
         (const managerLoop)
-  where
-    initial_progress = initialIntermediateProgressOf visitor_mode
 -- }}}
 
 maybeForkIO :: RequestQueueMonad m ⇒ (α → m ()) → Maybe α → m (Maybe ThreadId) -- {{{

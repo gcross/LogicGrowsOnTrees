@@ -33,37 +33,50 @@ import Data.Typeable (Typeable)
 import Control.Visitor.Checkpoint (Progress)
 import qualified Control.Visitor.Parallel.Common.Supervisor as Supervisor
 import Control.Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
+import Control.Visitor.Parallel.Common.VisitorMode
 -- }}}
 
 -- Classes {{{
 
-class MonadCatchIO m ⇒ RequestQueueMonad m where -- {{{
-    type RequestQueueMonadIntermediateProgress m :: *
+class -- {{{
+  ( HasVisitorMode m
+  , VisitorMode (VisitorModeFor m)
+  , MonadCatchIO m
+  -- }}}
+  ) ⇒ RequestQueueMonad m where -- {{{
     abort :: m ()
     fork :: m () → m ThreadId
-    getCurrentProgressAsync :: (RequestQueueMonadIntermediateProgress m → IO ()) → m ()
+    getCurrentProgressAsync :: (ProgressFor (VisitorModeFor m) → IO ()) → m ()
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
-    requestProgressUpdateAsync :: (RequestQueueMonadIntermediateProgress m → IO ()) → m ()
+    requestProgressUpdateAsync :: (ProgressFor (VisitorModeFor m) → IO ()) → m ()
 -- }}}
 
 -- }}}
 
 -- Types {{{
 
-type Request r iv ip fv fp worker_id m = SupervisorMonad r iv ip fv fp worker_id m ()
-data RequestQueue r iv ip fv fp worker_id m = RequestQueue -- {{{
-    {   requests :: !(TChan (Request r iv ip fv fp worker_id m))
-    ,   receivers :: !(IORef [ip → IO ()])
+type Request visitor_mode worker_id m = SupervisorMonad visitor_mode worker_id m ()
+data RequestQueue visitor_mode worker_id m = RequestQueue -- {{{
+    {   requests :: !(TChan (Request visitor_mode worker_id m))
+    ,   receivers :: !(IORef [ProgressFor visitor_mode → IO ()])
     }
 -- }}}
-type RequestQueueReader r iv ip fv fp worker_id m = ReaderT (RequestQueue r iv ip fv fp worker_id m) IO
+type RequestQueueReader visitor_mode worker_id m = ReaderT (RequestQueue visitor_mode worker_id m) IO
 
 -- }}}
 
 -- Instances {{{
 
-instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader r iv ip fv fp worker_id m) where -- {{{
-    type RequestQueueMonadIntermediateProgress (RequestQueueReader r iv ip fv fp worker_id m) = ip
+instance HasVisitorMode (RequestQueueReader visitor_mode worker_id m) where -- {{{
+    type VisitorModeFor (RequestQueueReader visitor_mode worker_id m) = visitor_mode
+-- }}}
+
+instance -- {{{
+  ( SupervisorFullConstraint worker_id m
+  , MonadCatchIO m
+  , VisitorMode visitor_mode
+  -- }}}
+  ) ⇒ RequestQueueMonad (RequestQueueReader visitor_mode worker_id m) where -- {{{
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
     fork m = ask >>= liftIO . forkIO . runReaderT m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
@@ -85,8 +98,8 @@ instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueue
 
 addProgressReceiver :: -- {{{
     MonadIO m' ⇒
-    (ip → IO ()) →
-    RequestQueue r iv ip fv fp worker_id m →
+    (ProgressFor visitor_mode → IO ()) →
+    RequestQueue visitor_mode worker_id m →
     m' ()
 addProgressReceiver receiver =
     liftIO
@@ -98,8 +111,8 @@ addProgressReceiver receiver =
 
 tryDequeueRequest :: -- {{{
     MonadIO m' ⇒
-    RequestQueue r iv ip fv fp worker_id m →
-    m' (Maybe (Request r iv ip fv fp worker_id m))
+    RequestQueue visitor_mode worker_id m →
+    m' (Maybe (Request visitor_mode worker_id m))
 tryDequeueRequest =
     liftIO
     .
@@ -112,8 +125,8 @@ tryDequeueRequest =
 
 enqueueRequest :: -- {{{
     MonadIO m' ⇒
-    Request r iv ip fv fp worker_id m →
-    RequestQueue r iv ip fv fp worker_id m →
+    Request visitor_mode worker_id m →
+    RequestQueue visitor_mode worker_id m →
     m' ()
 enqueueRequest = flip $
     (liftIO . atomically)
@@ -121,15 +134,17 @@ enqueueRequest = flip $
     (writeTChan . requests)
 -- }}}
 
-getCurrentProgress :: RequestQueueMonad m ⇒ m (RequestQueueMonadIntermediateProgress m) -- {{{
+getCurrentProgress :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m)) -- {{{
 getCurrentProgress = syncAsync getCurrentProgressAsync
 -- }}}
 
 getQuantityAsync :: -- {{{
-    (MonadIO m', Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id, Functor m, MonadCatchIO m) ⇒
-    SupervisorMonad r iv ip fv fp worker_id m α →
+    ( MonadIO m'
+    , SupervisorFullConstraint worker_id m
+    ) ⇒
+    SupervisorMonad visitor_mode worker_id m α →
     (α → IO ()) →
-    RequestQueue r iv ip fv fp worker_id m →
+    RequestQueue visitor_mode worker_id m →
     m' ()
 getQuantityAsync getQuantity receiveQuantity =
     enqueueRequest $ getQuantity >>= liftIO . receiveQuantity
@@ -141,14 +156,14 @@ getNumberOfWorkers = syncAsync getNumberOfWorkersAsync
 
 newRequestQueue ::  -- {{{
     MonadIO m' ⇒
-    m' (RequestQueue r iv ip fv fp worker_id m)
+    m' (RequestQueue visitor_mode worker_id m)
 newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
 -- }}}
 
 processAllRequests :: -- {{{
     MonadIO m ⇒
-    RequestQueue r iv ip fv fp worker_id m →
-    SupervisorMonad r iv ip fv fp worker_id m ()
+    RequestQueue visitor_mode worker_id m →
+    SupervisorMonad visitor_mode worker_id m ()
 processAllRequests (RequestQueue requests _) = go
   where
     go =
@@ -159,8 +174,8 @@ processAllRequests (RequestQueue requests _) = go
 
 processRequest :: -- {{{
     MonadIO m ⇒
-    RequestQueue r iv ip fv fp worker_id m →
-    SupervisorMonad r iv ip fv fp worker_id m ()
+    RequestQueue visitor_mode worker_id m →
+    SupervisorMonad visitor_mode worker_id m ()
 processRequest =
     join
     .
@@ -175,8 +190,8 @@ processRequest =
 
 receiveProgress :: -- {{{
     MonadIO m' ⇒
-    RequestQueue r iv ip fv fp worker_id m →
-    ip →
+    RequestQueue visitor_mode worker_id m →
+    ProgressFor visitor_mode →
     m' ()
 receiveProgress queue progress =
     liftIO
@@ -192,15 +207,15 @@ receiveProgress queue progress =
     queue
 -- }}}
 
-requestProgressUpdate :: RequestQueueMonad m ⇒ m (RequestQueueMonadIntermediateProgress m) -- {{{
+requestProgressUpdate :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m)) -- {{{
 requestProgressUpdate = syncAsync requestProgressUpdateAsync
 -- }}}
 
 requestQueueProgram :: -- {{{
     MonadIO m ⇒
-    SupervisorMonad r iv ip fv fp worker_id m () →
-    RequestQueue r iv ip fv fp worker_id m →
-    SupervisorProgram r iv ip fv fp worker_id m
+    SupervisorMonad visitor_mode worker_id m () →
+    RequestQueue visitor_mode worker_id m →
+    SupervisorProgram visitor_mode worker_id m
 requestQueueProgram initialize =
     flip (BlockingProgram initialize) id
     .
