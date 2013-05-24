@@ -19,10 +19,8 @@ module Control.Visitor.Parallel.Common.Worker
     , WorkerRequestQueue
     , WorkerEnvironment(..)
     , WorkerTerminationReason(..)
-    , forkVisitorWorkerThread
-    , forkVisitorIOWorkerThread
-    , forkVisitorTWorkerThread
-    , genericForkVisitorTWorkerThread
+    , forkWorkerThread
+    , genericRunVisitor
     , runVisitor
     , runVisitorIO
     , runVisitorT
@@ -46,6 +44,7 @@ import Data.Composition
 import Data.Derive.Serialize
 import Data.DeriveTH
 import qualified Data.Foldable as Fold
+import Data.Functor ((<$>))
 import Data.Functor.Identity (Identity)
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef,writeIORef)
 import qualified Data.IVar as IVar
@@ -159,69 +158,14 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
         checkpoint
 -- }}}
 
-extractAllFinishedResult :: WorkerTerminationReason (Progress α) → WorkerTerminationReason α -- {{{
-extractAllFinishedResult (WorkerFinished Progress{..}) = WorkerFinished progressResult
-extractAllFinishedResult (WorkerFailed message) = WorkerFailed message
-extractAllFinishedResult WorkerAborted = WorkerAborted
--- }}}
-
-forkVisitorWorkerThread :: -- {{{
-    Monoid α ⇒
-    (WorkerTerminationReason (Progress α) → IO ()) →
-    Visitor α →
-    Workload →
-    IO (WorkerEnvironment (Progress α))
-forkVisitorWorkerThread = genericForkVisitorTWorkerThread AllMode PureVisitor
--- }}}
-
-forkVisitorIOWorkerThread :: -- {{{
-    Monoid α ⇒
-    (WorkerTerminationReason (Progress α) → IO ()) →
-    VisitorIO α →
-    Workload →
-    IO (WorkerEnvironment (Progress α))
-forkVisitorIOWorkerThread = genericForkVisitorTWorkerThread AllMode IOVisitor
--- }}}
-
-forkVisitorTWorkerThread :: -- {{{
-    (MonadIO m, Monoid α) ⇒
-    (∀ β. m β → IO β) →
-    (WorkerTerminationReason (Progress α) → IO ()) →
-    VisitorT m α →
-    Workload →
-    IO (WorkerEnvironment (Progress α))
-forkVisitorTWorkerThread =
-    genericForkVisitorTWorkerThread AllMode
-    .
-    ImpureVisitor
--- }}}
-
-getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
-getVisitorFunctions PureVisitor = VisitorFunctions{..}
-  where
-    walk = return .* sendVisitorDownPath
-    step = return . stepVisitorThroughCheckpoint
-    run = id
-getVisitorFunctions IOVisitor = VisitorFunctions{..}
-  where
-    walk = sendVisitorTDownPath
-    step = stepVisitorTThroughCheckpoint
-    run = id
-getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
-  where
-    walk = sendVisitorTDownPath
-    step = stepVisitorTThroughCheckpoint
-{-# INLINE getVisitorFunctions #-}
--- }}}
-
-genericForkVisitorTWorkerThread :: -- {{{
+forkWorkerThread :: -- {{{
     VisitorMode α iv ip fv fp →
     VisitorKind m n →
     (WorkerTerminationReason fp → IO ()) →
     VisitorT m α →
     Workload →
     IO (WorkerEnvironment ip)
-genericForkVisitorTWorkerThread
+forkWorkerThread
     visitor_mode
     visitor_kind
     finishedCallback
@@ -323,31 +267,60 @@ genericForkVisitorTWorkerThread
             thread_id
             pending_requests_ref
             finished_flag
-{-# INLINE genericForkVisitorTWorkerThread #-}
+{-# INLINE forkWorkerThread #-}
 -- }}}
 
 genericRunVisitor :: -- {{{
-    Monoid α ⇒
-    ((WorkerTerminationReason α → IO ()) → Workload → IO (WorkerEnvironment α)) →
-    IO (WorkerTerminationReason α)
-genericRunVisitor forkWorkerThread = do
-    result_mvar ← newEmptyMVar
+    VisitorMode α iv ip fv fp →
+    VisitorKind m n →
+    VisitorT m α →
+    IO (WorkerTerminationReason fv)
+genericRunVisitor visitor_mode visitor_kind visitor = do
+    final_progress_mvar ← newEmptyMVar
     _ ← forkWorkerThread
-            (putMVar result_mvar)
+            visitor_mode
+            visitor_kind
+            (putMVar final_progress_mvar)
+            visitor
             entire_workload
-    takeMVar result_mvar
+    final_progress ← takeMVar final_progress_mvar
+    return $ case final_progress of
+        WorkerAborted → WorkerAborted
+        WorkerFailed message → WorkerFailed message
+        WorkerFinished progress → WorkerFinished $
+            case visitor_mode of
+                AllMode → progressResult progress
+                FirstMode → either (const Nothing) Just progress
+-- }}}
+
+getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
+getVisitorFunctions PureVisitor = VisitorFunctions{..}
+  where
+    walk = return .* sendVisitorDownPath
+    step = return . stepVisitorThroughCheckpoint
+    run = id
+getVisitorFunctions IOVisitor = VisitorFunctions{..}
+  where
+    walk = sendVisitorTDownPath
+    step = stepVisitorTThroughCheckpoint
+    run = id
+getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
+  where
+    walk = sendVisitorTDownPath
+    step = stepVisitorTThroughCheckpoint
+{-# INLINE getVisitorFunctions #-}
 -- }}}
 
 runVisitor :: Monoid α ⇒ Visitor α → IO (WorkerTerminationReason α) -- {{{
-runVisitor = liftM extractAllFinishedResult . genericRunVisitor . flip forkVisitorWorkerThread
+runVisitor = genericRunVisitor AllMode PureVisitor
 -- }}}
 
 runVisitorIO :: Monoid α ⇒ VisitorIO α → IO (WorkerTerminationReason α) -- {{{
-runVisitorIO = liftM extractAllFinishedResult . genericRunVisitor . flip forkVisitorIOWorkerThread
+runVisitorIO = genericRunVisitor AllMode IOVisitor
 -- }}}
 
 runVisitorT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason α) -- {{{
-runVisitorT runInIO = liftM extractAllFinishedResult . genericRunVisitor . flip (forkVisitorTWorkerThread runInIO)
+runVisitorT = genericRunVisitor AllMode . ImpureVisitor
 -- }}}
 
 sendAbortRequest :: WorkerRequestQueue ip → IO () -- {{{

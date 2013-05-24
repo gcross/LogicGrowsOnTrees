@@ -223,7 +223,7 @@ genericRunVisitorStartingFrom visitor_mode visitor_kind starting_progress visito
                     (debugM $ "Sending " ++ show workload ++ " to worker " ++ show worker_id)
                     >>
                     (liftIO $
-                        genericForkVisitorTWorkerThread
+                        forkWorkerThread
                             visitor_mode
                             visitor_kind
                             (\termination_reason →
