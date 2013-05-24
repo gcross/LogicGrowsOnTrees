@@ -16,6 +16,7 @@ module Control.Visitor.Parallel.BackEnd.Threads
     , changeNumberOfWorkersToMatchCPUs
     , driver
     , fork
+    , genericRunVisitorStartingFrom
     , getCurrentProgress
     , getCurrentProgressAsync
     , getNumberOfWorkers
@@ -78,10 +79,10 @@ instance RequestQueueMonad (ThreadsControllerMonad r iv ip fv fp) where
 -- }}}
 
 -- Driver {{{
-driver :: Driver IO shared_configuration supervisor_configuration visitor r iv ip fv fp
+driver :: Driver IO shared_configuration supervisor_configuration m n r iv ip fv fp
 driver = Driver $
     \visitor_mode
-     forkVisitorWorkerThread
+     visitor_kind
      shared_configuration_term
      supervisor_configuration_term
      term_info
@@ -96,8 +97,9 @@ driver = Driver $
     starting_progress ← getMaybeStartingProgress shared_configuration supervisor_configuration
     genericRunVisitorStartingFrom
          visitor_mode
+         visitor_kind
          starting_progress
-        (flip forkVisitorWorkerThread . constructVisitor $ shared_configuration)
+        (constructVisitor shared_configuration)
         (changeNumberOfWorkersToMatchCPUs >> constructManager shared_configuration supervisor_configuration)
      >>= notifyTerminated shared_configuration supervisor_configuration
 -- }}}
@@ -123,10 +125,7 @@ runVisitorStartingFrom :: -- {{{
     Visitor result →
     ThreadsControllerMonad result result (Progress result) result (Progress result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorStartingFrom starting_progress =
-    genericRunVisitorStartingFrom AllMode starting_progress
-    .
-    flip forkVisitorWorkerThread
+runVisitorStartingFrom = genericRunVisitorStartingFrom AllMode PureVisitor
 -- }}}
 
 runVisitorIO :: -- {{{
@@ -143,10 +142,7 @@ runVisitorIOStartingFrom :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad result result (Progress result) result (Progress result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorIOStartingFrom starting_progress =
-    genericRunVisitorStartingFrom AllMode starting_progress
-    .
-    flip forkVisitorIOWorkerThread
+runVisitorIOStartingFrom = genericRunVisitorStartingFrom AllMode IOVisitor
 -- }}}
 
 runVisitorT :: -- {{{
@@ -165,10 +161,7 @@ runVisitorTStartingFrom :: -- {{{
     VisitorT m result →
     ThreadsControllerMonad result result (Progress result) result (Progress result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorTStartingFrom runMonad starting_progress =
-    genericRunVisitorStartingFrom AllMode starting_progress
-    .
-    flip (forkVisitorTWorkerThread runMonad)
+runVisitorTStartingFrom = genericRunVisitorStartingFrom AllMode . ImpureVisitor
 -- }}}
 
 -- }}}
@@ -179,15 +172,12 @@ fromJustOrBust message = fromMaybe (error message)
 
 genericRunVisitorStartingFrom :: -- {{{
     VisitorMode r iv ip fv fp →
+    VisitorKind m n →
     ip →
-    (
-        (WorkerTerminationReason fp → IO ()) →
-        Workload →
-        IO (WorkerEnvironment ip)
-    ) →
+    VisitorT m r →
     ThreadsControllerMonad r iv ip fv fp () →
     IO (RunOutcome ip fv)
-genericRunVisitorStartingFrom visitor_mode starting_progress spawnWorker (C controller) =
+genericRunVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C controller) =
     runWorkgroup
         visitor_mode
         mempty
@@ -232,15 +222,22 @@ genericRunVisitorStartingFrom visitor_mode starting_progress spawnWorker (C cont
                 sendWorkloadTo worker_id workload = -- {{{
                     (debugM $ "Sending " ++ show workload ++ " to worker " ++ show worker_id)
                     >>
-                    (liftIO $ spawnWorker (\termination_reason →
-                        case termination_reason of
-                            WorkerFinished final_progress →
-                                receiveFinishedFromWorker worker_id final_progress
-                            WorkerFailed message →
-                                receiveFailureFromWorker worker_id message
-                            WorkerAborted →
-                                receiveQuitFromWorker worker_id
-                    ) workload)
+                    (liftIO $
+                        genericForkVisitorTWorkerThread
+                            visitor_mode
+                            visitor_kind
+                            (\termination_reason →
+                                case termination_reason of
+                                    WorkerFinished final_progress →
+                                        receiveFinishedFromWorker worker_id final_progress
+                                    WorkerFailed message →
+                                        receiveFailureFromWorker worker_id message
+                                    WorkerAborted →
+                                        receiveQuitFromWorker worker_id
+                            )
+                            visitor
+                            workload
+                    )
                     >>=
                     modify
                     .

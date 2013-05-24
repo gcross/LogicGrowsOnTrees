@@ -40,6 +40,7 @@ import Data.Composition ((.*))
 import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Either.Unwrap (mapRight)
+import Data.Functor.Identity (Identity)
 import Data.Maybe (catMaybes)
 import Data.Monoid (Endo(..),Monoid(..))
 import Data.Prefix.Units (FormatMode(FormatSiAll),fancySymbol,formatValue,unitName)
@@ -129,28 +130,23 @@ data Driver -- {{{
     result_monad
     shared_configuration
     supervisor_configuration
-    visitor
+    m n
     r iv ip fv fp
   = ∀ manager_monad.
     ( RequestQueueMonad (manager_monad r iv ip fv fp)
     , RequestQueueMonadIntermediateProgress (manager_monad r iv ip fv fp) ~ ip
     ) ⇒
     Driver (
-        ( Serialize r
+        ( Serialize ip
         , MonadIO result_monad
         ) ⇒
         VisitorMode r iv ip fv fp →
-        (
-            (WorkerTerminationReason fp → IO ()) →
-            visitor result →
-            Workload →
-            IO (WorkerEnvironment ip)
-        ) →
+        VisitorKind m n →
         Term shared_configuration →
         Term supervisor_configuration →
         TermInfo →
         (shared_configuration → IO ()) →
-        (shared_configuration → visitor result) →
+        (shared_configuration → VisitorT m r) →
         (shared_configuration → supervisor_configuration → IO ip) →
         (shared_configuration → supervisor_configuration → RunOutcome ip fv → IO ()) →
         (shared_configuration → supervisor_configuration → manager_monad r iv ip fv fp ()) →
@@ -280,14 +276,14 @@ mainVisitor :: -- {{{
         result_monad
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
-        Visitor
+        Identity IO
         result result (Progress result) result (Progress result) →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
-mainVisitor (Driver runDriver) = genericMain AllMode . flip runDriver $ forkVisitorWorkerThread
+mainVisitor = genericMain AllMode PureVisitor
 -- }}}
 
 mainVisitorIO :: -- {{{
@@ -296,31 +292,31 @@ mainVisitorIO :: -- {{{
         result_monad
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
-        VisitorIO
+        IO IO
         result result (Progress result) result (Progress result) →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorIO result) →
     result_monad ()
-mainVisitorIO (Driver runDriver) = genericMain AllMode . flip runDriver $ forkVisitorIOWorkerThread
+mainVisitorIO = genericMain AllMode IOVisitor
 -- }}}
 
 mainVisitorT :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (∀ β. m β → IO β) →
     Driver
         result_monad
         (SharedConfiguration visitor_configuration)
         SupervisorConfiguration
-        (VisitorT m)
+        m m
         result result (Progress result) result (Progress result) →
-    (∀ β. m β → IO β) →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
-mainVisitorT (Driver runDriver) = genericMain AllMode . flip runDriver . forkVisitorTWorkerThread
+mainVisitorT = genericMain AllMode . ImpureVisitor 
 -- }}}
 
 -- }}}
@@ -351,31 +347,25 @@ managerLoop SupervisorConfiguration{..} = do
 -- }}}
 
 genericMain :: -- {{{
-    ( ip ~ RequestQueueMonadIntermediateProgress (manager_monad r iv ip fv fp)
-    , RequestQueueMonad (manager_monad r iv ip fv fp)
-    , Serialize ip
+    ( Serialize ip
     , MonadIO result_monad
     ) ⇒
     VisitorMode r iv ip fv fp →
-    (
-        VisitorMode r iv ip fv fp →
-        Term (SharedConfiguration visitor_configuration) →
-        Term SupervisorConfiguration →
-        TermInfo →
-        (SharedConfiguration visitor_configuration → IO ()) →
-        (SharedConfiguration visitor_configuration → visitor) →
-        (SharedConfiguration visitor_configuration → SupervisorConfiguration → IO ip) →
-        (SharedConfiguration visitor_configuration → SupervisorConfiguration → RunOutcome ip fv → IO ()) →
-        (SharedConfiguration visitor_configuration → SupervisorConfiguration → manager_monad r iv ip fv fp ()) →
-        result_monad ()
-    ) →
+    VisitorKind m n →
+    Driver
+        result_monad
+        (SharedConfiguration visitor_configuration)
+        SupervisorConfiguration
+        m n
+        r iv ip fv fp →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome ip fv → IO ()) →
-    (visitor_configuration → visitor) →
+    (visitor_configuration → VisitorT m r) →
     result_monad ()
-genericMain visitor_mode run visitor_configuration_term infomod notifyTerminated constructVisitor =
+genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
     run  visitor_mode
+         visitor_kind
         (makeSharedConfigurationTerm visitor_configuration_term)
          supervisor_configuration_term
          infomod

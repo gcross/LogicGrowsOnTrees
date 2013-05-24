@@ -15,12 +15,14 @@
 module Control.Visitor.Parallel.Common.Worker
     ( ProgressUpdate(..)
     , StolenWorkload(..)
+    , VisitorKind(..)
     , WorkerRequestQueue
     , WorkerEnvironment(..)
     , WorkerTerminationReason(..)
     , forkVisitorWorkerThread
     , forkVisitorIOWorkerThread
     , forkVisitorTWorkerThread
+    , genericForkVisitorTWorkerThread
     , runVisitor
     , runVisitorIO
     , runVisitorT
@@ -212,7 +214,6 @@ getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
 -- }}}
 
 genericForkVisitorTWorkerThread :: -- {{{
-    MonadIO n ⇒
     VisitorMode α iv ip fv fp →
     VisitorKind m n →
     (WorkerTerminationReason fp → IO ()) →
