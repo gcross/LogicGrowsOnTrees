@@ -211,6 +211,7 @@ getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
   where
     walk = sendVisitorTDownPath
     step = stepVisitorTThroughCheckpoint
+{-# INLINE getVisitorFunctions #-}
 -- }}}
 
 genericForkVisitorTWorkerThread :: -- {{{
