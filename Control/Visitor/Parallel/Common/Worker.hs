@@ -1,6 +1,7 @@
 -- Language extensions {{{
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -80,6 +81,20 @@ data StolenWorkload ip = StolenWorkload -- {{{
 $( derive makeSerialize ''StolenWorkload )
 -- }}}
 
+data VisitorKind (m :: * → *) (n :: * → *) where -- {{{
+    PureVisitor :: VisitorKind Identity IO
+    IOVisitor :: VisitorKind IO IO
+    ImpureVisitor :: MonadIO m ⇒ (∀ β. m β → IO β) → VisitorKind m m
+-- }}}
+
+data VisitorFunctions (m :: * → *) (n :: * → *) (α :: *) = -- {{{
+    ∀ n. MonadIO n ⇒ VisitorFunctions
+    {   walk :: Path → VisitorT m α → n (VisitorT m α)
+    ,   step :: VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))
+    ,   run ::  (∀ β. n β → IO β)
+    }
+-- }}}
+
 data WorkerRequest ip = -- {{{
     AbortRequested
   | ProgressUpdateRequested (ProgressUpdate ip → IO ())
@@ -154,12 +169,7 @@ forkVisitorWorkerThread :: -- {{{
     Visitor α →
     Workload →
     IO (WorkerEnvironment (Progress α))
-forkVisitorWorkerThread =
-    genericForkVisitorTWorkerThread
-        AllMode
-        (return .* sendVisitorDownPath)
-        (return . stepVisitorThroughCheckpoint)
-        id
+forkVisitorWorkerThread = genericForkVisitorTWorkerThread AllMode PureVisitor
 -- }}}
 
 forkVisitorIOWorkerThread :: -- {{{
@@ -168,7 +178,7 @@ forkVisitorIOWorkerThread :: -- {{{
     VisitorIO α →
     Workload →
     IO (WorkerEnvironment (Progress α))
-forkVisitorIOWorkerThread = forkVisitorTWorkerThread id
+forkVisitorIOWorkerThread = genericForkVisitorTWorkerThread AllMode IOVisitor
 -- }}}
 
 forkVisitorTWorkerThread :: -- {{{
@@ -179,31 +189,47 @@ forkVisitorTWorkerThread :: -- {{{
     Workload →
     IO (WorkerEnvironment (Progress α))
 forkVisitorTWorkerThread =
-    genericForkVisitorTWorkerThread
-        AllMode
-        sendVisitorTDownPath
-        stepVisitorTThroughCheckpoint
+    genericForkVisitorTWorkerThread AllMode
+    .
+    ImpureVisitor
+-- }}}
+
+getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
+getVisitorFunctions PureVisitor = VisitorFunctions{..}
+  where
+    walk = return .* sendVisitorDownPath
+    step = return . stepVisitorThroughCheckpoint
+    run = id
+getVisitorFunctions IOVisitor = VisitorFunctions{..}
+  where
+    walk = sendVisitorTDownPath
+    step = stepVisitorTThroughCheckpoint
+    run = id
+getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
+  where
+    walk = sendVisitorTDownPath
+    step = stepVisitorTThroughCheckpoint
 -- }}}
 
 genericForkVisitorTWorkerThread :: -- {{{
     MonadIO n ⇒
     VisitorMode α iv ip fv fp →
-    (Path → VisitorT m α → n (VisitorT m α)) →
-    (VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))) →
-    (∀ ξ. n ξ → IO ξ) →
+    VisitorKind m n →
     (WorkerTerminationReason fp → IO ()) →
     VisitorT m α →
     Workload →
     IO (WorkerEnvironment ip)
 genericForkVisitorTWorkerThread
     visitor_mode
-    walk
-    step
-    run
+    visitor_kind
     finishedCallback
     visitor
     (Workload initial_path initial_checkpoint)
   = do
+    -- Note:  the following line of code needs to be this way --- that is, using
+    --        do notation to extract the value of VisitorFunctions --- or else
+    --        GHC's head will explode!
+    VisitorFunctions{..} ← case getVisitorFunctions visitor_kind of x → return x
     pending_requests_ref ← newIORef []
     let loop1 result cursor visitor_state = -- Check for requests {{{
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
