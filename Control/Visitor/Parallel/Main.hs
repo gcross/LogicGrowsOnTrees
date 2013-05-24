@@ -14,7 +14,10 @@
 -- }}}
 
 module Control.Visitor.Parallel.Main -- {{{
-    ( Driver(..)
+    ( AllModePureKindDriver
+    , AllModeIOKindDriver
+    , AllModeImpureKindDriver
+    , Driver(..)
     , RunOutcome(..)
     , TerminationReason(..)
     , extractRunOutcomeFromSupervisorOutcome
@@ -154,6 +157,33 @@ data Driver -- {{{
     )
 -- }}}
 
+-- Driver type aliases {{{
+type AllModePureKindDriver visitor_configuration result_monad result = -- {{{
+    Driver
+        result_monad
+        (SharedConfiguration visitor_configuration)
+        SupervisorConfiguration
+        Identity IO
+        result result (Progress result) result (Progress result)
+-- }}}
+type AllModeIOKindDriver visitor_configuration result_monad result = -- {{{
+    Driver
+        result_monad
+        (SharedConfiguration visitor_configuration)
+        SupervisorConfiguration
+        IO IO
+        result result (Progress result) result (Progress result)
+-- }}}
+type AllModeImpureKindDriver visitor_configuration result_monad m result= -- {{{
+    Driver
+        result_monad
+        (SharedConfiguration visitor_configuration)
+        SupervisorConfiguration
+        m m
+        result result (Progress result) result (Progress result)
+-- }}}
+-- }}}
+
 data RunOutcome ip fv = RunOutcome -- {{{
     {   runStatistics :: RunStatistics
     ,   runTerminationReason :: TerminationReason fv ip
@@ -272,12 +302,7 @@ mainParser term term_info =
 
 mainVisitor :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver
-        result_monad
-        (SharedConfiguration visitor_configuration)
-        SupervisorConfiguration
-        Identity IO
-        result result (Progress result) result (Progress result) →
+    AllModePureKindDriver visitor_configuration result_monad result →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
@@ -288,12 +313,7 @@ mainVisitor = genericMain AllMode PureVisitor
 
 mainVisitorIO :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver
-        result_monad
-        (SharedConfiguration visitor_configuration)
-        SupervisorConfiguration
-        IO IO
-        result result (Progress result) result (Progress result) →
+    AllModeIOKindDriver visitor_configuration result_monad result →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
@@ -305,12 +325,7 @@ mainVisitorIO = genericMain AllMode IOVisitor
 mainVisitorT :: -- {{{
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    Driver
-        result_monad
-        (SharedConfiguration visitor_configuration)
-        SupervisorConfiguration
-        m m
-        result result (Progress result) result (Progress result) →
+    AllModeImpureKindDriver visitor_configuration result_monad m result →
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
