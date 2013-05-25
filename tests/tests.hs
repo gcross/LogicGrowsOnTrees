@@ -103,7 +103,8 @@ import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
 import Control.Visitor.Utils.IntSum
 import Control.Visitor.Utils.WordSum
 import Control.Visitor.Workload
-import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT)
+import qualified Control.Visitor.Parallel.Common.Worker as Worker
+import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT,searchVisitor,searchVisitorIO,searchVisitorT)
 -- }}}
 
 -- Helpers {{{
@@ -1242,7 +1243,7 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "Control.Visitor.Parallel.Common.Worker" -- {{{
-        [testGroup "forkVisitor(X)WorkerThread" -- {{{
+        [testGroup "forkWorkerThread" -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new
                 semaphore ← newEmptyMVar
@@ -1523,6 +1524,9 @@ tests = -- {{{
                 ]
              -- }}}
             ]
+         -- }}}
+        ,testProperty "searchVisitor" $ \(visitor :: Visitor String) → -- {{{
+            unsafePerformIO (Worker.searchVisitor visitor) == WorkerFinished (searchVisitor visitor)
          -- }}}
         ]
      -- }}}

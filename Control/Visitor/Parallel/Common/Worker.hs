@@ -24,6 +24,9 @@ module Control.Visitor.Parallel.Common.Worker
     , runVisitor
     , runVisitorIO
     , runVisitorT
+    , searchVisitor
+    , searchVisitorIO
+    , searchVisitorT
     , sendAbortRequest
     , sendProgressUpdateRequest
     , sendWorkloadStealRequest
@@ -59,7 +62,7 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
-import Control.Visitor hiding (runVisitor,runVisitorT)
+import Control.Visitor hiding (runVisitor,runVisitorT,searchVisitor,searchVisitorT)
 import Control.Visitor.Checkpoint
 import Control.Visitor.Parallel.Common.VisitorMode
 import Control.Visitor.Path
@@ -116,7 +119,7 @@ data WorkerTerminationReason fp = -- {{{
     WorkerFinished fp
   | WorkerFailed String
   | WorkerAborted
-  deriving (Show)
+  deriving (Eq,Show)
 -- }}}
 
 -- }}}
@@ -321,6 +324,18 @@ runVisitorIO = genericRunVisitor AllMode IOVisitor
 
 runVisitorT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason α) -- {{{
 runVisitorT = genericRunVisitor AllMode . ImpureVisitor
+-- }}}
+
+searchVisitor :: Visitor α → IO (WorkerTerminationReason (Maybe α)) -- {{{
+searchVisitor = genericRunVisitor FirstMode PureVisitor
+-- }}}
+
+searchVisitorIO :: VisitorIO α → IO (WorkerTerminationReason (Maybe α)) -- {{{
+searchVisitorIO = genericRunVisitor FirstMode IOVisitor
+-- }}}
+
+searchVisitorT ::MonadIO m ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason (Maybe α)) -- {{{
+searchVisitorT = genericRunVisitor FirstMode . ImpureVisitor
 -- }}}
 
 sendAbortRequest :: WorkerRequestQueue ip → IO () -- {{{
