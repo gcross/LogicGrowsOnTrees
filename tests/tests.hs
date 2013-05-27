@@ -917,84 +917,6 @@ tests = -- {{{
           2 → void $ requestProgressUpdateAsync receiveProgress
       ]
      -- }}}
-    ,testGroup "Control.Visitor.Path" -- {{{
-        [testGroup "sendVisitorDownPath" -- {{{
-            [testCase "null path" $ (runVisitor . sendVisitorDownPath Seq.empty) (return [42]) @?= [42]
-            ,testCase "cache" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
-            ,testCase "cacheGuard" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ())))) (cacheGuard False >> return [42::Int]) @?= [42]
-            ,testCase "choice" $ do -- {{{
-                (runVisitor . sendVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
-                (runVisitor . sendVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]
-             -- }}}
-            ,testGroup "errors" -- {{{
-                [testGroup "PastVisitorIsInconsistentWithPresentVisitor" -- {{{
-                    [testCase "cache step with choice" $ -- {{{
-                        try (
-                            evaluate
-                            .
-                            runVisitor
-                            $
-                            sendVisitorDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: Visitor [Int])
-                        ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
-                     -- }}}
-                    ,testCase "choice step with cache" $ -- {{{
-                        try (
-                            evaluate
-                            .
-                            runVisitor
-                            $
-                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: Visitor [Int])
-                        ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
-                     -- }}}
-                    ]
-                 -- }}}
-                ,testGroup "VisitorTerminatedBeforeEndOfWalk" -- {{{
-                    [testCase "mzero" $ -- {{{
-                        try (
-                            evaluate
-                            .
-                            runVisitor
-                            $
-                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (mzero :: Visitor [Int])
-                        ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
-                     -- }}}
-                    ,testCase "return" $ -- {{{
-                        try (
-                            evaluate
-                            .
-                            runVisitor
-                            $
-                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (return (undefined :: [Int]))
-                        ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
-                     -- }}}
-                    ]
-                 -- }}}
-                ]
-             -- }}}
-            ]
-         -- }}}
-        ,testGroup "walkVisitorT" -- {{{
-            [testCase "cache step" $ do -- {{{
-                let (transformed_visitor,log) =
-                        runWriter . sendVisitorTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
-                            runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
-                log @?= []
-                (runWriter . runVisitorT $ transformed_visitor) @?= ([24],[])
-             -- }}}
-            ,testCase "choice step" $ do -- {{{
-                let (transformed_visitor,log) =
-                        runWriter . sendVisitorTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
-                            lift (tell [1])
-                            (lift (tell [2]) `mplus` lift (tell [3]))
-                            lift (tell [4])
-                            return [42]
-                log @?= [1]
-                (runWriter . runVisitorT $ transformed_visitor) @?= ([42],[3,4])
-             -- }}}
-            ]
-         -- }}}
-        ]
-     -- }}}
     ,testGroup "Control.Visitor.Parallel.Common.Supervisor" -- {{{
         [testCase "immediately abort" $ do -- {{{
             SupervisorOutcome{..} ← runSupervisorInAllMode bad_test_supervisor_actions (UnrestrictedProgram abortSupervisor)
@@ -1527,6 +1449,84 @@ tests = -- {{{
          -- }}}
         ,testProperty "searchVisitor" $ \(visitor :: Visitor String) → -- {{{
             unsafePerformIO (Worker.searchVisitor visitor) == WorkerFinished (searchVisitor visitor)
+         -- }}}
+        ]
+     -- }}}
+    ,testGroup "Control.Visitor.Path" -- {{{
+        [testGroup "sendVisitorDownPath" -- {{{
+            [testCase "null path" $ (runVisitor . sendVisitorDownPath Seq.empty) (return [42]) @?= [42]
+            ,testCase "cache" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
+            ,testCase "cacheGuard" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ())))) (cacheGuard False >> return [42::Int]) @?= [42]
+            ,testCase "choice" $ do -- {{{
+                (runVisitor . sendVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
+                (runVisitor . sendVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]
+             -- }}}
+            ,testGroup "errors" -- {{{
+                [testGroup "PastVisitorIsInconsistentWithPresentVisitor" -- {{{
+                    [testCase "cache step with choice" $ -- {{{
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            sendVisitorDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: Visitor [Int])
+                        ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
+                     -- }}}
+                    ,testCase "choice step with cache" $ -- {{{
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: Visitor [Int])
+                        ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
+                     -- }}}
+                    ]
+                 -- }}}
+                ,testGroup "VisitorTerminatedBeforeEndOfWalk" -- {{{
+                    [testCase "mzero" $ -- {{{
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (mzero :: Visitor [Int])
+                        ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
+                     -- }}}
+                    ,testCase "return" $ -- {{{
+                        try (
+                            evaluate
+                            .
+                            runVisitor
+                            $
+                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (return (undefined :: [Int]))
+                        ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
+                     -- }}}
+                    ]
+                 -- }}}
+                ]
+             -- }}}
+            ]
+         -- }}}
+        ,testGroup "walkVisitorT" -- {{{
+            [testCase "cache step" $ do -- {{{
+                let (transformed_visitor,log) =
+                        runWriter . sendVisitorTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
+                            runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
+                log @?= []
+                (runWriter . runVisitorT $ transformed_visitor) @?= ([24],[])
+             -- }}}
+            ,testCase "choice step" $ do -- {{{
+                let (transformed_visitor,log) =
+                        runWriter . sendVisitorTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
+                            lift (tell [1])
+                            (lift (tell [2]) `mplus` lift (tell [3]))
+                            lift (tell [4])
+                            return [42]
+                log @?= [1]
+                (runWriter . runVisitorT $ transformed_visitor) @?= ([42],[3,4])
+             -- }}}
+            ]
          -- }}}
         ]
      -- }}}
