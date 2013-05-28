@@ -880,7 +880,20 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "Control.Visitor.Parallel.BackEnd.Threads" $ -- {{{
-        [testGroup "stress tests" $ -- {{{
+        [testGroup "FirstMode" -- {{{
+            [testCase "two threads, one blocked" $ do -- {{{
+                RunOutcome _ termination_reason ←
+                    Threads.searchVisitorIO
+                        (let run = liftIO (threadDelay 1) >> (run `mplus` run) in run
+                         `mplus`
+                         return ()
+                        )
+                        (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
+                termination_reason @?= Completed (Just ())
+             -- }}}
+            ]
+         -- }}}
+        ,testGroup "stress tests" $ -- {{{
             let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
                     termination_reason_ivar ← IVar.new
                     token_mvar ← newEmptyMVar

@@ -16,11 +16,11 @@ module Control.Visitor.Parallel.BackEnd.Threads
     , changeNumberOfWorkersToMatchCPUs
     , driver
     , fork
-    , genericRunVisitorStartingFrom
     , getCurrentProgress
     , getCurrentProgressAsync
     , getNumberOfWorkers
     , getNumberOfWorkersAsync
+    , launchVisitorStartingFrom
     , requestProgressUpdate
     , requestProgressUpdateAsync
     , runVisitor
@@ -29,6 +29,12 @@ module Control.Visitor.Parallel.BackEnd.Threads
     , runVisitorIOStartingFrom
     , runVisitorT
     , runVisitorTStartingFrom
+    , searchVisitor
+    , searchVisitorStartingFrom
+    , searchVisitorIO
+    , searchVisitorIOStartingFrom
+    , searchVisitorT
+    , searchVisitorTStartingFrom
     ) where
 
 -- Imports {{{
@@ -53,7 +59,15 @@ import Control.Visitor.Checkpoint
 import Control.Visitor.Parallel.Main (Driver(Driver),RunOutcome,RunOutcomeFor,mainParser)
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
 import Control.Visitor.Parallel.Common.VisitorMode
-import Control.Visitor.Parallel.Common.Worker as Worker hiding (runVisitor,runVisitorIO,runVisitorT)
+import Control.Visitor.Parallel.Common.Worker as Worker
+    hiding
+    (runVisitor
+    ,runVisitorIO
+    ,runVisitorT
+    ,searchVisitor
+    ,searchVisitorIO
+    ,searchVisitorT
+    )
 import Control.Visitor.Parallel.Common.Workgroup
 import Control.Visitor.Workload
 -- }}}
@@ -97,7 +111,7 @@ driver = Driver $
         mainParser (liftA2 (,) shared_configuration_term supervisor_configuration_term) term_info
     initializeGlobalState shared_configuration
     starting_progress ← getMaybeStartingProgress shared_configuration supervisor_configuration
-    genericRunVisitorStartingFrom
+    launchVisitorStartingFrom
          visitor_kind
          starting_progress
         (constructVisitor shared_configuration)
@@ -126,7 +140,7 @@ runVisitorStartingFrom :: -- {{{
     Visitor result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorStartingFrom = genericRunVisitorStartingFrom PureVisitor
+runVisitorStartingFrom = launchVisitorStartingFrom PureVisitor
 -- }}}
 
 runVisitorIO :: -- {{{
@@ -143,7 +157,7 @@ runVisitorIOStartingFrom :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorIOStartingFrom = genericRunVisitorStartingFrom IOVisitor
+runVisitorIOStartingFrom = launchVisitorStartingFrom IOVisitor
 -- }}}
 
 runVisitorT :: -- {{{
@@ -162,7 +176,56 @@ runVisitorTStartingFrom :: -- {{{
     VisitorT m result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorTStartingFrom = genericRunVisitorStartingFrom . ImpureVisitor
+runVisitorTStartingFrom = launchVisitorStartingFrom . ImpureVisitor
+-- }}}
+
+searchVisitor :: -- {{{
+    Visitor result →
+    ThreadsControllerMonad (FirstMode result) () →
+    IO (RunOutcome Checkpoint (Maybe result))
+searchVisitor = searchVisitorStartingFrom mempty
+-- }}}
+
+searchVisitorStartingFrom :: -- {{{
+    Checkpoint →
+    Visitor result →
+    ThreadsControllerMonad (FirstMode result) () →
+    IO (RunOutcome Checkpoint (Maybe result))
+searchVisitorStartingFrom = launchVisitorStartingFrom PureVisitor
+-- }}}
+
+searchVisitorIO :: -- {{{
+    VisitorIO result →
+    ThreadsControllerMonad (FirstMode result) () →
+    IO (RunOutcome Checkpoint (Maybe result))
+searchVisitorIO = searchVisitorIOStartingFrom mempty
+-- }}}
+
+searchVisitorIOStartingFrom :: -- {{{
+    Checkpoint →
+    VisitorIO result →
+    ThreadsControllerMonad (FirstMode result) () →
+    IO (RunOutcome Checkpoint (Maybe result))
+searchVisitorIOStartingFrom = launchVisitorStartingFrom IOVisitor
+-- }}}
+
+searchVisitorT :: -- {{{
+    MonadIO m ⇒
+    (∀ α. m α → IO α) →
+    VisitorT m result →
+    ThreadsControllerMonad (FirstMode result) () →
+    IO (RunOutcome Checkpoint (Maybe result))
+searchVisitorT = flip searchVisitorTStartingFrom mempty
+-- }}}
+
+searchVisitorTStartingFrom :: -- {{{
+    MonadIO m ⇒
+    (∀ α. m α → IO α) →
+    Checkpoint →
+    VisitorT m result →
+    ThreadsControllerMonad (FirstMode result) () →
+    IO (RunOutcome Checkpoint (Maybe result))
+searchVisitorTStartingFrom = launchVisitorStartingFrom . ImpureVisitor
 -- }}}
 
 -- }}}
@@ -171,7 +234,7 @@ runVisitorTStartingFrom = genericRunVisitorStartingFrom . ImpureVisitor
 
 fromJustOrBust message = fromMaybe (error message)
 
-genericRunVisitorStartingFrom :: -- {{{
+launchVisitorStartingFrom :: -- {{{
     ∀ visitor_mode m n.
     VisitorMode visitor_mode ⇒
     VisitorKind m n →
@@ -179,7 +242,7 @@ genericRunVisitorStartingFrom :: -- {{{
     VisitorT m (ResultFor visitor_mode) →
     ThreadsControllerMonad visitor_mode () →
     IO (RunOutcomeFor visitor_mode)
-genericRunVisitorStartingFrom visitor_kind starting_progress visitor (C controller) =
+launchVisitorStartingFrom visitor_kind starting_progress visitor (C controller) =
     runWorkgroup
         mempty
         (\MessageForSupervisorReceivers{..} →
