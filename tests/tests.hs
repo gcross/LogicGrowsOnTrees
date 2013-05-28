@@ -112,6 +112,7 @@ import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,ru
 -- Instances {{{
 -- Newtypes {{{
 newtype UniqueVisitorT m = UniqueVisitor { unwrapUniqueVisitor :: VisitorT m IntSet }
+newtype NullVisitorT m α = NullVisitor { unwrapNullVisitor :: VisitorT m α }
 -- }}}
 
 -- Arbitrary {{{
@@ -155,6 +156,32 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
 
         resultPlus, cachedPlus :: Monoid α ⇒ Gen (α → VisitorT m α)
         resultPlus = (\x → flip fmap x . mappend) <$> result
+        cachedPlus = (\x → flip fmap x . mappend) <$> cached
+-- }}}
+
+instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitrary (NullVisitorT m α) where -- {{{
+    arbitrary = fmap (NullVisitor . ($ mempty)) (sized arb)
+      where
+        arb :: Monoid α ⇒ Int → Gen (α → VisitorT m α)
+        arb 0 = null
+        arb 1 = null
+        arb n = frequency
+            [(2,liftM2 (>=>) cachedPlus (arb n))
+            ,(4, do left_size ← choose (0,n)
+                    let right_size = n-left_size
+                    liftM2 (liftA2 mplus)
+                        (arb left_size)
+                        (arb right_size)
+             )
+            ]
+
+        null :: Gen (α → VisitorT m α)
+        null = return (const mzero)
+
+        cached :: Gen (VisitorT m α)
+        cached = fmap cache arbitrary
+
+        cachedPlus :: Monoid α ⇒ Gen (α → VisitorT m α)
         cachedPlus = (\x → flip fmap x . mappend) <$> cached
 -- }}}
 
@@ -286,6 +313,7 @@ instance Exception TestException
 
 -- Type alises {{{
 type UniqueVisitor = UniqueVisitorT Identity
+type NullVisitor = NullVisitorT Identity
 -- }}}
 
 -- Functions {{{
@@ -891,9 +919,60 @@ tests = -- {{{
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
                 termination_reason @?= Completed (Just ())
              -- }}}
+            ,testGroup "stress tests" $ -- {{{
+                let runTest generator generateNoise = generator >>= \visitor → morallyDubiousIOProperty $ do
+                        termination_reason_ivar ← IVar.new
+                        token_mvar ← newEmptyMVar
+                        request_mvar ← newEmptyMVar
+                        progresses_ref ← newIORef []
+                        let receiveProgress Unexplored = return ()
+                            receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
+                        RunOutcome _ termination_reason ←
+                            Threads.searchVisitorIO
+                                (do value ← endowVisitor visitor
+                                    liftIO $ putMVar request_mvar () >> takeMVar token_mvar >> threadDelay 1
+                                    return value
+                                )
+                                .
+                                forever
+                                $
+                                do Workgroup.changeNumberOfWorkers (const $ return 1)
+                                   liftIO $ takeMVar request_mvar
+                                   generateNoise receiveProgress
+                                   liftIO $ putMVar token_mvar ()
+                        maybe_result ← case termination_reason of
+                            Aborted _ → error "prematurely aborted"
+                            Completed maybe_result → return maybe_result
+                            Failure message → error message
+                        let correct_results = runVisitor (Set.singleton <$> visitor)
+                        case maybe_result of
+                            Nothing → assertBool "solutions were missed" (Set.null correct_results)
+                            Just result → assertBool "solution was not valid" (Set.member result correct_results)
+                        (remdups <$> readIORef progresses_ref) >>= mapM_ (\checkpoint → do
+                            searchVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor @?= Nothing
+                         )
+                        return True
+                    testGroupUsingGenerator name generator = testGroup name $
+                        [testProperty "one thread" . runTest generator $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
+                            0 → void $ do
+                                  Workgroup.changeNumberOfWorkers (return . (\i → 0))
+                                  Workgroup.changeNumberOfWorkers (return . (\i → 1))
+                            1 → void $ requestProgressUpdateAsync receiveProgress
+                        ,testProperty "two threads" . runTest generator $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
+                            0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → 3-i))
+                            1 → void $ requestProgressUpdateAsync receiveProgress
+                        ,testProperty "many threads" . runTest generator $ \receiveProgress → liftIO (randomRIO (0,2::Int)) >>= \i → case i of
+                            0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
+                            1 → void $ Workgroup.changeNumberOfWorkers (return . (+1))
+                            2 → void $ requestProgressUpdateAsync receiveProgress
+                        ]
+                in [testGroupUsingGenerator "with solutions" (arbitrary :: Gen (Visitor String))
+                   ,testGroupUsingGenerator "without solutions" (unwrapNullVisitor <$> arbitrary :: Gen (Visitor String))
+                   ]
+             -- }}}
             ]
          -- }}}
-        ,testGroup "stress tests" $ -- {{{
+        ,testGroup "AllMode stress tests" $ -- {{{
             let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
                     termination_reason_ivar ← IVar.new
                     token_mvar ← newEmptyMVar
