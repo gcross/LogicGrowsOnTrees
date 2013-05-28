@@ -51,6 +51,8 @@ module Control.Visitor.Parallel.Common.Supervisor -- {{{
     , runSupervisorInAllModeStartingFrom
     , runUnrestrictedSupervisor
     , runUnrestrictedSupervisorStartingFrom
+    , runUnrestrictedSupervisorInGivenMode
+    , runUnrestrictedSupervisorInGivenModeStartingFrom
     , runUnrestrictedSupervisorInAllMode
     , runUnrestrictedSupervisorInAllModeStartingFrom
     , setSupervisorDebugMode

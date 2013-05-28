@@ -481,6 +481,15 @@ bad_test_supervisor_actions =
             error "sendWorkloadToWorker called! :-/"
     }
 -- }}}
+ignore_supervisor_actions :: Monad m ⇒ SupervisorCallbacks visitor_mode worker_id m -- {{{
+ignore_supervisor_actions =
+    SupervisorCallbacks
+    {   broadcastProgressUpdateToWorkers = const $ return ()
+    ,   broadcastWorkloadStealToWorkers = const $ return ()
+    ,   receiveCurrentProgress = const $ return ()
+    ,   sendWorkloadToWorker = const . const $ return ()
+    }
+-- }}}
 -- }}}
 
 -- Checks {{{
@@ -1164,6 +1173,79 @@ tests = -- {{{
             supervisorRemainingWorkers @?= [()]
             readIORef maybe_workload_ref >>= (@?= Just ((),(Workload Seq.empty checkpoint)))
             readIORef broadcast_ids_list_ref >>= (@?= [[()]])
+         -- }}}
+        ,testGroup "FirstMode" $ -- {{{
+            [testGroup "single worker" -- {{{
+                [testCase "finishes with Explored" $ do -- {{{
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                        enableSupervisorDebugMode
+                        killWorkloadBuffer
+                        addWorker ()
+                        receiveWorkerFinished () (Left Explored)
+                        error "Supervisor did not terminate"
+                    supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe ())
+                 -- }}}
+                ,testCase "finishes with result" $ do -- {{{
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                        enableSupervisorDebugMode
+                        killWorkloadBuffer
+                        addWorker ()
+                        receiveWorkerFinished () (Right ())
+                        error "Supervisor did not terminate"
+                    supervisorTerminationReason @?= SupervisorCompleted (Just ())
+                 -- }}}
+                ]
+             -- }}}
+            ,testGroup "two workers" -- {{{
+                [testCase "both finish with Explored" $ do -- {{{
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                        enableSupervisorDebugMode
+                        addWorker True
+                        addWorker False
+                        receiveStolenWorkload True . Just $
+                            StolenWorkload
+                                (ProgressUpdate
+                                    Unexplored
+                                    (Workload
+                                        (Seq.singleton $ ChoiceStep LeftBranch)
+                                        Unexplored
+                                    )
+                                )
+                                (Workload
+                                    (Seq.singleton $ ChoiceStep RightBranch)
+                                    Unexplored
+                                )
+                        receiveWorkerFinished True (Left $ ChoiceCheckpoint Explored Unexplored)
+                        receiveWorkerFinished False (Left $ ChoiceCheckpoint Unexplored Explored)
+                        error "Supervisor did not terminate"
+                    supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe ())
+                 -- }}}
+                ,testCase "both finish with result" $ do -- {{{
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                        enableSupervisorDebugMode
+                        addWorker True
+                        addWorker False
+                        receiveStolenWorkload True . Just $
+                            StolenWorkload
+                                (ProgressUpdate
+                                    Unexplored
+                                    (Workload
+                                        (Seq.singleton $ ChoiceStep LeftBranch)
+                                        Unexplored
+                                    )
+                                )
+                                (Workload
+                                    (Seq.singleton $ ChoiceStep RightBranch)
+                                    Unexplored
+                                )
+                        receiveWorkerFinished False (Right False)
+                        receiveWorkerFinished True (Right True)
+                        error "Supervisor did not terminate"
+                    supervisorTerminationReason @?= SupervisorCompleted (Just False)
+                 -- }}}
+                ]
+             -- }}}
+            ]
          -- }}}
         ]
      -- }}}
