@@ -922,31 +922,48 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "stress tests" $ -- {{{
+            let extractResult (RunOutcome _ termination_reason) = -- {{{
+                    case termination_reason of
+                        Aborted _ → error "prematurely aborted"
+                        Completed result → return result
+                        Failure message → error message
+                -- }}}
+                receiveProgressInto progresses_ref progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
+                respondToRequests request_mvar token_mvar run = forever $ do
+                    Workgroup.changeNumberOfWorkers (const $ return 1)
+                    liftIO $ takeMVar request_mvar
+                    run
+                    liftIO $ putMVar token_mvar ()
+                oneThreadNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
+                    0 → void $ do
+                         Workgroup.changeNumberOfWorkers (return . (\i → 0))
+                         Workgroup.changeNumberOfWorkers (return . (\i → 1))
+                    1 → void $ requestProgressUpdateAsync receiveProgress
+                -- }}}
+                twoThreadsNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
+                    0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → 3-i))
+                    1 → void $ requestProgressUpdateAsync receiveProgress
+                -- }}}
+                manyThreadsNoise receiveProgress = liftIO (randomRIO (0,2::Int)) >>= \i → case i of -- {{{
+                    0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
+                    1 → void $ Workgroup.changeNumberOfWorkers (return . (+1))
+                    2 → void $ requestProgressUpdateAsync receiveProgress
+                -- }}}
+            in
             [testGroup "AllMode" $ -- {{{
                 let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
                         termination_reason_ivar ← IVar.new
                         token_mvar ← newEmptyMVar
                         request_mvar ← newEmptyMVar
                         progresses_ref ← newIORef []
-                        let receiveProgress (Progress Unexplored _) = return ()
-                            receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
-                        RunOutcome _ termination_reason ←
-                            Threads.runVisitorIO
+                        result ←
+                            (Threads.runVisitorIO
                                 (do value ← endowVisitor visitor
                                     liftIO $ putMVar request_mvar () >> takeMVar token_mvar
                                     return value
                                 )
-                                .
-                                forever
-                                $
-                                do Workgroup.changeNumberOfWorkers (const $ return 1)
-                                   liftIO $ takeMVar request_mvar
-                                   generateNoise receiveProgress
-                                   liftIO $ putMVar token_mvar ()
-                        result ← case termination_reason of
-                            Aborted _ → error "prematurely aborted"
-                            Completed result → return result
-                            Failure message → error message
+                                (respondToRequests request_mvar token_mvar (generateNoise $ receiveProgressInto progresses_ref))
+                            ) >>= extractResult
                         let correct_result = runVisitor visitor
                         result @?= correct_result
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
@@ -955,18 +972,9 @@ tests = -- {{{
                          )
                         return True
               in
-              [testProperty "one thread" . runTest $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
-                  0 → void $ do
-                          Workgroup.changeNumberOfWorkers (return . (\i → 0))
-                          Workgroup.changeNumberOfWorkers (return . (\i → 1))
-                  1 → void $ requestProgressUpdateAsync receiveProgress
-              ,testProperty "two threads" . runTest $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
-                  0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → 3-i))
-                  1 → void $ requestProgressUpdateAsync receiveProgress
-              ,testProperty "many threads" . runTest $ \receiveProgress → liftIO (randomRIO (0,2::Int)) >>= \i → case i of
-                  0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
-                  1 → void $ Workgroup.changeNumberOfWorkers (return . (+1))
-                  2 → void $ requestProgressUpdateAsync receiveProgress
+              [testProperty "one thread" . runTest $ oneThreadNoise
+              ,testProperty "two threads" . runTest $ twoThreadsNoise
+              ,testProperty "many threads" . runTest $ manyThreadsNoise
               ]
              -- }}}
             ,testGroup "FirstMode" $ -- {{{
@@ -975,25 +983,14 @@ tests = -- {{{
                         token_mvar ← newEmptyMVar
                         request_mvar ← newEmptyMVar
                         progresses_ref ← newIORef []
-                        let receiveProgress Unexplored = return ()
-                            receiveProgress progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
-                        RunOutcome _ termination_reason ←
-                            Threads.searchVisitorIO
+                        maybe_result ←
+                            (Threads.searchVisitorIO
                                 (do value ← endowVisitor visitor
                                     liftIO $ putMVar request_mvar () >> takeMVar token_mvar >> threadDelay 1
                                     return value
                                 )
-                                .
-                                forever
-                                $
-                                do Workgroup.changeNumberOfWorkers (const $ return 1)
-                                   liftIO $ takeMVar request_mvar
-                                   generateNoise receiveProgress
-                                   liftIO $ putMVar token_mvar ()
-                        maybe_result ← case termination_reason of
-                            Aborted _ → error "prematurely aborted"
-                            Completed maybe_result → return maybe_result
-                            Failure message → error message
+                                (respondToRequests request_mvar token_mvar (generateNoise $ receiveProgressInto progresses_ref))
+                            ) >>= extractResult
                         let correct_results = runVisitor (Set.singleton <$> visitor)
                         case maybe_result of
                             Nothing → assertBool "solutions were missed" (Set.null correct_results)
@@ -1003,18 +1000,9 @@ tests = -- {{{
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
-                        [testProperty "one thread" . runTest generator $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
-                            0 → void $ do
-                                  Workgroup.changeNumberOfWorkers (return . (\i → 0))
-                                  Workgroup.changeNumberOfWorkers (return . (\i → 1))
-                            1 → void $ requestProgressUpdateAsync receiveProgress
-                        ,testProperty "two threads" . runTest generator $ \receiveProgress → liftIO (randomRIO (0,1::Int)) >>= \i → case i of
-                            0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → 3-i))
-                            1 → void $ requestProgressUpdateAsync receiveProgress
-                        ,testProperty "many threads" . runTest generator $ \receiveProgress → liftIO (randomRIO (0,2::Int)) >>= \i → case i of
-                            0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
-                            1 → void $ Workgroup.changeNumberOfWorkers (return . (+1))
-                            2 → void $ requestProgressUpdateAsync receiveProgress
+                        [testProperty "one thread" . runTest generator $ oneThreadNoise
+                        ,testProperty "two threads" . runTest generator $ twoThreadsNoise
+                        ,testProperty "many threads" . runTest generator $ manyThreadsNoise
                         ]
                 in [testGroupUsingGenerator "with solutions" (arbitrary :: Gen (Visitor String))
                    ,testGroupUsingGenerator "without solutions" (unwrapNullVisitor <$> arbitrary :: Gen (Visitor String))
