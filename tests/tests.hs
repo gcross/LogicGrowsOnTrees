@@ -974,7 +974,6 @@ tests = -- {{{
             in
             [testGroup "AllMode" $ -- {{{
                 let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
-                        termination_reason_ivar ← IVar.new
                         token_mvar ← newEmptyMVar
                         request_mvar ← newEmptyMVar
                         progresses_ref ← newIORef []
@@ -1001,7 +1000,6 @@ tests = -- {{{
              -- }}}
             ,testGroup "FirstMode" $ -- {{{
                 let runTest generator generateNoise = generator >>= \visitor → morallyDubiousIOProperty $ do
-                        termination_reason_ivar ← IVar.new
                         token_mvar ← newEmptyMVar
                         request_mvar ← newEmptyMVar
                         progresses_ref ← newIORef []
