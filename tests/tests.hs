@@ -950,11 +950,12 @@ tests = -- {{{
                         Failure message → error message
                 -- }}}
                 receiveProgressInto progresses_ref progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
-                respondToRequests request_mvar token_mvar run = forever $ do
+                respondToRequests request_mvar token_mvar run = forever $ do -- {{{
                     Workgroup.changeNumberOfWorkers (const $ return 1)
                     liftIO $ takeMVar request_mvar
                     run
                     liftIO $ putMVar token_mvar ()
+                -- }}}
                 oneThreadNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
                     0 → void $ do
                          Workgroup.changeNumberOfWorkers (return . (\i → 0))
