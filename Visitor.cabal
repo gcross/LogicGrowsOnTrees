@@ -160,6 +160,7 @@ Test-Suite tests
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
         HUnit == 1.2.*,
+        lens >= 3.8 && < 3.10,
         operational == 0.2.*,
         random == 1.0.*,
         QuickCheck >= 2.4 && < 2.6,

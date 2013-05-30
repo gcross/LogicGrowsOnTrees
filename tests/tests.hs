@@ -21,6 +21,7 @@ import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM.TVar
 import Control.Exception
+import Control.Lens (_1,_2,(<+=),(<%=),use)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Operational (ProgramViewT(..),view)
@@ -186,39 +187,7 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
 -- }}}
 
 instance Monad m ⇒ Arbitrary (UniqueVisitorT m) where -- {{{
-    arbitrary = fmap (UniqueVisitor . ($ 0)) (sized $ \n → evalStateT (arb n 0) IntSet.empty)
-      where
-        arb :: Int → Int → StateT IntSet Gen (Int → VisitorT m IntSet)
-        arb 0 _ = return (const mzero)
-        arb 1 intermediate = frequencyT
-            [(1,return (const mzero))
-            ,(3,generateUnique (return . IntSet.singleton) intermediate)
-            ,(2,generateUnique (cache . IntSet.singleton) intermediate)
-            ]
-        arb n intermediate = frequencyT
-            [(2,generateForNext return intermediate (arb n))
-            ,(2,generateForNext cache intermediate (arb n))
-            ,(4, do left_size ← lift $ choose (0,n)
-                    let right_size = n-left_size
-                    liftM2 (liftA2 mplus)
-                        (arb left_size intermediate)
-                        (arb right_size intermediate)
-             )
-            ]
-
-        generateUnique :: Monad m ⇒ (Int → VisitorT m α) → Int → StateT IntSet Gen (Int → VisitorT m α)
-        generateUnique construct intermediate = do
-            observed ← get
-            x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
-            let final_value = x `xor` intermediate
-            modify (IntSet.insert final_value)
-            return $ construct . xor x
-
-        generateForNext :: Monad m ⇒ (Int → VisitorT m α) → Int → (Int → StateT IntSet Gen (α → VisitorT m β)) → StateT IntSet Gen (Int → VisitorT m β)
-        generateForNext construct intermediate next = do
-            x ← lift arbitrary
-            let new_intermediate = x `xor` intermediate
-            fmap (construct . xor x >=>) $ next new_intermediate
+    arbitrary = generateUniqueVisitorWithHooks (const $ return ())
 -- }}}
 
 instance Arbitrary Checkpoint where -- {{{
@@ -424,6 +393,59 @@ frequencyT xs0 = lift (choose (1, tot)) >>= pick xs0
   pick _ _  = error "frequencyT.pick used with empty list"
 -- }}}
 
+generateUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ (Int → m ()) → Gen (UniqueVisitorT m) -- {{{
+generateUniqueVisitorWithHooks runHook = fmap (UniqueVisitor . ($ 0)) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
+  where
+    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen (Int → VisitorT m IntSet)
+
+    arb1 n intermediate = do
+        id ← _1 <+= 1
+        visitor ← arb2 n intermediate
+        return $ \x → lift (runHook id) >> visitor x
+
+    arb2 0 _ = return (const mzero)
+    arb2 1 intermediate = frequencyT
+        [(1,return (const mzero))
+        ,(3,generateUnique (return . IntSet.singleton) intermediate)
+        ,(2,generateUnique (cache . IntSet.singleton) intermediate)
+        ]
+    arb2 n intermediate = frequencyT
+        [(2,generateForNext return intermediate (arb1 n))
+        ,(2,generateForNext cache intermediate (arb1 n))
+        ,(4, do left_size ← lift $ choose (0,n)
+                let right_size = n-left_size
+                liftM2 (liftA2 mplus)
+                    (arb1 left_size intermediate)
+                    (arb1 right_size intermediate)
+         )
+        ]
+
+    generateUnique :: -- {{{
+        Monad m ⇒
+        (Int → VisitorT m α) →
+        Int →
+        StateT (Int,IntSet) Gen (Int → VisitorT m α)
+    generateUnique construct intermediate = do
+        observed ← use _2
+        x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
+        let final_value = x `xor` intermediate
+        _2 <%= IntSet.insert final_value
+        return $ construct . xor x
+    -- }}}
+
+    generateForNext :: -- {{{
+        Monad m ⇒
+        (Int → VisitorT m α) →
+        Int →
+        (Int → StateT (Int,IntSet) Gen (α → VisitorT m β)) →
+        StateT (Int,IntSet) Gen (Int → VisitorT m β)
+    generateForNext construct intermediate next = do
+        x ← lift arbitrary
+        let new_intermediate = x `xor` intermediate
+        fmap (construct . xor x >=>) $ next new_intermediate
+    -- }}}
+-- }}}
+
 shuffle :: [α] → Gen [α] -- {{{
 shuffle [] = return []
 shuffle items = do
@@ -492,7 +514,6 @@ remdups (x : xx : xs)
  | x == xx   = remdups (x : xs)
  | otherwise = x : remdups (xx : xs)
 -- }}}
-
 -- }}}
 
 -- Values {{{
