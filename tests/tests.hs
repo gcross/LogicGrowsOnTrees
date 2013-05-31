@@ -952,12 +952,31 @@ tests = -- {{{
                         Completed result → return result
                         Failure message → error message
                 -- }}}
+                insertHooks cleared_flags_tvar request_queue = ($ \id → do -- {{{
+                    mvar ← liftIO . atomically $ do
+                        cleared_flags ← readTVar cleared_flags_tvar
+                        case Map.lookup id cleared_flags of
+                            Nothing → do
+                                mvar ← newEmptyTMVar
+                                modifyTVar cleared_flags_tvar (Map.insert id mvar)
+                                writeTChan request_queue mvar
+                                return mvar
+                            Just mvar → return mvar
+                    liftIO . atomically $ readTMVar mvar
+                 ) -- }}}
                 receiveProgressInto progresses_ref progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
                 respondToRequests request_mvar token_mvar run = forever $ do -- {{{
                     Workgroup.changeNumberOfWorkers (const $ return 1)
                     liftIO $ takeMVar request_mvar
                     run
                     liftIO $ putMVar token_mvar ()
+                -- }}}
+                respondToRequests' request_queue generateNoise progresses_ref = do -- {{{
+                    Workgroup.changeNumberOfWorkers (const . return $ 1)
+                    forever $ do
+                        mvar ← liftIO . atomically $ readTChan request_queue
+                        generateNoise $ receiveProgressInto progresses_ref
+                        liftIO . atomically $ putTMVar mvar ()
                 -- }}}
                 oneThreadNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
                     0 → void $ do
@@ -975,24 +994,22 @@ tests = -- {{{
                     2 → void $ requestProgressUpdateAsync receiveProgress
                 -- }}}
             in
-            [testGroup "AllMode" $ -- {{{
-                let runTest generateNoise = arbitrary >>= \(UniqueVisitor visitor) → morallyDubiousIOProperty $ do
-                        token_mvar ← newEmptyMVar
-                        request_mvar ← newEmptyMVar
+            [plusTestOptions (mempty {topt_maximum_generated_tests = Just 10}) $ testGroup "AllMode" $ -- {{{
+                let runTest generateNoise = randomUniqueVisitorWithHooks >>= \constructVisitor → morallyDubiousIOProperty $ do
+                        cleared_flags_tvar ← newTVarIO mempty
+                        request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         result ←
                             (Threads.runVisitorIO
-                                (do value ← endowVisitor visitor
-                                    liftIO $ putMVar request_mvar () >> takeMVar token_mvar
-                                    return value
-                                )
-                                (respondToRequests request_mvar token_mvar (generateNoise $ receiveProgressInto progresses_ref))
+                                (insertHooks cleared_flags_tvar request_queue constructVisitor)
+                                (respondToRequests' request_queue generateNoise progresses_ref)
                             ) >>= extractResult
-                        let correct_result = runVisitor visitor
+                        let visitor = constructVisitor (const $ return ())
+                        correct_result ← runVisitorT visitor
                         result @?= correct_result
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
-                            result @=? runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
-                            correct_result @=? mappend result (runVisitorThroughCheckpoint checkpoint visitor)
+                            runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (result @=?)
+                            runVisitorTThroughCheckpoint checkpoint visitor >>= (correct_result @=?) . mappend result
                          )
                         return True
               in
