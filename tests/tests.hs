@@ -1322,7 +1322,7 @@ tests = -- {{{
         ,testGroup "FirstMode" $ -- {{{
             [testGroup "single worker" -- {{{
                 [testCase "finishes with Explored" $ do -- {{{
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker ()
@@ -1331,7 +1331,7 @@ tests = -- {{{
                     supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe ())
                  -- }}}
                 ,testCase "finishes with result" $ do -- {{{
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker ()
@@ -1343,7 +1343,7 @@ tests = -- {{{
              -- }}}
             ,testGroup "two workers" -- {{{
                 [testCase "both finish with Explored" $ do -- {{{
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
                         enableSupervisorDebugMode
                         addWorker True
                         addWorker False
@@ -1366,7 +1366,7 @@ tests = -- {{{
                     supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe ())
                  -- }}}
                 ,testCase "both finish with result" $ do -- {{{
-                    SupervisorOutcome{..} ← runUnrestrictedSupervisorInGivenMode FirstMode ignore_supervisor_actions $ do
+                    SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
                         enableSupervisorDebugMode
                         addWorker True
                         addWorker False

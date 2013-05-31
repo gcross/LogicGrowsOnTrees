@@ -51,8 +51,6 @@ module Control.Visitor.Parallel.Common.Supervisor -- {{{
     , runSupervisorInAllModeStartingFrom
     , runUnrestrictedSupervisor
     , runUnrestrictedSupervisorStartingFrom
-    , runUnrestrictedSupervisorInGivenMode
-    , runUnrestrictedSupervisorInGivenModeStartingFrom
     , runUnrestrictedSupervisorInAllMode
     , runUnrestrictedSupervisorInAllModeStartingFrom
     , setSupervisorDebugMode
@@ -318,10 +316,11 @@ runSupervisor :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     , VisitorMode visitor_mode
     ) ⇒
+    visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     SupervisorProgram visitor_mode worker_id m →
     m (SupervisorOutcomeFor visitor_mode worker_id)
-runSupervisor = runSupervisorStartingFrom mempty
+runSupervisor = flip runSupervisorStartingFrom mempty
 -- }}}
 
 runSupervisorStartingFrom :: -- {{{
@@ -329,40 +328,17 @@ runSupervisorStartingFrom :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     , VisitorMode visitor_mode
     ) ⇒
+    visitor_mode →
     ProgressFor visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     SupervisorProgram visitor_mode worker_id m →
     m (SupervisorOutcomeFor visitor_mode worker_id)
-runSupervisorStartingFrom starting_progress actions program =
+runSupervisorStartingFrom visitor_mode starting_progress callbacks program =
     Implementation.runSupervisorStartingFrom
+        visitor_mode
         starting_progress
-        actions
+        callbacks
         (unwrapSupervisorMonad . runSupervisorProgram $ program)
--- }}}
-
-runSupervisorInGivenMode :: -- {{{
-    ( SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
-    ) ⇒
-    visitor_mode →
-    SupervisorCallbacks visitor_mode worker_id m →
-    SupervisorProgram visitor_mode worker_id m →
-    m (SupervisorOutcomeFor visitor_mode worker_id)
-runSupervisorInGivenMode = const runSupervisor
--- }}}
-
-runSupervisorInGivenModeStartingFrom :: -- {{{
-    ( SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
-    ) ⇒
-    visitor_mode →
-    ProgressFor visitor_mode →
-    SupervisorCallbacks visitor_mode worker_id m →
-    SupervisorProgram visitor_mode worker_id m →
-    m (SupervisorOutcomeFor visitor_mode worker_id)
-runSupervisorInGivenModeStartingFrom = const runSupervisorStartingFrom
 -- }}}
 
 runSupervisorInAllMode :: -- {{{
@@ -373,7 +349,7 @@ runSupervisorInAllMode :: -- {{{
     SupervisorCallbacks (AllMode result) worker_id m →
     SupervisorProgram (AllMode result) worker_id m →
     m (SupervisorOutcome result (Progress result) worker_id)
-runSupervisorInAllMode = runSupervisorInGivenMode AllMode
+runSupervisorInAllMode = runSupervisor AllMode
 -- }}}
 
 runSupervisorInAllModeStartingFrom :: -- {{{
@@ -385,7 +361,7 @@ runSupervisorInAllModeStartingFrom :: -- {{{
     SupervisorCallbacks (AllMode result) worker_id m →
     SupervisorProgram (AllMode result) worker_id m →
     m (SupervisorOutcome result (Progress result) worker_id)
-runSupervisorInAllModeStartingFrom = runSupervisorInGivenModeStartingFrom AllMode
+runSupervisorInAllModeStartingFrom = runSupervisorStartingFrom AllMode
 -- }}}
 
 runSupervisorProgram :: -- {{{
@@ -419,11 +395,12 @@ runUnrestrictedSupervisor :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     , VisitorMode visitor_mode
     ) ⇒
+    visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     (∀ α. SupervisorMonad visitor_mode worker_id m α) →
     m (SupervisorOutcomeFor visitor_mode worker_id)
-runUnrestrictedSupervisor callbacks =
-    runSupervisorStartingFrom mempty callbacks
+runUnrestrictedSupervisor visitor_mode callbacks =
+    runSupervisorStartingFrom visitor_mode mempty callbacks
     .
     UnrestrictedProgram
 -- }}}
@@ -433,41 +410,15 @@ runUnrestrictedSupervisorStartingFrom :: -- {{{
     , SupervisorWorkerIdConstraint worker_id
     , VisitorMode visitor_mode
     ) ⇒
+    visitor_mode →
     ProgressFor visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     (∀ α. SupervisorMonad visitor_mode worker_id m α) →
     m (SupervisorOutcomeFor visitor_mode worker_id)
-runUnrestrictedSupervisorStartingFrom starting_progress actions =
-    runSupervisorStartingFrom
-        starting_progress
-        actions
+runUnrestrictedSupervisorStartingFrom visitor_mode starting_progress callbacks =
+    runSupervisorStartingFrom visitor_mode starting_progress callbacks
     .
     UnrestrictedProgram
--- }}}
-
-runUnrestrictedSupervisorInGivenMode :: -- {{{
-    ( SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
-    ) ⇒
-    visitor_mode →
-    SupervisorCallbacks visitor_mode worker_id m →
-    (∀ α. SupervisorMonad visitor_mode worker_id m α) →
-    m (SupervisorOutcomeFor visitor_mode worker_id)
-runUnrestrictedSupervisorInGivenMode = const runUnrestrictedSupervisor
--- }}}
-
-runUnrestrictedSupervisorInGivenModeStartingFrom :: -- {{{
-    ( SupervisorMonadConstraint m
-    , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
-    ) ⇒
-    visitor_mode →
-    ProgressFor visitor_mode →
-    SupervisorCallbacks visitor_mode worker_id m →
-    (∀ α. SupervisorMonad visitor_mode worker_id m α) →
-    m (SupervisorOutcomeFor visitor_mode worker_id)
-runUnrestrictedSupervisorInGivenModeStartingFrom _ = runUnrestrictedSupervisorStartingFrom
 -- }}}
 
 runUnrestrictedSupervisorInAllMode :: -- {{{
@@ -478,7 +429,7 @@ runUnrestrictedSupervisorInAllMode :: -- {{{
     SupervisorCallbacks (AllMode result) worker_id m →
     (∀ α. SupervisorMonad (AllMode result) worker_id m α) →
     m (SupervisorOutcome result (Progress result) worker_id)
-runUnrestrictedSupervisorInAllMode = runUnrestrictedSupervisorInGivenMode AllMode
+runUnrestrictedSupervisorInAllMode = runUnrestrictedSupervisor AllMode
 -- }}}
 
 runUnrestrictedSupervisorInAllModeStartingFrom :: -- {{{
@@ -490,7 +441,7 @@ runUnrestrictedSupervisorInAllModeStartingFrom :: -- {{{
     SupervisorCallbacks (AllMode result) worker_id m →
     (∀ α. SupervisorMonad (AllMode result) worker_id m α) →
     m (SupervisorOutcome result (Progress result) worker_id)
-runUnrestrictedSupervisorInAllModeStartingFrom = runUnrestrictedSupervisorInGivenModeStartingFrom AllMode 
+runUnrestrictedSupervisorInAllModeStartingFrom = runUnrestrictedSupervisorStartingFrom AllMode 
 -- }}}
 
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad visitor_mode worker_id m () -- {{{

@@ -144,12 +144,13 @@ changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 
 runWorkgroup :: -- {{{
     VisitorMode visitor_mode ⇒
+    visitor_mode →
     inner_state →
     (MessageForSupervisorReceivers visitor_mode WorkerId → WorkgroupCallbacks inner_state) →
     ProgressFor visitor_mode →
     WorkgroupControllerMonad inner_state visitor_mode () →
     IO (RunOutcomeFor visitor_mode)
-runWorkgroup initial_inner_state constructCallbacks starting_progress (C controller) = do
+runWorkgroup visitor_mode initial_inner_state constructCallbacks starting_progress (C controller) = do
     request_queue ← newRequestQueue
     let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
@@ -187,6 +188,7 @@ runWorkgroup initial_inner_state constructCallbacks starting_progress (C control
         $
         do  supervisor_outcome@SupervisorOutcome{supervisorRemainingWorkers} ←
                 runSupervisorStartingFrom
+                    visitor_mode
                     starting_progress
                     SupervisorCallbacks{..}
                     (requestQueueProgram (return ()) request_queue)

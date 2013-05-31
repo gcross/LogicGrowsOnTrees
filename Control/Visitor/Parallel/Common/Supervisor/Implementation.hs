@@ -8,7 +8,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -304,6 +303,7 @@ data SupervisorCallbacks visitor_mode worker_id m = -- {{{
 data SupervisorConstants visitor_mode worker_id m = SupervisorConstants -- {{{
     {   callbacks :: !(SupervisorCallbacks visitor_mode worker_id m)
     ,   _current_time :: UTCTime
+    ,   _visitor_mode :: visitor_mode
     }
 $( makeLenses ''SupervisorConstants )
 -- }}}
@@ -813,14 +813,14 @@ extractIndependentMeasurementsStatistics =
 -- }}}
 
 getCurrentCheckpoint :: -- {{{
-    ∀ visitor_mode worker_id m m'.
     ( SupervisorMonadConstraint m'
     , SupervisorStateConstraint visitor_mode worker_id m'
     , SupervisorReaderConstraint visitor_mode worker_id m m'
     , VisitorMode visitor_mode
     ) ⇒ m' Checkpoint
 getCurrentCheckpoint =
-    liftM (checkpointFromIntermediateProgress (constructVisitorMode :: visitor_mode))
+    liftM2 checkpointFromIntermediateProgress
+        (view visitor_mode)
         (use current_progress)
 -- }}}
 
@@ -1105,7 +1105,6 @@ receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveSt
 -- }}}
 
 receiveWorkerFinishedWithRemovalFlag :: -- {{{
-    ∀ visitor_mode worker_id m.
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     , VisitorMode visitor_mode
@@ -1120,9 +1119,10 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
         else "Worker " ++ show worker_id ++ " finished."
     lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
     when remove_worker . lift $ retireWorker worker_id
+    visitor_mode ← view visitor_mode
     (checkpoint,final_value) ←
         reactToFinalProgress
-            (constructVisitorMode :: visitor_mode)
+            visitor_mode
             finishWithResult
             ((current_progress <%=) . mappend)
             final_progress
@@ -1233,17 +1233,17 @@ retireAndDeactivateWorker worker_id = do
 -- }}}
 
 runSupervisorStartingFrom :: -- {{{
-    ∀ visitor_mode worker_id m.
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
     , VisitorMode visitor_mode
     ) ⇒
+    visitor_mode →
     ProgressFor visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     (∀ α. AbortMonad visitor_mode worker_id m α) →
     m (SupervisorOutcomeFor visitor_mode worker_id)
-runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCurrentTime >>= \start_time →
-    flip runReaderT (SupervisorConstants actions undefined)
+runSupervisorStartingFrom visitor_mode starting_progress callbacks program = liftIO Clock.getCurrentTime >>= \start_time →
+    flip runReaderT (SupervisorConstants callbacks undefined visitor_mode)
     .
     flip evalStateT
         (SupervisorState
@@ -1252,7 +1252,7 @@ runSupervisorStartingFrom starting_progress actions program = liftIO Clock.getCu
                         Workload
                             Seq.empty
                             (checkpointFromIntermediateProgress
-                                (constructVisitorMode :: visitor_mode)
+                                visitor_mode
                                 starting_progress
                             )
             ,   _known_workers = mempty

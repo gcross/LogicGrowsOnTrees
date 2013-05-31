@@ -146,6 +146,7 @@ data Driver -- {{{
         , MonadIO result_monad
         , VisitorMode visitor_mode
         ) ⇒
+        visitor_mode →
         VisitorKind m n →
         Term shared_configuration →
         Term supervisor_configuration →
@@ -312,7 +313,7 @@ mainVisitor :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → Visitor result) →
     result_monad ()
-mainVisitor = genericMain PureVisitor
+mainVisitor = genericMain AllMode PureVisitor
 -- }}}
 
 mainVisitorIO :: -- {{{
@@ -323,7 +324,7 @@ mainVisitorIO :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorIO result) →
     result_monad ()
-mainVisitorIO = genericMain IOVisitor
+mainVisitorIO = genericMain AllMode IOVisitor
 -- }}}
 
 mainVisitorT :: -- {{{
@@ -335,7 +336,7 @@ mainVisitorT :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
-mainVisitorT = genericMain . ImpureVisitor 
+mainVisitorT = genericMain AllMode . ImpureVisitor
 -- }}}
 
 -- }}}
@@ -377,6 +378,7 @@ genericMain :: -- {{{
     , ResultFor visitor_mode ~ result
     , Serialize (ProgressFor visitor_mode)
     ) ⇒
+    visitor_mode →
     VisitorKind m n →
     Driver
         result_monad
@@ -389,8 +391,9 @@ genericMain :: -- {{{
     (visitor_configuration → RunOutcomeFor visitor_mode → IO ()) →
     (visitor_configuration → VisitorT m result) →
     result_monad ()
-genericMain visitor_kind (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
-    run  visitor_kind
+genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
+    run  visitor_mode
+         visitor_kind
         (makeSharedConfigurationTerm visitor_configuration_term)
          supervisor_configuration_term
          infomod

@@ -32,8 +32,6 @@ class Monoid (ProgressFor visitor_mode) ⇒ VisitorMode visitor_mode where -- {{
         ProgressFor visitor_mode →
         Checkpoint
 
-    constructVisitorMode :: visitor_mode
-
     constructWorkerFinishedProgress ::
         visitor_mode →
         WorkerIntermediateValueFor visitor_mode →
@@ -91,8 +89,6 @@ instance Monoid result ⇒ VisitorMode (AllMode result) where
 
     checkpointFromIntermediateProgress _ = progressCheckpoint
 
-    constructVisitorMode = AllMode
-
     constructWorkerFinishedProgress _ intermediate_result maybe_new_solution explored_checkpoint =
         Progress
             explored_checkpoint
@@ -122,8 +118,6 @@ instance VisitorMode (FirstMode result) where
     type WorkerFinalProgressFor (FirstMode result) = Either Checkpoint result
 
     checkpointFromIntermediateProgress _ = id
-
-    constructVisitorMode = FirstMode
 
     constructWorkerFinishedProgress _ _ maybe_new_result explored_checkpoint =
         maybe (Left explored_checkpoint) Right maybe_new_result

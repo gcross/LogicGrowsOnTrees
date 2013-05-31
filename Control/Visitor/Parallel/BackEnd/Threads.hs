@@ -2,7 +2,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -98,7 +97,8 @@ instance VisitorMode visitor_mode ⇒ RequestQueueMonad (ThreadsControllerMonad 
 -- Driver {{{
 driver :: VisitorMode visitor_mode ⇒ Driver IO shared_configuration supervisor_configuration m n visitor_mode
 driver = Driver $
-    \visitor_kind
+    \visitor_mode
+     visitor_kind
      shared_configuration_term
      supervisor_configuration_term
      term_info
@@ -112,6 +112,7 @@ driver = Driver $
     initializeGlobalState shared_configuration
     starting_progress ← getMaybeStartingProgress shared_configuration supervisor_configuration
     launchVisitorStartingFrom
+         visitor_mode
          visitor_kind
          starting_progress
         (constructVisitor shared_configuration)
@@ -140,7 +141,7 @@ runVisitorStartingFrom :: -- {{{
     Visitor result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorStartingFrom = launchVisitorStartingFrom PureVisitor
+runVisitorStartingFrom = launchVisitorStartingFrom AllMode PureVisitor
 -- }}}
 
 runVisitorIO :: -- {{{
@@ -157,7 +158,7 @@ runVisitorIOStartingFrom :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorIOStartingFrom = launchVisitorStartingFrom IOVisitor
+runVisitorIOStartingFrom = launchVisitorStartingFrom AllMode IOVisitor
 -- }}}
 
 runVisitorT :: -- {{{
@@ -176,7 +177,7 @@ runVisitorTStartingFrom :: -- {{{
     VisitorT m result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorTStartingFrom = launchVisitorStartingFrom . ImpureVisitor
+runVisitorTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureVisitor
 -- }}}
 
 searchVisitor :: -- {{{
@@ -191,7 +192,7 @@ searchVisitorStartingFrom :: -- {{{
     Visitor result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorStartingFrom = launchVisitorStartingFrom PureVisitor
+searchVisitorStartingFrom = launchVisitorStartingFrom FirstMode PureVisitor
 -- }}}
 
 searchVisitorIO :: -- {{{
@@ -206,7 +207,7 @@ searchVisitorIOStartingFrom :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorIOStartingFrom = launchVisitorStartingFrom IOVisitor
+searchVisitorIOStartingFrom = launchVisitorStartingFrom FirstMode IOVisitor
 -- }}}
 
 searchVisitorT :: -- {{{
@@ -225,7 +226,7 @@ searchVisitorTStartingFrom :: -- {{{
     VisitorT m result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorTStartingFrom = launchVisitorStartingFrom . ImpureVisitor
+searchVisitorTStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
 -- }}}
 
 -- }}}
@@ -235,15 +236,16 @@ searchVisitorTStartingFrom = launchVisitorStartingFrom . ImpureVisitor
 fromJustOrBust message = fromMaybe (error message)
 
 launchVisitorStartingFrom :: -- {{{
-    ∀ visitor_mode m n.
     VisitorMode visitor_mode ⇒
+    visitor_mode →
     VisitorKind m n →
     (ProgressFor visitor_mode) →
     VisitorT m (ResultFor visitor_mode) →
     ThreadsControllerMonad visitor_mode () →
     IO (RunOutcomeFor visitor_mode)
-launchVisitorStartingFrom visitor_kind starting_progress visitor (C controller) =
+launchVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C controller) =
     runWorkgroup
+        visitor_mode
         mempty
         (\MessageForSupervisorReceivers{..} →
             let createWorker _ = return ()
@@ -288,7 +290,7 @@ launchVisitorStartingFrom visitor_kind starting_progress visitor (C controller) 
                     >>
                     (liftIO $
                         forkWorkerThread
-                            (constructVisitorMode :: visitor_mode)
+                            visitor_mode
                             visitor_kind
                             (\termination_reason →
                                 case termination_reason of
