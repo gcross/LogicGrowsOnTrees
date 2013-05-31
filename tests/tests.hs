@@ -113,7 +113,7 @@ import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,ru
 -- Instances {{{
 -- Newtypes {{{
 newtype UniqueVisitorT m = UniqueVisitor { unwrapUniqueVisitor :: VisitorT m IntSet }
-newtype NullVisitorT m α = NullVisitor { unwrapNullVisitor :: VisitorT m α }
+newtype NullVisitorT m = NullVisitor { unwrapNullVisitor :: VisitorT m IntSet }
 -- }}}
 
 -- Arbitrary {{{
@@ -160,30 +160,8 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
         cachedPlus = (\x → flip fmap x . mappend) <$> cached
 -- }}}
 
-instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitrary (NullVisitorT m α) where -- {{{
-    arbitrary = fmap (NullVisitor . ($ mempty)) (sized arb)
-      where
-        arb :: Monoid α ⇒ Int → Gen (α → VisitorT m α)
-        arb 0 = null
-        arb 1 = null
-        arb n = frequency
-            [(2,liftM2 (>=>) cachedPlus (arb n))
-            ,(4, do left_size ← choose (0,n)
-                    let right_size = n-left_size
-                    liftM2 (liftA2 mplus)
-                        (arb left_size)
-                        (arb right_size)
-             )
-            ]
-
-        null :: Gen (α → VisitorT m α)
-        null = return (const mzero)
-
-        cached :: Gen (VisitorT m α)
-        cached = fmap cache arbitrary
-
-        cachedPlus :: Monoid α ⇒ Gen (α → VisitorT m α)
-        cachedPlus = (\x → flip fmap x . mappend) <$> cached
+instance Monad m ⇒ Arbitrary (NullVisitorT m) where -- {{{
+    arbitrary = (NullVisitor . ($ (const $ return ()))) <$> randomNullVisitorWithHooks
 -- }}}
 
 instance Monad m ⇒ Arbitrary (UniqueVisitorT m) where -- {{{
@@ -418,6 +396,58 @@ randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
             (left_result `mappend` right_result, ChoiceCheckpoint left right)
         ) (go1 (x >>= k)) (go1 (y >>= k))
     go2 visitor = elements [(runVisitor (VisitorT visitor),Explored),(mempty,Unexplored)]
+-- }}}
+
+randomNullVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → VisitorT m IntSet) -- {{{
+randomNullVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
+  where
+    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+
+    arb1 n intermediate = do
+        id ← _1 <+= 1
+        visitor ← arb2 n intermediate
+        return $ \args@(_,runHook) → lift (runHook id) >> visitor args
+
+    arb2 0 _ = return (const mzero)
+    arb2 1 _ = return (const mzero)
+    arb2 n intermediate = frequencyT
+        [(2,generateForNext return intermediate (arb1 n))
+        ,(2,generateForNext cache intermediate (arb1 n))
+        ,(4, do left_size ← lift $ choose (0,n)
+                let right_size = n-left_size
+                liftM2 (liftA2 mplus)
+                    (arb1 left_size intermediate)
+                    (arb1 right_size intermediate)
+         )
+        ]
+
+    generateUnique :: -- {{{
+        Monad m ⇒
+        (IntSet → VisitorT m IntSet) →
+        Int →
+        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+    generateUnique construct intermediate = do
+        observed ← use _2
+        x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
+        let final_value = x `xor` intermediate
+        _2 <%= IntSet.insert final_value
+        return $ construct . IntSet.singleton . xor x . fst
+    -- }}}
+
+    generateForNext :: -- {{{
+        Monad m ⇒
+        (Int → VisitorT m Int) →
+        Int →
+        (Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)) →
+        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+    generateForNext construct intermediate next = do
+        x ← lift arbitrary
+        let new_intermediate = x `xor` intermediate
+        visitor ← next new_intermediate
+        return $ \(value,runHook) → do
+            new_value ← construct . xor x $ value
+            visitor (new_value,runHook)
+    -- }}}
 -- }}}
 
 randomPathForVisitor :: Visitor α → Gen Path -- {{{
@@ -945,7 +975,7 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "stress tests" $ -- {{{
+        ,plusTestOptions (mempty {topt_maximum_generated_tests = Just 10}) $ testGroup "stress tests" $ -- {{{
             let extractResult (RunOutcome _ termination_reason) = -- {{{
                     case termination_reason of
                         Aborted _ → error "prematurely aborted"
@@ -965,13 +995,7 @@ tests = -- {{{
                     liftIO . atomically $ readTMVar mvar
                  ) -- }}}
                 receiveProgressInto progresses_ref progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
-                respondToRequests request_mvar token_mvar run = forever $ do -- {{{
-                    Workgroup.changeNumberOfWorkers (const $ return 1)
-                    liftIO $ takeMVar request_mvar
-                    run
-                    liftIO $ putMVar token_mvar ()
-                -- }}}
-                respondToRequests' request_queue generateNoise progresses_ref = do -- {{{
+                respondToRequests request_queue generateNoise progresses_ref = do -- {{{
                     Workgroup.changeNumberOfWorkers (const . return $ 1)
                     forever $ do
                         mvar ← liftIO . atomically $ readTChan request_queue
@@ -994,7 +1018,7 @@ tests = -- {{{
                     2 → void $ requestProgressUpdateAsync receiveProgress
                 -- }}}
             in
-            [plusTestOptions (mempty {topt_maximum_generated_tests = Just 10}) $ testGroup "AllMode" $ -- {{{
+            [testGroup "AllMode" $ -- {{{
                 let runTest generateNoise = randomUniqueVisitorWithHooks >>= \constructVisitor → morallyDubiousIOProperty $ do
                         cleared_flags_tvar ← newTVarIO mempty
                         request_queue ← newTChanIO
@@ -1002,14 +1026,14 @@ tests = -- {{{
                         result ←
                             (Threads.runVisitorIO
                                 (insertHooks cleared_flags_tvar request_queue constructVisitor)
-                                (respondToRequests' request_queue generateNoise progresses_ref)
+                                (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         let visitor = constructVisitor (const $ return ())
                         correct_result ← runVisitorT visitor
                         result @?= correct_result
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
-                            runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (result @=?)
-                            runVisitorTThroughCheckpoint checkpoint visitor >>= (correct_result @=?) . mappend result
+                            runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
+                            runVisitorTThroughCheckpoint checkpoint visitor >>= (@?= correct_result ) . mappend result
                          )
                         return True
               in
@@ -1019,24 +1043,22 @@ tests = -- {{{
               ]
              -- }}}
             ,testGroup "FirstMode" $ -- {{{
-                let runTest generator generateNoise = generator >>= \visitor → morallyDubiousIOProperty $ do
-                        token_mvar ← newEmptyMVar
-                        request_mvar ← newEmptyMVar
+                let runTest generator generateNoise = generator >>= \constructVisitor → morallyDubiousIOProperty $ do
+                        cleared_flags_tvar ← newTVarIO mempty
+                        request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         maybe_result ←
                             (Threads.searchVisitorIO
-                                (do value ← endowVisitor visitor
-                                    liftIO $ putMVar request_mvar () >> takeMVar token_mvar >> threadDelay 1
-                                    return value
-                                )
-                                (respondToRequests request_mvar token_mvar (generateNoise $ receiveProgressInto progresses_ref))
+                                (insertHooks cleared_flags_tvar request_queue constructVisitor)
+                                (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
-                        let correct_results = runVisitor (Set.singleton <$> visitor)
+                        let visitor = constructVisitor (const $ return ())
+                        correct_results ← runVisitorT $ Set.singleton <$> visitor
                         case maybe_result of
                             Nothing → assertBool "solutions were missed" (Set.null correct_results)
                             Just result → assertBool "solution was not valid" (Set.member result correct_results)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\checkpoint → do
-                            searchVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor @?= Nothing
+                            searchVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= Nothing)
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
@@ -1044,8 +1066,8 @@ tests = -- {{{
                         ,testProperty "two threads" . runTest generator $ twoThreadsNoise
                         ,testProperty "many threads" . runTest generator $ manyThreadsNoise
                         ]
-                in [testGroupUsingGenerator "with solutions" (arbitrary :: Gen (Visitor String))
-                   ,testGroupUsingGenerator "without solutions" (unwrapNullVisitor <$> arbitrary :: Gen (Visitor String))
+                in [testGroupUsingGenerator "with solutions" randomUniqueVisitorWithHooks
+                   ,testGroupUsingGenerator "without solutions" randomNullVisitorWithHooks
                    ]
              -- }}}
             ]
