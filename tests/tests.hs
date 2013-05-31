@@ -187,7 +187,7 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
 -- }}}
 
 instance Monad m ⇒ Arbitrary (UniqueVisitorT m) where -- {{{
-    arbitrary = ($ (const $ return ())) <$> randomUniqueVisitorWithHooks
+    arbitrary = (UniqueVisitor . ($ (const $ return ()))) <$> randomUniqueVisitorWithHooks
 -- }}}
 
 instance Arbitrary Checkpoint where -- {{{
@@ -435,8 +435,8 @@ randomPathForVisitor (VisitorT visitor) = go visitor
     go _ = return Seq.empty
 -- }}}
 
-randomUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → UniqueVisitorT m) -- {{{
-randomUniqueVisitorWithHooks = fmap ((UniqueVisitor .) . ($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
+randomUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → VisitorT m IntSet) -- {{{
+randomUniqueVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
   where
     arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
 
