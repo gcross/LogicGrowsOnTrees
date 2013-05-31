@@ -21,7 +21,7 @@ import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM.TVar
 import Control.Exception
-import Control.Lens (_1,_2,(<+=),(<%=),use)
+import Control.Lens (_1,_2,(%~),(<+=),(<%=),use)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Operational (ProgramViewT(..),view)
@@ -187,7 +187,7 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
 -- }}}
 
 instance Monad m ⇒ Arbitrary (UniqueVisitorT m) where -- {{{
-    arbitrary = generateUniqueVisitorWithHooks (const $ return ())
+    arbitrary = ($ (const $ return ())) <$> generateUniqueVisitorWithHooks
 -- }}}
 
 instance Arbitrary Checkpoint where -- {{{
@@ -393,21 +393,21 @@ frequencyT xs0 = lift (choose (1, tot)) >>= pick xs0
   pick _ _  = error "frequencyT.pick used with empty list"
 -- }}}
 
-generateUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ (Int → m ()) → Gen (UniqueVisitorT m) -- {{{
-generateUniqueVisitorWithHooks runHook = fmap (UniqueVisitor . ($ 0)) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
+generateUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → UniqueVisitorT m) -- {{{
+generateUniqueVisitorWithHooks = fmap ((UniqueVisitor .) . ($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
   where
-    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen (Int → VisitorT m IntSet)
+    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
 
     arb1 n intermediate = do
         id ← _1 <+= 1
         visitor ← arb2 n intermediate
-        return $ \x → lift (runHook id) >> visitor x
+        return $ \args@(_,runHook) → lift (runHook id) >> visitor args
 
     arb2 0 _ = return (const mzero)
     arb2 1 intermediate = frequencyT
         [(1,return (const mzero))
-        ,(3,generateUnique (return . IntSet.singleton) intermediate)
-        ,(2,generateUnique (cache . IntSet.singleton) intermediate)
+        ,(3,generateUnique return intermediate)
+        ,(2,generateUnique cache intermediate)
         ]
     arb2 n intermediate = frequencyT
         [(2,generateForNext return intermediate (arb1 n))
@@ -422,27 +422,30 @@ generateUniqueVisitorWithHooks runHook = fmap (UniqueVisitor . ($ 0)) . sized $ 
 
     generateUnique :: -- {{{
         Monad m ⇒
-        (Int → VisitorT m α) →
+        (IntSet → VisitorT m IntSet) →
         Int →
-        StateT (Int,IntSet) Gen (Int → VisitorT m α)
+        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
     generateUnique construct intermediate = do
         observed ← use _2
         x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
         let final_value = x `xor` intermediate
         _2 <%= IntSet.insert final_value
-        return $ construct . xor x
+        return $ construct . IntSet.singleton . xor x . fst
     -- }}}
 
     generateForNext :: -- {{{
         Monad m ⇒
-        (Int → VisitorT m α) →
+        (Int → VisitorT m Int) →
         Int →
-        (Int → StateT (Int,IntSet) Gen (α → VisitorT m β)) →
-        StateT (Int,IntSet) Gen (Int → VisitorT m β)
+        (Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)) →
+        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
     generateForNext construct intermediate next = do
         x ← lift arbitrary
         let new_intermediate = x `xor` intermediate
-        fmap (construct . xor x >=>) $ next new_intermediate
+        visitor ← next new_intermediate
+        return $ \(value,runHook) → do
+            new_value ← construct . xor x $ value
+            visitor (new_value,runHook)
     -- }}}
 -- }}}
 
