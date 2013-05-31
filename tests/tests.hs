@@ -187,7 +187,7 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
 -- }}}
 
 instance Monad m ⇒ Arbitrary (UniqueVisitorT m) where -- {{{
-    arbitrary = ($ (const $ return ())) <$> generateUniqueVisitorWithHooks
+    arbitrary = ($ (const $ return ())) <$> randomUniqueVisitorWithHooks
 -- }}}
 
 instance Arbitrary Checkpoint where -- {{{
@@ -393,8 +393,50 @@ frequencyT xs0 = lift (choose (1, tot)) >>= pick xs0
   pick _ _  = error "frequencyT.pick used with empty list"
 -- }}}
 
-generateUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → UniqueVisitorT m) -- {{{
-generateUniqueVisitorWithHooks = fmap ((UniqueVisitor .) . ($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
+shuffle :: [α] → Gen [α] -- {{{
+shuffle [] = return []
+shuffle items = do
+    index ← choose (0,length items-1)
+    let hd = items !! index
+        rest = take index items ++ drop (index+1) items
+    tl ← shuffle rest
+    return (hd:tl)
+-- }}}
+
+randomCheckpointForVisitor :: Monoid α ⇒ Visitor α → Gen (α,Checkpoint) -- {{{
+randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
+  where
+    go1 visitor = frequency
+        [(1,return (runVisitor (VisitorT visitor),Explored))
+        ,(1,return (mempty,Unexplored))
+        ,(3,go2 visitor)
+        ]
+    go2 (view → Cache (Identity (Just x)) :>>= k) =
+        fmap (second $ CacheCheckpoint (encode x)) (go1 (k x))
+    go2 (view → Choice (VisitorT x) (VisitorT y) :>>= k) =
+        liftM2 (\(left_result,left) (right_result,right) →
+            (left_result `mappend` right_result, ChoiceCheckpoint left right)
+        ) (go1 (x >>= k)) (go1 (y >>= k))
+    go2 visitor = elements [(runVisitor (VisitorT visitor),Explored),(mempty,Unexplored)]
+-- }}}
+
+randomPathForVisitor :: Visitor α → Gen Path -- {{{
+randomPathForVisitor (VisitorT visitor) = go visitor
+  where
+    go (view → Cache (Identity (Just x)) :>>= k) = oneof
+        [return Seq.empty
+        ,fmap (CacheStep (encode x) <|) (go (k x))
+        ]
+    go (view → Choice (VisitorT x) (VisitorT y) :>>= k) = oneof
+        [return Seq.empty
+        ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
+        ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
+        ]
+    go _ = return Seq.empty
+-- }}}
+
+randomUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → UniqueVisitorT m) -- {{{
+randomUniqueVisitorWithHooks = fmap ((UniqueVisitor .) . ($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
   where
     arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
 
@@ -447,48 +489,6 @@ generateUniqueVisitorWithHooks = fmap ((UniqueVisitor .) . ($ 0) . curry) . size
             new_value ← construct . xor x $ value
             visitor (new_value,runHook)
     -- }}}
--- }}}
-
-shuffle :: [α] → Gen [α] -- {{{
-shuffle [] = return []
-shuffle items = do
-    index ← choose (0,length items-1)
-    let hd = items !! index
-        rest = take index items ++ drop (index+1) items
-    tl ← shuffle rest
-    return (hd:tl)
--- }}}
-
-randomCheckpointForVisitor :: Monoid α ⇒ Visitor α → Gen (α,Checkpoint) -- {{{
-randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
-  where
-    go1 visitor = frequency
-        [(1,return (runVisitor (VisitorT visitor),Explored))
-        ,(1,return (mempty,Unexplored))
-        ,(3,go2 visitor)
-        ]
-    go2 (view → Cache (Identity (Just x)) :>>= k) =
-        fmap (second $ CacheCheckpoint (encode x)) (go1 (k x))
-    go2 (view → Choice (VisitorT x) (VisitorT y) :>>= k) =
-        liftM2 (\(left_result,left) (right_result,right) →
-            (left_result `mappend` right_result, ChoiceCheckpoint left right)
-        ) (go1 (x >>= k)) (go1 (y >>= k))
-    go2 visitor = elements [(runVisitor (VisitorT visitor),Explored),(mempty,Unexplored)]
--- }}}
-
-randomPathForVisitor :: Visitor α → Gen Path -- {{{
-randomPathForVisitor (VisitorT visitor) = go visitor
-  where
-    go (view → Cache (Identity (Just x)) :>>= k) = oneof
-        [return Seq.empty
-        ,fmap (CacheStep (encode x) <|) (go (k x))
-        ]
-    go (view → Choice (VisitorT x) (VisitorT y) :>>= k) = oneof
-        [return Seq.empty
-        ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
-        ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
-        ]
-    go _ = return Seq.empty
 -- }}}
 
 randomVisitorWithoutCache :: Arbitrary α ⇒ Gen (Visitor α) -- {{{
