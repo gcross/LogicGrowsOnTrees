@@ -69,6 +69,8 @@ import Data.Word
 
 import Debug.Trace (trace)
 
+import Text.Printf
+
 import System.IO (stdin,stdout)
 import System.IO.Unsafe
 import System.Log.Logger (Priority(..),updateGlobalLogger,rootLoggerName,setLevel)
@@ -339,6 +341,17 @@ addSetWorkloadStealBroadcastIdsAction actions = do
     })
 -- }}}
 
+checkFoundAgainstThreshold :: Int → IntSet → Either IntSet [Int] → IO Bool -- {{{
+checkFoundAgainstThreshold threshold _ (Left x) = do
+    assertBool (printf "check that the unsuccessful result is small enough (%i < %i)" (IntSet.size x) threshold) $ IntSet.size x < threshold
+    return True
+checkFoundAgainstThreshold threshold solutions (Right x) = do
+    let result = IntSet.fromList x
+    assertBool "check that the result set is big enough" $ IntSet.size result >= threshold
+    assertBool "check that the results are all in the full set of solutions" $ result `IntSet.isSubsetOf` solutions
+    return True
+-- }}}
+
 echo :: Show α ⇒ α → α -- {{{
 echo x = trace (show x) x
 -- }}}
@@ -357,6 +370,12 @@ ignoreWorkloadStealAction :: -- {{{
     SupervisorCallbacks visitor_mode worker_id IO →
     SupervisorCallbacks visitor_mode worker_id IO
 ignoreWorkloadStealAction actions = actions { broadcastWorkloadStealToWorkers = \_ → return () }
+-- }}}
+
+intSetSizeFilter :: Int → IntSet → Maybe [Int] -- {{{
+intSetSizeFilter threshold x
+  | IntSet.size x < threshold = Nothing
+  | otherwise = Just (IntSet.toList x)
 -- }}}
 
 frequencyT :: (MonadTrans t, Monad (t Gen)) ⇒ [(Int, t Gen a)] → t Gen a -- {{{
@@ -727,6 +746,31 @@ tests = -- {{{
                 case runIdentity (runVisitorT (fmap (:[]) visitor)) of
                     [] → Nothing
                     (x:_) → Just x
+            ]
+         -- }}}
+        ,testGroup "runVisitorUntilFound" -- {{{
+            [testProperty "compared to runVisitor" $ do
+                UniqueVisitor visitor ← arbitrary
+                let solutions = runVisitor visitor
+                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+                return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
+                    runVisitorUntilFound (intSetSizeFilter threshold) visitor
+            ]
+         -- }}}
+        ,testGroup "runVisitorTUntilFound" -- {{{
+            [testProperty "compared to runVisitorT" $ do
+                UniqueVisitor visitor ← arbitrary
+                let solutions = runIdentity (runVisitorT visitor)
+                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+                let f x | IntSet.size x < threshold = Nothing
+                        | otherwise = Just (IntSet.toList x)
+                    found_solutions = runIdentity (runVisitorTUntilFound f visitor)
+                return $ case found_solutions of
+                    Left x → IntSet.size x < threshold
+                    Right x →
+                        let result = IntSet.fromList x
+                        in IntSet.size result >= threshold &&
+                            result `IntSet.isSubsetOf` solutions
             ]
          -- }}}
         ]

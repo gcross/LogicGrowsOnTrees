@@ -28,6 +28,8 @@ module Control.Visitor -- {{{
     , runVisitorTAndIgnoreResults
     , runVisitorUntilFirst
     , runVisitorTUntilFirst
+    , runVisitorUntilFound
+    , runVisitorTUntilFound
     ) where -- }}}
 
 -- Imports {{{
@@ -40,7 +42,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
-import Data.Monoid (Monoid(..),Sum())
+import Data.Monoid ((<>),Monoid(..),Sum())
 import Data.Serialize (Serialize(),encode)
 
 import Control.Visitor.Utils.MonadStacks
@@ -277,6 +279,48 @@ runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
 {-# SPECIALIZE runVisitorTUntilFirst :: Visitor α → Identity (Maybe α) #-}
 {-# SPECIALIZE runVisitorTUntilFirst :: VisitorIO α → IO (Maybe α) #-}
 {-# INLINEABLE runVisitorTUntilFirst #-}
+-- }}}
+
+runVisitorUntilFound :: Monoid α ⇒ (α → Maybe β) → Visitor α → Either α β -- {{{
+runVisitorUntilFound f v =
+    case view (unwrapVisitorT v) of
+        Return x → runThroughFilter x
+        (Cache mx :>>= k) →
+            maybe (Left mempty) (runVisitorUntilFound f . VisitorT . k)
+            $
+            runIdentity mx
+        (Choice left right :>>= k) →
+            let x = runVisitorUntilFound f $ left >>= VisitorT . k
+                y = runVisitorUntilFound f $ right >>= VisitorT . k
+            in case (x,y) of
+                (result@(Right _),_) → result
+                (_,result@(Right _)) → result
+                (Left a,Left b) → runThroughFilter (a <> b)
+        (Null :>>= _) → Left mempty
+  where
+    runThroughFilter x = maybe (Left x) Right . f $ x
+-- }}}
+
+runVisitorTUntilFound :: (Monad m, Monoid α) ⇒ (α → Maybe β) → VisitorT m α → m (Either α β) -- {{{
+runVisitorTUntilFound f = viewT . unwrapVisitorT >=> \view →
+    case view of
+        Return x → runThroughFilter x
+        (Cache mx :>>= k) →
+            mx
+            >>=
+            maybe (return (Left mempty)) (runVisitorTUntilFound f . VisitorT . k)
+        (Choice left right :>>= k) → do
+            x ← runVisitorTUntilFound f $ left >>= VisitorT . k
+            case x of
+                result@(Right _) → return result
+                Left a → do
+                    y ← runVisitorTUntilFound f $ right >>= VisitorT . k
+                    case y of
+                        result@(Right _) → return result
+                        Left b → runThroughFilter (a <> b)
+        (Null :>>= _) → return (Left mempty)
+  where
+    runThroughFilter x = return . maybe (Left x) Right . f $ x
 -- }}}
 
 -- }}}
