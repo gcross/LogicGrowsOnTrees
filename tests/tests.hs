@@ -105,7 +105,7 @@ import Control.Visitor.Utils.IntSum
 import Control.Visitor.Utils.WordSum
 import Control.Visitor.Workload
 import qualified Control.Visitor.Parallel.Common.Worker as Worker
-import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT,searchVisitor,searchVisitorIO,searchVisitorT)
+import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT,runVisitorUntilFirst,runVisitorIOUntilFirst,runVisitorTUntilFirst)
 -- }}}
 
 -- Helpers {{{
@@ -707,22 +707,22 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "searchVisitor" -- {{{
-            [testCase "return" $ searchVisitor (return 42) @=? (Just 42 :: Maybe Int)
-            ,testCase "null" $ searchVisitor mzero @=? (Nothing :: Maybe Int)
+        ,testGroup "runVisitorUntilFirst" -- {{{
+            [testCase "return" $ runVisitorUntilFirst (return 42) @=? (Just 42 :: Maybe Int)
+            ,testCase "null" $ runVisitorUntilFirst mzero @=? (Nothing :: Maybe Int)
             ,testProperty "compared to runVisitor" $ \(visitor :: Visitor String) →
-                searchVisitor visitor
+                runVisitorUntilFirst visitor
                 ==
                 case runVisitor (fmap (:[]) visitor) of
                     [] → Nothing
                     (x:_) → Just x
             ]
          -- }}}
-        ,testGroup "searchVisitorT" -- {{{
-            [testCase "return" $ runIdentity (searchVisitorT (return 42)) @=? (Just 42 :: Maybe Int)
-            ,testCase "null" $ runIdentity(searchVisitorT mzero) @=? (Nothing :: Maybe Int)
+        ,testGroup "runVisitorTUntilFirst" -- {{{
+            [testCase "return" $ runIdentity (runVisitorTUntilFirst (return 42)) @=? (Just 42 :: Maybe Int)
+            ,testCase "null" $ runIdentity(runVisitorTUntilFirst mzero) @=? (Nothing :: Maybe Int)
             ,testProperty "compared to runVisitorT" $ \(visitor :: VisitorT Identity String) →
-                runIdentity (searchVisitorT visitor)
+                runIdentity (runVisitorTUntilFirst visitor)
                 ==
                 case runIdentity (runVisitorT (fmap (:[]) visitor)) of
                     [] → Nothing
@@ -801,38 +801,38 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "searchVisitorThroughCheckpoint" -- {{{
+        ,testGroup "runVisitorUntilFirstThroughCheckpoint" -- {{{
             [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
                 randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
                     let all_results = runVisitorThroughCheckpoint checkpoint visitor
-                        search_result = searchVisitorThroughCheckpoint checkpoint visitor
-                    in case search_result of
+                        maybe_first_result = runVisitorUntilFirstThroughCheckpoint checkpoint visitor
+                    in case maybe_first_result of
                         Nothing → IntSet.null all_results
                         Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
              -- }}}
-            ,testProperty "matches scanVisitorThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+            ,testProperty "matches walkVisitorUntilFirstThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
-                    searchVisitorThroughCheckpoint checkpoint visitor
-                        @?= (finishSearch $ scanVisitorThroughCheckpoint checkpoint visitor)
+                    runVisitorUntilFirstThroughCheckpoint checkpoint visitor
+                        @?= (fetchFirstResult $ walkVisitorUntilFirstThroughCheckpoint checkpoint visitor)
                     return True
              -- }}}
             ]
          -- }}}
-        ,testGroup "searchVisitorTThroughCheckpoint" -- {{{
+        ,testGroup "runVisitorTUntilFirstThroughCheckpoint" -- {{{
             [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
                 randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
                     let all_results = runVisitorThroughCheckpoint checkpoint visitor
-                        search_result = runIdentity $ searchVisitorTThroughCheckpoint checkpoint visitor
-                    in case search_result of
+                        maybe_first_result = runIdentity $ runVisitorTUntilFirstThroughCheckpoint checkpoint visitor
+                    in case maybe_first_result of
                         Nothing → IntSet.null all_results
                         Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
              -- }}}
-            ,testProperty "matches scanVisitorTThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+            ,testProperty "matches walkVisitorTUntilFirstThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
-                    runIdentity (searchVisitorTThroughCheckpoint checkpoint visitor)
-                        @?= (runIdentity . finishSearchT $ scanVisitorTThroughCheckpoint checkpoint visitor)
+                    runIdentity (runVisitorTUntilFirstThroughCheckpoint checkpoint visitor)
+                        @?= (runIdentity . fetchFirstResultT $ walkVisitorTUntilFirstThroughCheckpoint checkpoint visitor)
                     return True
              -- }}}
             ]
@@ -965,7 +965,7 @@ tests = -- {{{
         [testGroup "FirstMode" -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←
-                    Threads.searchVisitorIO
+                    Threads.runVisitorIOUntilFirst
                         (let run = liftIO (threadDelay 1) >> (run `mplus` run) in run
                          `mplus`
                          return ()
@@ -1048,7 +1048,7 @@ tests = -- {{{
                         request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         maybe_result ←
-                            (Threads.searchVisitorIO
+                            (Threads.runVisitorIOUntilFirst
                                 (insertHooks cleared_flags_tvar request_queue constructVisitor)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
@@ -1058,7 +1058,7 @@ tests = -- {{{
                             Nothing → assertBool "solutions were missed" (Set.null correct_results)
                             Just result → assertBool "solution was not valid" (Set.member result correct_results)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\checkpoint → do
-                            searchVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= Nothing)
+                            runVisitorTUntilFirstThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= Nothing)
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
@@ -1677,8 +1677,8 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testProperty "searchVisitor" $ \(visitor :: Visitor String) → -- {{{
-            unsafePerformIO (Worker.searchVisitor visitor) == WorkerFinished (searchVisitor visitor)
+        ,testProperty "runVisitorUntilFirst" $ \(visitor :: Visitor String) → -- {{{
+            unsafePerformIO (Worker.runVisitorUntilFirst visitor) == WorkerFinished (runVisitorUntilFirst visitor)
          -- }}}
         ]
      -- }}}

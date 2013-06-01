@@ -249,20 +249,20 @@ runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [Solution α] -- 
 runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel
 -- }}}
 
-searchLabeledVisitor :: LabeledVisitor α → Maybe α -- {{{
-searchLabeledVisitor = searchVisitor . runLabeledT . unwrapLabeledVisitorT
+runLabeledVisitorUntilFirst :: LabeledVisitor α → Maybe α -- {{{
+runLabeledVisitorUntilFirst = runVisitorUntilFirst . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-searchLabeledVisitorT :: Monad m ⇒ LabeledVisitorT m α → m (Maybe α) -- {{{
-searchLabeledVisitorT = searchVisitorT . runLabeledT . unwrapLabeledVisitorT
+runLabeledVisitorUntilFirstT :: Monad m ⇒ LabeledVisitorT m α → m (Maybe α) -- {{{
+runLabeledVisitorUntilFirstT = runVisitorTUntilFirst . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-searchVisitorTWithLabel :: Monad m ⇒ VisitorT m α → m (Maybe (Solution α)) -- {{{
-searchVisitorTWithLabel = searchVisitorTWithStartingLabel rootLabel
+runVisitorTUntilFirstWithLabel :: Monad m ⇒ VisitorT m α → m (Maybe (Solution α)) -- {{{
+runVisitorTUntilFirstWithLabel = runVisitorTUntilFirstWithStartingLabel rootLabel
 -- }}}
 
-searchVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (Maybe (Solution α)) -- {{{
-searchVisitorTWithStartingLabel = go .* runVisitorTWithStartingLabel
+runVisitorTUntilFirstWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (Maybe (Solution α)) -- {{{
+runVisitorTUntilFirstWithStartingLabel = go .* runVisitorTWithStartingLabel
   where
     go = liftM $ \solutions →
         case solutions of
@@ -270,12 +270,12 @@ searchVisitorTWithStartingLabel = go .* runVisitorTWithStartingLabel
             (x:_) → Just x
 -- }}}
 
-searchVisitorWithLabel :: Visitor α → Maybe (Solution α) -- {{{
-searchVisitorWithLabel = runIdentity . searchVisitorTWithLabel
+runVisitorUntilFirstWithLabel :: Visitor α → Maybe (Solution α) -- {{{
+runVisitorUntilFirstWithLabel = runIdentity . runVisitorTUntilFirstWithLabel
 -- }}}
 
-searchVisitorWithStartingLabel :: VisitorLabel → Visitor α → Maybe (Solution α) -- {{{
-searchVisitorWithStartingLabel = runIdentity .* searchVisitorTWithStartingLabel
+runVisitorUntilFirstWithStartingLabel :: VisitorLabel → Visitor α → Maybe (Solution α) -- {{{
+runVisitorUntilFirstWithStartingLabel = runIdentity .* runVisitorTUntilFirstWithStartingLabel
 -- }}}
 
 sendVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α -- {{{

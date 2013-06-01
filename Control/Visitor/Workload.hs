@@ -71,54 +71,25 @@ runVisitorTThroughWorkload :: -- {{{
 runVisitorTThroughWorkload = gatherResults .* walkVisitorTThroughWorkload
 -- }}}
 
-scanVisitorThroughWorkload :: -- {{{
-    Workload →
-    Visitor α →
-    ResultSearcher α
-scanVisitorThroughWorkload Workload{..} =
-    scanVisitorThroughCheckpoint workloadCheckpoint
-    .
-    sendVisitorDownPath workloadPath
--- }}}
-
-scanVisitorTThroughWorkload :: -- {{{
-    Monad m ⇒
-    Workload →
-    VisitorT m α →
-    ResultSearcherT m α
-scanVisitorTThroughWorkload Workload{..} =
-    ResultSearcherT
-    .
-    join
-    .
-    liftM (
-        searchResultT
-        .
-        scanVisitorTThroughCheckpoint workloadCheckpoint
-    )
-    .
-    sendVisitorTDownPath workloadPath
--- }}}
-
-searchVisitorThroughWorkload :: -- {{{
+runVisitorUntilFirstThroughWorkload :: -- {{{
     Workload →
     Visitor α →
     Maybe α
-searchVisitorThroughWorkload =
-    finishSearch
+runVisitorUntilFirstThroughWorkload =
+    fetchFirstResult
     .*
-    scanVisitorThroughWorkload
+    walkVisitorUntilFirstThroughWorkload
 -- }}}
 
-searchVisitorTThroughWorkload :: -- {{{
+runVisitorTUntilFirstThroughWorkload :: -- {{{
     Monad m ⇒
     Workload →
     VisitorT m α →
     m (Maybe α)
-searchVisitorTThroughWorkload =
-    finishSearchT
+runVisitorTUntilFirstThroughWorkload =
+    fetchFirstResultT
     .*
-    scanVisitorTThroughWorkload
+    walkVisitorTUntilFirstThroughWorkload
 -- }}}
 
 walkVisitorThroughWorkload :: -- {{{
@@ -146,6 +117,35 @@ walkVisitorTThroughWorkload Workload{..} =
         fetchResult
         .
         walkVisitorTThroughCheckpoint workloadCheckpoint
+    )
+    .
+    sendVisitorTDownPath workloadPath
+-- }}}
+
+walkVisitorUntilFirstThroughWorkload :: -- {{{
+    Workload →
+    Visitor α →
+    FirstResultFetcher α
+walkVisitorUntilFirstThroughWorkload Workload{..} =
+    walkVisitorUntilFirstThroughCheckpoint workloadCheckpoint
+    .
+    sendVisitorDownPath workloadPath
+-- }}}
+
+walkVisitorTUntilFirstThroughWorkload :: -- {{{
+    Monad m ⇒
+    Workload →
+    VisitorT m α →
+    FirstResultFetcherT m α
+walkVisitorTUntilFirstThroughWorkload Workload{..} =
+    FirstResultFetcherT
+    .
+    join
+    .
+    liftM (
+        firstResultFetcher
+        .
+        walkVisitorTUntilFirstThroughCheckpoint workloadCheckpoint
     )
     .
     sendVisitorTDownPath workloadPath

@@ -81,13 +81,13 @@ newtype ResultFetcher m α = ResultFetcher -- {{{
     }
 -- }}}
 
-data ResultSearcher α = -- {{{
-    DoneSearching (Maybe α)
-  | StillSearching Checkpoint (ResultSearcher α)
+data FirstResultFetcher α = -- {{{
+    DoneFetchingFirst (Maybe α)
+  | StillFetchingFirst Checkpoint (FirstResultFetcher α)
 -- }}}
 
-newtype ResultSearcherT m α = ResultSearcherT -- {{{
-    {   searchResultT :: m (Either (Checkpoint, ResultSearcherT m α) (Maybe α))
+newtype FirstResultFetcherT m α = FirstResultFetcherT -- {{{
+    {   firstResultFetcher :: m (Either (Checkpoint, FirstResultFetcherT m α) (Maybe α))
     }
 -- }}}
 
@@ -183,6 +183,15 @@ checkpointFromUnexploredPath path = checkpointFromSequence
     Unexplored
 -- }}}
 
+fetchFirstResult :: FirstResultFetcher α → Maybe α -- {{{
+fetchFirstResult (DoneFetchingFirst maybe_result) = maybe_result
+fetchFirstResult (StillFetchingFirst _ next_fetcher) = fetchFirstResult next_fetcher
+-- }}}
+
+fetchFirstResultT :: Monad m ⇒ FirstResultFetcherT m α → m (Maybe α) -- {{{
+fetchFirstResultT = firstResultFetcher >=> either (fetchFirstResultT . snd) return
+-- }}}
+
 gatherResults :: -- {{{
     (Monad m, Monoid α) ⇒
     ResultFetcher m α →
@@ -195,15 +204,6 @@ gatherResults = go mempty
         maybe
             (return result)
             (\(result,_,fetcher) → go result fetcher)
--- }}}
-
-finishSearch :: ResultSearcher α → Maybe α -- {{{
-finishSearch (DoneSearching maybe_result) = maybe_result
-finishSearch (StillSearching _ next_search) = finishSearch next_search
--- }}}
-
-finishSearchT :: Monad m ⇒ ResultSearcherT m α → m (Maybe α) -- {{{
-finishSearchT = searchResultT >=> either (finishSearchT . snd) return 
 -- }}}
 
 initialVisitorState :: Checkpoint → VisitorT m α → VisitorTState m α -- {{{
@@ -275,63 +275,19 @@ runVisitorTThroughCheckpoint = go mempty .* initialVisitorState
 {-# INLINE runVisitorTThroughCheckpoint #-}
 -- }}}
 
-scanVisitorThroughCheckpoint :: -- {{{
-    Checkpoint →
-    Visitor α →
-    ResultSearcher α
-scanVisitorThroughCheckpoint = go .* initialVisitorState
-  where
-    go visitor_state
-      | isJust maybe_solution = DoneSearching maybe_solution 
-      | otherwise =
-         case maybe_new_state of
-            Nothing → DoneSearching Nothing
-            Just new_state@(VisitorTState context unexplored_checkpoint _) → 
-                StillSearching
-                    (checkpointFromContext context unexplored_checkpoint)
-                    (go new_state)
-      where
-        (maybe_solution,maybe_new_state) = stepVisitorThroughCheckpoint visitor_state
--- }}}
-
-scanVisitorTThroughCheckpoint :: -- {{{
-    Monad m ⇒
-    Checkpoint →
-    VisitorT m α →
-    ResultSearcherT m α
-scanVisitorTThroughCheckpoint = go .* initialVisitorState
-  where
-    go visitor_state = ResultSearcherT $
-        stepVisitorTThroughCheckpoint visitor_state
-        >>=
-        \(maybe_solution,maybe_new_state) → return $
-            case maybe_solution of
-                Just _ → Right maybe_solution
-                Nothing →
-                    case maybe_new_state of
-                        Nothing → Right Nothing
-                        Just new_state@(VisitorTState context unexplored_checkpoint _) →
-                            Left
-                            $
-                            (checkpointFromContext context unexplored_checkpoint
-                            ,go new_state
-                            )
-{-# INLINE scanVisitorTThroughCheckpoint #-}
--- }}}
-
-searchVisitorThroughCheckpoint :: -- {{{
+runVisitorUntilFirstThroughCheckpoint :: -- {{{
     Checkpoint →
     Visitor α →
     Maybe α
-searchVisitorThroughCheckpoint = runIdentity .* searchVisitorTThroughCheckpoint
+runVisitorUntilFirstThroughCheckpoint = runIdentity .* runVisitorTUntilFirstThroughCheckpoint
 -- }}}
 
-searchVisitorTThroughCheckpoint :: -- {{{
+runVisitorTUntilFirstThroughCheckpoint :: -- {{{
     Monad m ⇒
     Checkpoint →
     VisitorT m α →
     m (Maybe α)
-searchVisitorTThroughCheckpoint = go .* initialVisitorState
+runVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
   where
     go = stepVisitorTThroughCheckpoint
          >=>
@@ -339,7 +295,7 @@ searchVisitorTThroughCheckpoint = go .* initialVisitorState
             case maybe_solution of
                 Just _ → return maybe_solution
                 Nothing → maybe (return Nothing) go maybe_new_visitor_state
-{-# INLINE searchVisitorTThroughCheckpoint #-}
+{-# INLINE runVisitorTUntilFirstThroughCheckpoint #-}
 -- }}}
 
 stepVisitorThroughCheckpoint :: -- {{{
@@ -422,6 +378,19 @@ walkVisitorT = walkVisitorTThroughCheckpoint Unexplored
 {-# INLINE walkVisitorT #-}
 -- }}}
 
+walkVisitorUntilFirst :: -- {{{
+    Visitor α →
+    FirstResultFetcher α
+walkVisitorUntilFirst = walkVisitorUntilFirstThroughCheckpoint Unexplored
+-- }}}
+
+walkVisitorTUntilFirst :: -- {{{
+    Monad m ⇒
+    VisitorT m α →
+    FirstResultFetcherT m α
+walkVisitorTUntilFirst = walkVisitorTUntilFirstThroughCheckpoint Unexplored
+-- }}}
+
 walkVisitorThroughCheckpoint :: -- {{{
     Monoid α ⇒
     Checkpoint →
@@ -459,6 +428,50 @@ walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
                     ,go new_accum new_state
                     )
 {-# INLINE walkVisitorTThroughCheckpoint #-}
+-- }}}
+
+walkVisitorUntilFirstThroughCheckpoint :: -- {{{
+    Checkpoint →
+    Visitor α →
+    FirstResultFetcher α
+walkVisitorUntilFirstThroughCheckpoint = go .* initialVisitorState
+  where
+    go visitor_state
+      | isJust maybe_solution = DoneFetchingFirst maybe_solution
+      | otherwise =
+         case maybe_new_state of
+            Nothing → DoneFetchingFirst Nothing
+            Just new_state@(VisitorTState context unexplored_checkpoint _) →
+                StillFetchingFirst
+                    (checkpointFromContext context unexplored_checkpoint)
+                    (go new_state)
+      where
+        (maybe_solution,maybe_new_state) = stepVisitorThroughCheckpoint visitor_state
+-- }}}
+
+walkVisitorTUntilFirstThroughCheckpoint :: -- {{{
+    Monad m ⇒
+    Checkpoint →
+    VisitorT m α →
+    FirstResultFetcherT m α
+walkVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
+  where
+    go visitor_state = FirstResultFetcherT $
+        stepVisitorTThroughCheckpoint visitor_state
+        >>=
+        \(maybe_solution,maybe_new_state) → return $
+            case maybe_solution of
+                Just _ → Right maybe_solution
+                Nothing →
+                    case maybe_new_state of
+                        Nothing → Right Nothing
+                        Just new_state@(VisitorTState context unexplored_checkpoint _) →
+                            Left
+                            $
+                            (checkpointFromContext context unexplored_checkpoint
+                            ,go new_state
+                            )
+{-# INLINE walkVisitorTUntilFirstThroughCheckpoint #-}
 -- }}}
 
 -- }}}

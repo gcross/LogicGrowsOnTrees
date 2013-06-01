@@ -28,12 +28,12 @@ module Control.Visitor.Parallel.BackEnd.Threads
     , runVisitorIOStartingFrom
     , runVisitorT
     , runVisitorTStartingFrom
-    , searchVisitor
-    , searchVisitorStartingFrom
-    , searchVisitorIO
-    , searchVisitorIOStartingFrom
-    , searchVisitorT
-    , searchVisitorTStartingFrom
+    , runVisitorUntilFirst
+    , runVisitorUntilFirstStartingFrom
+    , runVisitorIOUntilFirst
+    , runVisitorIOUntilFirstStartingFrom
+    , runVisitorTUntilFirst
+    , runVisitorTUntilFirstStartingFrom
     ) where
 
 -- Imports {{{
@@ -63,9 +63,9 @@ import Control.Visitor.Parallel.Common.Worker as Worker
     (runVisitor
     ,runVisitorIO
     ,runVisitorT
-    ,searchVisitor
-    ,searchVisitorIO
-    ,searchVisitorT
+    ,runVisitorUntilFirst
+    ,runVisitorIOUntilFirst
+    ,runVisitorTUntilFirst
     )
 import Control.Visitor.Parallel.Common.Workgroup
 import Control.Visitor.Workload
@@ -180,53 +180,53 @@ runVisitorTStartingFrom :: -- {{{
 runVisitorTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureVisitor
 -- }}}
 
-searchVisitor :: -- {{{
+runVisitorUntilFirst :: -- {{{
     Visitor result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitor = searchVisitorStartingFrom mempty
+runVisitorUntilFirst = runVisitorUntilFirstStartingFrom mempty
 -- }}}
 
-searchVisitorStartingFrom :: -- {{{
+runVisitorUntilFirstStartingFrom :: -- {{{
     Checkpoint →
     Visitor result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorStartingFrom = launchVisitorStartingFrom FirstMode PureVisitor
+runVisitorUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode PureVisitor
 -- }}}
 
-searchVisitorIO :: -- {{{
+runVisitorIOUntilFirst :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorIO = searchVisitorIOStartingFrom mempty
+runVisitorIOUntilFirst = runVisitorIOUntilFirstStartingFrom mempty
 -- }}}
 
-searchVisitorIOStartingFrom :: -- {{{
+runVisitorIOUntilFirstStartingFrom :: -- {{{
     Checkpoint →
     VisitorIO result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorIOStartingFrom = launchVisitorStartingFrom FirstMode IOVisitor
+runVisitorIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode IOVisitor
 -- }}}
 
-searchVisitorT :: -- {{{
+runVisitorTUntilFirst :: -- {{{
     MonadIO m ⇒
     (∀ α. m α → IO α) →
     VisitorT m result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorT = flip searchVisitorTStartingFrom mempty
+runVisitorTUntilFirst = flip runVisitorTUntilFirstStartingFrom mempty
 -- }}}
 
-searchVisitorTStartingFrom :: -- {{{
+runVisitorTUntilFirstStartingFrom :: -- {{{
     MonadIO m ⇒
     (∀ α. m α → IO α) →
     Checkpoint →
     VisitorT m result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe result))
-searchVisitorTStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
+runVisitorTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
 -- }}}
 
 -- }}}

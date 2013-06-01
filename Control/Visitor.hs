@@ -26,8 +26,8 @@ module Control.Visitor -- {{{
     , runVisitor
     , runVisitorT
     , runVisitorTAndIgnoreResults
-    , searchVisitor
-    , searchVisitorT
+    , runVisitorUntilFirst
+    , runVisitorTUntilFirst
     ) where -- }}}
 
 -- Imports {{{
@@ -250,33 +250,33 @@ runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
 {-# INLINEABLE runVisitorTAndIgnoreResults #-}
 -- }}}
 
-searchVisitor :: Visitor α → Maybe α -- {{{
-searchVisitor v =
+runVisitorUntilFirst :: Visitor α → Maybe α -- {{{
+runVisitorUntilFirst v =
     case view (unwrapVisitorT v) of
         Return x → Just x
-        (Cache mx :>>= k) → maybe Nothing (searchVisitor . VisitorT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe Nothing (runVisitorUntilFirst . VisitorT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let x = searchVisitor $ left >>= VisitorT . k
-                y = searchVisitor $ right >>= VisitorT . k
+            let x = runVisitorUntilFirst $ left >>= VisitorT . k
+                y = runVisitorUntilFirst $ right >>= VisitorT . k
             in if isJust x then x else y
         (Null :>>= _) → Nothing
-{-# INLINEABLE searchVisitor #-}
+{-# INLINEABLE runVisitorUntilFirst #-}
 -- }}}
 
-searchVisitorT :: Monad m ⇒ VisitorT m α → m (Maybe α) -- {{{
-searchVisitorT = viewT . unwrapVisitorT >=> \view →
+runVisitorTUntilFirst :: Monad m ⇒ VisitorT m α → m (Maybe α) -- {{{
+runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
     case view of
         Return !x → return (Just x)
-        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (searchVisitorT . VisitorT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (runVisitorTUntilFirst . VisitorT . k)
         (Choice left right :>>= k) → do
-            x ← searchVisitorT $ left >>= VisitorT . k
+            x ← runVisitorTUntilFirst $ left >>= VisitorT . k
             if isJust x
                 then return x
-                else searchVisitorT $ right >>= VisitorT . k
+                else runVisitorTUntilFirst $ right >>= VisitorT . k
         (Null :>>= _) → return Nothing
-{-# SPECIALIZE searchVisitorT :: Visitor α → Identity (Maybe α) #-}
-{-# SPECIALIZE searchVisitorT :: VisitorIO α → IO (Maybe α) #-}
-{-# INLINEABLE searchVisitorT #-}
+{-# SPECIALIZE runVisitorTUntilFirst :: Visitor α → Identity (Maybe α) #-}
+{-# SPECIALIZE runVisitorTUntilFirst :: VisitorIO α → IO (Maybe α) #-}
+{-# INLINEABLE runVisitorTUntilFirst #-}
 -- }}}
 
 -- }}}
