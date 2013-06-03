@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -170,6 +171,11 @@ checkpointFromSequence processStep (viewr → rest :> step) =
     mergeCheckpointRoot
     .
     processStep step
+-- }}}
+
+checkpointFromVisitorState :: VisitorTState m α → Checkpoint -- {{{
+checkpointFromVisitorState VisitorTState{..} =
+    checkpointFromContext visitorStateContext visitorStateCheckpoint
 -- }}}
 
 checkpointFromUnexploredPath :: Path → Checkpoint -- {{{
@@ -422,9 +428,9 @@ walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
             let !new_accum = maybe id (flip mappend) maybe_solution accum
             in Just $ case maybe_new_state of
                 Nothing → (new_accum,Explored,ResultFetcher (return Nothing))
-                Just new_state@(VisitorTState context unexplored_checkpoint _) →
+                Just new_state →
                     (new_accum
-                    ,checkpointFromContext context unexplored_checkpoint
+                    ,checkpointFromVisitorState new_state
                     ,go new_accum new_state
                     )
 {-# INLINE walkVisitorTThroughCheckpoint #-}
@@ -441,9 +447,9 @@ walkVisitorUntilFirstThroughCheckpoint = go .* initialVisitorState
       | otherwise =
          case maybe_new_state of
             Nothing → DoneFetchingFirst Nothing
-            Just new_state@(VisitorTState context unexplored_checkpoint _) →
+            Just new_state →
                 StillFetchingFirst
-                    (checkpointFromContext context unexplored_checkpoint)
+                    (checkpointFromVisitorState new_state)
                     (go new_state)
       where
         (maybe_solution,maybe_new_state) = stepVisitorThroughCheckpoint visitor_state
@@ -465,10 +471,10 @@ walkVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
                 Nothing →
                     case maybe_new_state of
                         Nothing → Right Nothing
-                        Just new_state@(VisitorTState context unexplored_checkpoint _) →
+                        Just new_state →
                             Left
                             $
-                            (checkpointFromContext context unexplored_checkpoint
+                            (checkpointFromVisitorState new_state
                             ,go new_state
                             )
 {-# INLINE walkVisitorTUntilFirstThroughCheckpoint #-}
