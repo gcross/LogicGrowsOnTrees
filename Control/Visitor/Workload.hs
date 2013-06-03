@@ -8,7 +8,7 @@ module Control.Visitor.Workload where
 
 -- Imports {{{
 import Control.Monad (join,liftM)
-import Data.Composition ((.*))
+import Data.Composition ((.*),(.**))
 import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Function (on)
@@ -92,6 +92,30 @@ runVisitorTUntilFirstThroughWorkload =
     walkVisitorTUntilFirstThroughWorkload
 -- }}}
 
+runVisitorUntilFoundThroughWorkload :: -- {{{
+    Monoid α ⇒
+    (α → Maybe β) →
+    Workload →
+    Visitor α →
+    Either α β
+runVisitorUntilFoundThroughWorkload =
+    fetchFoundResult
+    .**
+    walkVisitorUntilFoundThroughWorkload
+-- }}}
+
+runVisitorTUntilFoundThroughWorkload :: -- {{{
+    (Monoid α, Monad m) ⇒
+    (α → Maybe β) →
+    Workload →
+    VisitorT m α →
+    m (Either α β)
+runVisitorTUntilFoundThroughWorkload =
+    fetchFoundResultT
+    .**
+    walkVisitorTUntilFoundThroughWorkload
+-- }}}
+
 walkVisitorThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
@@ -146,6 +170,38 @@ walkVisitorTUntilFirstThroughWorkload Workload{..} =
         firstResultFetcher
         .
         walkVisitorTUntilFirstThroughCheckpoint workloadCheckpoint
+    )
+    .
+    sendVisitorTDownPath workloadPath
+-- }}}
+
+walkVisitorUntilFoundThroughWorkload :: -- {{{
+    Monoid α ⇒
+    (α → Maybe β) →
+    Workload →
+    Visitor α →
+    FoundResultFetcher α β
+walkVisitorUntilFoundThroughWorkload f Workload{..} =
+    walkVisitorUntilFoundThroughCheckpoint f workloadCheckpoint
+    .
+    sendVisitorDownPath workloadPath
+-- }}}
+
+walkVisitorTUntilFoundThroughWorkload :: -- {{{
+    (Monoid α, Monad m) ⇒
+    (α → Maybe β) →
+    Workload →
+    VisitorT m α →
+    FoundResultFetcherT m α β
+walkVisitorTUntilFoundThroughWorkload f Workload{..} =
+    FoundResultFetcherT
+    .
+    join
+    .
+    liftM (
+        foundResultFetcher
+        .
+        walkVisitorTUntilFoundThroughCheckpoint f workloadCheckpoint
     )
     .
     sendVisitorTDownPath workloadPath
