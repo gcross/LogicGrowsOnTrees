@@ -27,7 +27,7 @@ import Data.DeriveTH
 import Data.Either.Unwrap (mapLeft)
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Maybe (isJust,mapMaybe)
-import Data.Monoid (First(..),Monoid(..))
+import Data.Monoid ((<>),First(..),Monoid(..))
 import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
@@ -89,6 +89,16 @@ data FirstResultFetcher α = -- {{{
 
 newtype FirstResultFetcherT m α = FirstResultFetcherT -- {{{
     {   firstResultFetcher :: m (Either (Checkpoint, FirstResultFetcherT m α) (Maybe α))
+    }
+-- }}}
+
+data FoundResultFetcher α β = -- {{{
+    DoneFetchingFound (Either α β)
+  | StillFetchingFound Checkpoint (FoundResultFetcher α β)
+-- }}}
+
+newtype FoundResultFetcherT m α β = FoundResultFetcherT -- {{{
+    {   foundResultFetcher :: m (Either (Checkpoint, FoundResultFetcherT m α β) (Either α β))
     }
 -- }}}
 
@@ -198,6 +208,15 @@ fetchFirstResultT :: Monad m ⇒ FirstResultFetcherT m α → m (Maybe α) -- {{
 fetchFirstResultT = firstResultFetcher >=> either (fetchFirstResultT . snd) return
 -- }}}
 
+fetchFoundResult :: FoundResultFetcher α β → Either α β -- {{{
+fetchFoundResult (DoneFetchingFound maybe_result) = maybe_result
+fetchFoundResult (StillFetchingFound _ next_fetcher) = fetchFoundResult next_fetcher
+-- }}}
+
+fetchFoundResultT :: Monad m ⇒ FoundResultFetcherT m α β → m (Either α β) -- {{{
+fetchFoundResultT = foundResultFetcher >=> either (fetchFoundResultT . snd) return
+-- }}}
+
 gatherResults :: -- {{{
     (Monad m, Monoid α) ⇒
     ResultFetcher m α →
@@ -302,6 +321,37 @@ runVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
                 Just _ → return maybe_solution
                 Nothing → maybe (return Nothing) go maybe_new_visitor_state
 {-# INLINE runVisitorTUntilFirstThroughCheckpoint #-}
+-- }}}
+
+runVisitorUntilFoundThroughCheckpoint :: -- {{{
+    Monoid α ⇒
+    (α → Maybe β) →
+    Checkpoint →
+    Visitor α →
+    Either α β
+runVisitorUntilFoundThroughCheckpoint = runIdentity .** runVisitorTUntilFoundThroughCheckpoint
+-- }}}
+
+runVisitorTUntilFoundThroughCheckpoint :: -- {{{
+    (Monad m, Monoid α) ⇒
+    (α → Maybe β) →
+    Checkpoint →
+    VisitorT m α →
+    m (Either α β)
+runVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
+  where
+    go accum =
+        stepVisitorTThroughCheckpoint
+        >=>
+        \(maybe_solution,maybe_new_visitor_state) →
+            case maybe_solution of
+                Nothing → maybe (return (Left accum)) (go accum) maybe_new_visitor_state
+                Just solution →
+                    let new_accum = accum <> solution
+                    in case f new_accum of
+                        Nothing → maybe (return (Left new_accum)) (go new_accum) maybe_new_visitor_state
+                        Just result → return (Right result)
+{-# INLINE runVisitorTUntilFoundThroughCheckpoint #-}
 -- }}}
 
 stepVisitorThroughCheckpoint :: -- {{{
@@ -478,6 +528,64 @@ walkVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
                             ,go new_state
                             )
 {-# INLINE walkVisitorTUntilFirstThroughCheckpoint #-}
+-- }}}
+
+walkVisitorUntilFoundThroughCheckpoint :: -- {{{
+    Monoid α ⇒
+    (α → Maybe β) →
+    Checkpoint →
+    Visitor α →
+    FoundResultFetcher α β
+walkVisitorUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
+  where
+    go result visitor_state =
+        case maybe_solution of
+            Just solution →
+                let new_result = result <> solution
+                in case f new_result of
+                    Just x → DoneFetchingFound (Right x)
+                    Nothing → continueWith new_result
+            Nothing → continueWith result
+      where
+        (maybe_solution,maybe_new_state) = stepVisitorThroughCheckpoint visitor_state
+
+        continueWith current_result =
+            case maybe_new_state of
+                Nothing → DoneFetchingFound (Left current_result)
+                Just new_state →
+                    StillFetchingFound
+                        (checkpointFromVisitorState new_state)
+                        (go current_result new_state)
+-- }}}
+
+walkVisitorTUntilFoundThroughCheckpoint :: -- {{{
+    (Monoid α, Monad m) ⇒
+    (α → Maybe β) →
+    Checkpoint →
+    VisitorT m α →
+    FoundResultFetcherT m α β
+walkVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
+  where
+    go result visitor_state = FoundResultFetcherT $ do
+        (maybe_solution,maybe_new_state) ← stepVisitorTThroughCheckpoint visitor_state
+        let continueWith current_result =
+                case maybe_new_state of
+                    Nothing → (Right . Left $ current_result)
+                    Just new_state →
+                        Left
+                        $
+                        (checkpointFromVisitorState new_state
+                        ,go current_result new_state
+                        )
+        return $
+            case maybe_solution of
+                Nothing → continueWith result
+                Just solution →
+                    let new_result = result <> solution
+                    in case f new_result of
+                        Just x → (Right . Right $ x)
+                        Nothing → continueWith new_result
+{-# INLINE walkVisitorTUntilFoundThroughCheckpoint #-}
 -- }}}
 
 -- }}}

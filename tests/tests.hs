@@ -881,6 +881,50 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testGroup "runVisitorUntilFoundThroughCheckpoint" -- {{{
+            [testProperty "bypasses the checkpoint" $ do -- {{{
+                UniqueVisitor visitor ← arbitrary
+                (_,checkpoint) ← randomCheckpointForVisitor visitor
+                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+                return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
+                    runVisitorUntilFoundThroughCheckpoint (intSetSizeFilter threshold) checkpoint visitor
+             -- }}}
+            ,testProperty "matches walkVisitorUntilFoundThroughCheckpoint" $ do -- {{{
+                UniqueVisitor visitor ← arbitrary
+                (_,checkpoint) ← randomCheckpointForVisitor visitor
+                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+                let f = intSetSizeFilter threshold
+                morallyDubiousIOProperty $ do
+                    runVisitorUntilFoundThroughCheckpoint f checkpoint visitor
+                        @?= (fetchFoundResult $ walkVisitorUntilFoundThroughCheckpoint f checkpoint visitor)
+                    return True
+             -- }}}
+            ]
+         -- }}}
+        ,testGroup "runVisitorTUntilFoundThroughCheckpoint" -- {{{
+            [testProperty "bypasses the checkpoint" $ do -- {{{
+                UniqueVisitor visitor ← arbitrary
+                (_,checkpoint) ← randomCheckpointForVisitor visitor
+                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+                return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions . runIdentity $
+                    runVisitorTUntilFoundThroughCheckpoint (intSetSizeFilter threshold) checkpoint visitor
+             -- }}}
+            ,testProperty "matches walkVisitorTUntilFoundThroughCheckpoint" $ do -- {{{
+                UniqueVisitor visitor ← arbitrary
+                (_,checkpoint) ← randomCheckpointForVisitor visitor
+                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+                let f = intSetSizeFilter threshold
+                morallyDubiousIOProperty $ do
+                    runIdentity (runVisitorTUntilFoundThroughCheckpoint f checkpoint visitor)
+                        @?= runIdentity (fetchFoundResultT $ walkVisitorTUntilFoundThroughCheckpoint f checkpoint visitor)
+                    return True
+             -- }}}
+            ]
+         -- }}}
         ,testGroup "walkVisitorThroughCheckpoint" -- {{{
             [testProperty "matches walk down path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
                 runVisitor (sendVisitorDownPath path visitor)
