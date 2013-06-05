@@ -80,15 +80,6 @@ initialWorkerIntermediateValue AllMode = mempty
 initialWorkerIntermediateValue FirstMode = ()
 -- }}}
 
-progressFrom :: -- {{{
-    VisitorMode visitor_mode →
-    WorkerIntermediateValueFor visitor_mode →
-    Checkpoint →
-    ProgressFor visitor_mode
-progressFrom AllMode = flip Progress
-progressFrom FirstMode = const id
--- }}}
-
 withProofThatProgressIsMonoid :: -- {{{
     VisitorMode visitor_mode →
     (Monoid (ProgressFor visitor_mode) ⇒ α) →

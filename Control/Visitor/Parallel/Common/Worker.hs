@@ -143,6 +143,20 @@ deriveLoggers "Logger" [DEBUG,INFO]
 
 -- Functions {{{
 
+checkpointFromEnvironment :: -- {{{
+    Path →
+    CheckpointCursor →
+    Context m α →
+    Checkpoint →
+    Checkpoint
+checkpointFromEnvironment initial_path cursor context =
+     checkpointFromInitialPath initial_path
+     .
+     checkpointFromCursor cursor
+     .
+     checkpointFromContext context
+-- }}}
+
 computeProgressUpdate :: -- {{{
     ResultFor visitor_mode ~ α ⇒
     VisitorMode visitor_mode →
@@ -154,15 +168,9 @@ computeProgressUpdate :: -- {{{
     ProgressUpdate (ProgressFor visitor_mode)
 computeProgressUpdate visitor_mode result initial_path cursor context checkpoint =
     ProgressUpdate
-        (progressFrom visitor_mode result
-         .
-         checkpointFromInitialPath initial_path
-         .
-         checkpointFromCursor cursor
-         .
-         checkpointFromContext context
-         $
-         checkpoint
+        (case visitor_mode of
+            AllMode → Progress full_checkpoint result
+            FirstMode → full_checkpoint
         )
         (Workload (initial_path >< pathFromCursor cursor)
          .
@@ -170,6 +178,8 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
          $
          checkpoint
         )
+  where
+    full_checkpoint = checkpointFromEnvironment initial_path cursor context checkpoint
 -- }}}
 
 forkWorkerThread :: -- {{{
