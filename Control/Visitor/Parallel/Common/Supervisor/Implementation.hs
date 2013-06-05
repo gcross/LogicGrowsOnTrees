@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -1115,11 +1116,15 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
     when remove_worker . lift $ retireWorker worker_id
     visitor_mode ← view visitor_mode
     (checkpoint,final_value) ←
-        reactToFinalProgress
-            visitor_mode
-            finishWithResult
-            (withProofThatProgressIsMonoid visitor_mode $ (current_progress <%=) . mappend)
-            final_progress
+        case visitor_mode of
+            AllMode → do
+                Progress checkpoint new_results ← current_progress <%= (<> final_progress)
+                return (checkpoint,new_results)
+            FirstMode →
+                either
+                    (liftM (,Nothing) . (current_progress <%=) . mappend)
+                    (finishWithResult . Just)
+                    final_progress
     case checkpoint of
         Explored → do
             active_worker_ids ← Map.keys . Map.delete worker_id <$> use active_workers

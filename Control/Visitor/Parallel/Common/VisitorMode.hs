@@ -69,28 +69,6 @@ checkpointFromIntermediateProgress AllMode = progressCheckpoint
 checkpointFromIntermediateProgress FirstMode = id
 -- }}}
 
-constructWorkerFinishedProgress :: -- {{{
-    VisitorMode visitor_mode →
-    WorkerIntermediateValueFor visitor_mode →
-    Maybe (ResultFor visitor_mode) →
-    Checkpoint →
-    WorkerFinalProgressFor visitor_mode
-constructWorkerFinishedProgress AllMode intermediate_result maybe_new_solution explored_checkpoint =
-    Progress
-        explored_checkpoint
-        (maybe intermediate_result (mappend intermediate_result) maybe_new_solution)
-constructWorkerFinishedProgress FirstMode _ maybe_new_result explored_checkpoint =
-    maybe (Left explored_checkpoint) Right maybe_new_result
--- }}}
-
-extractFinalValueFromFinalProgress :: -- {{{
-    VisitorMode visitor_mode →
-    WorkerFinalProgressFor visitor_mode →
-    FinalResultFor visitor_mode
-extractFinalValueFromFinalProgress AllMode = progressResult
-extractFinalValueFromFinalProgress FirstMode = either (const Nothing) Just
--- }}}
-
 initialProgress :: VisitorMode visitor_mode → ProgressFor visitor_mode -- {{{
 initialProgress visitor_mode = withProofThatProgressIsMonoid visitor_mode mempty
 -- }}}
@@ -109,24 +87,6 @@ progressFrom :: -- {{{
     ProgressFor visitor_mode
 progressFrom AllMode = flip Progress
 progressFrom FirstMode = const id
--- }}}
-
-reactToFinalProgress :: -- {{{
-    Monad m ⇒
-    VisitorMode visitor_mode →
-    (FinalResultFor visitor_mode → m (Checkpoint,FinalResultFor visitor_mode)) →
-    (ProgressFor visitor_mode → m (ProgressFor visitor_mode)) →
-    WorkerFinalProgressFor visitor_mode →
-    m (Checkpoint,FinalResultFor visitor_mode)
-reactToFinalProgress AllMode _ updateAndReturnProgress final_progress = do
-    Progress checkpoint new_results ← updateAndReturnProgress final_progress
-    return (checkpoint,new_results)
-reactToFinalProgress FirstMode finishWithResult updateAndReturnProgress final_progress =
-    either
-        (liftM (,Nothing) . updateAndReturnProgress)
-        (finishWithResult . Just)
-    $
-    final_progress
 -- }}}
 
 withProofThatProgressIsMonoid :: -- {{{

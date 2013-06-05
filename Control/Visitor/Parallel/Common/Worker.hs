@@ -59,7 +59,7 @@ import Data.Functor.Identity (Identity)
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef,writeIORef)
 import qualified Data.IVar as IVar
 import Data.IVar (IVar)
-import Data.Monoid (Monoid(..))
+import Data.Monoid ((<>),Monoid(..))
 import Data.Maybe (isJust)
 import Data.Sequence ((|>),(><),Seq,viewl,ViewL(..))
 import Data.Serialize
@@ -235,18 +235,20 @@ forkWorkerThread
                             $
                             Explored
                     in return . WorkerFinished $
-                        constructWorkerFinishedProgress
-                            visitor_mode
-                            result
-                            maybe_solution
-                            explored_checkpoint
+                        case visitor_mode of
+                            AllMode →
+                                Progress
+                                    explored_checkpoint
+                                    (maybe result (result <>) maybe_solution)
+                            FirstMode →
+                                maybe (Left explored_checkpoint) Right maybe_solution
                 Just new_visitor_state →
                     case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
                         Just (!solution) →
-                            reactToSolutionFound visitor_mode result solution
-                                (\new_result → loop1 new_result cursor new_visitor_state)
-                                (return . WorkerFinished)
+                            case visitor_mode of
+                                AllMode → loop1 (result <> solution) cursor new_visitor_state
+                                FirstMode → return . WorkerFinished . Right $ solution
         -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
@@ -303,7 +305,9 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
         WorkerAborted → WorkerAborted
         WorkerFailed message → WorkerFailed message
         WorkerFinished progress → WorkerFinished $
-            extractFinalValueFromFinalProgress visitor_mode progress
+            case visitor_mode of
+                AllMode → progressResult progress
+                FirstMode → either (const Nothing) Just progress
 -- }}}
 
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
