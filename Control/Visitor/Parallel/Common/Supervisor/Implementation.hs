@@ -1120,11 +1120,12 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
             AllMode → do
                 Progress checkpoint new_results ← current_progress <%= (<> final_progress)
                 return (checkpoint,new_results)
-            FirstMode →
-                either
-                    (liftM (,Nothing) . (current_progress <%=) . mappend)
-                    (finishWithResult . Just)
-                    final_progress
+            FirstMode → do
+                let Progress{..} = final_progress
+                checkpoint ← current_progress <%= (<> progressCheckpoint)
+                case progressResult of
+                    Nothing → return (checkpoint,Nothing)
+                    Just solution → finishWithResult . Just $ Progress checkpoint solution
     case checkpoint of
         Explored → do
             active_worker_ids ← Map.keys . Map.delete worker_id <$> use active_workers

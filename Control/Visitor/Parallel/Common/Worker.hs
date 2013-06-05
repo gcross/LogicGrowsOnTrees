@@ -245,20 +245,27 @@ forkWorkerThread
                             $
                             Explored
                     in return . WorkerFinished $
+                        -- NOTE:  Do *not* refactor the code below; if you do so
+                        --        then it will confuse the type-checker.
                         case visitor_mode of
                             AllMode →
                                 Progress
                                     explored_checkpoint
                                     (maybe result (result <>) maybe_solution)
                             FirstMode →
-                                maybe (Left explored_checkpoint) Right maybe_solution
-                Just new_visitor_state →
+                                Progress
+                                    explored_checkpoint
+                                    maybe_solution
+                Just new_visitor_state@(VisitorTState context checkpoint _) →
                     case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
                         Just (!solution) →
                             case visitor_mode of
                                 AllMode → loop1 (result <> solution) cursor new_visitor_state
-                                FirstMode → return . WorkerFinished . Right $ solution
+                                FirstMode → return . WorkerFinished $
+                                    Progress
+                                        (checkpointFromEnvironment initial_path cursor context checkpoint)
+                                        (Just solution)
         -- }}}
     start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
@@ -317,7 +324,7 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
         WorkerFinished progress → WorkerFinished $
             case visitor_mode of
                 AllMode → progressResult progress
-                FirstMode → either (const Nothing) Just progress
+                FirstMode → Progress (progressCheckpoint progress) <$> progressResult progress
 -- }}}
 
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
@@ -350,15 +357,15 @@ runVisitorT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → VisitorT 
 runVisitorT = genericRunVisitor AllMode . ImpureVisitor
 -- }}}
 
-runVisitorUntilFirst :: Visitor α → IO (WorkerTerminationReason (Maybe α)) -- {{{
+runVisitorUntilFirst :: Visitor α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
 runVisitorUntilFirst = genericRunVisitor FirstMode PureVisitor
 -- }}}
 
-runVisitorIOUntilFirst :: VisitorIO α → IO (WorkerTerminationReason (Maybe α)) -- {{{
+runVisitorIOUntilFirst :: VisitorIO α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
 runVisitorIOUntilFirst = genericRunVisitor FirstMode IOVisitor
 -- }}}
 
-runVisitorTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason (Maybe α)) -- {{{
+runVisitorTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
 runVisitorTUntilFirst = genericRunVisitor FirstMode . ImpureVisitor
 -- }}}
 

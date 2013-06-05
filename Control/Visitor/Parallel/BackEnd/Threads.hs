@@ -176,7 +176,7 @@ runVisitorTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureVisitor
 runVisitorUntilFirst :: -- {{{
     Visitor result →
     ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe result))
+    IO (RunOutcome Checkpoint (Maybe (Progress result)))
 runVisitorUntilFirst = runVisitorUntilFirstStartingFrom mempty
 -- }}}
 
@@ -184,14 +184,14 @@ runVisitorUntilFirstStartingFrom :: -- {{{
     Checkpoint →
     Visitor result →
     ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe result))
+    IO (RunOutcome Checkpoint (Maybe (Progress result)))
 runVisitorUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode PureVisitor
 -- }}}
 
 runVisitorIOUntilFirst :: -- {{{
     VisitorIO result →
     ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe result))
+    IO (RunOutcome Checkpoint (Maybe (Progress result)))
 runVisitorIOUntilFirst = runVisitorIOUntilFirstStartingFrom mempty
 -- }}}
 
@@ -199,7 +199,7 @@ runVisitorIOUntilFirstStartingFrom :: -- {{{
     Checkpoint →
     VisitorIO result →
     ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe result))
+    IO (RunOutcome Checkpoint (Maybe (Progress result)))
 runVisitorIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode IOVisitor
 -- }}}
 
@@ -208,7 +208,7 @@ runVisitorTUntilFirst :: -- {{{
     (∀ α. m α → IO α) →
     VisitorT m result →
     ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe result))
+    IO (RunOutcome Checkpoint (Maybe (Progress result)))
 runVisitorTUntilFirst = flip runVisitorTUntilFirstStartingFrom mempty
 -- }}}
 
@@ -218,7 +218,7 @@ runVisitorTUntilFirstStartingFrom :: -- {{{
     Checkpoint →
     VisitorT m result →
     ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe result))
+    IO (RunOutcome Checkpoint (Maybe (Progress result)))
 runVisitorTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
 -- }}}
 

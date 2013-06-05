@@ -46,7 +46,7 @@ type instance ProgressFor (FirstMode result) = Checkpoint
 
 type family FinalResultFor visitor_mode :: * -- {{{
 type instance FinalResultFor (AllMode result) = result
-type instance FinalResultFor (FirstMode result) = Maybe result
+type instance FinalResultFor (FirstMode result) = Maybe (Progress result)
 -- }}}
 
 type family WorkerIntermediateValueFor visitor_mode :: * -- {{{
@@ -56,7 +56,7 @@ type instance WorkerIntermediateValueFor (FirstMode result) = ()
 
 type family WorkerFinalProgressFor visitor_mode :: * -- {{{
 type instance WorkerFinalProgressFor (AllMode result) = Progress result
-type instance WorkerFinalProgressFor (FirstMode result) = Either Checkpoint result
+type instance WorkerFinalProgressFor (FirstMode result) = Progress (Maybe result)
 -- }}}
 -- }}}
 

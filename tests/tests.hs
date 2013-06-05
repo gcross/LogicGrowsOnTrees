@@ -1059,7 +1059,7 @@ tests = -- {{{
                          return ()
                         )
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
-                termination_reason @?= Completed (Just ())
+                termination_reason @?= Completed (Just (Progress (ChoiceCheckpoint Unexplored Explored) ()))
              -- }}}
             ]
          -- }}}
@@ -1144,7 +1144,10 @@ tests = -- {{{
                         correct_results ← runVisitorT $ Set.singleton <$> visitor
                         case maybe_result of
                             Nothing → assertBool "solutions were missed" (Set.null correct_results)
-                            Just result → assertBool "solution was not valid" (Set.member result correct_results)
+                            Just (Progress checkpoint result) → do
+                                assertBool "solution was not valid" $ Set.member result correct_results
+                                runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= assertBool "solution appears within area covered by checkpoint" . IntSet.isSubsetOf result
+                                runVisitorTThroughCheckpoint checkpoint visitor >>= assertBool "solution does not appear outside the area covered by checkpoint" . not . IntSet.isSubsetOf result
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\checkpoint → do
                             runVisitorTUntilFirstThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= Nothing)
                          )
@@ -1414,18 +1417,18 @@ tests = -- {{{
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker ()
-                        receiveWorkerFinished () (Left Explored)
+                        receiveWorkerFinished () (Progress Explored Nothing)
                         error "Supervisor did not terminate"
-                    supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe ())
+                    supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe (Progress ()))
                  -- }}}
                 ,testCase "finishes with result" $ do -- {{{
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
                         enableSupervisorDebugMode
                         killWorkloadBuffer
                         addWorker ()
-                        receiveWorkerFinished () (Right ())
+                        receiveWorkerFinished () (Progress Explored (Just ()))
                         error "Supervisor did not terminate"
-                    supervisorTerminationReason @?= SupervisorCompleted (Just ())
+                    supervisorTerminationReason @?= SupervisorCompleted (Just (Progress Explored ()))
                  -- }}}
                 ]
              -- }}}
@@ -1448,10 +1451,10 @@ tests = -- {{{
                                     (Seq.singleton $ ChoiceStep RightBranch)
                                     Unexplored
                                 )
-                        receiveWorkerFinished True (Left $ ChoiceCheckpoint Explored Unexplored)
-                        receiveWorkerFinished False (Left $ ChoiceCheckpoint Unexplored Explored)
+                        receiveWorkerFinished True (Progress (ChoiceCheckpoint Explored Unexplored) Nothing)
+                        receiveWorkerFinished False (Progress (ChoiceCheckpoint Unexplored Explored) Nothing)
                         error "Supervisor did not terminate"
-                    supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe ())
+                    supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe (Progress ()))
                  -- }}}
                 ,testCase "both finish with result" $ do -- {{{
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
@@ -1471,10 +1474,10 @@ tests = -- {{{
                                     (Seq.singleton $ ChoiceStep RightBranch)
                                     Unexplored
                                 )
-                        receiveWorkerFinished False (Right False)
-                        receiveWorkerFinished True (Right True)
+                        receiveWorkerFinished False (Progress (ChoiceCheckpoint Explored Unexplored) (Just False))
+                        receiveWorkerFinished True (Progress (ChoiceCheckpoint Unexplored Explored) (Just True))
                         error "Supervisor did not terminate"
-                    supervisorTerminationReason @?= SupervisorCompleted (Just False)
+                    supervisorTerminationReason @?= SupervisorCompleted (Just (Progress (ChoiceCheckpoint Explored Unexplored) False))
                  -- }}}
                 ]
              -- }}}
@@ -1765,8 +1768,11 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testProperty "runVisitorUntilFirst" $ \(visitor :: Visitor String) → -- {{{
-            unsafePerformIO (Worker.runVisitorUntilFirst visitor) == WorkerFinished (runVisitorUntilFirst visitor)
+        ,testProperty "runVisitorUntilFirst" $ \(visitor :: Visitor String) → morallyDubiousIOProperty $ do -- {{{
+            termination_reason ← Worker.runVisitorUntilFirst visitor
+            case termination_reason of
+                WorkerFinished maybe_final_progress → return $ (progressResult <$> maybe_final_progress) == runVisitorUntilFirst visitor
+                _ → fail $ "returned " ++ show termination_reason ++ " instead of WorkerFinished"
          -- }}}
         ]
      -- }}}
