@@ -144,9 +144,8 @@ data Driver -- {{{
     Driver (
         ( Serialize (ProgressFor visitor_mode)
         , MonadIO result_monad
-        , VisitorMode visitor_mode
         ) ⇒
-        visitor_mode →
+        VisitorMode visitor_mode →
         VisitorKind m n →
         Term shared_configuration →
         Term supervisor_configuration →
@@ -374,11 +373,10 @@ managerLoop SupervisorConfiguration{..} = do
 
 genericMain :: -- {{{
     ( MonadIO result_monad
-    , VisitorMode visitor_mode
     , ResultFor visitor_mode ~ result
     , Serialize (ProgressFor visitor_mode)
     ) ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     VisitorKind m n →
     Driver
         result_monad
@@ -403,14 +401,14 @@ genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term in
         (constructVisitor . visitor_configuration)
         (\_ SupervisorConfiguration{..} →
             case maybe_checkpoint_configuration of
-                Nothing → (infoM "Checkpointing is NOT enabled") >> return mempty
+                Nothing → (infoM "Checkpointing is NOT enabled") >> return (initialProgress visitor_mode)
                 Just CheckpointConfiguration{..} → do
                     noticeM $ "Checkpointing enabled"
                     noticeM $ "Checkpoint file is " ++ checkpoint_path
                     noticeM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
                     ifM (doesFileExist checkpoint_path)
                         (noticeM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
-                        (return mempty)
+                        (return $ initialProgress visitor_mode)
         )
         (\SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} →
             (do showStatistics statistics_configuration runStatistics

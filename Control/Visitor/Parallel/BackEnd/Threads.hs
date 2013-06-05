@@ -78,24 +78,17 @@ deriveLoggers "Logger" [DEBUG,INFO]
 -- Types {{{
 newtype ThreadsControllerMonad visitor_mode α =
     C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor visitor_mode))) visitor_mode α
-      } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,WorkgroupRequestQueueMonad)
+      } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
 -- }}}
 
 -- Instances {{{
 instance HasVisitorMode (ThreadsControllerMonad visitor_mode) where -- {{{
     type VisitorModeFor (ThreadsControllerMonad visitor_mode) = visitor_mode
 -- }}}
-instance VisitorMode visitor_mode ⇒ RequestQueueMonad (ThreadsControllerMonad visitor_mode) where -- {{{
-    abort = C abort
-    fork = C . fork . unwrapC
-    getCurrentProgressAsync = C . getCurrentProgressAsync
-    getNumberOfWorkersAsync = C . getNumberOfWorkersAsync
-    requestProgressUpdateAsync = C . requestProgressUpdateAsync
--- }}}
 -- }}}
 
 -- Driver {{{
-driver :: VisitorMode visitor_mode ⇒ Driver IO shared_configuration supervisor_configuration m n visitor_mode
+driver :: Driver IO shared_configuration supervisor_configuration m n visitor_mode
 driver = Driver $
     \visitor_mode
      visitor_kind
@@ -122,7 +115,7 @@ driver = Driver $
 
 -- Exposed Functions {{{
 
-changeNumberOfWorkersToMatchCPUs :: VisitorMode visitor_mode ⇒ ThreadsControllerMonad visitor_mode () -- {{{
+changeNumberOfWorkersToMatchCPUs :: ThreadsControllerMonad visitor_mode () -- {{{
 changeNumberOfWorkersToMatchCPUs =
     liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
 -- }}}
@@ -236,8 +229,7 @@ runVisitorTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . Impure
 fromJustOrBust message = fromMaybe (error message)
 
 launchVisitorStartingFrom :: -- {{{
-    VisitorMode visitor_mode ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     VisitorKind m n →
     (ProgressFor visitor_mode) →
     VisitorT m (ResultFor visitor_mode) →

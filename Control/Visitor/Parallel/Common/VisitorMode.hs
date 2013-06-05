@@ -1,6 +1,8 @@
 -- Language extensions {{{
+{-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -16,121 +18,122 @@ import Control.Visitor.Checkpoint
 -- }}}
 
 -- Classes {{{
-class Monoid (ProgressFor visitor_mode) ⇒ VisitorMode visitor_mode where -- {{{
-    type ResultFor visitor_mode :: *
-
-    type ProgressFor visitor_mode :: *
-    type FinalResultFor visitor_mode :: *
-
-    type WorkerIntermediateValueFor visitor_mode :: *
-    type WorkerFinalProgressFor visitor_mode :: *
-
-    checkpointFromIntermediateProgress ::
-        visitor_mode →
-        ProgressFor visitor_mode →
-        Checkpoint
-
-    constructWorkerFinishedProgress ::
-        visitor_mode →
-        WorkerIntermediateValueFor visitor_mode →
-        Maybe (ResultFor visitor_mode) →
-        Checkpoint →
-        WorkerFinalProgressFor visitor_mode
-
-    extractFinalValueFromFinalProgress ::
-        visitor_mode →
-        WorkerFinalProgressFor visitor_mode →
-        FinalResultFor visitor_mode
-
-    initialWorkerIntermediateValue ::
-        visitor_mode →
-        WorkerIntermediateValueFor visitor_mode
-
-    progressFrom ::
-        visitor_mode →
-        WorkerIntermediateValueFor visitor_mode →
-        Checkpoint →
-        ProgressFor visitor_mode
-
-    reactToFinalProgress ::
-        Monad m ⇒
-        visitor_mode →
-        (FinalResultFor visitor_mode → m (Checkpoint,FinalResultFor visitor_mode)) →
-        (ProgressFor visitor_mode → m (ProgressFor visitor_mode)) →
-        WorkerFinalProgressFor visitor_mode →
-        m (Checkpoint,FinalResultFor visitor_mode)
-
-    reactToSolutionFound ::
-        Monad m ⇒
-        visitor_mode →
-        WorkerIntermediateValueFor visitor_mode →
-        (ResultFor visitor_mode) →
-        (WorkerIntermediateValueFor visitor_mode → m α) →
-        (WorkerFinalProgressFor visitor_mode → m α) →
-        m α
--- }}}
 class HasVisitorMode (monad :: * → *) where -- {{{
     type VisitorModeFor monad :: *
 -- }}}
 -- }}}
 
--- Visitor modes {{{
-data AllMode result = AllMode -- {{{
-instance Monoid result ⇒ VisitorMode (AllMode result) where
-    type ResultFor (AllMode result) = result
+-- Types {{{
+data AllMode result
+data FirstMode result
 
-    type ProgressFor (AllMode result) = Progress result
-    type FinalResultFor (AllMode result) = result
-
-    type WorkerIntermediateValueFor (AllMode result) = result
-    type WorkerFinalProgressFor (AllMode result) = Progress result
-
-    checkpointFromIntermediateProgress _ = progressCheckpoint
-
-    constructWorkerFinishedProgress _ intermediate_result maybe_new_solution explored_checkpoint =
-        Progress
-            explored_checkpoint
-            (maybe intermediate_result (mappend intermediate_result) maybe_new_solution)
-
-    extractFinalValueFromFinalProgress _ = progressResult
-
-    initialWorkerIntermediateValue _ = mempty
-
-    progressFrom _ = flip Progress
-
-    reactToFinalProgress _ _ updateAndReturnProgress final_progress = do
-        Progress checkpoint new_results ← updateAndReturnProgress final_progress
-        return (checkpoint,new_results)
-
-    reactToSolutionFound _ intermediate_result result loopWithNewIntermediate _ =
-        loopWithNewIntermediate (intermediate_result <> result)
+data VisitorMode visitor_mode where -- {{{
+    AllMode :: Monoid result ⇒ VisitorMode (AllMode result)
+    FirstMode :: VisitorMode (FirstMode result)
 -- }}}
-data FirstMode result = FirstMode -- {{{
-instance VisitorMode (FirstMode result) where
-    type ResultFor (FirstMode result) = result
+-- }}}
 
-    type ProgressFor (FirstMode result) = Checkpoint
-    type FinalResultFor (FirstMode result) = Maybe result
+-- Type families {{{
+type family ResultFor visitor_mode :: * -- {{{
+type instance ResultFor (AllMode result) = result
+type instance ResultFor (FirstMode result) = result
+-- }}}
 
-    type WorkerIntermediateValueFor (FirstMode result) = ()
-    type WorkerFinalProgressFor (FirstMode result) = Either Checkpoint result
+type family ProgressFor visitor_mode :: * -- {{{
+type instance ProgressFor (AllMode result) = Progress result
+type instance ProgressFor (FirstMode result) = Checkpoint
+-- }}}
 
-    checkpointFromIntermediateProgress _ = id
+type family FinalResultFor visitor_mode :: * -- {{{
+type instance FinalResultFor (AllMode result) = result
+type instance FinalResultFor (FirstMode result) = Maybe result
+-- }}}
 
-    constructWorkerFinishedProgress _ _ maybe_new_result explored_checkpoint =
-        maybe (Left explored_checkpoint) Right maybe_new_result
+type family WorkerIntermediateValueFor visitor_mode :: * -- {{{
+type instance WorkerIntermediateValueFor (AllMode result) = result
+type instance WorkerIntermediateValueFor (FirstMode result) = ()
+-- }}}
 
-    extractFinalValueFromFinalProgress _ = either (const Nothing) Just
+type family WorkerFinalProgressFor visitor_mode :: * -- {{{
+type instance WorkerFinalProgressFor (AllMode result) = Progress result
+type instance WorkerFinalProgressFor (FirstMode result) = Either Checkpoint result
+-- }}}
+-- }}}
 
-    initialWorkerIntermediateValue _ = ()
+-- Functions {{{
+checkpointFromIntermediateProgress :: -- {{{
+    VisitorMode visitor_mode →
+    ProgressFor visitor_mode →
+    Checkpoint
+checkpointFromIntermediateProgress AllMode = progressCheckpoint
+checkpointFromIntermediateProgress FirstMode = id
+-- }}}
 
-    progressFrom _ = const id
+constructWorkerFinishedProgress :: -- {{{
+    VisitorMode visitor_mode →
+    WorkerIntermediateValueFor visitor_mode →
+    Maybe (ResultFor visitor_mode) →
+    Checkpoint →
+    WorkerFinalProgressFor visitor_mode
+constructWorkerFinishedProgress AllMode intermediate_result maybe_new_solution explored_checkpoint =
+    Progress
+        explored_checkpoint
+        (maybe intermediate_result (mappend intermediate_result) maybe_new_solution)
+constructWorkerFinishedProgress FirstMode _ maybe_new_result explored_checkpoint =
+    maybe (Left explored_checkpoint) Right maybe_new_result
+-- }}}
 
-    reactToFinalProgress _ finishWithResult updateAndReturnProgress =
-        either
-            (liftM (,Nothing) . updateAndReturnProgress)
-            (finishWithResult . Just)
+extractFinalValueFromFinalProgress :: -- {{{
+    VisitorMode visitor_mode →
+    WorkerFinalProgressFor visitor_mode →
+    FinalResultFor visitor_mode
+extractFinalValueFromFinalProgress AllMode = progressResult
+extractFinalValueFromFinalProgress FirstMode = either (const Nothing) Just
+-- }}}
 
-    reactToSolutionFound _ _ solution _ finish = finish (Right solution)
+initialProgress :: VisitorMode visitor_mode → ProgressFor visitor_mode -- {{{
+initialProgress visitor_mode = withProofThatProgressIsMonoid visitor_mode mempty
+-- }}}
+
+initialWorkerIntermediateValue :: -- {{{
+    VisitorMode visitor_mode →
+    WorkerIntermediateValueFor visitor_mode
+initialWorkerIntermediateValue AllMode = mempty
+initialWorkerIntermediateValue FirstMode = ()
+-- }}}
+
+progressFrom :: -- {{{
+    VisitorMode visitor_mode →
+    WorkerIntermediateValueFor visitor_mode →
+    Checkpoint →
+    ProgressFor visitor_mode
+progressFrom AllMode = flip Progress
+progressFrom FirstMode = const id
+-- }}}
+
+reactToFinalProgress :: -- {{{
+    Monad m ⇒
+    VisitorMode visitor_mode →
+    (FinalResultFor visitor_mode → m (Checkpoint,FinalResultFor visitor_mode)) →
+    (ProgressFor visitor_mode → m (ProgressFor visitor_mode)) →
+    WorkerFinalProgressFor visitor_mode →
+    m (Checkpoint,FinalResultFor visitor_mode)
+reactToFinalProgress AllMode _ updateAndReturnProgress final_progress = do
+    Progress checkpoint new_results ← updateAndReturnProgress final_progress
+    return (checkpoint,new_results)
+reactToFinalProgress FirstMode finishWithResult updateAndReturnProgress final_progress =
+    either
+        (liftM (,Nothing) . updateAndReturnProgress)
+        (finishWithResult . Just)
+    $
+    final_progress
+-- }}}
+
+withProofThatProgressIsMonoid :: -- {{{
+    VisitorMode visitor_mode →
+    (Monoid (ProgressFor visitor_mode) ⇒ α) →
+    α
+withProofThatProgressIsMonoid AllMode x = x
+withProofThatProgressIsMonoid FirstMode x = x
 -- }}}
 -- }}}

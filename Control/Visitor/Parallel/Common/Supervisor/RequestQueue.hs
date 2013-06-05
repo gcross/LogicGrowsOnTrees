@@ -40,7 +40,6 @@ import Control.Visitor.Parallel.Common.VisitorMode
 
 class -- {{{
   ( HasVisitorMode m
-  , VisitorMode (VisitorModeFor m)
   , MonadCatchIO m
   -- }}}
   ) ⇒ RequestQueueMonad m where -- {{{
@@ -74,7 +73,6 @@ instance HasVisitorMode (RequestQueueReader visitor_mode worker_id m) where -- {
 instance -- {{{
   ( SupervisorFullConstraint worker_id m
   , MonadCatchIO m
-  , VisitorMode visitor_mode
   -- }}}
   ) ⇒ RequestQueueMonad (RequestQueueReader visitor_mode worker_id m) where -- {{{
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor

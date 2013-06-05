@@ -171,7 +171,6 @@ abortSupervisor = wrapIntoSupervisorMonad Implementation.abortSupervisor
 addWorker :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     SupervisorMonad visitor_mode worker_id m ()
@@ -204,7 +203,6 @@ endSupervisorOccupied = changeSupervisorOccupiedStatus False
 
 getCurrentProgress ::
     ( SupervisorMonadConstraint m
-    , VisitorMode visitor_mode
     ) ⇒ SupervisorMonad visitor_mode worker_id m (ProgressFor visitor_mode) -- {{{
 getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
 -- }}}
@@ -222,7 +220,6 @@ getNumberOfWorkers = wrapIntoSupervisorMonad Implementation.getNumberOfWorkers
 performGlobalProgressUpdate :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     SupervisorMonad visitor_mode worker_id m ()
 performGlobalProgressUpdate = wrapIntoSupervisorMonad Implementation.performGlobalProgressUpdate
@@ -231,7 +228,6 @@ performGlobalProgressUpdate = wrapIntoSupervisorMonad Implementation.performGlob
 receiveProgressUpdate :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     ProgressUpdateFor visitor_mode →
@@ -242,7 +238,6 @@ receiveProgressUpdate = wrapIntoSupervisorMonad .* Implementation.receiveProgres
 receiveStolenWorkload :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     Maybe (StolenWorkloadFor visitor_mode) →
@@ -260,7 +255,6 @@ receiveWorkerFailure =
 receiveWorkerFinished :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     WorkerFinalProgressFor visitor_mode →
@@ -271,7 +265,6 @@ receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
 receiveWorkerFinishedAndRemoved :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     WorkerFinalProgressFor visitor_mode →
@@ -282,7 +275,6 @@ receiveWorkerFinishedAndRemoved = receiveWorkerFinishedWithRemovalFlag True
 receiveWorkerFinishedWithRemovalFlag :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     Bool →
     worker_id →
@@ -294,7 +286,6 @@ receiveWorkerFinishedWithRemovalFlag = wrapIntoSupervisorMonad .** Implementatio
 removeWorker :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     SupervisorMonad visitor_mode worker_id m ()
@@ -304,7 +295,6 @@ removeWorker = wrapIntoSupervisorMonad . Implementation.removeWorker
 removeWorkerIfPresent :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     SupervisorMonad visitor_mode worker_id m ()
@@ -314,21 +304,19 @@ removeWorkerIfPresent = wrapIntoSupervisorMonad . Implementation.removeWorkerIfP
 runSupervisor :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     SupervisorProgram visitor_mode worker_id m →
     m (SupervisorOutcomeFor visitor_mode worker_id)
-runSupervisor = flip runSupervisorStartingFrom mempty
+runSupervisor visitor_mode = runSupervisorStartingFrom visitor_mode (initialProgress visitor_mode)
 -- }}}
 
 runSupervisorStartingFrom :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     ProgressFor visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     SupervisorProgram visitor_mode worker_id m →
@@ -393,14 +381,13 @@ runSupervisorProgram program =
 runUnrestrictedSupervisor :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     (∀ α. SupervisorMonad visitor_mode worker_id m α) →
     m (SupervisorOutcomeFor visitor_mode worker_id)
 runUnrestrictedSupervisor visitor_mode callbacks =
-    runSupervisorStartingFrom visitor_mode mempty callbacks
+    runSupervisorStartingFrom visitor_mode (initialProgress visitor_mode) callbacks
     .
     UnrestrictedProgram
 -- }}}
@@ -408,9 +395,8 @@ runUnrestrictedSupervisor visitor_mode callbacks =
 runUnrestrictedSupervisorStartingFrom :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     ProgressFor visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     (∀ α. SupervisorMonad visitor_mode worker_id m α) →

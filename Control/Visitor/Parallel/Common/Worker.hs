@@ -144,10 +144,8 @@ deriveLoggers "Logger" [DEBUG,INFO]
 -- Functions {{{
 
 computeProgressUpdate :: -- {{{
-    ( VisitorMode visitor_mode
-    , ResultFor visitor_mode ~ α
-    ) ⇒
-    visitor_mode →
+    ResultFor visitor_mode ~ α ⇒
+    VisitorMode visitor_mode →
     WorkerIntermediateValueFor visitor_mode →
     Path →
     CheckpointCursor →
@@ -175,8 +173,8 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
 -- }}}
 
 forkWorkerThread :: -- {{{
-    (VisitorMode visitor_mode, ResultFor visitor_mode ~ α) ⇒
-    visitor_mode →
+    ResultFor visitor_mode ~ α ⇒
+    VisitorMode visitor_mode →
     VisitorKind m n →
     (WorkerTerminationReasonFor visitor_mode → IO ()) →
     VisitorT m α →
@@ -287,8 +285,8 @@ forkWorkerThread
 -- }}}
 
 genericRunVisitor :: -- {{{
-    (VisitorMode visitor_mode, ResultFor visitor_mode ~ α) ⇒
-    visitor_mode →
+    ResultFor visitor_mode ~ α ⇒
+    VisitorMode visitor_mode →
     VisitorKind m n →
     VisitorT m α →
     IO (WorkerTerminationReason (FinalResultFor visitor_mode))

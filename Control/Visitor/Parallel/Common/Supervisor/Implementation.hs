@@ -303,7 +303,7 @@ data SupervisorCallbacks visitor_mode worker_id m = -- {{{
 data SupervisorConstants visitor_mode worker_id m = SupervisorConstants -- {{{
     {   callbacks :: !(SupervisorCallbacks visitor_mode worker_id m)
     ,   _current_time :: UTCTime
-    ,   _visitor_mode :: visitor_mode
+    ,   _visitor_mode :: VisitorMode visitor_mode
     }
 $( makeLenses ''SupervisorConstants )
 -- }}}
@@ -398,9 +398,6 @@ type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker
 -- }}}
 
 -- Classes {{{
-class VisitorMode (VisitorModeOf monad) ⇒ HasVisitorMode monad where
-    type VisitorModeOf monad :: *
-
 class SpecializationOfFunctionOfTime f α where -- {{{
     zoomFunctionOfTimeWithInterpolator ::
         Monad m ⇒
@@ -507,7 +504,6 @@ addPointToExponentiallyWeightedAverage current_value current_time = execState $ 
 addWorker :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     ContextMonad visitor_mode worker_id m ()
@@ -816,7 +812,6 @@ getCurrentCheckpoint :: -- {{{
     ( SupervisorMonadConstraint m'
     , SupervisorStateConstraint visitor_mode worker_id m'
     , SupervisorReaderConstraint visitor_mode worker_id m m'
-    , VisitorMode visitor_mode
     ) ⇒ m' Checkpoint
 getCurrentCheckpoint =
     liftM2 checkpointFromIntermediateProgress
@@ -1001,7 +996,6 @@ localWithinContext f m = do
 performGlobalProgressUpdate :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     ContextMonad visitor_mode worker_id m ()
 performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" $ do
@@ -1019,7 +1013,6 @@ postValidate :: -- {{{
     , SupervisorFullConstraint worker_id m
     , SupervisorStateConstraint visitor_mode worker_id m'
     , SupervisorReaderConstraint visitor_mode worker_id m m'
-    , VisitorMode visitor_mode
     ) ⇒
     String →
     m' α →
@@ -1064,7 +1057,6 @@ postValidate label action = action >>= \result →
 receiveProgressUpdate :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     ProgressUpdateFor visitor_mode →
@@ -1072,7 +1064,9 @@ receiveProgressUpdate :: -- {{{
 receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") $ do
     infoM $ "Received progress update from " ++ show worker_id
     validateWorkerKnownAndActive "receiving progress update" worker_id
-    current_progress %= (<> progress_update)
+    visitor_mode ← view visitor_mode
+    withProofThatProgressIsMonoid visitor_mode $
+        current_progress %= (<> progress_update)
     is_pending_workload_steal ← Set.member worker_id <$> use workers_pending_workload_steal
     unless is_pending_workload_steal $ dequeueWorkerForSteal worker_id
     active_workers %= Map.insert worker_id remaining_workload
@@ -1083,7 +1077,6 @@ receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_worklo
 receiveStolenWorkload :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     Maybe (StolenWorkloadFor visitor_mode) →
@@ -1097,7 +1090,9 @@ receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveSt
         Just (StolenWorkload (ProgressUpdate progress_update remaining_workload) workload) → do
             (steal_request_matcher_queue %%= fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView)
               >>= (timePassedSince >=> liftA2 (>>) ((workload_steal_time_statistics %=) . pappend) updateInstataneousWorkloadStealTime)
-            current_progress %= (<> progress_update)
+            visitor_mode ← view visitor_mode
+            withProofThatProgressIsMonoid visitor_mode $
+                current_progress %= (<> progress_update)
             active_workers %= Map.insert worker_id remaining_workload
             enqueueWorkload workload
     enqueueWorkerForSteal worker_id
@@ -1107,7 +1102,6 @@ receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveSt
 receiveWorkerFinishedWithRemovalFlag :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     Bool →
     worker_id →
@@ -1124,7 +1118,7 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
         reactToFinalProgress
             visitor_mode
             finishWithResult
-            ((current_progress <%=) . mappend)
+            (withProofThatProgressIsMonoid visitor_mode $ (current_progress <%=) . mappend)
             final_progress
     case checkpoint of
         Explored → do
@@ -1175,7 +1169,6 @@ retireOccupationStatistics = liftM head . retireManyOccupationStatistics . (:[])
 removeWorker :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     ContextMonad visitor_mode worker_id m ()
@@ -1188,7 +1181,6 @@ removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) $ do
 removeWorkerIfPresent :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
     worker_id →
     ContextMonad visitor_mode worker_id m ()
@@ -1235,9 +1227,8 @@ retireAndDeactivateWorker worker_id = do
 runSupervisorStartingFrom :: -- {{{
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
-    , VisitorMode visitor_mode
     ) ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     ProgressFor visitor_mode →
     SupervisorCallbacks visitor_mode worker_id m →
     (∀ α. AbortMonad visitor_mode worker_id m α) →

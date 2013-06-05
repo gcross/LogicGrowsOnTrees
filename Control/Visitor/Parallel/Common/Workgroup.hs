@@ -1,9 +1,7 @@
 -- Language extensions {{{
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -100,7 +98,7 @@ type WorkgroupRequestQueue inner_state visitor_mode = RequestQueue visitor_mode 
 
 type WorkgroupMonad inner_state visitor_mode = SupervisorMonad visitor_mode WorkerId (WorkgroupStateMonad inner_state)
 
-newtype WorkgroupControllerMonad inner_state visitor_mode α = C { unwrapC :: RequestQueueReader visitor_mode WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO)
+newtype WorkgroupControllerMonad inner_state visitor_mode α = C { unwrapC :: RequestQueueReader visitor_mode WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad)
 -- }}}
 
 -- Classes {{{
@@ -113,14 +111,7 @@ class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where -- {{{
 instance HasVisitorMode (WorkgroupControllerMonad inner_state visitor_mode) where -- {{{
     type VisitorModeFor (WorkgroupControllerMonad inner_state visitor_mode) = visitor_mode
 -- }}}
-instance VisitorMode visitor_mode ⇒ RequestQueueMonad (WorkgroupControllerMonad inner_state visitor_mode) where -- {{{
-    abort = C abort
-    fork = C . fork . unwrapC
-    getCurrentProgressAsync = C . getCurrentProgressAsync
-    getNumberOfWorkersAsync = C . getNumberOfWorkersAsync
-    requestProgressUpdateAsync = C . requestProgressUpdateAsync
--- }}}
-instance VisitorMode visitor_mode ⇒ WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state visitor_mode) where -- {{{
+instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state visitor_mode) where -- {{{
     changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
         old_number_of_workers ← numberOfWorkers
         new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
@@ -143,8 +134,7 @@ changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 -- }}}
 
 runWorkgroup :: -- {{{
-    VisitorMode visitor_mode ⇒
-    visitor_mode →
+    VisitorMode visitor_mode →
     inner_state →
     (MessageForSupervisorReceivers visitor_mode WorkerId → WorkgroupCallbacks inner_state) →
     ProgressFor visitor_mode →
@@ -218,9 +208,7 @@ bumpWorkerRemovalPriority worker_id =
     (next_priority <<%= pred) >>= (removal_queue %=) . PSQ.insert worker_id
 -- }}}
 
-fireAWorker :: -- {{{
-    VisitorMode visitor_mode ⇒
-    WorkgroupMonad inner_state visitor_mode ()
+fireAWorker :: WorkgroupMonad inner_state visitor_mode () -- {{{
 fireAWorker =
     tryGetWaitingWorker
     >>= \x → case x of
@@ -243,9 +231,7 @@ fireAWorker =
 
 -- }}}
 
-hireAWorker :: -- {{{
-    VisitorMode visitor_mode ⇒
-    WorkgroupMonad inner_state visitor_mode ()
+hireAWorker :: WorkgroupMonad inner_state visitor_mode () -- {{{
 hireAWorker = do
     worker_id ← next_worker_id <<%= succ
     bumpWorkerRemovalPriority worker_id
