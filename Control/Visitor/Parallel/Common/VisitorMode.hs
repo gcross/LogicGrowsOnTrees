@@ -1,5 +1,4 @@
 -- Language extensions {{{
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TupleSections #-}
@@ -12,7 +11,6 @@ module Control.Visitor.Parallel.Common.VisitorMode where
 -- Imports {{{
 import Control.Monad
 import Data.Monoid
-import GHC.Exts (Constraint)
 
 import Control.Visitor.Checkpoint
 -- }}}
