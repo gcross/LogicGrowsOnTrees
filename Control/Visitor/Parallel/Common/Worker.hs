@@ -161,6 +161,18 @@ checkpointFromEnvironment initial_path cursor context =
      checkpointFromContext context
 -- }}}
 
+workloadFromEnvironment :: -- {{{
+    Path →
+    CheckpointCursor →
+    Context m α →
+    Checkpoint →
+    Workload
+workloadFromEnvironment initial_path cursor context =
+    Workload (initial_path >< pathFromCursor cursor)
+    .
+    checkpointFromContext context
+-- }}}
+
 computeProgressUpdate :: -- {{{
     ResultFor visitor_mode ~ α ⇒
     VisitorMode visitor_mode →
@@ -177,12 +189,7 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
             FirstMode → full_checkpoint
             FoundModeUsingPull _ → Progress full_checkpoint result
         )
-        (Workload (initial_path >< pathFromCursor cursor)
-         .
-         checkpointFromContext context
-         $
-         checkpoint
-        )
+        (workloadFromEnvironment initial_path cursor context checkpoint)
   where
     full_checkpoint = checkpointFromEnvironment initial_path cursor context checkpoint
 -- }}}
