@@ -565,6 +565,7 @@ ignore_supervisor_actions =
     ,   sendWorkloadToWorker = const . const $ return ()
     }
 -- }}}
+endless_visitor = endless_visitor `mplus` endless_visitor
 -- }}}
 
 -- Checks {{{
@@ -1028,12 +1029,24 @@ tests = -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.runVisitorIOUntilFirst
-                        (let run = liftIO (threadDelay 1) >> (run `mplus` run) in run
+                        (liftIO (threadDelay 1) >> endless_visitor
                          `mplus`
                          return ()
                         )
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
                 termination_reason @?= Completed (Just (Progress (ChoiceCheckpoint Unexplored Explored) ()))
+             -- }}}
+            ]
+        ,testGroup "FoundModeUsingPull" -- {{{
+            [testCase "many threads with combined final result but none finish" $ do -- {{{
+                RunOutcome _ termination_reason ←
+                    Threads.runVisitorIOUntilFoundUsingPull
+                        (\xs → if length xs == 2 then Just (sum xs) else Nothing)
+                        ((return [1] `mplus` endless_visitor) `mplus` (return [2] `mplus` endless_visitor))
+                        (void . Workgroup.changeNumberOfWorkers . const . return $ 4)
+                case termination_reason of
+                    Completed (Right (Progress _ result)) → result @?= (3,[])
+                    _ → fail $ "got incorrect result: " ++ show termination_reason
              -- }}}
             ]
          -- }}}

@@ -811,6 +811,20 @@ extractIndependentMeasurementsStatistics =
         <*>  calcStddev
 -- }}}
 
+finishWithResult :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    FinalResultFor visitor_mode →
+    InsideAbortMonad visitor_mode worker_id m α
+finishWithResult final_value =
+    SupervisorOutcome
+        <$> (return $ SupervisorCompleted final_value)
+        <*> (lift getCurrentStatistics)
+        <*> (Set.toList <$> use known_workers)
+     >>= abort
+-- }}}
+
 getCurrentCheckpoint :: -- {{{
     ( SupervisorMonadConstraint m'
     , SupervisorStateConstraint visitor_mode worker_id m'
@@ -1063,18 +1077,17 @@ receiveProgressUpdate :: -- {{{
     ) ⇒
     worker_id →
     ProgressUpdateFor visitor_mode →
-    ContextMonad visitor_mode worker_id m ()
-receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") $ do
+    AbortMonad visitor_mode worker_id m ()
+receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = AbortMonad . postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") $ do
     infoM $ "Received progress update from " ++ show worker_id
-    validateWorkerKnownAndActive "receiving progress update" worker_id
-    visitor_mode ← view visitor_mode
-    withProofThatProgressIsMonoid visitor_mode $
-        current_progress %= (<> progress_update)
-    is_pending_workload_steal ← Set.member worker_id <$> use workers_pending_workload_steal
-    unless is_pending_workload_steal $ dequeueWorkerForSteal worker_id
-    active_workers %= Map.insert worker_id remaining_workload
-    unless is_pending_workload_steal $ enqueueWorkerForSteal worker_id
-    clearPendingProgressUpdate worker_id
+    lift $ validateWorkerKnownAndActive "receiving progress update" worker_id
+    updateCurrentProgress progress_update
+    lift $ do
+        is_pending_workload_steal ← Set.member worker_id <$> use workers_pending_workload_steal
+        unless is_pending_workload_steal $ dequeueWorkerForSteal worker_id
+        active_workers %= Map.insert worker_id remaining_workload
+        unless is_pending_workload_steal $ enqueueWorkerForSteal worker_id
+        clearPendingProgressUpdate worker_id
 -- }}}
 
 receiveStolenWorkload :: -- {{{
@@ -1083,23 +1096,24 @@ receiveStolenWorkload :: -- {{{
     ) ⇒
     worker_id →
     Maybe (StolenWorkloadFor visitor_mode) →
-    ContextMonad visitor_mode worker_id m ()
-receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") $ do
+    AbortMonad visitor_mode worker_id m ()
+receiveStolenWorkload worker_id maybe_stolen_workload = AbortMonad . postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") $ do
     infoM $ "Received stolen workload from " ++ show worker_id
-    validateWorkerKnownAndActive "receiving stolen workload" worker_id
+    lift $ validateWorkerKnownAndActive "receiving stolen workload" worker_id
     workers_pending_workload_steal %= Set.delete worker_id
     case maybe_stolen_workload of
         Nothing → steal_request_failures += 1
         Just (StolenWorkload (ProgressUpdate progress_update remaining_workload) workload) → do
-            (steal_request_matcher_queue %%= fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView)
-              >>= (timePassedSince >=> liftA2 (>>) ((workload_steal_time_statistics %=) . pappend) updateInstataneousWorkloadStealTime)
-            visitor_mode ← view visitor_mode
-            withProofThatProgressIsMonoid visitor_mode $
-                current_progress %= (<> progress_update)
-            active_workers %= Map.insert worker_id remaining_workload
-            enqueueWorkload workload
-    enqueueWorkerForSteal worker_id
-    checkWhetherMoreStealsAreNeeded
+            lift $
+                (steal_request_matcher_queue %%= fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView)
+                  >>= (timePassedSince >=> liftA2 (>>) ((workload_steal_time_statistics %=) . pappend) updateInstataneousWorkloadStealTime)
+            updateCurrentProgress progress_update
+            lift $ do
+                active_workers %= Map.insert worker_id remaining_workload
+                enqueueWorkload workload
+    lift $ do
+        enqueueWorkerForSteal worker_id
+        checkWhetherMoreStealsAreNeeded
 -- }}}
 
 receiveWorkerFinishedWithRemovalFlag :: -- {{{
@@ -1154,13 +1168,6 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
                 unless remove_worker $ do
                     endWorkerOccupied worker_id
                     tryToObtainWorkloadFor False worker_id
-  where
-    finishWithResult final_value =
-        SupervisorOutcome
-            <$> (return $ SupervisorCompleted final_value)
-            <*> (lift getCurrentStatistics)
-            <*> (Set.toList <$> use known_workers)
-         >>= abort
 -- }}}
 
 retireManyOccupationStatistics :: -- {{{
@@ -1419,6 +1426,24 @@ updateBuffer = do
     when (new_size /= old_size) $ do
         updateFunctionOfTimeUsingLens workload_buffer_size_statistics new_size
         when (new_size > old_size) checkWhetherMoreStealsAreNeeded
+-- }}}
+
+updateCurrentProgress :: -- {{{
+    ( SupervisorMonadConstraint m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
+    ProgressFor visitor_mode →
+    InsideAbortMonad visitor_mode worker_id m ()
+updateCurrentProgress progress = do
+    visitor_mode ← view visitor_mode
+    case visitor_mode of
+        AllMode → current_progress %= (<> progress)
+        FirstMode → current_progress %= (<> progress)
+        FoundModeUsingPull f → do
+            Progress checkpoint result ← current_progress <%= (<> progress)
+            case f result of
+                Nothing → return ()
+                Just final_result → finishWithResult . Right $ Progress checkpoint (final_result,mempty)
 -- }}}
 
 updateFunctionOfTime :: -- {{{

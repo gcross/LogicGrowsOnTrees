@@ -83,7 +83,9 @@ checkpointFromIntermediateProgress (FoundModeUsingPull _) = progressCheckpoint
 -- }}}
 
 initialProgress :: VisitorMode visitor_mode → ProgressFor visitor_mode -- {{{
-initialProgress visitor_mode = withProofThatProgressIsMonoid visitor_mode mempty
+initialProgress AllMode = mempty
+initialProgress FirstMode = mempty
+initialProgress (FoundModeUsingPull _) = mempty
 -- }}}
 
 initialWorkerIntermediateValue :: -- {{{
@@ -94,12 +96,5 @@ initialWorkerIntermediateValue FirstMode = ()
 initialWorkerIntermediateValue (FoundModeUsingPull _) = mempty
 -- }}}
 
-withProofThatProgressIsMonoid :: -- {{{
-    VisitorMode visitor_mode →
-    (Monoid (ProgressFor visitor_mode) ⇒ α) →
-    α
-withProofThatProgressIsMonoid AllMode x = x
-withProofThatProgressIsMonoid FirstMode x = x
-withProofThatProgressIsMonoid (FoundModeUsingPull _) x = x
 -- }}}
 -- }}}
