@@ -22,8 +22,8 @@ emptyStacks = EmptyStacks
 addToStacks :: MonadPlus m ⇒ MonadStacks (m α) → m α → MonadStacks (m α)
 addToStacks stacks x = go stacks (StackEntry 0 x)
   where
-    go EmptyStacks entry@(StackEntry i x) = MonadStacks i x EmptyStacks
-    go stacks@(MonadStacks i' x' rest) entry@(StackEntry i x)
+    go EmptyStacks (StackEntry i x) = MonadStacks i x EmptyStacks
+    go stacks@(MonadStacks i' x' rest) (StackEntry i x)
      | i == i' = go rest (StackEntry (i+1) (x' `mplus` x))
      | otherwise = MonadStacks i x stacks
 {-# INLINE addToStacks #-}

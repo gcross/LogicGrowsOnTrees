@@ -12,7 +12,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
 
 import Data.Bits
-import Data.Functor
 import Data.List
 import qualified Data.Set as Set
 import Data.Set (Set)
@@ -22,7 +21,6 @@ import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
 import Test.HUnit
-import Test.QuickCheck hiding ((.&.))
 
 import Text.Printf
 
@@ -202,7 +200,6 @@ tests = -- {{{
                 getAllSolutions =
                     nqueensStart
                         (++)
-                         return
                         (const . return)
                         (const . return)
                         (const . const . return)
@@ -212,8 +209,7 @@ tests = -- {{{
                 [ testCase ("n = " ++ show n) . runVisitorT $
                     nqueensStart
                         (++)
-                        (const $ return ())
-                        (\solution state@NQueensBreak90State{..} → liftIO $
+                        (\solution NQueensBreak90State{..} → liftIO $
                             checkBlocks
                                 solution
                                 b90_window_start
@@ -223,7 +219,7 @@ tests = -- {{{
                                 b90_occupied_negative_diagonals
                                 b90_occupied_positive_diagonals
                         )
-                        (\solution state@NQueensBreak180State{..} → liftIO $ do
+                        (\solution NQueensBreak180State{..} → liftIO $ do
                             checkBlocks
                                 solution
                                 b180_window_start
@@ -237,7 +233,7 @@ tests = -- {{{
                                 b180_occupied_positive_diagonals
                                 b180_occupied_right_positive_diagonals
                         )
-                        (\solution window_size state@NQueensSearchState{..} → liftIO $ do
+                        (\solution window_size NQueensSearchState{..} → liftIO $ do
                             checkBlocks
                                 solution
                                 s_row
@@ -256,7 +252,6 @@ tests = -- {{{
                 [ testCase ("n = " ++ show n) . runVisitorT $
                     nqueensStart
                         (++)
-                        (const . liftIO $ assertFailure "solution returned")
                         (const . checkSymmetry n AllRotations)
                         (const . checkSymmetry n Rotate180Only)
                         (const . const . checkSymmetry n NoSymmetries)
@@ -302,7 +297,6 @@ tests = -- {{{
                      $
                      nqueensStart
                         (++)
-                        (finalizeValueWithMultiplicity 4)
                         (\value NQueensBreak90State{..} →
                             nqueensSearch
                                 (++)
@@ -396,7 +390,7 @@ tests = -- {{{
                                         b90_occupied_positive_diagonals
                                     break90 solution state
                                 )
-                                (\solution state@NQueensBreak180State{..} → liftIO $ do
+                                (\solution NQueensBreak180State{..} → liftIO $ do
                                     checkBlocks
                                         solution
                                         b180_window_start
@@ -410,7 +404,7 @@ tests = -- {{{
                                         b180_occupied_positive_diagonals
                                         b180_occupied_right_positive_diagonals
                                 )
-                                (\solution window_size state@NQueensSearchState{..} → liftIO $
+                                (\solution window_size NQueensSearchState{..} → liftIO $
                                     checkBlocks
                                         solution
                                         s_row
@@ -557,7 +551,7 @@ tests = -- {{{
                                         b180_occupied_right_positive_diagonals
                                     break180 solution state
                                 )
-                                (\solution window_size state@NQueensSearchState{..} → liftIO $
+                                (\solution window_size NQueensSearchState{..} → liftIO $
                                     checkBlocks
                                         solution
                                         s_row
@@ -666,7 +660,7 @@ tests = -- {{{
          -- }}}
         ,testGroup "start + break90 + break180" $ -- {{{
             let getAllSolutions :: MonadPlus m ⇒ Word → m [(Word,Word)] -- {{{
-                getAllSolutions = nqueensStart (++) return callback90 callback180 search []
+                getAllSolutions = nqueensStart (++) callback90 callback180 search []
                   where
                     callback90 value state = return value `mplus` break90 value state
                     callback180 value state = return value `mplus` break180 value state
@@ -702,7 +696,7 @@ tests = -- {{{
                                 b180_occupied_positive_diagonals
                                 b180_occupied_right_positive_diagonals
                             break180 solution state
-                        callbackSearch solution window_size state@NQueensSearchState{..} = liftIO $
+                        callbackSearch solution window_size NQueensSearchState{..} = liftIO $
                             checkBlocks
                                 solution
                                 s_row
@@ -726,7 +720,6 @@ tests = -- {{{
                                 callbackSearch
                     in nqueensStart
                         (++)
-                        (const $ return ())
                         callback90
                         callback180
                         callbackSearch
@@ -763,7 +756,6 @@ tests = -- {{{
                                 callbackSearch
                     in nqueensStart
                         (++)
-                        (const $ return ())
                         callback90
                         callback180
                         callbackSearch
@@ -832,7 +824,6 @@ tests = -- {{{
                         $
                         nqueensStart
                             (++)
-                            (finalizeValueWithSymmetry AllSymmetries)
                              break90
                              break180
                              search
@@ -958,7 +949,7 @@ tests = -- {{{
          -- }}}
         ,testGroup "match count" -- {{{
             [ testCase ("n = " ++ show n) $
-                ((getWordSum . runVisitor . nqueensCount $ n) @=?)
+                (nqueensCorrectCount n @=?)
                 .
                 getWordSum
                 .
@@ -968,7 +959,6 @@ tests = -- {{{
                 $
                 n
             | n ← [1..10]
-            , let correct_count = nqueensCorrectCount n
             ]
          -- }}}
         ]

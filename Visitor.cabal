@@ -35,7 +35,6 @@ Library
         derive >= 2.5.11 && < 2.6,
         directory >= 1.1 && < 1.3,
         either-unwrap == 1.1.*,
-        higherorder == 0.0.*,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
         lens >= 3.8 && < 3.10,
@@ -80,6 +79,12 @@ Library
         Data.Semiring.NaturalInstances
     Extensions:
     C-sources: c-sources/queens.c
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
+Flag warnings
+    Description: Enables most warnings.
+    Default:     False
 
 Flag examples
     Description: Enable building the executables.
@@ -97,7 +102,10 @@ Executable count-all-nqueens-solutions
         Buildable: True
     else
         Buildable: False
-    GHC-Options: -threaded
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
 
 Executable print-all-nqueens-solutions
     Main-is: print-all-nqueens-solutions.hs
@@ -109,6 +117,8 @@ Executable print-all-nqueens-solutions
         Buildable: True
     else
         Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
 
 Executable count-all-trivial-tree-leaves
     Main-is: count-all-trivial-tree-leaves.hs
@@ -123,7 +133,10 @@ Executable count-all-trivial-tree-leaves
         Buildable: True
     else
         Buildable: False
-    GHC-Options: -threaded
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
 
 Benchmark visitor-versus-list-trivial-tree
     Type: exitcode-stdio-1.0
@@ -133,6 +146,8 @@ Benchmark visitor-versus-list-trivial-tree
         Visitor,
         base > 4 && < 5,
         criterion >= 0.6 && < 0.9
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
 
 Benchmark visitor-versus-list-nqueens
     Type: exitcode-stdio-1.0
@@ -142,6 +157,8 @@ Benchmark visitor-versus-list-nqueens
         Visitor,
         base > 4 && < 5,
         criterion >= 0.6 && < 0.9
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
 
 Test-Suite tests
     Type: exitcode-stdio-1.0
@@ -173,7 +190,10 @@ Test-Suite tests
         test-framework-smallcheck == 0.2.*,
         transformers >= 0.2 && < 0.4,
         uuid == 1.2.*
-    GHC-Options: -with-rtsopts=-M256M
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -with-rtsopts=-M256M
+    else
+        GHC-Options: -with-rtsopts=-M256M
 
 Test-Suite test-nqueens
     Type: exitcode-stdio-1.0
@@ -189,3 +209,5 @@ Test-Suite test-nqueens
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
         transformers >= 0.2 && < 0.4
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing

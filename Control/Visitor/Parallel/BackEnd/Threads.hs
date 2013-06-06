@@ -38,7 +38,7 @@ module Control.Visitor.Parallel.BackEnd.Threads
 
 -- Imports {{{
 import Control.Applicative (Applicative,liftA2)
-import Control.Concurrent (forkIO,getNumCapabilities,killThread)
+import Control.Concurrent (getNumCapabilities,killThread)
 import Control.Monad (void)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
@@ -50,7 +50,7 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
 
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
 import Control.Visitor (Visitor,VisitorIO,VisitorT)
@@ -67,12 +67,11 @@ import Control.Visitor.Parallel.Common.Worker as Worker
     ,runVisitorIOUntilFirst
     ,runVisitorTUntilFirst
     )
-import Control.Visitor.Parallel.Common.Workgroup
-import Control.Visitor.Workload
+import Control.Visitor.Parallel.Common.Workgroup hiding (C,unwrapC)
 -- }}}
 
 -- Logging Functions {{{
-deriveLoggers "Logger" [DEBUG,INFO]
+deriveLoggers "Logger" [DEBUG]
 -- }}}
 
 -- Types {{{
@@ -226,7 +225,9 @@ runVisitorTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . Impure
 
 -- Internal Functions {{{
 
+fromJustOrBust :: String → Maybe α → α -- {{{
 fromJustOrBust message = fromMaybe (error message)
+-- }}}
 
 launchVisitorStartingFrom :: -- {{{
     VisitorMode visitor_mode →

@@ -12,14 +12,12 @@ import Data.Composition ((.*),(.**))
 import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Function (on)
-import Data.Maybe (catMaybes)
 import Data.Monoid (Monoid(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
 
 import Control.Visitor
 import Control.Visitor.Checkpoint
-import Control.Visitor.Label
 import Control.Visitor.Path
 -- }}}
 
@@ -46,6 +44,7 @@ instance Ord Workload where
 
 -- Values {{{
 
+entire_workload :: Workload
 entire_workload = Workload Seq.empty Unexplored
 
 -- }}}

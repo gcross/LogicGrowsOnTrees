@@ -4,11 +4,8 @@
 -- }}}
 
 -- Imports {{{
-import Data.Functor
-import Data.Serialize (Serialize(..))
 
 import System.Console.CmdTheLine
-import System.Environment
 
 import Control.Visitor.Parallel.Main
 import Control.Visitor.Parallel.BackEnd.Threads

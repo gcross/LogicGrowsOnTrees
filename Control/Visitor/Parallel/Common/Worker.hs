@@ -43,30 +43,27 @@ module Control.Visitor.Parallel.Common.Worker
 import Prelude hiding (catch)
 
 import Control.Arrow ((&&&))
-import Control.Concurrent (forkIO,killThread,threadDelay,ThreadId,yield)
+import Control.Concurrent (forkIO,ThreadId,yield)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
-import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catch,evaluate,fromException)
+import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catch,fromException)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class
 
-import Data.Bool.Higher ((??))
 import Data.Composition
 import Data.Derive.Serialize
 import Data.DeriveTH
-import qualified Data.Foldable as Fold
 import Data.Functor ((<$>))
 import Data.Functor.Identity (Identity)
-import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef,writeIORef)
+import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef)
 import qualified Data.IVar as IVar
 import Data.IVar (IVar)
 import Data.Monoid ((<>),Monoid(..))
-import Data.Maybe (isJust)
-import Data.Sequence ((|>),(><),Seq,viewl,ViewL(..))
+import Data.Sequence ((|>),(><),viewl,ViewL(..))
 import Data.Serialize
 import qualified Data.Sequence as Seq
 
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
 import Control.Visitor hiding (runVisitor,runVisitorT,runVisitorUntilFirst,runVisitorTUntilFirst)
@@ -101,7 +98,7 @@ data VisitorKind (m :: * → *) (n :: * → *) where -- {{{
 -- }}}
 
 data VisitorFunctions (m :: * → *) (n :: * → *) (α :: *) = -- {{{
-    ∀ n. MonadIO n ⇒ VisitorFunctions
+    MonadIO n ⇒ VisitorFunctions
     {   walk :: Path → VisitorT m α → n (VisitorT m α)
     ,   step :: VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))
     ,   run ::  (∀ β. n β → IO β)
@@ -138,7 +135,7 @@ type WorkerTerminationReasonFor visitor_mode = WorkerTerminationReason (WorkerFi
 -- }}}
 
 -- Logging Functions {{{
-deriveLoggers "Logger" [DEBUG,INFO]
+deriveLoggers "Logger" [DEBUG]
 -- }}}
 
 -- Functions {{{
@@ -267,7 +264,6 @@ forkWorkerThread
                                         (checkpointFromEnvironment initial_path cursor context checkpoint)
                                         (Just solution)
         -- }}}
-    start_flag_ivar ← IVar.new
     finished_flag ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←

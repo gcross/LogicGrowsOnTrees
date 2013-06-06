@@ -34,15 +34,14 @@ module Control.Visitor -- {{{
 
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
-import Data.List (foldl1)
 import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Operational (Program,ProgramT,ProgramViewT(..),singleton,view,viewT)
+import Control.Monad.Operational (ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
-import Data.Monoid ((<>),Monoid(..),Sum())
+import Data.Monoid ((<>),Monoid(..))
 import Data.Serialize (Serialize(),encode)
 
 import Control.Visitor.Utils.MonadStacks
@@ -98,8 +97,10 @@ instance Eq α ⇒ Eq (Visitor α) where -- {{{
                 case (runIdentity cx, runIdentity cy) of
                     (Nothing, Nothing) → True
                     (Just x, Just y) → e (kx x) (ky y)
+                    _ → False
             (Choice (VisitorT ax) (VisitorT bx) :>>= kx, Choice (VisitorT ay) (VisitorT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
+            _  → False
 -- }}}
 
 instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
@@ -186,7 +187,7 @@ endowVisitor (view . unwrapVisitorT → Choice left right :>>= k) =
     mplus
         (endowVisitor left >>= endowVisitor . VisitorT . k)
         (endowVisitor right >>= endowVisitor . VisitorT . k)
-endowVisitor (view . unwrapVisitorT → Null :>>= k) = mzero
+endowVisitor (view . unwrapVisitorT → Null :>>= _) = mzero
 -- }}}
 
 msumBalanced :: MonadPlus m ⇒ [m α] → m α -- {{{
@@ -241,7 +242,7 @@ runVisitorT = viewT . unwrapVisitorT >=> \view →
 runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m () -- {{{
 runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
     case view of
-        Return x → return ()
+        Return _ → return ()
         (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorTAndIgnoreResults . VisitorT . k)
         (Choice left right :>>= k) → do
             runVisitorTAndIgnoreResults $ left >>= VisitorT . k

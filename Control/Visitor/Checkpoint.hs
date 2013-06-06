@@ -13,22 +13,19 @@
 module Control.Visitor.Checkpoint where
 
 -- Imports {{{
-import Control.Arrow (second)
 import Control.Exception (Exception(),throw)
-import Control.Monad ((>=>),join,liftM)
+import Control.Monad ((>=>))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
-import Control.Monad.Trans.Class (MonadTrans(..))
 
 import Data.ByteString (ByteString)
 import Data.Composition
 import Data.Derive.Monoid
 import Data.Derive.Serialize
 import Data.DeriveTH
-import Data.Either.Unwrap (mapLeft)
 import Data.Functor.Identity (Identity,runIdentity)
-import Data.Maybe (isJust,mapMaybe)
-import Data.Monoid ((<>),First(..),Monoid(..))
-import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
+import Data.Maybe (isJust)
+import Data.Monoid ((<>),Monoid(..))
+import Data.Sequence ((|>),Seq,viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
 import Data.Typeable (Typeable)
@@ -174,7 +171,7 @@ checkpointFromSequence :: -- {{{
     Seq α →
     Checkpoint →
     Checkpoint
-checkpointFromSequence processStep (viewr → EmptyR) = id
+checkpointFromSequence _ (viewr → EmptyR) = id
 checkpointFromSequence processStep (viewr → rest :> step) =
     checkpointFromSequence processStep rest
     .
@@ -364,7 +361,7 @@ stepVisitorTThroughCheckpoint :: -- {{{
     Monad m ⇒
     VisitorTState m α →
     m (Maybe α,Maybe (VisitorTState m α))
-stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint visitor) = case checkpoint of
+stepVisitorTThroughCheckpoint (VisitorTState context checkpoint visitor) = case checkpoint of
     Explored → return (Nothing, moveUpContext)
     Unexplored → getView >>= \view → case view of
         Return x → return (Just x, moveUpContext)
@@ -386,7 +383,7 @@ stepVisitorTThroughCheckpoint visitor_state@(VisitorTState context checkpoint vi
                     (left >>= VisitorT . k)
             )
     CacheCheckpoint cache rest_checkpoint → getView >>= \view → case view of
-        Cache mx :>>= k → return
+        Cache _ :>>= k → return
             (Nothing, Just $
                 VisitorTState
                     (context |> CacheContextStep cache)

@@ -67,9 +67,9 @@ sendVisitorDownPath path = runIdentity . sendVisitorTDownPath path
 
 sendVisitorTDownPath :: Monad m ⇒ Path → VisitorT m α → m (VisitorT m α) -- {{{
 sendVisitorTDownPath (viewl → EmptyL) = return
-sendVisitorTDownPath path@(viewl → step :< tail) =
+sendVisitorTDownPath (viewl → step :< tail) =
     viewT . unwrapVisitorT >=> \view → case (view,step) of
-        (Return x,_) →
+        (Return _,_) →
             throw VisitorTerminatedBeforeEndOfWalk
         (Null :>>= _,_) →
             throw VisitorTerminatedBeforeEndOfWalk

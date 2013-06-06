@@ -13,7 +13,7 @@ module Control.Visitor.Parallel.Common.Workgroup -- {{{
     ( MessageForSupervisorReceivers(..)
     , WorkerId
     , WorkgroupCallbacks(..)
-    , WorkgroupControllerMonad
+    , WorkgroupControllerMonad(..)
     , WorkgroupRequestQueueMonad(..)
     , changeNumberOfWorkers
     , runWorkgroup
@@ -26,7 +26,7 @@ import Control.Lens (makeLenses)
 import Control.Lens.Getter (use)
 import Control.Lens.Lens ((<<%=))
 import Control.Lens.Setter ((.=),(%=))
-import Control.Monad (forever,forM_,mapM_,replicateM_)
+import Control.Monad (forM_,replicateM_)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (asks)
@@ -36,33 +36,27 @@ import Control.Monad.Trans.Reader (ReaderT,ask,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 
 import Data.Composition ((.*))
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
-import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
 import Data.PSQueue (Binding((:->)),PSQ)
 import qualified Data.PSQueue as PSQ
-import qualified Data.Set as Set
 import Data.Word (Word64)
 
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger (Priority(INFO))
 import System.Log.Logger.TH
 
-import Control.Visitor.Checkpoint
-import Control.Visitor.Parallel.Main (RunOutcomeFor,TerminationReasonFor,extractRunOutcomeFromSupervisorOutcome)
+import Control.Visitor.Parallel.Main (RunOutcomeFor,extractRunOutcomeFromSupervisorOutcome)
 import Control.Visitor.Parallel.Common.Message
 import Control.Visitor.Parallel.Common.Supervisor
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
 import Control.Visitor.Parallel.Common.VisitorMode
-import Control.Visitor.Parallel.Common.Worker (ProgressUpdate(..),StolenWorkload(..),WorkerTerminationReason(..))
 import Control.Visitor.Workload
 -- }}}
 
 -- Logging Functions {{{
-deriveLoggers "Logger" [DEBUG,INFO]
+deriveLoggers "Logger" [INFO]
 -- }}}
 
 -- Types {{{
@@ -93,8 +87,6 @@ $( makeLenses ''WorkgroupState )
 -- }}}
 
 type WorkgroupStateMonad inner_state = StateT WorkgroupState (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
-
-type WorkgroupRequestQueue inner_state visitor_mode = RequestQueue visitor_mode WorkerId (WorkgroupStateMonad inner_state)
 
 type WorkgroupMonad inner_state visitor_mode = SupervisorMonad visitor_mode WorkerId (WorkgroupStateMonad inner_state)
 

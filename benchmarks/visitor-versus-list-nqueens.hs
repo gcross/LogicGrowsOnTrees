@@ -3,7 +3,6 @@
 -- }}}
 
 -- Imports {{{
-import Control.Monad
 import Criterion.Main
 import Data.Monoid
 

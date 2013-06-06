@@ -12,9 +12,9 @@ module Control.Visitor.Examples.Queens.Implementation where
 import Control.Applicative ((<$>),liftA2)
 import Control.Arrow ((***))
 import Control.Exception (evaluate)
-import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum,void)
+import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2)
 
-import Data.Bits ((.&.),(.|.),bit,clearBit,rotateL,rotateR,setBit,testBit,unsafeShiftL,unsafeShiftR)
+import Data.Bits ((.&.),(.|.),bit,rotateL,rotateR,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
 import Data.IORef (modifyIORef,newIORef,readIORef,writeIORef)
 import Data.List (sort)
@@ -113,7 +113,7 @@ nqueensCSearch ::
     Int →
     NQueensSearchState → m β
 nqueensCSearch _ finalizeValue value _ _ NQueensSearchState{s_number_of_queens_remaining=0} = finalizeValue value
-nqueensCSearch updateValue finalizeValue value size window_start state@NQueensSearchState{..}
+nqueensCSearch updateValue finalizeValue value size window_start NQueensSearchState{..}
   | typeOf value == typeOf () && typeOf (undefined :: β) == typeOf (undefined :: WordSum) = do
         Just (WordSum multiplier) ← liftM cast (finalizeValue value)
         let number_found =
@@ -136,7 +136,7 @@ nqueensCSearch updateValue finalizeValue value size window_start state@NQueensSe
   | otherwise = unsafePerformIO $ do
         value_stack_ref ← newIORef [value]
         finalized_values ← newIORef mzero
-        push_value_funptr ← mkPushValue $ \row offset → modifyIORef value_stack_ref (\stack@(value:rest_value) → updateValue [(fromIntegral row, fromIntegral window_start + fromIntegral offset)] value:stack)
+        push_value_funptr ← mkPushValue $ \row offset → modifyIORef value_stack_ref (\stack@(value:_) → updateValue [(fromIntegral row, fromIntegral window_start + fromIntegral offset)] value:stack)
         pop_value_funptr ← mkPopValue $ modifyIORef value_stack_ref tail
         finalize_value_funptr ← mkFinalizeValue $ do
             value ← head <$> readIORef value_stack_ref
@@ -144,8 +144,7 @@ nqueensCSearch updateValue finalizeValue value size window_start state@NQueensSe
             old_value ← readIORef finalized_values
             new_value ← evaluate $ old_value `mplus` finalized_value
             writeIORef finalized_values new_value
-        number_of_solutions ←
-            c_Visitor_Queens_count_solutions
+        _ ← c_Visitor_Queens_count_solutions
                 (fromIntegral size)
                 (fromIntegral s_number_of_queens_remaining)
                 (fromIntegral s_row)
@@ -302,7 +301,6 @@ nqueensBreak90
     end = window_size-1
     inner_size = window_size-2
     inner_end = window_size-3
-    half_inner_size = (window_size `div` 2)-1
     blocked = occupied_rows_and_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
     inner_blocked = blocked `unsafeShiftR` 1
     inner_blocked_excluding_middle
@@ -395,7 +393,7 @@ nqueensBreak90
             )
     -- }}}
     breakAtSides = do -- {{{
-        PositionAndBit inner_top_column inner_top_column_bit ←
+        PositionAndBit inner_top_column _ ←
             getOpenings (inner_size-1) inner_blocked
         let inner_reflected_top_column = inner_end-inner_top_column
             inner_reflected_top_column_bit = bit inner_reflected_top_column
@@ -408,8 +406,7 @@ nqueensBreak90
                 size_of_space_above_inner_top_column
                 ((inner_blocked .|. bit inner_reflected_top_column) `unsafeShiftR` shift_to_just_past_inner_top_column)
         let inner_reflected_right_row = inner_right_offset + inner_top_column + 1
-            inner_right_row = inner_end - inner_reflected_right_row
-            shift_to_just_past_inner_reflected_right_row = inner_reflected_right_row + 1 
+            inner_right_row = inner_end - inner_reflected_right_row 
         PositionAndBit inner_bottom_offset _ ←
             getOpenings
                 size_of_space_above_and_including_inner_top_column
@@ -511,7 +508,6 @@ nqueensBreak180
     window_end = window_start+end
     inner_size = window_size-2
     inner_end = window_size-3
-    half_inner_size = (window_size `div` 2)-1
     horizontal_blocked = occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
     inner_horizontal_blocked = horizontal_blocked `unsafeShiftR` 1
     inner_horizontal_blocked_excluding_middle
@@ -807,8 +803,8 @@ nqueensBruteForceGeneric :: -- {{{
     Word →
     m β
 nqueensBruteForceGeneric updateValue finalizeValue initial_value 1 = finalizeValue . updateValue [(0,0)] $ initial_value
-nqueensBruteForceGeneric updateValue finalizeValue initial_value 2 = mzero
-nqueensBruteForceGeneric updateValue finalizeValue initial_value 3 = mzero
+nqueensBruteForceGeneric _ _ _ 2 = mzero
+nqueensBruteForceGeneric _ _ _ 3 = mzero
 nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSearch updateValue finalizeValue initial_value (fromIntegral n) $ NQueensSearchState n 0 0 0 0 0
 {-# INLINE nqueensBruteForceGeneric #-}
 -- }}}
@@ -835,10 +831,13 @@ nqueensCGeneric :: -- {{{
     α →
     Word →
     m β
-nqueensCGeneric updateValue finalizeValue initial_value 1 = finalizeValue . updateValue [(0,0)] $ initial_value
-nqueensCGeneric updateValue finalizeValue initial_value 2 = mzero
-nqueensCGeneric updateValue finalizeValue initial_value 3 = mzero
-nqueensCGeneric updateValue finalizeValue initial_value n = nqueensCSearch updateValue finalizeValue initial_value (fromIntegral n) 0 $ NQueensSearchState n 0 0 0 0 0
+nqueensCGeneric updateValue finalizeValue initial_value 1 =
+    finalizeValue . updateValue [(0,0)] $ initial_value
+nqueensCGeneric _ _ _ 2 = mzero
+nqueensCGeneric _ _ _ 3 = mzero
+nqueensCGeneric updateValue finalizeValue initial_value n =
+    nqueensCSearch updateValue finalizeValue initial_value (fromIntegral n) 0 $
+        NQueensSearchState n 0 0 0 0 0
 {-# INLINE nqueensCGeneric #-}
 -- }}}
 
@@ -864,13 +863,13 @@ nqueensGeneric :: -- {{{
     α →
     Word →
     m β
-nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 1 = finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
-nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 2 = mzero
-nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 3 = mzero
+nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 1 =
+    finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
+nqueensGeneric _ _ _ 2 = mzero
+nqueensGeneric _ _ _ 3 = mzero
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value n =
     nqueensStart
         updateValue
-       (finalizeValueWithSymmetry n AllSymmetries)
         break90
         break180
         search
@@ -945,7 +944,6 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
 nqueensStart :: -- {{{
     MonadPlus m ⇒
     ([(Word,Word)] → α → α) →
-    (α → m β) →
     (α → NQueensBreak90State → m β) →
     (α → NQueensBreak180State → m β) →
     (α → Int → NQueensSearchState → m β) →
@@ -954,7 +952,6 @@ nqueensStart :: -- {{{
     m β
 nqueensStart
   !updateValue_
-  !finalizeValue
   !break90
   !break180
   !search
@@ -1026,7 +1023,6 @@ nqueensStart
         let left_row_bit = bit left_row
             reflected_left_row_bit = bit (last-left_row)
             bottom_column_bit = bit bottom_column
-            occupied_bits = left_row_bit .|. bottom_column_bit
         search
             (updateValue
                 [(last,bottom_column)
@@ -1052,7 +1048,6 @@ nqueensStart
             reflected_after_top_column = reflected_top_column-1
         right_row ← between after_top_column reflected_after_top_column
         let reflected_right_row = last-right_row
-            reflected_after_right_row = reflected_right_row-1
         bottom_column ←
             between after_top_column (reflected_right_row-1) `mplus`
             between (reflected_right_row+1) reflected_top_column
@@ -1094,7 +1089,7 @@ nqueensStart
 -- }}}
 
 reflectBits :: Word64 → Word64 -- {{{
-reflectBits = go 0 0 1
+reflectBits = go 0 (0::Int) 1
   where
     go !accum 64 _ _ = accum
     go !accum !column !column_bit !bits =

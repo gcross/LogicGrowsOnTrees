@@ -6,11 +6,7 @@
 -- Imports {{{
 import Control.Applicative
 
-import Data.Composition ((.*))
-import Data.Serialize (Serialize(..))
-
 import System.Console.CmdTheLine
-import System.Environment
 
 import Control.Visitor.Examples.Tree
 import Control.Visitor.Parallel.Main

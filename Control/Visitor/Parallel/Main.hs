@@ -32,7 +32,7 @@ module Control.Visitor.Parallel.Main -- {{{
 -- Imports {{{
 import Prelude hiding (readFile,writeFile)
 
-import Control.Applicative ((<$>),(<*>),liftA2)
+import Control.Applicative ((<$>),(<*>))
 import Control.Concurrent (ThreadId,killThread,threadDelay)
 import Control.Exception (finally,handleJust,onException)
 import Control.Monad (forever,liftM,mplus,when)
@@ -44,18 +44,15 @@ import Data.Char (toLower)
 import Data.Composition ((.*))
 import Data.Derive.Serialize
 import Data.DeriveTH
-import Data.Either.Unwrap (mapRight)
 import Data.Functor.Identity (Identity)
 import Data.Maybe (catMaybes)
-import Data.Monoid (Endo(..),Monoid(..))
-import Data.Prefix.Units (FormatMode(FormatSiAll),fancySymbol,formatValue,unitName)
+import Data.Monoid (Monoid(..))
+import Data.Prefix.Units (FormatMode(FormatSiAll),formatValue,unitName)
 import Data.Serialize
-import Data.Traversable (sequenceA)
 
 import System.Console.CmdTheLine
 import System.Directory (doesFileExist,removeFile,renameFile)
-import System.Environment (getArgs,getProgName)
-import System.Exit (exitWith)
+import System.Environment (getProgName)
 import System.IO (hPutStr,hPutStrLn,stderr)
 import System.IO.Error (isDoesNotExistError)
 import qualified System.Log.Logger as Logger
@@ -77,11 +74,10 @@ import Control.Visitor.Parallel.Common.Supervisor -- {{{
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
 import Control.Visitor.Parallel.Common.VisitorMode
 import Control.Visitor.Parallel.Common.Worker
-import Control.Visitor.Workload
 -- }}}
 
 -- Logging Functions {{{
-deriveLoggers "Logger" [DEBUG,INFO,NOTICE]
+deriveLoggers "Logger" [INFO,NOTICE]
 -- }}}
 
 -- Types {{{

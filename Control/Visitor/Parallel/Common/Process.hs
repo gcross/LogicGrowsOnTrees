@@ -16,8 +16,6 @@ import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
 import Control.Monad.IO.Class
 
 import Data.Functor ((<$>))
-import Data.Monoid (Monoid)
-import Data.Typeable (Typeable)
 import Data.Serialize
 
 import System.IO (Handle)
@@ -25,10 +23,7 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
-import Control.Visitor.Checkpoint
 import Control.Visitor.Parallel.Common.Message (MessageForSupervisor(..),MessageForWorker(..))
-import Control.Visitor.Parallel.Common.Supervisor
-import qualified Control.Visitor.Parallel.Common.Worker as Worker
 import Control.Visitor.Parallel.Common.Worker hiding (ProgressUpdate,StolenWorkload)
 import Control.Visitor.Utils.Handle
 import Control.Visitor.Workload
@@ -55,7 +50,7 @@ runWorker receiveMessage sendMessage forkVisitorWorkerThread =
             tryTakeMVar worker_environment_mvar
             >>=
             maybe (return ()) (\worker_environment@WorkerEnvironment{workerPendingRequests} → do
-                sendRequest workerPendingRequests (sendMessage . constructResponse)
+                _ ← sendRequest workerPendingRequests (sendMessage . constructResponse)
                 putMVar worker_environment_mvar worker_environment
             )
         processNextMessage = receiveMessage >>= \message →

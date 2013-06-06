@@ -8,8 +8,6 @@
 module Data.Semiring.NaturalInstances where
 
 -- Imports {{{
-import Control.Monad (liftM2)
-
 import Data.Composition ((.*))
 import Data.Function (on)
 import Data.Monoid (Monoid(..))

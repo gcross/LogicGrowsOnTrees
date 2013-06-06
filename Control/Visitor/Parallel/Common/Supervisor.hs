@@ -66,12 +66,12 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 
+import Data.Monoid (Monoid)
 import Data.Time.Clock (diffUTCTime,getCurrentTime)
 import Data.Composition ((.*),(.**))
-import Data.Monoid (Monoid(mempty))
 
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
 import Control.Visitor.Checkpoint (Progress)
@@ -94,7 +94,6 @@ import Control.Visitor.Parallel.Common.Supervisor.Implementation -- {{{
     , current_time
     , liftContextToAbort
     , liftUserToAbort
-    , localWithinContext
     , number_of_calls
     , time_spent_in_supervisor_monad
     ) -- }}}

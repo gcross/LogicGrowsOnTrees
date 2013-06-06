@@ -78,6 +78,7 @@ nqueens_correct_counts = IntMap.fromDistinctAscList $
     ,(26,22317699616364044)
     ]
 
+nqueens_maximum_size :: Int
 nqueens_maximum_size = fst . IntMap.findMax $ nqueens_correct_counts
 
 -- }}}

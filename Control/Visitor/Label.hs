@@ -22,10 +22,9 @@ import Data.Map (Map)
 import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.Foldable as Fold
-import Data.Foldable (Foldable)
 import Data.Function (on)
 import Data.Functor.Identity (Identity,runIdentity)
-import Data.Sequence ((|>),Seq,viewl,ViewL(..),viewr,ViewR(..))
+import Data.Sequence (viewl,ViewL(..))
 import Data.SequentialIndex (SequentialIndex,root,leftChild,rightChild)
 
 import Control.Visitor
@@ -71,13 +70,14 @@ instance Monoid VisitorLabel where -- {{{
       | y == root = xl
       | otherwise = VisitorLabel $ go y root x
       where
-        go original_label current_label product_label
-          | current_label == original_label = product_label
-        -- Note:  the following is counter-intuitive, but it makes sense if you think of it as
-        --        being where you need to go to get to the original label instead of where you
-        --        currently are with respect to the original label
-          | current_label > original_label = (go original_label `on` (fromJust . leftChild)) current_label product_label
-          | current_label < original_label = (go original_label `on` (fromJust . rightChild)) current_label product_label
+        go original_label current_label product_label =
+            case current_label `compare` original_label of
+                EQ → product_label
+            -- Note:  the following is counter-intuitive, but it makes sense if you think of it as
+            --        being where you need to go to get to the original label instead of where you
+            --        currently are with respect to the original label
+                GT → (go original_label `on` (fromJust . leftChild)) current_label product_label
+                LT → (go original_label `on` (fromJust . rightChild)) current_label product_label
 -- }}}
 
 instance Ord VisitorLabel where -- {{{
@@ -165,10 +165,11 @@ applyPathToLabel (viewl → step :< rest) =
 branchingFromLabel :: VisitorLabel → [Branch] -- {{{
 branchingFromLabel = go root . unwrapVisitorLabel
   where
-    go current_label original_label
-      | current_label == original_label = []
-      | current_label > original_label = LeftBranch:go (fromJust . leftChild $ current_label) original_label
-      | current_label < original_label = RightBranch:go (fromJust . rightChild $ current_label) original_label
+    go current_label original_label =
+        case current_label `compare` original_label of
+            EQ → []
+            GT → LeftBranch:go (fromJust . leftChild $ current_label) original_label
+            LT → RightBranch:go (fromJust . rightChild $ current_label) original_label
 -- }}}
 
 labelFromBranching :: Foldable t ⇒ t Branch → VisitorLabel -- {{{
@@ -289,7 +290,7 @@ sendVisitorTDownLabel (VisitorLabel label) = go root
       | parent == label = return visitor
       | otherwise =
           (viewT . unwrapVisitorT) visitor >>= \view → case view of
-            Return x → throw VisitorTerminatedBeforeEndOfWalk
+            Return _ → throw VisitorTerminatedBeforeEndOfWalk
             Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
             Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . VisitorT . k)
             Choice left right :>>= k →

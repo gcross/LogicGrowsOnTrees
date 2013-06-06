@@ -21,45 +21,35 @@ import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TMVar
 import Control.Concurrent.STM.TVar
 import Control.Exception
-import Control.Lens (_1,_2,(%~),(<+=),(<%=),use)
+import Control.Lens (_1,_2,(%=),(<+=),use)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Operational (ProgramViewT(..),view)
 import Control.Monad.STM
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad.Trans.Reader (ReaderT(..),ask)
-import Control.Monad.Trans.State (StateT,evalStateT,get,modify)
+import Control.Monad.Trans.State (StateT,evalStateT)
 import Control.Monad.Trans.Writer
 
 import Data.Bits
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as ByteString
 import Data.Composition ((.*))
 import qualified Data.DList as DList
 import Data.DList (DList)
-import Data.Either.Unwrap
-import qualified Data.Foldable as Fold
 import Data.Function
-import Data.Functor
 import Data.Functor.Identity
-import qualified Data.IntMap as IntMap
-import Data.IntMap (IntMap)
 import qualified Data.IntSet as IntSet
 import Data.IntSet (IntSet)
 import Data.IORef
-import Data.IVar (IVar)
 import qualified Data.IVar as IVar
-import Data.List (inits,mapAccumL,sort)
+import Data.List (sort)
 import Data.Maybe
-import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Monoid
 import Data.Semiring
 import Data.Semiring.NaturalInstances
-import Data.Sequence (Seq,(<|),(|>),(><))
+import Data.Sequence ((<|),(|>))
 import qualified Data.Sequence as Seq
 import qualified Data.Serialize as Serialize
-import Data.Serialize (Serialize(),decode,encode)
+import Data.Serialize (Serialize(),encode)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Typeable
@@ -71,7 +61,6 @@ import Debug.Trace (trace)
 
 import Text.Printf
 
-import System.IO (stdin,stdout)
 import System.IO.Unsafe
 import System.Log.Logger (Priority(..),updateGlobalLogger,rootLoggerName,setLevel)
 import System.Random
@@ -83,7 +72,7 @@ import qualified Test.Framework.Providers.SmallCheck as Small
 import Test.HUnit hiding (Test,Path)
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen
-import Test.QuickCheck.Instances
+import Test.QuickCheck.Instances ()
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
 import Test.QuickCheck.Property hiding ((.&.),(==>))
@@ -93,7 +82,6 @@ import Test.SmallCheck.Drivers as Small (test)
 
 import Control.Visitor
 import Control.Visitor.Checkpoint
-import Control.Visitor.Examples.Queens
 import Control.Visitor.Examples.Tree
 import Control.Visitor.Label
 import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
@@ -103,7 +91,6 @@ import qualified Control.Visitor.Parallel.Common.Workgroup as Workgroup
 import Control.Visitor.Path
 import Control.Visitor.Parallel.Common.Supervisor
 import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
-import Control.Visitor.Utils.IntSum
 import Control.Visitor.Utils.WordSum
 import Control.Visitor.Workload
 import qualified Control.Visitor.Parallel.Common.Worker as Worker
@@ -440,19 +427,6 @@ randomNullVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (a
          )
         ]
 
-    generateUnique :: -- {{{
-        Monad m ⇒
-        (IntSet → VisitorT m IntSet) →
-        Int →
-        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
-    generateUnique construct intermediate = do
-        observed ← use _2
-        x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
-        let final_value = x `xor` intermediate
-        _2 <%= IntSet.insert final_value
-        return $ construct . IntSet.singleton . xor x . fst
-    -- }}}
-
     generateForNext :: -- {{{
         Monad m ⇒
         (Int → VisitorT m Int) →
@@ -520,7 +494,7 @@ randomUniqueVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT 
         observed ← use _2
         x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
         let final_value = x `xor` intermediate
-        _2 <%= IntSet.insert final_value
+        _2 %= IntSet.insert final_value
         return $ construct . IntSet.singleton . xor x . fst
     -- }}}
 
@@ -692,7 +666,7 @@ tests = -- {{{
         ,testGroup "runVisitor" -- {{{
             [testCase "return" $ runVisitor (return [()]) @?= [()]
             ,testCase "mzero" $ runVisitor (mzero :: Visitor [()]) @?= []
-            ,testCase "mplus" $ runVisitor (return [1] `mplus` return [2]) @?= [1,2]
+            ,testCase "mplus" $ runVisitor (return [1::Int] `mplus` return [2]) @?= [1,2]
             ,testCase "cache" $ runVisitor (cache [42]) @?= [42::Int]
             ,testGroup "cacheMaybe" -- {{{
                 [testCase "Nothing" $ runVisitor (cacheMaybe (Nothing :: Maybe [()])) @?= []
@@ -711,7 +685,7 @@ tests = -- {{{
                 (runWriter . runVisitorT $ do
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
-                    return [42]
+                    return [42::Int]
                 ) @?= ([42,42],[1,2,3])
              -- }}}
             ]
@@ -721,7 +695,7 @@ tests = -- {{{
                 (runWriter . runVisitorTAndIgnoreResults $ do
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
-                    return [42]
+                    return [42::Int]
                 ) @?= ((),[1,2,3])
              -- }}}
             ]
@@ -984,7 +958,7 @@ tests = -- {{{
     ,testGroup "Control.Visitor.Examples.Tree" -- {{{
         [Small.testProperty "trivialTree" . Small.test $ -- {{{
             (liftA2 . liftA2) (==>)
-                (\arity depth → arity >= 2)
+                (\arity _ → arity >= 2)
                 ((liftA2 . liftA2) (==)
                     numberOfLeaves
                     ((getWordSum . runVisitor) .* trivialTree)
@@ -1084,7 +1058,7 @@ tests = -- {{{
                  ) -- }}}
                 receiveProgressInto progresses_ref progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
                 respondToRequests request_queue generateNoise progresses_ref = do -- {{{
-                    Workgroup.changeNumberOfWorkers (const . return $ 1)
+                    _ ← Workgroup.changeNumberOfWorkers (const . return $ 1)
                     forever $ do
                         mvar ← liftIO . atomically $ readTChan request_queue
                         generateNoise $ receiveProgressInto progresses_ref
@@ -1092,8 +1066,8 @@ tests = -- {{{
                 -- }}}
                 oneThreadNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
                     0 → void $ do
-                         Workgroup.changeNumberOfWorkers (return . (\i → 0))
-                         Workgroup.changeNumberOfWorkers (return . (\i → 1))
+                         Workgroup.changeNumberOfWorkers (return . (const 0))
+                         Workgroup.changeNumberOfWorkers (return . (const 1))
                     1 → void $ requestProgressUpdateAsync receiveProgress
                 -- }}}
                 twoThreadsNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
@@ -1507,8 +1481,7 @@ tests = -- {{{
             ,testGroup "obtains all solutions" -- {{{
                 [testProperty "with no initial path" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
-                    worker_environment ←
-                        forkWorkerThread AllMode PureVisitor
+                    _ ← forkWorkerThread AllMode PureVisitor
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
@@ -1524,8 +1497,7 @@ tests = -- {{{
                  -- }}}
                 ,testProperty "with an initial path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
-                    worker_environment ←
-                        forkWorkerThread AllMode PureVisitor
+                    _ ← forkWorkerThread AllMode PureVisitor
                             (IVar.write solutions_ivar)
                             visitor
                             (Workload path Unexplored)
@@ -1558,8 +1530,7 @@ tests = -- {{{
                                 unless (i == j) $
                                     assertBool "Is there an overlap between non-intersecting solutions?"
                                         (IntSet.null $ solutions_1 `IntSet.intersection` solutions_2)
-                        let total_update_solutions = mconcat update_solutions
-                            total_solutions = mconcat all_solutions
+                        let total_solutions = mconcat all_solutions
                         assertEqual "Are the total solutions correct?"
                             correct_solutions
                             total_solutions
@@ -1633,7 +1604,7 @@ tests = -- {{{
             ,testGroup "work stealing correctly preserves total workload" $ -- {{{
                 let runManyStealsAnalysis visitor termination_flag termination_result_ivar steals_ref = do -- {{{
                         termination_result ← IVar.blocking $ IVar.read termination_result_ivar
-                        (Progress checkpoint remaining_solutions) ← case termination_result of
+                        (Progress _ remaining_solutions) ← case termination_result of
                             WorkerFinished final_progress → return final_progress
                             WorkerFailed exception → error ("worker threw exception: " ++ show exception)
                             WorkerAborted → error "worker aborted prematurely"
@@ -1687,7 +1658,7 @@ tests = -- {{{
                             mplus
                                 (mplus
                                     (liftIO $ do
-                                        tryPutMVar reached_position_mvar ()
+                                        _ ← tryPutMVar reached_position_mvar ()
                                         IVar.blocking . IVar.read $ blocking_value_ivar
                                     )
                                     (return (IntSet.singleton 101010101))
@@ -1702,7 +1673,7 @@ tests = -- {{{
                     takeMVar reached_position_mvar
                     sendWorkloadStealRequest workerPendingRequests $ writeIORef maybe_workload_ref
                     IVar.write blocking_value_ivar (IntSet.singleton 202020202)
-                    final_progress@(Progress checkpoint remaining_solutions) ←
+                    Progress _ remaining_solutions ←
                         (IVar.blocking $ IVar.read termination_result_ivar)
                         >>=
                         \termination_result → case termination_result of

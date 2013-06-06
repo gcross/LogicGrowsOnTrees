@@ -27,10 +27,7 @@ import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,newIORef)
-import Data.Monoid (Monoid)
-import Data.Typeable (Typeable)
 
-import Control.Visitor.Checkpoint (Progress)
 import qualified Control.Visitor.Parallel.Common.Supervisor as Supervisor
 import Control.Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
 import Control.Visitor.Parallel.Common.VisitorMode

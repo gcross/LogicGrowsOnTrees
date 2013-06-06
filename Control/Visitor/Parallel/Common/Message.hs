@@ -13,7 +13,6 @@ import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Serialize
 
-import Control.Visitor.Checkpoint
 import Control.Visitor.Parallel.Common.VisitorMode
 import qualified Control.Visitor.Parallel.Common.Worker as Worker
 import Control.Visitor.Utils.Handle

@@ -58,33 +58,31 @@ module Control.Visitor.Parallel.Common.Supervisor.Implementation -- {{{
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>),Applicative,liftA2)
-import Control.Arrow ((&&&),first,second)
+import Control.Arrow ((&&&),first)
 import Control.Category ((>>>))
-import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Exception(..),assert,throw)
+import Control.Exception (Exception(..),throw)
 import Control.Lens ((&))
-import Control.Lens.At (at)
-import Control.Lens.Getter ((^.),Getter,use,uses,view)
+import Control.Lens.Getter ((^.),use,uses,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
 import Control.Lens.Internal.Zoom (Zoomed)
-import Control.Lens.Lens ((<%=),(<<%=),(<<.=),(%%=),(<<.=),Lens,Lens')
+import Control.Lens.Lens ((<%=),(<<%=),(<<.=),(%%=),(<<.=),Lens')
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Zoom (Zoom(..))
 import Control.Monad ((>=>),liftM,liftM2,mplus,unless,void,when)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
-import Control.Monad.Reader (ask,asks)
+import Control.Monad.Reader (asks)
 import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
-import Control.Monad.Trans.Abort.Instances.MTL
-import Control.Monad.Trans.Reader (ReaderT,runReader,runReaderT)
-import Control.Monad.Trans.State.Strict (StateT,evalState,evalStateT,execState,execStateT,mapStateT,runStateT)
+import Control.Monad.Trans.Abort.Instances.MTL ()
+import Control.Monad.Trans.Reader (ReaderT,runReaderT)
+import Control.Monad.Trans.State.Strict (StateT,evalStateT,execState,execStateT,runStateT)
 
 import Data.Composition ((.*))
 import Data.Derive.Monoid
 import Data.DeriveTH
-import Data.Either.Unwrap (whenLeft)
 import qualified Data.Foldable as Fold
 import qualified Data.IntMap as IntMap
 import Data.IntMap (IntMap)
@@ -100,7 +98,6 @@ import Data.MultiSet (MultiSet)
 import qualified Data.Set as Set
 import Data.Set (Set)
 import qualified Data.Sequence as Seq
-import Data.Sequence ((><),Seq)
 import Data.Typeable (Typeable)
 import qualified Data.Time.Clock as Clock
 import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime)
@@ -375,7 +372,6 @@ newtype ContextMonad visitor_mode worker_id m α = ContextMonad -- {{{
     { unwrapContextMonad :: InsideContextMonad visitor_mode worker_id m α
     } deriving (Applicative,Functor,Monad,MonadIO)
 -- }}}
-type ZoomedInStateContext visitor_mode worker_id m s = StateT s (ReaderT (SupervisorCallbacks visitor_mode worker_id m) m)
 
 type InsideAbortMonad visitor_mode worker_id m = -- {{{
     AbortT
@@ -595,7 +591,7 @@ checkWhetherMoreStealsAreNeeded = do
             number_of_pending_workload_steals
     when (number_of_needed_steals > 0) $ do
         let findWorkers accum 0 available_workers = (accum,available_workers)
-            findWorkers accum n (IntMap.minViewWithKey → Nothing) = (accum,IntMap.empty)
+            findWorkers accum _ (IntMap.minViewWithKey → Nothing) = (accum,IntMap.empty)
             findWorkers accum n (IntMap.minViewWithKey → Just ((depth,workers),deeper_workers)) =
                 go accum n workers
               where
@@ -604,7 +600,6 @@ checkWhetherMoreStealsAreNeeded = do
                 go accum n (Set.minView → Just (worker_id,rest_workers)) = go (worker_id:accum) (n-1) rest_workers
         workers_to_steal_from ← available_workers_for_steal %%= findWorkers [] number_of_needed_steals
         let number_of_workers_to_steal_from = length workers_to_steal_from
-        original_steal_request_failures ← use steal_request_failures
         number_of_additional_requests ← steal_request_failures %%=
             \number_of_steal_request_failures →
                 if number_of_steal_request_failures >= number_of_workers_to_steal_from
@@ -691,10 +686,6 @@ dequeueWorkerForSteal worker_id =
                           in if Set.null new_queue then Nothing else Just new_queue
                 )
                 depth
--- }}}
-
-endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ ContextMonad visitor_mode worker_id m () -- {{{
-endSupervisorOccupied = changeSupervisorOccupiedStatus False
 -- }}}
 
 endWorkerOccupied :: -- {{{
@@ -789,7 +780,7 @@ extractFunctionOfTimeStatisticsWithFinalPoint start_time getFinalValue getWeight
     final_value ← getFinalValue
     getWeightedStatistics >>= (evalStateT $ do
         updateFunctionOfTime final_value end_time
-        zoomFunctionOfTimeWithInterpolator $ \interpolate → do
+        zoomFunctionOfTime $ do
             statCount ← use number_of_samples
             statAverage ← (/total_weight) <$> use first_moment
             statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment

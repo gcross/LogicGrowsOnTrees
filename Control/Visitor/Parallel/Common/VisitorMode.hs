@@ -11,7 +11,6 @@
 module Control.Visitor.Parallel.Common.VisitorMode where
 
 -- Imports {{{
-import Control.Monad
 import Data.Monoid
 
 import Control.Visitor.Checkpoint

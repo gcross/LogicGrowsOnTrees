@@ -3,8 +3,6 @@
 -- }}}
 
 -- Imports {{{
-import Control.Concurrent.MVar
-import Control.Monad
 import Criterion.Main
 import Data.Monoid
 
@@ -13,7 +11,6 @@ import Control.Visitor.Checkpoint
 import Control.Visitor.Examples.Tree
 import Control.Visitor.Utils.WordSum
 import qualified Control.Visitor.Parallel.Common.Worker as Worker
-import Control.Visitor.Workload
 -- }}}
 
 main = defaultMain
