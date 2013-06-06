@@ -280,24 +280,19 @@ forkWorkerThread
                             -- }}}
                 -- }}}
                 Just new_visitor_state@(VisitorTState context checkpoint _) → -- {{{
-                    case maybe_solution of
+                    let new_checkpoint = checkpointFromEnvironment initial_path cursor context checkpoint
+                    in case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
                         Just (!solution) →
                             case visitor_mode of
                                 AllMode → loop1 (result <> solution) cursor new_visitor_state
-                                FirstMode → return . WorkerFinished $ -- {{{
-                                    Progress
-                                        (checkpointFromEnvironment initial_path cursor context checkpoint)
-                                        (Just solution)
-                                -- }}}
+                                FirstMode → return . WorkerFinished $ Progress new_checkpoint (Just solution)
                                 FoundModeUsingPull f → -- {{{
                                     let new_result = result <> solution
                                     in case f new_result of
                                         Nothing → loop1 new_result cursor new_visitor_state
-                                        Just final_result → return . WorkerFinished $
-                                            Progress
-                                                (checkpointFromEnvironment initial_path cursor context checkpoint)
-                                                (Right final_result)
+                                        Just final_result → return . WorkerFinished $ Progress new_checkpoint (Right final_result)
+                                -- }}}
                                 -- }}}
                 -- }}}
         -- }}}
