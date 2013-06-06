@@ -133,6 +133,13 @@ type WorkerTerminationReasonFor visitor_mode = WorkerTerminationReason (WorkerFi
 
 -- }}}
 
+-- Instances {{{
+instance Functor WorkerTerminationReason where
+    fmap f (WorkerFinished x) = WorkerFinished (f x)
+    fmap _ (WorkerFailed x) = WorkerFailed x
+    fmap _ WorkerAborted = WorkerAborted
+-- }}}
+
 -- Logging Functions {{{
 deriveLoggers "Logger" [DEBUG]
 -- }}}
@@ -313,13 +320,10 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
             visitor
             entire_workload
     final_progress ← takeMVar final_progress_mvar
-    return $ case final_progress of
-        WorkerAborted → WorkerAborted
-        WorkerFailed message → WorkerFailed message
-        WorkerFinished progress → WorkerFinished $
-            case visitor_mode of
-                AllMode → progressResult progress
-                FirstMode → Progress (progressCheckpoint progress) <$> progressResult progress
+    return . flip fmap final_progress $ \progress →
+        case visitor_mode of
+            AllMode → progressResult progress
+            FirstMode → Progress (progressCheckpoint progress) <$> progressResult progress
 -- }}}
 
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
