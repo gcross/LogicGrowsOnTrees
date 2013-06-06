@@ -62,6 +62,7 @@ import Data.Monoid ((<>),Monoid(..))
 import Data.Sequence ((|>),(><),viewl,ViewL(..))
 import Data.Serialize
 import qualified Data.Sequence as Seq
+import Data.Void (Void,absurd)
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
@@ -137,9 +138,11 @@ type WorkerTerminationReasonFor visitor_mode = WorkerTerminationReason (WorkerFi
 
 -- Type families {{{
 type family WorkerPushActionFor visitor_mode :: * -- {{{
-type instance WorkerPushActionFor (AllMode result) = ()
-type instance WorkerPushActionFor (FirstMode result) = ()
-type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = ()
+-- NOTE:  Setting the below instances equal to Void → () is a hack around the
+--        fact that using types with constructors result in a weird compiler bug.
+type instance WorkerPushActionFor (AllMode result) = Void → ()
+type instance WorkerPushActionFor (FirstMode result) = Void → ()
+type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = Void → ()
 -- }}}
 -- }}}
 
@@ -348,7 +351,7 @@ forkWorkerThread
 -- }}}
 
 genericRunVisitor :: -- {{{
-    ( WorkerPushActionFor visitor_mode ~ ()
+    ( WorkerPushActionFor visitor_mode ~ (Void → ())
     , ResultFor visitor_mode ~ α
     ) ⇒
     VisitorMode visitor_mode →
@@ -363,7 +366,7 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
             (putMVar final_progress_mvar)
             visitor
             entire_workload
-            ()
+            absurd
     final_progress ← takeMVar final_progress_mvar
     return . flip fmap final_progress $ \progress →
         case visitor_mode of

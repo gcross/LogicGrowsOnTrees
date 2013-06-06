@@ -50,6 +50,7 @@ Library
         stm >= 2.3 && < 2.5,
         time == 1.4.*,
         transformers >= 0.2 && < 0.4,
+        void == 0.6.*,
         yjtools >= 0.9.7 && < 0.10
     Exposed-modules:
         Control.Visitor
@@ -195,7 +196,8 @@ Test-Suite tests
         test-framework-quickcheck2 >= 0.2 && < 0.4,
         test-framework-smallcheck == 0.2.*,
         transformers >= 0.2 && < 0.4,
-        uuid == 1.2.*
+        uuid == 1.2.*,
+        void == 0.6.*
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing -with-rtsopts=-M256M
     else

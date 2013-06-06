@@ -55,6 +55,7 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
+import Data.Void (absurd)
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
@@ -363,9 +364,9 @@ launchVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C
                             visitor
                             workload
                             (case visitor_mode of
-                                AllMode → ()
-                                FirstMode → ()
-                                FoundModeUsingPull _ → ()
+                                AllMode → absurd
+                                FirstMode → absurd
+                                FoundModeUsingPull _ → absurd
                             )
                     )
                     >>=
