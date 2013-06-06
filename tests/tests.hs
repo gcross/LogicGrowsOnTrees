@@ -1121,8 +1121,8 @@ tests = -- {{{
                             Just (Progress checkpoint result) → do
                                 IntSet.size result @?= 1
                                 assertBool "solution was not valid" $ result `IntSet.isSubsetOf` correct_results
-                                runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= assertBool "solution appears within area covered by checkpoint" . IntSet.isSubsetOf result
-                                runVisitorTThroughCheckpoint checkpoint visitor >>= assertBool "solution does not appear outside the area covered by checkpoint" . not . IntSet.isSubsetOf result
+                                runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@=? result)
+                                runVisitorTThroughCheckpoint checkpoint visitor >>= (@=? IntSet.difference correct_results result)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\checkpoint → do
                             runVisitorTUntilFirstThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= Nothing)
                          )
