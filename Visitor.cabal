@@ -81,9 +81,15 @@ Library
     C-sources: c-sources/queens.c
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing
+    if flag(pattern-warnings)
+        GHC-Options: -fwarn-incomplete-patterns
 
 Flag warnings
     Description: Enables most warnings.
+    Default:     False
+
+Flag pattern-warnings
+    Description: Enables only pattern match warnings.
     Default:     False
 
 Flag examples
