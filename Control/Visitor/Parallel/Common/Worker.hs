@@ -175,7 +175,7 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
         (case visitor_mode of
             AllMode → Progress full_checkpoint result
             FirstMode → full_checkpoint
-            FoundMode _ → Progress full_checkpoint result
+            FoundModeUsingPull _ → Progress full_checkpoint result
         )
         (Workload (initial_path >< pathFromCursor cursor)
          .
@@ -263,7 +263,7 @@ forkWorkerThread
                                 Progress
                                     explored_checkpoint
                                     maybe_solution
-                            FoundMode f →
+                            FoundModeUsingPull f →
                                 case maybe_solution of
                                     Nothing →
                                         Progress
@@ -284,7 +284,7 @@ forkWorkerThread
                                     Progress
                                         (checkpointFromEnvironment initial_path cursor context checkpoint)
                                         (Just solution)
-                                FoundMode f →
+                                FoundModeUsingPull f →
                                     let new_result = result <> solution
                                     in case f new_result of
                                         Nothing → loop1 new_result cursor new_visitor_state
@@ -350,7 +350,7 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
         case visitor_mode of
             AllMode → progressResult progress
             FirstMode → Progress (progressCheckpoint progress) <$> progressResult progress
-            FoundMode _ →
+            FoundModeUsingPull _ →
                 mapRight (
                     Progress (progressCheckpoint progress)
                     .
@@ -410,7 +410,7 @@ runVisitorUntilFound :: -- {{{
 runVisitorUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .
-    genericRunVisitor (FoundMode f) PureVisitor
+    genericRunVisitor (FoundModeUsingPull f) PureVisitor
 -- }}}
 
 runVisitorIOUntilFound :: -- {{{
@@ -421,7 +421,7 @@ runVisitorIOUntilFound :: -- {{{
 runVisitorIOUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .
-    genericRunVisitor (FoundMode f) IOVisitor
+    genericRunVisitor (FoundModeUsingPull f) IOVisitor
 -- }}}
 
 runVisitorTUntilFound :: -- {{{
@@ -433,7 +433,7 @@ runVisitorTUntilFound :: -- {{{
 runVisitorTUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .*
-    (genericRunVisitor (FoundMode f)
+    (genericRunVisitor (FoundModeUsingPull f)
      .
      ImpureVisitor
     )

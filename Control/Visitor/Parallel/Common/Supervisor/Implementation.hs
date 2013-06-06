@@ -1128,7 +1128,7 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
                 case progressResult of
                     Nothing → return (checkpoint,Nothing)
                     Just solution → finishWithResult . Just $ Progress checkpoint solution
-            FoundMode f → do
+            FoundModeUsingPull f → do
                 Progress old_checkpoint old_result ← use current_progress
                 let Progress checkpoint result_or_final_result = final_progress
                     new_checkpoint = old_checkpoint <> checkpoint

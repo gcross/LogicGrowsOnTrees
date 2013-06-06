@@ -1136,7 +1136,7 @@ tests = -- {{{
                    ,testGroupUsingGenerator "without solutions" randomNullVisitorWithHooks
                    ]
              -- }}}
-            ,testGroup "FoundMode" $ -- {{{
+            ,testGroup "FoundModeUsingPull" $ -- {{{
                 let runTest generator generateNoise = generator >>= \constructVisitor → morallyDubiousIOProperty $ do
                         let visitor = constructVisitor (const $ return ())
                         correct_results ← runVisitorT visitor
@@ -1145,7 +1145,7 @@ tests = -- {{{
                         request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         result ←
-                            (Threads.runVisitorIOUntilFound
+                            (Threads.runVisitorIOUntilFoundUsingPull
                                 (\result → if IntSet.size result >= number_of_results_to_find
                                     then Just $ IntSet.toList result
                                     else Nothing

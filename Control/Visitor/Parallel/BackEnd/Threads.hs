@@ -35,12 +35,12 @@ module Control.Visitor.Parallel.BackEnd.Threads
     , runVisitorIOUntilFirstStartingFrom
     , runVisitorTUntilFirst
     , runVisitorTUntilFirstStartingFrom
-    , runVisitorUntilFound
-    , runVisitorUntilFoundStartingFrom
-    , runVisitorIOUntilFound
-    , runVisitorIOUntilFoundStartingFrom
-    , runVisitorTUntilFound
-    , runVisitorTUntilFoundStartingFrom
+    , runVisitorUntilFoundUsingPull
+    , runVisitorUntilFoundUsingPullStartingFrom
+    , runVisitorIOUntilFoundUsingPull
+    , runVisitorIOUntilFoundUsingPullStartingFrom
+    , runVisitorTUntilFoundUsingPull
+    , runVisitorTUntilFoundUsingPullStartingFrom
     ) where
 
 -- Imports {{{
@@ -228,63 +228,63 @@ runVisitorTUntilFirstStartingFrom :: -- {{{
 runVisitorTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
 -- }}}
 
-runVisitorUntilFound :: -- {{{
+runVisitorUntilFoundUsingPull :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Visitor result →
-    ThreadsControllerMonad (FoundMode result final_result) () →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorUntilFound = flip runVisitorUntilFoundStartingFrom mempty
+runVisitorUntilFoundUsingPull = flip runVisitorUntilFoundUsingPullStartingFrom mempty
 -- }}}
 
-runVisitorUntilFoundStartingFrom :: -- {{{
+runVisitorUntilFoundUsingPullStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
     Visitor result →
-    ThreadsControllerMonad (FoundMode result final_result) () →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorUntilFoundStartingFrom f = launchVisitorStartingFrom (FoundMode f) PureVisitor
+runVisitorUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) PureVisitor
 -- }}}
 
-runVisitorIOUntilFound :: -- {{{
+runVisitorIOUntilFoundUsingPull :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     VisitorIO result →
-    ThreadsControllerMonad (FoundMode result final_result) () →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorIOUntilFound = flip runVisitorIOUntilFoundStartingFrom mempty
+runVisitorIOUntilFoundUsingPull = flip runVisitorIOUntilFoundUsingPullStartingFrom mempty
 -- }}}
 
-runVisitorIOUntilFoundStartingFrom :: -- {{{
+runVisitorIOUntilFoundUsingPullStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
     VisitorIO result →
-    ThreadsControllerMonad (FoundMode result final_result) () →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorIOUntilFoundStartingFrom f = launchVisitorStartingFrom (FoundMode f) IOVisitor
+runVisitorIOUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) IOVisitor
 -- }}}
 
-runVisitorTUntilFound :: -- {{{
+runVisitorTUntilFoundUsingPull :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
     VisitorT m result →
-    ThreadsControllerMonad (FoundMode result final_result) () →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorTUntilFound f run = runVisitorTUntilFoundStartingFrom f run mempty
+runVisitorTUntilFoundUsingPull f run = runVisitorTUntilFoundUsingPullStartingFrom f run mempty
 -- }}}
 
-runVisitorTUntilFoundStartingFrom :: -- {{{
+runVisitorTUntilFoundUsingPullStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
     Progress result →
     VisitorT m result →
-    ThreadsControllerMonad (FoundMode result final_result) () →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorTUntilFoundStartingFrom f = launchVisitorStartingFrom (FoundMode f) . ImpureVisitor
+runVisitorTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureVisitor
 -- }}}
 
 -- }}}
@@ -365,7 +365,7 @@ launchVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C
                             (case visitor_mode of
                                 AllMode → ()
                                 FirstMode → ()
-                                FoundMode _ → ()
+                                FoundModeUsingPull _ → ()
                             )
                     )
                     >>=
