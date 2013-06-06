@@ -591,13 +591,22 @@ checkWhetherMoreStealsAreNeeded = do
             number_of_pending_workload_steals
     when (number_of_needed_steals > 0) $ do
         let findWorkers accum 0 available_workers = (accum,available_workers)
-            findWorkers accum _ (IntMap.minViewWithKey → Nothing) = (accum,IntMap.empty)
-            findWorkers accum n (IntMap.minViewWithKey → Just ((depth,workers),deeper_workers)) =
-                go accum n workers
-              where
-                go accum 0 workers = (accum,if Set.null workers then deeper_workers else IntMap.insert depth workers deeper_workers)
-                go accum n (Set.minView → Nothing) = findWorkers accum n deeper_workers
-                go accum n (Set.minView → Just (worker_id,rest_workers)) = go (worker_id:accum) (n-1) rest_workers
+            findWorkers accum n available_workers =
+                case IntMap.minViewWithKey available_workers of
+                    Nothing → (accum,IntMap.empty)
+                    Just ((depth,workers),deeper_workers) →
+                        go accum n workers
+                      where
+                        go accum 0 workers =
+                            (accum
+                            ,if Set.null workers
+                                then deeper_workers
+                                else IntMap.insert depth workers deeper_workers
+                            )
+                        go accum n workers =
+                            case Set.minView workers of
+                                Nothing → findWorkers accum n deeper_workers
+                                Just (worker_id,rest_workers) → go (worker_id:accum) (n-1) rest_workers
         workers_to_steal_from ← available_workers_for_steal %%= findWorkers [] number_of_needed_steals
         let number_of_workers_to_steal_from = length workers_to_steal_from
         number_of_additional_requests ← steal_request_failures %%=
@@ -721,16 +730,18 @@ enqueueWorkload workload =
     use waiting_workers_or_available_workloads
     >>=
     \x → case x of
-        Left (Map.minViewWithKey → Just ((free_worker_id,maybe_time_started_waiting),remaining_workers)) → do
-            waiting_workers_or_available_workloads .= Left remaining_workers
-            maybe (return ())
-                  (timePassedSince >=> updateFunctionOfTimeUsingLens worker_wait_time_statistics)
-                  maybe_time_started_waiting
-            sendWorkloadTo workload free_worker_id
-            updateFunctionOfTimeUsingLens waiting_worker_count_statistics (Map.size remaining_workers)
-        Left (Map.minViewWithKey → Nothing) → do
-            waiting_workers_or_available_workloads .= Right (Set.singleton workload)
-            updateFunctionOfTimeUsingLens available_workload_count_statistics 1
+        Left waiting_workers →
+            case Map.minViewWithKey waiting_workers of
+                Just ((free_worker_id,maybe_time_started_waiting),remaining_workers) → do
+                    waiting_workers_or_available_workloads .= Left remaining_workers
+                    maybe (return ())
+                          (timePassedSince >=> updateFunctionOfTimeUsingLens worker_wait_time_statistics)
+                          maybe_time_started_waiting
+                    sendWorkloadTo workload free_worker_id
+                    updateFunctionOfTimeUsingLens waiting_worker_count_statistics (Map.size remaining_workers)
+                Nothing → do
+                    waiting_workers_or_available_workloads .= Right (Set.singleton workload)
+                    updateFunctionOfTimeUsingLens available_workload_count_statistics 1
         Right available_workloads → do
             waiting_workers_or_available_workloads .= Right (Set.insert workload available_workloads)
             updateFunctionOfTimeUsingLens available_workload_count_statistics (Set.size available_workloads + 1)
@@ -1356,15 +1367,17 @@ tryToObtainWorkloadFor is_new_worker worker_id =
             maybe_time_started_waiting ← getMaybeTimeStartedWorking
             waiting_workers_or_available_workloads .= Left (Map.insert worker_id maybe_time_started_waiting waiting_workers)
             updateFunctionOfTimeUsingLens waiting_worker_count_statistics (Map.size waiting_workers + 1)
-        Right (Set.minView → Nothing) → do
-            maybe_time_started_waiting ← getMaybeTimeStartedWorking
-            waiting_workers_or_available_workloads .= Left (Map.singleton worker_id maybe_time_started_waiting)
-            updateFunctionOfTimeUsingLens waiting_worker_count_statistics 1
-        Right (Set.minView → Just (workload,remaining_workloads)) → do
-            unless is_new_worker $ updateFunctionOfTimeUsingLens worker_wait_time_statistics 0
-            sendWorkloadTo workload worker_id
-            waiting_workers_or_available_workloads .= Right remaining_workloads
-            updateFunctionOfTimeUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
+        Right available_workers →
+            case Set.minView available_workers of
+                Nothing → do
+                    maybe_time_started_waiting ← getMaybeTimeStartedWorking
+                    waiting_workers_or_available_workloads .= Left (Map.singleton worker_id maybe_time_started_waiting)
+                    updateFunctionOfTimeUsingLens waiting_worker_count_statistics 1
+                Just (workload,remaining_workloads) → do
+                    unless is_new_worker $ updateFunctionOfTimeUsingLens worker_wait_time_statistics 0
+                    sendWorkloadTo workload worker_id
+                    waiting_workers_or_available_workloads .= Right remaining_workloads
+                    updateFunctionOfTimeUsingLens available_workload_count_statistics (Set.size remaining_workloads + 1)
     >>
     checkWhetherMoreStealsAreNeeded
   where

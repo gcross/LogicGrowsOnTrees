@@ -171,13 +171,15 @@ checkpointFromSequence :: -- {{{
     Seq α →
     Checkpoint →
     Checkpoint
-checkpointFromSequence _ (viewr → EmptyR) = id
-checkpointFromSequence processStep (viewr → rest :> step) =
-    checkpointFromSequence processStep rest
-    .
-    mergeCheckpointRoot
-    .
-    processStep step
+checkpointFromSequence processStep sequence =
+    case viewr sequence of
+        EmptyR → id
+        rest :> step →
+            checkpointFromSequence processStep rest
+            .
+            mergeCheckpointRoot
+            .
+            processStep step
 -- }}}
 
 checkpointFromVisitorState :: VisitorTState m α → Checkpoint -- {{{

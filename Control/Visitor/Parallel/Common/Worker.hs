@@ -11,7 +11,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnicodeSyntax #-}
-{-# LANGUAGE ViewPatterns #-}
 -- }}}
 
 module Control.Visitor.Parallel.Common.Worker
@@ -394,20 +393,20 @@ tryStealWorkload :: -- {{{
     Maybe (CheckpointCursor,Context m α,Workload)
 tryStealWorkload initial_path = go
   where
-    go _      (viewl → EmptyL) = Nothing
-    go cursor (viewl → step :< rest_context) = case step of
-        CacheContextStep cache →
-            go (cursor |> CacheCheckpointD cache) rest_context
-        LeftBranchContextStep other_checkpoint _ →
-            Just
-                (cursor |> ChoiceCheckpointD LeftBranch Unexplored
-                ,rest_context
-                ,Workload
-                    ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
-                    other_checkpoint
-                )
-        RightBranchContextStep →
-            go (cursor |> ChoiceCheckpointD RightBranch Explored) rest_context
+    go cursor context =
+        case viewl context of
+            EmptyL → Nothing
+            CacheContextStep cache :< rest_context →
+                go (cursor |> CacheCheckpointD cache) rest_context
+            LeftBranchContextStep other_checkpoint _ :< rest_context →
+                Just (cursor |> ChoiceCheckpointD LeftBranch Unexplored
+                     ,rest_context
+                     ,Workload
+                        ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
+                        other_checkpoint
+                     )
+            RightBranchContextStep :< rest_context →
+                go (cursor |> ChoiceCheckpointD RightBranch Explored) rest_context
 -- }}}
 
 -- }}}

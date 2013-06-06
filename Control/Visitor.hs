@@ -5,7 +5,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
-{-# LANGUAGE ViewPatterns #-}
 -- }}}
 
 module Control.Visitor -- {{{
@@ -180,14 +179,16 @@ between x y =
 -- }}}
 
 endowVisitor :: Monad m ⇒ Visitor α → VisitorT m α -- {{{
-endowVisitor (view . unwrapVisitorT → Return x) = return x
-endowVisitor (view . unwrapVisitorT → Cache mx :>>= k) =
-    cacheMaybe (runIdentity mx) >>= endowVisitor . VisitorT . k
-endowVisitor (view . unwrapVisitorT → Choice left right :>>= k) =
-    mplus
-        (endowVisitor left >>= endowVisitor . VisitorT . k)
-        (endowVisitor right >>= endowVisitor . VisitorT . k)
-endowVisitor (view . unwrapVisitorT → Null :>>= _) = mzero
+endowVisitor visitor =
+    case view . unwrapVisitorT $ visitor of
+        Return x → return x
+        Cache mx :>>= k →
+            cacheMaybe (runIdentity mx) >>= endowVisitor . VisitorT . k
+        Choice left right :>>= k →
+            mplus
+                (endowVisitor left >>= endowVisitor . VisitorT . k)
+                (endowVisitor right >>= endowVisitor . VisitorT . k)
+        Null :>>= _ → mzero
 -- }}}
 
 msumBalanced :: MonadPlus m ⇒ [m α] → m α -- {{{

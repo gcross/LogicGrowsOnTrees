@@ -2,7 +2,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
-{-# LANGUAGE ViewPatterns #-}
 -- }}}
 
 module Control.Visitor.Label where
@@ -132,34 +131,40 @@ instance MonadPlus m ⇒ Monoid (LabeledT m α) where -- {{{
 -- Functions {{{
 
 applyCheckpointCursorToLabel :: CheckpointCursor → VisitorLabel → VisitorLabel -- {{{
-applyCheckpointCursorToLabel (viewl → EmptyL) = id
-applyCheckpointCursorToLabel (viewl → step :< rest) =
-    applyCheckpointCursorToLabel rest
-    .
-    case step of
-        CacheCheckpointD _ → id
-        ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
+applyCheckpointCursorToLabel cursor =
+    case viewl cursor of
+        EmptyL → id
+        step :< rest →
+            applyCheckpointCursorToLabel rest
+            .
+            case step of
+                CacheCheckpointD _ → id
+                ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
 -- }}}
 
 applyContextToLabel :: Context m α → VisitorLabel → VisitorLabel -- {{{
-applyContextToLabel (viewl → EmptyL) = id
-applyContextToLabel (viewl → step :< rest) =
-    applyContextToLabel rest
-    .
-    case step of
-        CacheContextStep _ → id
-        LeftBranchContextStep _ _ → leftChildLabel
-        RightBranchContextStep → rightChildLabel
+applyContextToLabel context =
+    case viewl context of
+        EmptyL → id
+        step :< rest →
+            applyContextToLabel rest
+            .
+            case step of
+                CacheContextStep _ → id
+                LeftBranchContextStep _ _ → leftChildLabel
+                RightBranchContextStep → rightChildLabel
 -- }}}
 
 applyPathToLabel :: Path → VisitorLabel → VisitorLabel -- {{{
-applyPathToLabel (viewl → EmptyL) = id
-applyPathToLabel (viewl → step :< rest) =
-    applyPathToLabel rest
-    .
-    case step of
-        ChoiceStep active_branch → labelTransformerForBranch active_branch
-        CacheStep _ → id
+applyPathToLabel path =
+    case viewl path of
+        EmptyL → id
+        step :< rest →
+            applyPathToLabel rest
+            .
+            case step of
+                ChoiceStep active_branch → labelTransformerForBranch active_branch
+                CacheStep _ → id
 -- }}}
 
 branchingFromLabel :: VisitorLabel → [Branch] -- {{{

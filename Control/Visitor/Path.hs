@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
-{-# LANGUAGE ViewPatterns #-}
 -- }}}
 
 module Control.Visitor.Path where
@@ -66,20 +65,23 @@ sendVisitorDownPath path = runIdentity . sendVisitorTDownPath path
 -- }}}
 
 sendVisitorTDownPath :: Monad m ⇒ Path → VisitorT m α → m (VisitorT m α) -- {{{
-sendVisitorTDownPath (viewl → EmptyL) = return
-sendVisitorTDownPath (viewl → step :< tail) =
-    viewT . unwrapVisitorT >=> \view → case (view,step) of
-        (Return _,_) →
-            throw VisitorTerminatedBeforeEndOfWalk
-        (Null :>>= _,_) →
-            throw VisitorTerminatedBeforeEndOfWalk
-        (Cache _ :>>= k,CacheStep cache) →
-            sendVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
-        (Choice left _ :>>= k,ChoiceStep LeftBranch) →
-            sendVisitorTDownPath tail (left >>= VisitorT . k)
-        (Choice _ right :>>= k,ChoiceStep RightBranch) →
-            sendVisitorTDownPath tail (right >>= VisitorT . k)
-        _ → throw PastVisitorIsInconsistentWithPresentVisitor
+sendVisitorTDownPath path visitor =
+    case viewl path of
+        EmptyL → return visitor
+        step :< tail → do
+            view ← viewT . unwrapVisitorT $ visitor
+            case (view,step) of
+                (Return _,_) →
+                    throw VisitorTerminatedBeforeEndOfWalk
+                (Null :>>= _,_) →
+                    throw VisitorTerminatedBeforeEndOfWalk
+                (Cache _ :>>= k,CacheStep cache) →
+                    sendVisitorTDownPath tail $ either error (VisitorT . k) (decode cache)
+                (Choice left _ :>>= k,ChoiceStep LeftBranch) →
+                    sendVisitorTDownPath tail (left >>= VisitorT . k)
+                (Choice _ right :>>= k,ChoiceStep RightBranch) →
+                    sendVisitorTDownPath tail (right >>= VisitorT . k)
+                _ → throw PastVisitorIsInconsistentWithPresentVisitor
 -- }}}
 
 -- }}}
