@@ -1128,6 +1128,21 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
                 case progressResult of
                     Nothing → return (checkpoint,Nothing)
                     Just solution → finishWithResult . Just $ Progress checkpoint solution
+            FoundMode f → do
+                Progress old_checkpoint old_result ← use current_progress
+                let Progress checkpoint result_or_final_result = final_progress
+                    new_checkpoint = old_checkpoint <> checkpoint
+                case result_or_final_result of
+                    Left result → do
+                        let new_result = old_result <> result
+                        case f new_result of
+                            Nothing → do
+                                current_progress .= Progress new_checkpoint new_result
+                                return (new_checkpoint,Left new_result)
+                            Just final_result →
+                                finishWithResult . Right $ Progress new_checkpoint (final_result,mempty)
+                    Right final_result →
+                        finishWithResult . Right $ Progress new_checkpoint (final_result,old_result)
     case checkpoint of
         Explored → do
             active_worker_ids ← Map.keys . Map.delete worker_id <$> use active_workers

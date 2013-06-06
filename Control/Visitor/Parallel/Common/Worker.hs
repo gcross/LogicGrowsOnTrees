@@ -51,6 +51,7 @@ import Control.Monad.IO.Class
 import Data.Composition
 import Data.Derive.Serialize
 import Data.DeriveTH
+import Data.Either.Unwrap (mapRight)
 import Data.Functor ((<$>))
 import Data.Functor.Identity (Identity)
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef)
@@ -174,6 +175,7 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
         (case visitor_mode of
             AllMode → Progress full_checkpoint result
             FirstMode → full_checkpoint
+            FoundMode _ → Progress full_checkpoint result
         )
         (Workload (initial_path >< pathFromCursor cursor)
          .
@@ -259,6 +261,17 @@ forkWorkerThread
                                 Progress
                                     explored_checkpoint
                                     maybe_solution
+                            FoundMode f →
+                                case maybe_solution of
+                                    Nothing →
+                                        Progress
+                                            explored_checkpoint
+                                            (Left result)
+                                    Just solution →
+                                        let new_result = result <> solution
+                                        in Progress
+                                            explored_checkpoint
+                                            (maybe (Left new_result) Right . f $ new_result)
                 Just new_visitor_state@(VisitorTState context checkpoint _) →
                     case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
@@ -269,6 +282,14 @@ forkWorkerThread
                                     Progress
                                         (checkpointFromEnvironment initial_path cursor context checkpoint)
                                         (Just solution)
+                                FoundMode f →
+                                    let new_result = result <> solution
+                                    in case f new_result of
+                                        Nothing → loop1 new_result cursor new_visitor_state
+                                        Just final_result → return . WorkerFinished $
+                                            Progress
+                                                (checkpointFromEnvironment initial_path cursor context checkpoint)
+                                                (Right final_result)
         -- }}}
     finished_flag ← IVar.new
     thread_id ← forkIO $ do
@@ -324,6 +345,14 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
         case visitor_mode of
             AllMode → progressResult progress
             FirstMode → Progress (progressCheckpoint progress) <$> progressResult progress
+            FoundMode _ →
+                mapRight (
+                    Progress (progressCheckpoint progress)
+                    .
+                    (,mempty)
+                )
+                $
+                progressResult progress
 -- }}}
 
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
@@ -366,6 +395,43 @@ runVisitorIOUntilFirst = genericRunVisitor FirstMode IOVisitor
 
 runVisitorTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → VisitorT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
 runVisitorTUntilFirst = genericRunVisitor FirstMode . ImpureVisitor
+-- }}}
+
+runVisitorUntilFound :: -- {{{
+    Monoid α ⇒
+    (α → Maybe β) →
+    Visitor α →
+    IO (WorkerTerminationReason (Either α (Progress β)))
+runVisitorUntilFound f =
+    liftM (fmap $ mapRight (fmap fst))
+    .
+    genericRunVisitor (FoundMode f) PureVisitor
+-- }}}
+
+runVisitorIOUntilFound :: -- {{{
+    Monoid α ⇒
+    (α → Maybe β) →
+    VisitorIO α →
+    IO (WorkerTerminationReason (Either α (Progress β)))
+runVisitorIOUntilFound f =
+    liftM (fmap $ mapRight (fmap fst))
+    .
+    genericRunVisitor (FoundMode f) IOVisitor
+-- }}}
+
+runVisitorTUntilFound :: -- {{{
+    (Monoid α, MonadIO m) ⇒
+    (α → Maybe β) →
+    (∀ η. m η → IO η) →
+    VisitorT m α →
+    IO (WorkerTerminationReason (Either α (Progress β)))
+runVisitorTUntilFound f =
+    liftM (fmap $ mapRight (fmap fst))
+    .*
+    (genericRunVisitor (FoundMode f)
+     .
+     ImpureVisitor
+    )
 -- }}}
 
 sendAbortRequest :: WorkerRequestQueue progress → IO () -- {{{

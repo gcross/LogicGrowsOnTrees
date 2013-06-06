@@ -119,6 +119,9 @@ instance Exception InconsistentCheckpoints
 
 -- Instances {{{
 
+instance Functor Progress where
+    fmap f (Progress checkpoint result) = Progress checkpoint (f result)
+
 instance Monoid Checkpoint where -- {{{
     mempty = Unexplored
     Explored `mappend` _ = Explored

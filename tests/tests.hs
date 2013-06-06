@@ -1136,6 +1136,52 @@ tests = -- {{{
                    ,testGroupUsingGenerator "without solutions" randomNullVisitorWithHooks
                    ]
              -- }}}
+            ,testGroup "FoundMode" $ -- {{{
+                let runTest generator generateNoise = generator >>= \constructVisitor → morallyDubiousIOProperty $ do
+                        let visitor = constructVisitor (const $ return ())
+                        correct_results ← runVisitorT visitor
+                        number_of_results_to_find ← randomRIO (1,2*IntSet.size correct_results)
+                        cleared_flags_tvar ← newTVarIO mempty
+                        request_queue ← newTChanIO
+                        progresses_ref ← newIORef []
+                        result ←
+                            (Threads.runVisitorIOUntilFound
+                                (\result → if IntSet.size result >= number_of_results_to_find
+                                    then Just $ IntSet.toList result
+                                    else Nothing
+                                )
+                                (insertHooks cleared_flags_tvar request_queue constructVisitor)
+                                (respondToRequests request_queue generateNoise progresses_ref)
+                            ) >>= extractResult
+                        case result of
+                            Left incomplete_result → do
+                                assertBool "result is not smaller than desired" $ IntSet.size incomplete_result < number_of_results_to_find
+                                assertEqual "incomplete result matches correct result" incomplete_result correct_results
+                            Right (Progress checkpoint (final_result_as_list,leftover_result)) → do
+                                let final_result = IntSet.fromList final_result_as_list
+                                assertBool "result is at least as large as desired" $ IntSet.size final_result >= number_of_results_to_find
+                                assertBool "final result was not valid" $ final_result `IntSet.isSubsetOf` correct_results
+                                assertBool "leftover result was not valid" $ leftover_result `IntSet.isSubsetOf` correct_results
+                                assertBool "final and leftover results overlap" . IntSet.null $ IntSet.intersection final_result leftover_result
+                                let all_results = final_result `mappend` leftover_result
+                                runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor
+                                    >>= assertEqual "both returned results together do not match all results covered by the checkpoint" all_results
+                                runVisitorTThroughCheckpoint checkpoint visitor
+                                    >>= assertEqual "all results minus return results do not match remaining results" (IntSet.difference correct_results all_results)
+                        (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
+                            runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
+                            runVisitorTThroughCheckpoint checkpoint visitor >>= (@?= correct_results) . mappend result
+                         )
+                        return True
+                    testGroupUsingGenerator name generator = testGroup name $
+                        [testProperty "one thread" . runTest generator $ oneThreadNoise
+                        ,testProperty "two threads" . runTest generator $ twoThreadsNoise
+                        ,testProperty "many threads" . runTest generator $ manyThreadsNoise
+                        ]
+                in [testGroupUsingGenerator "with solutions" randomUniqueVisitorWithHooks
+                   ,testGroupUsingGenerator "without solutions" randomNullVisitorWithHooks
+                   ]
+             -- }}}
             ]
          -- }}}
         ]
