@@ -1115,11 +1115,12 @@ tests = -- {{{
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         let visitor = constructVisitor (const $ return ())
-                        correct_results ← runVisitorT $ Set.singleton <$> visitor
+                        correct_results ← runVisitorT visitor
                         case maybe_result of
-                            Nothing → assertBool "solutions were missed" (Set.null correct_results)
+                            Nothing → assertBool "solutions were missed" (IntSet.null correct_results)
                             Just (Progress checkpoint result) → do
-                                assertBool "solution was not valid" $ Set.member result correct_results
+                                IntSet.size result @?= 1
+                                assertBool "solution was not valid" $ result `IntSet.isSubsetOf` correct_results
                                 runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= assertBool "solution appears within area covered by checkpoint" . IntSet.isSubsetOf result
                                 runVisitorTThroughCheckpoint checkpoint visitor >>= assertBool "solution does not appear outside the area covered by checkpoint" . not . IntSet.isSubsetOf result
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\checkpoint → do
