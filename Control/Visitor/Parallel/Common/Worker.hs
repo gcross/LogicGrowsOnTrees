@@ -194,6 +194,7 @@ forkWorkerThread :: -- {{{
     (WorkerTerminationReasonFor visitor_mode → IO ()) →
     VisitorT m α →
     Workload →
+    WorkerPushActionFor visitor_mode →
     IO (WorkerEnvironmentFor visitor_mode)
 forkWorkerThread
     visitor_mode
@@ -201,6 +202,7 @@ forkWorkerThread
     finishedCallback
     visitor
     (Workload initial_path initial_checkpoint)
+    push_queue
   = do
     -- Note:  the following line of code needs to be this way --- that is, using
     --        do notation to extract the value of VisitorFunctions --- or else
@@ -327,7 +329,9 @@ forkWorkerThread
 -- }}}
 
 genericRunVisitor :: -- {{{
-    ResultFor visitor_mode ~ α ⇒
+    ( WorkerPushActionFor visitor_mode ~ ()
+    , ResultFor visitor_mode ~ α
+    ) ⇒
     VisitorMode visitor_mode →
     VisitorKind m n →
     VisitorT m α →
@@ -340,6 +344,7 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
             (putMVar final_progress_mvar)
             visitor
             entire_workload
+            ()
     final_progress ← takeMVar final_progress_mvar
     return . flip fmap final_progress $ \progress →
         case visitor_mode of

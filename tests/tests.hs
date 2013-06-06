@@ -1515,6 +1515,7 @@ tests = -- {{{
                     (IVar.write termination_result_ivar)
                     (liftIO (takeMVar semaphore) `mplus` error "should never get here")
                     entire_workload
+                    ()
                 sendAbortRequest workerPendingRequests
                 putMVar semaphore ()
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
@@ -1532,6 +1533,7 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
+                            ()
                     Progress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
@@ -1548,6 +1550,7 @@ tests = -- {{{
                             (IVar.write solutions_ivar)
                             visitor
                             (Workload path Unexplored)
+                            ()
                     Progress checkpoint solutions ←
                         (IVar.blocking $ IVar.read solutions_ivar)
                         >>=
@@ -1606,6 +1609,7 @@ tests = -- {{{
                         (IVar.write termination_result_ivar)
                         ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
                         entire_workload
+                        ()
                     progress_updates_ref ← newIORef []
                     let sendMyProgressUpdateRequest = sendProgressUpdateRequest workerPendingRequests submitProgressUpdate
                         submitProgressUpdate progress_update = do
@@ -1625,6 +1629,7 @@ tests = -- {{{
                                 return value
                             )
                             entire_workload
+                            ()
                         let submitMyProgressUpdateRequest =
                                 sendProgressUpdateRequest
                                     workerPendingRequests
@@ -1640,6 +1645,7 @@ tests = -- {{{
                         (IVar.write termination_result_ivar)
                         (mzero :: Visitor [Int])
                         entire_workload
+                        ()
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
                 case termination_result of
                     WorkerFinished (progressResult → solutions) → solutions @?= mempty
@@ -1716,6 +1722,7 @@ tests = -- {{{
                         (IVar.write termination_result_ivar)
                         visitor_with_blocking_value
                         entire_workload
+                        ()
                     maybe_workload_ref ← newIORef Nothing
                     takeMVar reached_position_mvar
                     sendWorkloadStealRequest workerPendingRequests $ writeIORef maybe_workload_ref
@@ -1756,6 +1763,7 @@ tests = -- {{{
                         (IVar.write termination_result_ivar)
                         ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
                         entire_workload
+                        ()
                     steals_ref ← newIORef []
                     let submitMyWorkloadStealRequest = sendWorkloadStealRequest workerPendingRequests submitStolenWorkload
                         submitStolenWorkload Nothing = submitMyWorkloadStealRequest
@@ -1776,6 +1784,7 @@ tests = -- {{{
                                 return value
                             )
                             entire_workload
+                            ()
                         let submitMyWorkloadStealRequest =
                                 sendWorkloadStealRequest
                                     workerPendingRequests

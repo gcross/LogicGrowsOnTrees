@@ -1,4 +1,5 @@
 -- Language extensions {{{
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -361,6 +362,11 @@ launchVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C
                             )
                             visitor
                             workload
+                            (case visitor_mode of
+                                AllMode → ()
+                                FirstMode → ()
+                                FoundMode _ → ()
+                            )
                     )
                     >>=
                     modify
