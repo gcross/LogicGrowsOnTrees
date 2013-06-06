@@ -10,6 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
@@ -132,6 +133,14 @@ data WorkerTerminationReason worker_final_progress = -- {{{
 -- }}}
 type WorkerTerminationReasonFor visitor_mode = WorkerTerminationReason (WorkerFinalProgressFor visitor_mode)
 
+-- }}}
+
+-- Type families {{{
+type family WorkerPushActionFor visitor_mode :: * -- {{{
+type instance WorkerPushActionFor (AllMode result) = ()
+type instance WorkerPushActionFor (FirstMode result) = ()
+type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = ()
+-- }}}
 -- }}}
 
 -- Instances {{{

@@ -65,11 +65,6 @@ type instance WorkerFinalProgressFor (FirstMode result) = Progress (Maybe result
 type instance WorkerFinalProgressFor (FoundModeUsingPull result final_result) = Progress (Either result final_result)
 -- }}}
 
-type family WorkerPushActionFor visitor_mode :: * -- {{{
-type instance WorkerPushActionFor (AllMode result) = ()
-type instance WorkerPushActionFor (FirstMode result) = ()
-type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = ()
--- }}}
 -- }}}
 
 -- Functions {{{
