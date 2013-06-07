@@ -64,7 +64,6 @@ type instance WorkerFinalProgressFor (AllMode result) = Progress result
 type instance WorkerFinalProgressFor (FirstMode result) = Progress (Maybe result)
 type instance WorkerFinalProgressFor (FoundModeUsingPull result final_result) = Progress (Either result final_result)
 -- }}}
-
 -- }}}
 
 -- Functions {{{
