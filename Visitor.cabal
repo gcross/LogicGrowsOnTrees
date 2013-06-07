@@ -76,8 +76,6 @@ Library
         Control.Visitor.Utils.Word_
         Control.Visitor.Utils.WordSum
         Control.Visitor.Workload
-        Data.Semiring
-        Data.Semiring.NaturalInstances
     Extensions:
     C-sources: c-sources/queens.c
     if flag(warnings)

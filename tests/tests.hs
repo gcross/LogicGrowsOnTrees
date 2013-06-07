@@ -44,8 +44,6 @@ import Data.List (sort)
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.Monoid
-import Data.Semiring
-import Data.Semiring.NaturalInstances
 import Data.Sequence ((<|),(|>))
 import qualified Data.Sequence as Seq
 import qualified Data.Serialize as Serialize
@@ -205,8 +203,6 @@ instance Serial IO All where series = All <$> series
 instance Serial IO Any where series = Any <$> series
 instance Serial IO Word where series = (fromIntegral :: Int → Word) . abs <$> series
 instance Serial IO (Sum Int) where series = Sum <$> series
-instance Serial IO (N Bool) where series = N <$> series
-instance Serial IO (N Int) where series = N <$> series
 instance Serial IO (Set String) where series = Set.fromList <$> series
 -- }}}
 
@@ -567,75 +563,6 @@ ignore_supervisor_actions =
     }
 -- }}}
 endless_visitor = endless_visitor `mplus` endless_visitor
--- }}}
-
--- Checks {{{
-testSemigroupPropertiesUsingSmall :: -- {{{
-    ∀ α.
-    ( Eq α
-    , Serial IO α
-    , Semiring α
-    , Show α
-    ) ⇒
-    String →
-    α →
-    Test
-testSemigroupPropertiesUsingSmall name _ = testGroup name . map (uncurry Small.testProperty) $
-    [("addition is associative",Small.test
-     $ \(x::α) (y::α) (z::α) → (x <> y) <> z == x <> (y <> z)
-     )
-    ,("addition is commutative",Small.test
-     $ \(x::α) (y::α) → x <> y == y <> x
-     )
-    ,("addition with additive identity is identity operation",Small.test
-     $ \(x::α) → mempty <> x == x
-     )
-    ,("multiplication is associative",Small.test
-     $ \(x::α) (y::α) (z::α) → (x `mtimes` y) `mtimes` z == x `mtimes` (y `mtimes` z)
-     )
-    ,("multiplication by multiplicative identity is identity operation",Small.test
-     $ \(x::α) → munit `mtimes` x == x
-     )
-    ,("left multiplication distributes over addition",Small.test
-     $ \(x::α) (y::α) (z::α) → x `mtimes` (y <> z) == x `mtimes` y <> x `mtimes` z
-     )
-    ,("right multiplication distributes over addition",Small.test
-     $ \(x::α) (y::α) (z::α) → (x <> y) `mtimes` z == x `mtimes` z <> y `mtimes` z
-     )
-    ,("multiplication by additive identity annihilates all elements",Small.test
-     $ \(x::α) → x `mtimes` mempty == mempty
-     )
-    ]
--- }}}
-testSemigroupPropertiesUsingQuick :: -- {{{
-    ∀ α.
-    ( Arbitrary α
-    , Eq α
-    , Semiring α
-    , Show α
-    ) ⇒
-    String →
-    α →
-    Test
-testSemigroupPropertiesUsingQuick name _ = testGroup name
-    [testProperty "addition is associative" $
-        \(x::α) (y::α) (z::α) → (x <> y) <> z == x <> (y <> z)
-    ,testProperty "addition is commutative" $
-        \(x::α) (y::α) → x <> y == y <> x
-    ,testProperty "addition with additive identity is identity operation" $
-        \(x::α) → mempty <> x == x
-    ,testProperty "multiplication is associative" . mapSize (const 10) $
-        \(x::α) (y::α) (z::α) → (x `mtimes` y) `mtimes` z == x `mtimes` (y `mtimes` z)
-    ,testProperty "multiplication by multiplicative identity is identity operation" $
-        \(x::α) → munit `mtimes` x == x
-    ,testProperty "left multiplication distributes over addition" $
-        \(x::α) (y::α) (z::α) → x `mtimes` (y <> z) == x `mtimes` y <> x `mtimes` z
-    ,testProperty "right multiplication distributes over addition" $
-        \(x::α) (y::α) (z::α) → (x <> y) `mtimes` z == x `mtimes` z <> y `mtimes` z
-    ,testProperty "multiplication by additive identity annihilates all elements" $
-        \(x::α) → x `mtimes` mempty == mempty
-    ]
--- }}}
 -- }}}
 
 -- }}}
@@ -1950,18 +1877,6 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ]
-     -- }}}
-    ,testGroup "Data.Semiring" -- {{{
-        [testSemigroupPropertiesUsingSmall "All" (undefined :: All)
-        ,testSemigroupPropertiesUsingSmall "Any" (undefined :: Any)
-        ,testSemigroupPropertiesUsingSmall "Sum Int" (undefined :: Sum Int)
-        ,testSemigroupPropertiesUsingQuick "Set String" (undefined :: Set String)
-        ]
-     -- }}}
-    ,testGroup "Data.Semiring.NaturalInstances" -- {{{
-        [testSemigroupPropertiesUsingSmall "Bool" (undefined :: N Bool)
-        ,testSemigroupPropertiesUsingSmall "Int" (undefined :: N Int)
         ]
      -- }}}
     ]
