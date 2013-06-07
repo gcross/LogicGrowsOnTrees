@@ -221,7 +221,7 @@ forkWorkerThread
     finishedCallback
     visitor
     (Workload initial_path initial_checkpoint)
-    push_queue
+    push
   = do
     -- Note:  the following line of code needs to be this way --- that is, using
     --        do notation to extract the value of VisitorFunctions --- or else
