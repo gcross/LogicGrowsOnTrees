@@ -1038,6 +1038,7 @@ tests = -- {{{
                 termination_reason @?= Completed (Just (Progress (ChoiceCheckpoint Unexplored Explored) ()))
              -- }}}
             ]
+         -- }}}
         ,testGroup "FoundModeUsingPull" -- {{{
             [testCase "many threads with combined final result but none finish" $ do -- {{{
                 RunOutcome _ termination_reason ←

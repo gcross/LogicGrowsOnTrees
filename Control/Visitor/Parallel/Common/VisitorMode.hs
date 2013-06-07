@@ -90,6 +90,4 @@ initialWorkerIntermediateValue AllMode = mempty
 initialWorkerIntermediateValue FirstMode = ()
 initialWorkerIntermediateValue (FoundModeUsingPull _) = mempty
 -- }}}
-
--- }}}
 -- }}}
