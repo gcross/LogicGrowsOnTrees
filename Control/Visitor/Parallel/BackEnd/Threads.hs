@@ -41,6 +41,12 @@ module Control.Visitor.Parallel.BackEnd.Threads
     , runVisitorIOUntilFoundUsingPullStartingFrom
     , runVisitorTUntilFoundUsingPull
     , runVisitorTUntilFoundUsingPullStartingFrom
+    , runVisitorUntilFoundUsingPush
+    , runVisitorUntilFoundUsingPushStartingFrom
+    , runVisitorIOUntilFoundUsingPush
+    , runVisitorIOUntilFoundUsingPushStartingFrom
+    , runVisitorTUntilFoundUsingPush
+    , runVisitorTUntilFoundUsingPushStartingFrom
     ) where
 
 -- Imports {{{
@@ -288,6 +294,65 @@ runVisitorTUntilFoundUsingPullStartingFrom :: -- {{{
 runVisitorTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureVisitor
 -- }}}
 
+runVisitorUntilFoundUsingPush :: -- {{{
+    Monoid result ⇒
+    (result → Maybe final_result) →
+    Visitor result →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+runVisitorUntilFoundUsingPush = flip runVisitorUntilFoundUsingPushStartingFrom mempty
+-- }}}
+
+runVisitorUntilFoundUsingPushStartingFrom :: -- {{{
+    Monoid result ⇒
+    (result → Maybe final_result) →
+    Progress result →
+    Visitor result →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+runVisitorUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) PureVisitor
+-- }}}
+
+runVisitorIOUntilFoundUsingPush :: -- {{{
+    Monoid result ⇒
+    (result → Maybe final_result) →
+    VisitorIO result →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+runVisitorIOUntilFoundUsingPush = flip runVisitorIOUntilFoundUsingPushStartingFrom mempty
+-- }}}
+
+runVisitorIOUntilFoundUsingPushStartingFrom :: -- {{{
+    Monoid result ⇒
+    (result → Maybe final_result) →
+    Progress result →
+    VisitorIO result →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+runVisitorIOUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) IOVisitor
+-- }}}
+
+runVisitorTUntilFoundUsingPush :: -- {{{
+    (Monoid result, MonadIO m) ⇒
+    (result → Maybe final_result) →
+    (∀ α. m α → IO α) →
+    VisitorT m result →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+runVisitorTUntilFoundUsingPush f run = runVisitorTUntilFoundUsingPushStartingFrom f run mempty
+-- }}}
+
+runVisitorTUntilFoundUsingPushStartingFrom :: -- {{{
+    (Monoid result, MonadIO m) ⇒
+    (result → Maybe final_result) →
+    (∀ α. m α → IO α) →
+    Progress result →
+    VisitorT m result →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+runVisitorTUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) . ImpureVisitor
+-- }}}
+
 -- }}}
 
 -- Internal Functions {{{
@@ -367,6 +432,7 @@ launchVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C
                                 AllMode → absurd
                                 FirstMode → absurd
                                 FoundModeUsingPull _ → absurd
+                                FoundModeUsingPush _ → receiveProgressUpdateFromWorker worker_id
                             )
                     )
                     >>=

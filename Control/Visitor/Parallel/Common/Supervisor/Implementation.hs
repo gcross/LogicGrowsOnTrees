@@ -1157,6 +1157,10 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
                                 finishWithResult . Right $ Progress new_checkpoint (final_result,mempty)
                     Right final_result →
                         finishWithResult . Right $ Progress new_checkpoint (final_result,old_result)
+            FoundModeUsingPush _ → do
+                updateCurrentProgress final_progress
+                Progress checkpoint result ← use current_progress
+                return (checkpoint,Left result)
     case checkpoint of
         Explored → do
             active_worker_ids ← Map.keys . Map.delete worker_id <$> use active_workers
@@ -1444,6 +1448,11 @@ updateCurrentProgress progress = do
             case f result of
                 Nothing → return ()
                 Just final_result → finishWithResult . Right $ Progress checkpoint (final_result,mempty)
+        FoundModeUsingPush f → do
+            Progress checkpoint result ← current_progress <%= (<> progress)
+            case f result of
+                Nothing → return ()
+                Just final_result → finishWithResult . Right $ Progress checkpoint final_result
 -- }}}
 
 updateFunctionOfTime :: -- {{{

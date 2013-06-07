@@ -58,6 +58,7 @@ import Data.Functor.Identity (Identity)
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef)
 import qualified Data.IVar as IVar
 import Data.IVar (IVar)
+import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>),Monoid(..))
 import Data.Sequence ((|>),(><),viewl,ViewL(..))
 import Data.Serialize
@@ -143,6 +144,7 @@ type family WorkerPushActionFor visitor_mode :: * -- {{{
 type instance WorkerPushActionFor (AllMode result) = Void → ()
 type instance WorkerPushActionFor (FirstMode result) = Void → ()
 type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = Void → ()
+type instance WorkerPushActionFor (FoundModeUsingPush result final_result) = ProgressUpdate (Progress result) → IO ()
 -- }}}
 -- }}}
 
@@ -200,6 +202,7 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
             AllMode → Progress full_checkpoint result
             FirstMode → full_checkpoint
             FoundModeUsingPull _ → Progress full_checkpoint result
+            FoundModeUsingPush _ → Progress full_checkpoint mempty
         )
         (workloadFromEnvironment initial_path cursor context checkpoint)
   where
@@ -297,6 +300,11 @@ forkWorkerThread
                                             explored_checkpoint
                                             (maybe (Left new_result) Right . f $ new_result)
                             -- }}}
+                            FoundModeUsingPush _ → -- {{{
+                                Progress
+                                    explored_checkpoint
+                                    (fromMaybe mempty maybe_solution)
+                            -- }}}
                 -- }}}
                 Just new_visitor_state@(VisitorTState context checkpoint _) → -- {{{
                     let new_checkpoint = checkpointFromEnvironment initial_path cursor context checkpoint
@@ -312,6 +320,12 @@ forkWorkerThread
                                         Nothing → loop1 new_result cursor new_visitor_state
                                         Just final_result → return . WorkerFinished $ Progress new_checkpoint (Right final_result)
                                 -- }}}
+                                FoundModeUsingPush _ → do -- {{{
+                                    liftIO . push $
+                                        ProgressUpdate
+                                            (Progress new_checkpoint solution)
+                                            (workloadFromEnvironment initial_path cursor context checkpoint)
+                                    loop1 () cursor new_visitor_state
                                 -- }}}
                 -- }}}
         -- }}}
@@ -380,6 +394,7 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
                 )
                 $
                 progressResult progress
+            _ → error "should never reach here due to incompatible types"
 -- }}}
 
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
