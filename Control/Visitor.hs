@@ -11,13 +11,19 @@
 -- }}}
 
 module Control.Visitor -- {{{
-    ( MonadVisitor(..)
+    (
+    -- * Visitor features
+    -- $type-classes
+      MonadVisitor(..)
     , MonadVisitorTrans(..)
-    , VisitorTInstruction(..)
-    , VisitorInstruction
+    -- * Visitor types
+    -- $types
     , Visitor
     , VisitorIO
     , VisitorT(..)
+    -- * Rest
+    , VisitorTInstruction(..)
+    , VisitorInstruction
     , allFrom
     , allFromBalanced
     , allFromBalancedGreedy
@@ -53,24 +59,78 @@ import Control.Visitor.Utils.MonadStacks
 
 -- Classes {{{
 
+-- Doc: Visitor Features {{{
+{- $type-classes
+
+Visitors are instances of 'MonadVisitor' and/or 'MonadVisitorTrans', which are
+both subclasses of 'MonadPlus'.  The additional functionality offered by these
+type-classes is the ability to cache results so that a computation does not need
+to be repeated when a path through the visitor is taken a second time, which
+happens either when resuming from a checkpoint or when a workload has been
+stolen by another processor as the first step is to retrace the path through the
+visitor that leads to the stolen workload.
+
+These features could have been provided as functions, but there are two reasons
+why they were subsumed into type-classes: first, because one might want to
+add another layer above the 'Visitor' monad transformers in the monad stack
+(as is the case in "Control.Visitor.Label"), and second, because one might want
+to run a visitor using a simpler monad such as [] for testing purposes.
+
+NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
+       you should only do when the result is relatively small and the
+       computation is very expensive and is high enough in the search tree that
+       it is likely to be repeated often.  If the calculation is low enough in
+       the search tree that it is unlikely to be repeated, is cheap enough so
+       that repeating it is not a big deal, or produces a result with an
+       incredibly large memory footprint, then you are probably better off not
+       caching the result.
+ -}
+-- }}}
+
+{-| The 'MonadVisitor' class provides caching functionality when running a pure
+    visitor;  at minimum 'cacheMaybe' needs to be defined.
+ -}
 class MonadPlus m ⇒ MonadVisitor m where -- {{{
+    {-| Cache a value in case we visit this node again. -}
     cache :: Serialize x ⇒ x → m x
     cache = cacheMaybe . Just
 
+    {-| This does the same thing as 'guard' but it caches the result. -}
     cacheGuard :: Bool → m ()
     cacheGuard = cacheMaybe . (\x → if x then Just () else Nothing)
 
+    {-| This function is a combination of the previous two;  it performs a
+        computation which might fail by returning 'Nothing', and if that happens
+        it aborts the visitor;  if it passes then the result is cached and
+        returned.
+
+        Note that the previous two methods are essentially specializations of
+        this method.
+     -}
     cacheMaybe :: Serialize x ⇒ Maybe x → m x
 -- }}}
 
+{-| This class is like 'MonadVisitor', but it is designed to work with monad
+    stacks;  at minimum 'runAndCacheMaybe' needs to be defined.
+ -}
 class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitorTrans m where -- {{{
+    {-| The next layer down in the monad transformer stack. -}
     type NestedMonadInVisitor m :: * → *
+
+    {-| Runs the given action in the nested monad and caches the result. -}
     runAndCache :: Serialize x ⇒ (NestedMonadInVisitor m) x → m x
     runAndCache = runAndCacheMaybe . liftM Just
 
+    {-| Runs the given action in the nested monad and then does the equivalent
+        of feeding it into 'guard', caching the result.
+     -}
     runAndCacheGuard :: (NestedMonadInVisitor m) Bool → m ()
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
 
+    {-| Runs the given action in the nested monad;  if it returns 'Nothing',
+        then it acts like 'mzero',  if it returns 'Just x', then it caches the
+        result.
+     -}
     runAndCacheMaybe :: Serialize x ⇒ (NestedMonadInVisitor m) (Maybe x) → m x
 -- }}}
 
@@ -85,20 +145,69 @@ data VisitorTInstruction m α where -- {{{
 -- }}}
 type VisitorInstruction = VisitorTInstruction Identity
 
+-- Doc: Visitor types {{{
+{- $types
+The following are the visitor types that are accepted by most of he functions in
+this package.  You do not need to know the details of their definitions unless
+you intend to write your own custom routines for running and transforming
+visitors, in which case the relevant information is at the bottom of this page
+in the Implementation` section.
+
+There is one type of pure visitor and two types of impure visitors.  In general,
+your visitor should nearly always be pure if you are planning to make use of
+checkpointing or parallel runs, because in general parts of the visitor will be
+run multiple times, some parts may not be run at all on a given processor, and
+whenever a leaf is hit there will be a jump to a higher node, so if your visitor
+is impure the effects need to be meaningful no matter how the visitor is run on
+a given processor.
+
+Having said that, there are a few times when an impure visitor can make sense:
+first, if the inner monad is something like the `Reader` monad, which has no
+side-effects;  second, for testing purposes (e.g., many of my tests of the
+various visitor runners use `MVar`s and the like to ensure that visitors are
+explored in a certain way to test certain code paths);  finally, if there is some
+side-effectful action that you want to run on each result (such as storing a
+result into a database), though in this case you will need to make sure that
+your code is robust against being run multiple times as there is no guarantee in
+an environment where the system might be shut down and resumed from a checkpoint
+that your action will only have been run once on a given result (i.e., if the
+system goes down after your action was run but before a checkpoint was made
+marking that it was run).
+
+If you need something like state in your visitor, then you should consider
+nesting the visitor monad in the state monad rather than vice-versa, because
+this will do things like automatically erasing the change in state that happened
+between an inner node and a leaf when the visitor jumps back up from the leaf
+to an inner node.
+-}
+-- }}}
+
+{-| A pure visitor, which is what you should normally be using. -}
+type Visitor = VisitorT Identity
+
+{-| A visitor running in the I/O monad, which you should only be using for
+    testing purposes or, say, if you are planning on storing each result in an
+    external database, in which case you need to guard against the possibility
+    that an action for a given result might be run twice in checkpointing and/or
+    parallel settings.
+-}
+type VisitorIO = VisitorT IO
+
+{-| A visitor run in an arbitrary monad. -}
 newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstruction m) m α }
     deriving (Applicative,Functor,Monad,MonadIO)
-type Visitor = VisitorT Identity
-type VisitorIO = VisitorT IO
 
 -- }}}
 
 -- Instances {{{
 
+{-| The 'Alternative' instance functions like the 'MonadPlus' instance. -}
 instance Monad m ⇒ Alternative (VisitorT m) where -- {{{
     empty = mzero
     (<|>) = mplus
 -- }}}
 
+{-| Two visitors are equal if the generate exactly the same tree. -}
 instance Eq α ⇒ Eq (Visitor α) where -- {{{
     (VisitorT x) == (VisitorT y) = e x y
       where
@@ -115,32 +224,49 @@ instance Eq α ⇒ Eq (Visitor α) where -- {{{
             _  → False
 -- }}}
 
+{-| For this type, 'mplus' provides a branch node with a choice between two
+    values and 'mzero' provides a node with no values.
+ -}
 instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
     mzero = VisitorT . singleton $ Null
     left `mplus` right = VisitorT . singleton $ Choice left right
 -- }}}
 
+{-| This instance performs no caching but is provided to make it easier to test
+    running a visitor using the List monad.
+ -}
 instance MonadVisitor [] where -- {{{
     cacheMaybe = maybe mzero return
 -- }}}
 
+{-| This instance performs no caching but is provided to make it easier to test
+    running a visitor using the 'ListT' monad.
+ -}
 instance Monad m ⇒ MonadVisitor (ListT m) where -- {{{
     cacheMaybe = maybe mzero return
 -- }}}
 
+{-| Like the 'MonadVisitor' isntance, this instance does no caching. -}
 instance Monad m ⇒ MonadVisitorTrans (ListT m) where -- {{{
     type NestedMonadInVisitor (ListT m) = m
 -- }}}
     runAndCacheMaybe = lift >=> maybe mzero return
 
+{-| This instance performs no caching but is provided to make it easier to test
+    running a visitor using the 'Maybe' monad.
+ -}
 instance MonadVisitor Maybe where -- {{{
     cacheMaybe = maybe mzero return
 -- }}}
 
+{-| This instance performs no caching but is provided to make it easier to test
+    running a visitor using the 'MaybeT' monad.
+ -}
 instance Monad m ⇒ MonadVisitor (MaybeT m) where -- {{{
     cacheMaybe = maybe mzero return
 -- }}}
 
+{-| Like the 'MonadVisitor' isntance, this instance does no caching. -}
 instance Monad m ⇒ MonadVisitorTrans (MaybeT m) where -- {{{
     type NestedMonadInVisitor (MaybeT m) = m
     runAndCacheMaybe = maybe mzero lift
@@ -159,6 +285,13 @@ instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
     runAndCacheMaybe = VisitorT . singleton . Cache
 -- }}}
 
+{-| This instance allows you to automatically get a MonadVisitor instance for
+    any monad transformer that has `MonadPlus` defined.  (Unfortunately its
+    presence requires OverlappingInstances because it overlaps with the instance
+    for `VisitorT`, even though the constraints are such that it is impossible
+    in practice for there to ever be a case where a given type is satisfied by
+    both instances.)
+ -}
 instance (MonadTrans t, MonadVisitor m, MonadPlus (t m)) ⇒ MonadVisitor (t m) where -- {{{
     cache = lift . cache
     cacheGuard = lift . cacheGuard
@@ -169,6 +302,7 @@ instance MonadTrans VisitorT where -- {{{
     lift = VisitorT . lift
 -- }}}
 
+{-| The 'Monoid' instance acts like the 'MonadPlus' instance. -}
 instance Monad m ⇒ Monoid (VisitorT m α) where -- {{{
     mempty = mzero
     mappend = mplus
