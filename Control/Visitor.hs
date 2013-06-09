@@ -33,7 +33,7 @@ module Control.Visitor -- {{{
 
 -- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
-import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum)
+import Control.Monad (MonadPlus(..),(>=>),guard,liftM,liftM2,msum)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -50,14 +50,22 @@ import Control.Visitor.Utils.MonadStacks
 
 class MonadPlus m ⇒ MonadVisitor m where -- {{{
     cache :: Serialize x ⇒ x → m x
+    cache = cacheMaybe . Just
+
     cacheGuard :: Bool → m ()
+    cacheGuard = cacheMaybe . (\x → if x then Just () else Nothing)
+
     cacheMaybe :: Serialize x ⇒ Maybe x → m x
 -- }}}
 
-class MonadPlus m ⇒ MonadVisitorTrans m where -- {{{
+class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitorTrans m where -- {{{
     type NestedMonadInVisitor m :: * → *
     runAndCache :: Serialize x ⇒ (NestedMonadInVisitor m) x → m x
+    runAndCache = runAndCacheMaybe . liftM Just
+
     runAndCacheGuard :: (NestedMonadInVisitor m) Bool → m ()
+    runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
+
     runAndCacheMaybe :: Serialize x ⇒ (NestedMonadInVisitor m) (Maybe x) → m x
 -- }}}
 
