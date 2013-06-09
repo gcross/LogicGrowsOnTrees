@@ -41,7 +41,7 @@ class Monad m ⇒ MonadLabeled m where
 newtype LabeledT m α = LabeledT { unwrapLabeledT :: ReaderT VisitorLabel m α }
     deriving (Applicative,Functor,Monad,MonadIO,MonadTrans)
 newtype LabeledVisitorT m α = LabeledVisitorT { unwrapLabeledVisitorT :: LabeledT (VisitorT m) α }
-    deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLabeled,MonadPlus,MonadVisitor,Monoid)
+    deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLabeled,MonadPlus,Monoid)
 type LabeledVisitorIO = LabeledVisitorT IO
 type LabeledVisitor = LabeledVisitorT Identity
 
@@ -99,12 +99,6 @@ instance MonadPlus m ⇒ MonadPlus (LabeledT m) where -- {{{
     mzero = LabeledT $ lift mzero
     LabeledT left `mplus` LabeledT right = LabeledT . ReaderT $
         \branch → (runReaderT left (leftChildLabel branch)) `mplus` (runReaderT right (rightChildLabel branch))
--- }}}
-
-instance MonadVisitor m ⇒ MonadVisitor (LabeledT m) where -- {{{
-    cache = LabeledT . lift . cache
-    cacheGuard = LabeledT . lift . cacheGuard
-    cacheMaybe = LabeledT . lift . cacheMaybe
 -- }}}
 
 instance MonadVisitorTrans m ⇒ MonadVisitorTrans (LabeledT m) where -- {{{

@@ -1,9 +1,12 @@
 -- Language extensions {{{
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
@@ -37,6 +40,8 @@ import Control.Monad (MonadPlus(..),(>=>),guard,liftM,liftM2,msum)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.List (ListT)
+import Control.Monad.Trans.Maybe (MaybeT)
 
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
@@ -115,6 +120,32 @@ instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
     left `mplus` right = VisitorT . singleton $ Choice left right
 -- }}}
 
+instance MonadVisitor [] where -- {{{
+    cacheMaybe = maybe mzero return
+-- }}}
+
+instance Monad m ⇒ MonadVisitor (ListT m) where -- {{{
+    cacheMaybe = maybe mzero return
+-- }}}
+
+instance Monad m ⇒ MonadVisitorTrans (ListT m) where -- {{{
+    type NestedMonadInVisitor (ListT m) = m
+-- }}}
+    runAndCacheMaybe = lift >=> maybe mzero return
+
+instance MonadVisitor Maybe where -- {{{
+    cacheMaybe = maybe mzero return
+-- }}}
+
+instance Monad m ⇒ MonadVisitor (MaybeT m) where -- {{{
+    cacheMaybe = maybe mzero return
+-- }}}
+
+instance Monad m ⇒ MonadVisitorTrans (MaybeT m) where -- {{{
+    type NestedMonadInVisitor (MaybeT m) = m
+    runAndCacheMaybe = maybe mzero lift
+-- }}}
+
 instance Monad m ⇒ MonadVisitor (VisitorT m) where -- {{{
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
@@ -126,6 +157,12 @@ instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
     runAndCacheMaybe = VisitorT . singleton . Cache
+-- }}}
+
+instance (MonadTrans t, MonadVisitor m, MonadPlus (t m)) ⇒ MonadVisitor (t m) where -- {{{
+    cache = lift . cache
+    cacheGuard = lift . cacheGuard
+    cacheMaybe = lift . cacheMaybe
 -- }}}
 
 instance MonadTrans VisitorT where -- {{{
