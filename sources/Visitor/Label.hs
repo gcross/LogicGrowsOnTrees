@@ -101,14 +101,14 @@ instance MonadPlus m ⇒ MonadPlus (LabeledT m) where -- {{{
         \branch → (runReaderT left (leftChildLabel branch)) `mplus` (runReaderT right (rightChildLabel branch))
 -- }}}
 
-instance MonadVisitorTrans m ⇒ MonadVisitorTrans (LabeledT m) where -- {{{
+instance MonadVisitableTrans m ⇒ MonadVisitableTrans (LabeledT m) where -- {{{
     type NestedMonadInVisitor (LabeledT m) = NestedMonadInVisitor m
     runAndCache = LabeledT . lift . runAndCache
     runAndCacheGuard = LabeledT . lift . runAndCacheGuard
     runAndCacheMaybe = LabeledT . lift . runAndCacheMaybe
 -- }}}
 
-instance Monad m ⇒ MonadVisitorTrans (LabeledVisitorT m) where -- {{{
+instance Monad m ⇒ MonadVisitableTrans (LabeledVisitorT m) where -- {{{
     type NestedMonadInVisitor (LabeledVisitorT m) = m
     runAndCache = LabeledVisitorT . runAndCache
     runAndCacheGuard = LabeledVisitorT . runAndCacheGuard

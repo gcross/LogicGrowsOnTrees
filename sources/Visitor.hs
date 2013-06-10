@@ -8,13 +8,13 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| Basic functionality for visitors. -}
+{-| Basic functionality for building and visiting trees. -}
 module Visitor
     (
     -- * TreeBuilder Features
     -- $type-classes
-      MonadVisitor(..)
-    , MonadVisitorTrans(..)
+      MonadVisitable(..)
+    , MonadVisitableTrans(..)
     -- * TreeBuilder Types
     -- $types
     , TreeBuilder
@@ -68,7 +68,7 @@ import Visitor.Utils.MonadStacks
 
 {- $type-classes
 
-Visitors are instances of 'MonadVisitor' and/or 'MonadVisitorTrans', which are
+Visitors are instances of 'MonadVisitable' and/or 'MonadVisitableTrans', which are
 both subclasses of 'MonadPlus'.  The additional functionality offered by these
 type-classes is the ability to cache results so that a computation does not need
 to be repeated when a path through the visitor is taken a second time, which
@@ -93,10 +93,10 @@ NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
  -}
 
 
-{-| The 'MonadVisitor' class provides caching functionality when running a pure
+{-| The 'MonadVisitable' class provides caching functionality when running a pure
     visitor;  at minimum 'cacheMaybe' needs to be defined.
  -}
-class MonadPlus m ⇒ MonadVisitor m where
+class MonadPlus m ⇒ MonadVisitable m where
     {-| Cache a value in case we visit this node again. -}
     cache :: Serialize x ⇒ x → m x
     cache = cacheMaybe . Just
@@ -115,10 +115,10 @@ class MonadPlus m ⇒ MonadVisitor m where
      -}
     cacheMaybe :: Serialize x ⇒ Maybe x → m x
 
-{-| This class is like 'MonadVisitor', but it is designed to work with monad
+{-| This class is like 'MonadVisitable', but it is designed to work with monad
     stacks;  at minimum 'runAndCacheMaybe' needs to be defined.
  -}
-class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitorTrans m where
+class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitableTrans m where
     {-| The next layer down in the monad transformer stack. -}
     type NestedMonadInVisitor m :: * → *
 
@@ -227,56 +227,56 @@ instance Monad m ⇒ MonadPlus (TreeBuilderT m) where
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the List monad.
  -}
-instance MonadVisitor [] where
+instance MonadVisitable [] where
     cacheMaybe = maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the 'ListT' monad.
  -}
-instance Monad m ⇒ MonadVisitor (ListT m) where
+instance Monad m ⇒ MonadVisitable (ListT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadVisitor' isntance, this instance does no caching. -}
-instance Monad m ⇒ MonadVisitorTrans (ListT m) where
+{-| Like the 'MonadVisitable' isntance, this instance does no caching. -}
+instance Monad m ⇒ MonadVisitableTrans (ListT m) where
     type NestedMonadInVisitor (ListT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the 'Maybe' monad.
  -}
-instance MonadVisitor Maybe where
+instance MonadVisitable Maybe where
     cacheMaybe = maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the 'MaybeT' monad.
  -}
-instance Monad m ⇒ MonadVisitor (MaybeT m) where
+instance Monad m ⇒ MonadVisitable (MaybeT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadVisitor' isntance, this instance does no caching. -}
-instance Monad m ⇒ MonadVisitorTrans (MaybeT m) where
+{-| Like the 'MonadVisitable' isntance, this instance does no caching. -}
+instance Monad m ⇒ MonadVisitableTrans (MaybeT m) where
     type NestedMonadInVisitor (MaybeT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
 
-instance Monad m ⇒ MonadVisitor (TreeBuilderT m) where
+instance Monad m ⇒ MonadVisitable (TreeBuilderT m) where
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
     cacheMaybe = runAndCacheMaybe . return
 
-instance Monad m ⇒ MonadVisitorTrans (TreeBuilderT m) where
+instance Monad m ⇒ MonadVisitableTrans (TreeBuilderT m) where
     type NestedMonadInVisitor (TreeBuilderT m) = m
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
     runAndCacheMaybe = TreeBuilderT . singleton . Cache
 
-{-| This instance allows you to automatically get a MonadVisitor instance for
+{-| This instance allows you to automatically get a MonadVisitable instance for
     any monad transformer that has `MonadPlus` defined.  (Unfortunately its
     presence requires OverlappingInstances because it overlaps with the instance
     for `VisitorT`, even though the constraints are such that it is impossible
     in practice for there to ever be a case where a given type is satisfied by
     both instances.)
  -}
-instance (MonadTrans t, MonadVisitor m, MonadPlus (t m)) ⇒ MonadVisitor (t m) where
+instance (MonadTrans t, MonadVisitable m, MonadPlus (t m)) ⇒ MonadVisitable (t m) where
     cache = lift . cache
     cacheGuard = lift . cacheGuard
     cacheMaybe = lift . cacheMaybe
