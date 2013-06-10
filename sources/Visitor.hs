@@ -11,19 +11,19 @@
 {-| Basic functionality for building and visiting trees. -}
 module Visitor
     (
-    -- * TreeBuilder Features
-    -- $type-classes
-      MonadVisitable(..)
-    , MonadVisitableTrans(..)
-    -- * TreeBuilder Types
+    -- * TreeBuilder types
     -- $types
-    , TreeBuilder
+      TreeBuilder
     , TreeBuilderIO
     , TreeBuilderT(..)
+    -- * Visitable class features
+    -- $type-classes
+    , MonadVisitable(..)
+    , MonadVisitableTrans(..)
     -- * Functions
     -- $functions
 
-    -- ** ...that run visitors
+    -- ** ...that visit trees
     -- $runners
     , visitTree
     , visitTreeT
@@ -32,7 +32,7 @@ module Visitor
     , visitTreeTUntilFirst
     , visitTreeUntilFound
     , visitTreeTUntilFound
-    -- ** ...that help creating visitors
+    -- ** ...that help building trees
     -- $builders
     , allFrom
     , allFromBalanced
@@ -40,7 +40,7 @@ module Visitor
     , between
     , msumBalanced
     , msumBalancedGreedy
-    -- ** ...that transform visitors
+    -- ** ...that transform tree builders
     , endowTreeBuilder
     -- * Implementation
     , TreeBuilderTInstruction(..)
@@ -63,24 +63,78 @@ import Data.Serialize (Serialize(),encode)
 import Visitor.Utils.MonadStacks
 
 --------------------------------------------------------------------------------
+------------------------------------- Types ------------------------------------
+--------------------------------------------------------------------------------
+
+{- $types
+The following are the tree builder types that are accepted by most of he
+functions in this package.  You do not need to know the details of their
+definitions unless you intend to write your own custom routines for running and
+transforming tree builders, in which case the relevant information is at the bottom
+of this page in the Implementation section.
+
+There is one type of pure tree builder and two types of impure tree builders.
+In general, your tree builder should nearly always be pure if you are planning
+to make use of checkpointing or parallel visiting, because in general parts of
+the tree may be visited multiple times, some parts may not be run at all on a
+given processor, and whenever a leaf is hit there will be a jump to a higher
+node, so if your tree builder is impure the effects need to be meaningful no
+matter how the tree builder is run on a given processor.
+
+Having said that, there are a few times when an impure tree builder can make
+sense: first, if the inner monad is something like the `Reader` monad, which has
+no side-effects;  second, for testing purposes (e.g., many of my tests of the
+various tree builder visiors use `MVar`s and the like to ensure that tree
+builders are explored in a certain way to test certain code paths);  finally, if
+there is some side-effectful action that you want to run on each result (such as
+storing a result into a database), though in this case you will need to make
+sure that your code is robust against being run multiple times as there is no
+guarantee in an environment where the system might be shut down and resumed from
+a checkpoint that your action will only have been run once on a given result
+(i.e., if the system goes down after your action was run but before a checkpoint
+was made marking that its node was visited).
+
+If you need something like state in your tree builder, then you should consider
+nesting the tree builder monad in the state monad rather than vice-versa,
+because this will do things like automatically erasing the change in state that
+happened between an inner node and a leaf when the tree builder jumps back up
+from the leaf to an inner node, which will usually be what you want.
+-}
+
+{-| A pure tree builder, which is what you should normally be using. -}
+type TreeBuilder = TreeBuilderT Identity
+
+{-| A tree builder running in the I/O monad, which you should only be using for
+    testing purposes or, say, if you are planning on storing each result in an
+    external database, in which case you need to guard against the possibility
+    that an action for a given result might be run twice in checkpointing and/or
+    parallel settings.
+-}
+type TreeBuilderIO = TreeBuilderT IO
+
+{-| A tree builder run in an arbitrary monad. -}
+newtype TreeBuilderT m α = TreeBuilderT { unwrapTreeBuilderT :: ProgramT (TreeBuilderTInstruction m) m α }
+    deriving (Applicative,Functor,Monad,MonadIO)
+
+--------------------------------------------------------------------------------
 --------------------------------- Type-classes ---------------------------------
 --------------------------------------------------------------------------------
 
 {- $type-classes
 
-Visitors are instances of 'MonadVisitable' and/or 'MonadVisitableTrans', which are
-both subclasses of 'MonadPlus'.  The additional functionality offered by these
-type-classes is the ability to cache results so that a computation does not need
-to be repeated when a path through the visitor is taken a second time, which
-happens either when resuming from a checkpoint or when a workload has been
-stolen by another processor as the first step is to retrace the path through the
-visitor that leads to the stolen workload.
+'TreeBuilder's are instances of 'MonadVisitable' and/or 'MonadVisitableTrans',
+which are both subclasses of 'MonadPlus'. The additional functionality offered
+by these type-classes is the ability to cache results so that a computation does
+not need to be repeated when a node is visited a second time, which can happen
+either when resuming from a checkpoint or when a workload has been stolen by
+another processor as the first step is to retrace the path through the tree
+builder that leads to the stolen workload.
 
 These features could have been provided as functions, but there are two reasons
 why they were subsumed into type-classes: first, because one might want to
 add another layer above the 'TreeBuilder' monad transformers in the monad stack
 (as is the case in "Visitor.Label"), and second, because one might want
-to run a visitor using a simpler monad such as [] for testing purposes.
+to run a tree builder using a simpler monad such as [] for testing purposes.
 
 NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
        you should only do when the result is relatively small and the
@@ -92,9 +146,8 @@ NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
        caching the result.
  -}
 
-
-{-| The 'MonadVisitable' class provides caching functionality when running a pure
-    visitor;  at minimum 'cacheMaybe' needs to be defined.
+{-| The 'MonadVisitable' class provides caching functionality when visiting a
+    tree;  at minimum 'cacheMaybe' needs to be defined.
  -}
 class MonadPlus m ⇒ MonadVisitable m where
     {-| Cache a value in case we visit this node again. -}
@@ -107,7 +160,7 @@ class MonadPlus m ⇒ MonadVisitable m where
 
     {-| This function is a combination of the previous two;  it performs a
         computation which might fail by returning 'Nothing', and if that happens
-        it aborts the visitor;  if it passes then the result is cached and
+        it aborts the tree builder;  if it passes then the result is cached and
         returned.
 
         Note that the previous two methods are essentially specializations of
@@ -139,60 +192,6 @@ class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitableTrans m wh
     runAndCacheMaybe :: Serialize x ⇒ (NestedMonadInVisitor m) (Maybe x) → m x
 
 --------------------------------------------------------------------------------
-------------------------------------- Types ------------------------------------
---------------------------------------------------------------------------------
-
-{- $types
-The following are the visitor types that are accepted by most of he functions in
-this package.  You do not need to know the details of their definitions unless
-you intend to write your own custom routines for running and transforming
-visitors, in which case the relevant information is at the bottom of this page
-in the Implementation` section.
-
-There is one type of pure visitor and two types of impure visitors.  In general,
-your visitor should nearly always be pure if you are planning to make use of
-checkpointing or parallel runs, because in general parts of the visitor will be
-run multiple times, some parts may not be run at all on a given processor, and
-whenever a leaf is hit there will be a jump to a higher node, so if your visitor
-is impure the effects need to be meaningful no matter how the visitor is run on
-a given processor.
-
-Having said that, there are a few times when an impure visitor can make sense:
-first, if the inner monad is something like the `Reader` monad, which has no
-side-effects;  second, for testing purposes (e.g., many of my tests of the
-various visitor runners use `MVar`s and the like to ensure that visitors are
-explored in a certain way to test certain code paths);  finally, if there is some
-side-effectful action that you want to run on each result (such as storing a
-result into a database), though in this case you will need to make sure that
-your code is robust against being run multiple times as there is no guarantee in
-an environment where the system might be shut down and resumed from a checkpoint
-that your action will only have been run once on a given result (i.e., if the
-system goes down after your action was run but before a checkpoint was made
-marking that it was run).
-
-If you need something like state in your visitor, then you should consider
-nesting the visitor monad in the state monad rather than vice-versa, because
-this will do things like automatically erasing the change in state that happened
-between an inner node and a leaf when the visitor jumps back up from the leaf
-to an inner node.
--}
-
-{-| A pure visitor, which is what you should normally be using. -}
-type TreeBuilder = TreeBuilderT Identity
-
-{-| A visitor running in the I/O monad, which you should only be using for
-    testing purposes or, say, if you are planning on storing each result in an
-    external database, in which case you need to guard against the possibility
-    that an action for a given result might be run twice in checkpointing and/or
-    parallel settings.
--}
-type TreeBuilderIO = TreeBuilderT IO
-
-{-| A visitor run in an arbitrary monad. -}
-newtype TreeBuilderT m α = TreeBuilderT { unwrapTreeBuilderT :: ProgramT (TreeBuilderTInstruction m) m α }
-    deriving (Applicative,Functor,Monad,MonadIO)
-
---------------------------------------------------------------------------------
 ---------------------------------- Instances -----------------------------------
 --------------------------------------------------------------------------------
 
@@ -201,7 +200,7 @@ instance Monad m ⇒ Alternative (TreeBuilderT m) where
     empty = mzero
     (<|>) = mplus
 
-{-| Two visitors are equal if the generate exactly the same tree. -}
+{-| Two tree builders are equal if they build exactly the same tree. -}
 instance Eq α ⇒ Eq (TreeBuilder α) where
     (TreeBuilderT x) == (TreeBuilderT y) = e x y
       where
@@ -217,21 +216,21 @@ instance Eq α ⇒ Eq (TreeBuilder α) where
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
             _  → False
 
-{-| For this type, 'mplus' provides a branch node with a choice between two
-    values and 'mzero' provides a node with no values.
+{-| For this type, 'mplus' creates a branch node with a choice between two
+    subtrees and 'mzero' aborts the tree builder.
  -}
 instance Monad m ⇒ MonadPlus (TreeBuilderT m) where
     mzero = TreeBuilderT . singleton $ Null
     left `mplus` right = TreeBuilderT . singleton $ Choice left right
 
 {-| This instance performs no caching but is provided to make it easier to test
-    running a visitor using the List monad.
+    running a tree builder using the List monad.
  -}
 instance MonadVisitable [] where
     cacheMaybe = maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
-    running a visitor using the 'ListT' monad.
+    running a tree builder using the 'ListT' monad.
  -}
 instance Monad m ⇒ MonadVisitable (ListT m) where
     cacheMaybe = maybe mzero return
@@ -242,13 +241,13 @@ instance Monad m ⇒ MonadVisitableTrans (ListT m) where
     runAndCacheMaybe = lift >=> maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
-    running a visitor using the 'Maybe' monad.
+    running a tree builder using the 'Maybe' monad.
  -}
 instance MonadVisitable Maybe where
     cacheMaybe = maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
-    running a visitor using the 'MaybeT' monad.
+    running a tree builder using the 'MaybeT' monad.
  -}
 instance Monad m ⇒ MonadVisitable (MaybeT m) where
     cacheMaybe = maybe mzero return
@@ -308,26 +307,30 @@ instance Show α ⇒ Show (TreeBuilder α) where
 --------------------------------------------------------------------------------
 
 {- $functions
-There are three kinds of functions in this module:  functions which run visitors
-in various ways, functions to make it easier to build visitors, and functions
-which change the base monad of a pure visitor.
+There are three kinds of functions in this module: functions which visit trees
+in various ways, functions to make it easier to build trees, and a function
+which changes the base monad of a pure tree builder.
  -}
 
------------------------------------ Runners ------------------------------------
+---------------------------------- Visitors ------------------------------------
 
 {- $runners
-The following functions all take a visitor as input and produce the resul of
-running the visitor as output.  There are seven functions because there are two
-kinds of visitors -- pure and impure -- and three modes for running the visitor
--- sum all result, return the first result, and gather results until they
-satisfy a condition and then return -- plus a seventh function that runs a
-visitor only for its side-effects.
+The following functions all take a tree builder as input and produce the result
+of visiting it as output. There are seven functions because there are two kinds
+of tree builders -- pure and impure -- and three ways of visiting a tree --
+visiting everything and summing all results (i.e., in the leaves), visiting
+until the first result (i.e., in a leaf) is encountered and immediately
+returning, and gathering results (i.e., from the leaves) until they satisfy a
+condition and then return -- plus a seventh function that visits a tree only for
+the side-effects in the tree builder.
  -}
 
-{-| Run a pure visitor until all results have been found and summed together. -}
+{-| Visits all the nodes in a purely generated tree and sums over all the
+    results in the leaves.
+ -}
 visitTree ::
     Monoid α ⇒
-    TreeBuilder α {-^ the (pure) visitor to run -} →
+    TreeBuilder α {-^ the (pure) builder of the tree to be visited -} →
     α {-^ the sum over all results -}
 visitTree v =
     case view (unwrapTreeBuilderT v) of
@@ -341,10 +344,12 @@ visitTree v =
         (Null :>>= _) → mempty
 {-# INLINEABLE visitTree #-}
 
-{-| Run an impure visitor until all results have been found and summed together. -}
+{-| Visits all the nodes in an impurely generated tree and sums over all the
+    results in the leaves.
+ -}
 visitTreeT ::
     (Monad m, Monoid α) ⇒
-    TreeBuilderT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
     m α {-^ the sum over all results -}
 visitTreeT = viewT . unwrapTreeBuilderT >=> \view →
     case view of
@@ -359,10 +364,10 @@ visitTreeT = viewT . unwrapTreeBuilderT >=> \view →
 {-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeBuilderIO α → IO α #-}
 {-# INLINEABLE visitTreeT #-}
 
-{-| Run an impure visitor for its side-effects, ignoring all results. -}
+{-| Visits a tree for the side-effects in its builder, ignoring all results. -}
 visitTreeTAndIgnoreResults ::
     Monad m ⇒
-    TreeBuilderT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
     m ()
 visitTreeTAndIgnoreResults = viewT . unwrapTreeBuilderT >=> \view →
     case view of
@@ -376,11 +381,12 @@ visitTreeTAndIgnoreResults = viewT . unwrapTreeBuilderT >=> \view →
 {-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeBuilderIO α → IO () #-}
 {-# INLINEABLE visitTreeTAndIgnoreResults #-}
 
-{-| Run a pure visitor until a result has been found;  if a result has been
-    found then it is returned wrapped in 'Just', otherwise 'Nothing' is returned.
+{-| Visits all the nodes in a tree until a result (i.e., a leaf) has been found;
+    if a result has been found then it is returned wrapped in 'Just', otherwise
+    'Nothing' is returned.
  -}
 visitTreeUntilFirst ::
-    TreeBuilder α {-^ the (pure) visitor to run -} →
+    TreeBuilder α {-^ the (pure) builder of the tree to be visited -} →
     Maybe α {-^ the first result found, if any -}
 visitTreeUntilFirst v =
     case view (unwrapTreeBuilderT v) of
@@ -393,10 +399,12 @@ visitTreeUntilFirst v =
         (Null :>>= _) → Nothing
 {-# INLINEABLE visitTreeUntilFirst #-}
 
-{-| Same as 'visitTreeUntilFirst', but taking an impure visitor instead of a pure visitor. -}
+{-| Same as 'visitTreeUntilFirst', but taking an impure tree builder instead
+    of pure one.
+ -}
 visitTreeTUntilFirst ::
     Monad m ⇒
-    TreeBuilderT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
     m (Maybe α) {-^ the first result found, if any -}
 visitTreeTUntilFirst = viewT . unwrapTreeBuilderT >=> \view →
     case view of
@@ -412,11 +420,10 @@ visitTreeTUntilFirst = viewT . unwrapTreeBuilderT >=> \view →
 {-# SPECIALIZE visitTreeTUntilFirst :: TreeBuilderIO α → IO (Maybe α) #-}
 {-# INLINEABLE visitTreeTUntilFirst #-}
 
-{-| Run a pure visitor summing all results encountered until the current sum
-    satisfies the condition provided by the function in the first argument;  if
-    the sum never satisfies the condition function then it (that is, the sum
-    over all results) is returned wrapped in 'Left', otherwise the transformed
-    result returned by the condition function is returned wrapped in 'Right'.
+{-| Visits all the nodes in a tree, summing all results (i.e., in the leaves)
+    encountered until the current sum satisfies the condition provided by the
+    first function;  if this condition is ever satisfied then its result is
+    returned in 'Right', otherwise the final sum is returned in 'Left'.
  -}
 visitTreeUntilFound ::
     Monoid α ⇒
@@ -425,7 +432,7 @@ visitTreeUntilFound ::
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    TreeBuilder α  {-^ the (pure) visitor to run -} →
+    TreeBuilder α {-^ the (pure) builder of the tree to be visited -} →
     Either α β {-^ if no acceptable results were found, then 'Left' with the sum
                    over all results;  otherwise 'Right' with the value returned
                    by the function in the first argument
@@ -448,7 +455,9 @@ visitTreeUntilFound f v =
   where
     runThroughFilter x = maybe (Left x) Right . f $ x
 
-{-| Same as 'visitTreeUntilFound', but taking an impure visitor instead of a pure visitor. -}
+{-| Same as 'visitTreeUntilFound', but taking an impure tree builder instead of
+    a pure tree builder.
+ -}
 visitTreeTUntilFound ::
     (Monad m, Monoid α) ⇒
     (α → Maybe β) {-^ a function that determines when the desired results have
@@ -456,7 +465,7 @@ visitTreeTUntilFound ::
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    TreeBuilderT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
     m (Either α β) {-^ if no acceptable results were found, then 'Left' with the
                        sum over all results;  otherwise 'Right' with the value
                        returned by the function in the first argument
@@ -484,14 +493,14 @@ visitTreeTUntilFound f = viewT . unwrapTreeBuilderT >=> \view →
 ---------------------------------- Builders ------------------------------------
 
 {- $builders
-The following functions all construct a visitor from various inputs.  The
-convention for suffixes is as follows:  No suffix means that the visitor will be
-constructed in a naive fashion using 'msum', which takes each item in the list
-and 'mplus'es it with the resut of the list --- that is
+The following functions all create a tree builder from various inputs. The
+convention for suffixes is as follows: No suffix means that the tree will be
+built in a naive fashion using 'msum', which takes each item in the list and
+'mplus'es it with the resut of the list --- that is
 
 >   msum [a,b,c,d]
 
-is equivalent to
+which is equivalent to
 
 >   a `mplus` (b `mplus` (c `mplus` (d `mplus` mzero)))
 
@@ -520,56 +529,56 @@ half of the elements are in a perfectly balanced subtree;  this is often close
 enough to being fully balanced tree.
 
 The odd function out in this section is 'between', which takes the lower and
-upper bound if an input range and returns a visitor that generates an optimally
-balanced search tree with all of the results in the range.
+upper bound if an input range and returns a tree builder that generates an
+optimally balanced search tree with all of the results in the range.
  -}
 
-{-| Returns a visitor that generates all of the results in the input list.
+{-| Returns a tree builder that generates a tree with all of the results in the
+    input list.
 
-    WARNING:  The generated search tree will be such that every branch has one
-    element in the left branch and the remaining elements in the right branch,
-    which is heavily unbalanced and difficult to parallelize.  You should
-    consider using 'allFromBalanced' and 'allFromBalancedGreedy instead.
+    WARNING: The generated tree will be such that every branch has one element
+    in the left branch and the remaining elements in the right branch, which is
+    heavily unbalanced and difficult to parallelize. You should consider using
+    'allFromBalanced' and 'allFromBalancedGreedy instead.
  -}
 allFrom ::
     MonadPlus m ⇒
-    [α] {-^ the list of results to generate in the visitor -} →
-    m α {-^ a completely unbalanced visitor generating the input results -}
+    [α] {-^ the list of results to generate in the resulting tree builder -} →
+    m α {-^ a tree builder that builds a completely unbalanced tree with the given results -}
 allFrom = msum . map return
 {-# INLINE allFrom #-}
 
-{-| Returns a visitor that generates all of the results in the input list in
-    an optimally balanced search tree.
+{-| Returns a tree builder that builds a tree with all of the results in the
+    input list in an optimally balanced search tree.
  -}
 allFromBalanced ::
     MonadPlus m ⇒
-    [α] {-^ the list of results to generate in the visitor -} →
-    m α {-^ the optimally balanced visitor generating the input results -} 
+    [α] {-^ the list of results to generate in the resulting tree builder -} →
+    m α {-^ a tree builder that builds an optimally balanced tree with the given results -} 
 allFromBalanced = msumBalanced . map return
 {-# INLINE allFromBalanced #-}
 
-{-| Returns a visitor that generates all of the results in the input list in
-    an approximately balanced search tree with less overhead than
-    'allFromBalanced';  see the documentation for this section and/or
-    "Visitor.Utils.MonadStacks" for more information about the exact
-    algorithm used.
+{-| Returns a tree builder that generates all of the results in the input list in
+    an approximately balanced tree with less overhead than 'allFromBalanced';
+    see the documentation for this section and/or "Visitor.Utils.MonadStacks"
+    for more information about the exact algorithm used.
  -}
 allFromBalancedGreedy ::
     MonadPlus m ⇒
-    [α] {-^ the list of results to generate in the visitor -} →
-    m α {-^ an approximately balanced visitor generating the input results -}
+    [α] {-^ the list of results to generate in the resulting tree builder -} →
+    m α {-^ a tree builder that builds an approximately balanced tree with the given results -}
 allFromBalancedGreedy = msumBalancedGreedy . map return
 {-# INLINE allFromBalancedGreedy #-}
 
-{-| Returns a visitor that generates an optimally balanced search tree with all
-    of the elements in the given (inclusive) range;  if the lower bound is
-    greater than the upper bound it returns 'mzero'.
+{-| Returns a tree builder that builders an optimally balanced tree with all of
+    the elements in the given (inclusive) range; if the lower bound is greater
+    than the upper bound it returns 'mzero'.
  -}
 between ::
     (Enum n, MonadPlus m) ⇒
     n {-^ the (inclusive) lower bound of the range -} →
     n {-^ the (inclusive) upper bound of the range -} →
-    m n {-^ a visitor that generates all the results in the range -}
+    m n {-^ a tree builder that generates all the results in the range -}
 between x y =
     if a > b
         then mzero
@@ -584,13 +593,13 @@ between x y =
         d = (b-a) `div` 2
 {-# INLINE between #-}
 
-{-| Returns a visitor that merges all of the visitors in the input list using
-    an optimally balanced search tree.
+{-| Returns a tree builder that merges all of the tree builders in the input
+    list using an optimally balanced tree.
  -}
 msumBalanced ::
     MonadPlus m ⇒
-    [m α] {-^ the list of visitors to merge -} →
-    m α {-^ the merged visitor -}
+    [m α] {-^ the list of builders to merge -} →
+    m α {-^ the merged tree builder -}
 msumBalanced x = go (length x) x
   where
     go _ []  = mzero
@@ -601,16 +610,16 @@ msumBalanced x = go (length x) x
         i = n `div` 2
 {-# INLINE msumBalanced #-}
 
-{-| Returns a visitor that merges all of the visitors in the input list using
-    an approximately balanced search tree with less overhead than
-    'msumBalanced';  see the documentation for this section and/or
-    "Visitor.Utils.MonadStacks" for more information about the exact
-    algorithm used.
+{-| Returns a tree builder that merges all of the tree builders in the input
+    list using an approximately balanced tree with less overhead than
+    'msumBalanced'; see the documentation for this section and/or
+    "Visitor.Utils.MonadStacks" for more information about the exact algorithm
+    used.
  -}
 msumBalancedGreedy ::
     MonadPlus m ⇒
-    [m α] {-^ the list of visitors to merge -} →
-    m α {-^ the merged visitor -}
+    [m α] {-^ the list of builders to merge -} →
+    m α {-^ the merged tree builder -}
 msumBalancedGreedy = go emptyStacks
   where
     go !stacks [] = mergeStacks stacks
@@ -619,15 +628,15 @@ msumBalancedGreedy = go emptyStacks
 
 -------------------------------- Transformers ----------------------------------
 
-{-| This function lets you take a pure visitor and transform it into a visitor
-    with an arbitrary base monad.
+{-| This function lets you take a pure tree builder and transform it into a tree
+    builder with an arbitrary base monad.
  -}
 endowTreeBuilder ::
     Monad m ⇒
-    TreeBuilder α {-^ the pure visitor to transformed into an impure visitor -} →
-    TreeBuilderT m α {-^ the resulting impure visitor -}
-endowTreeBuilder visitor =
-    case view . unwrapTreeBuilderT $ visitor of
+    TreeBuilder α {-^ the pure tree builder to transformed into an impure tree builder -} →
+    TreeBuilderT m α {-^ the resulting impure tree builder -}
+endowTreeBuilder tree_builder =
+    case view . unwrapTreeBuilderT $ tree_builder of
         Return x → return x
         Cache mx :>>= k →
             cacheMaybe (runIdentity mx) >>= endowTreeBuilder . TreeBuilderT . k
@@ -652,14 +661,14 @@ of turning them into a monad.
  -}
 
 {-| The core of the implementation of 'TreeBuilder' is mostly contained in this
-    type, which provides a list of primitive instructions for visitors: 'Cache',
-    which caches a value, 'Choice', which signals a branch with two choices, and
-    'Null', which indicates that there are no more results.
+    type, which provides a list of primitive instructions for tree builders:
+    'Cache', which caches a value, 'Choice', which signals a branch with two
+    choices, and 'Null', which indicates that there are no more results.
  -}
 data TreeBuilderTInstruction m α where
     Cache :: Serialize α ⇒ m (Maybe α) → TreeBuilderTInstruction m α
     Choice :: TreeBuilderT m α → TreeBuilderT m α → TreeBuilderTInstruction m α
     Null :: TreeBuilderTInstruction m α
 
-{-| This is just a convenient alias for working with pure visitors. -}
+{-| This is just a convenient alias for working with pure tree builder. -}
 type TreeBuilderInstruction = TreeBuilderTInstruction Identity
