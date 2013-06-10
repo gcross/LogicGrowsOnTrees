@@ -1,4 +1,3 @@
--- Language extensions {{{
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -8,9 +7,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
-module Control.Visitor -- {{{
+module Control.Visitor
     (
     -- * Visitor Features
     -- $type-classes
@@ -45,9 +43,8 @@ module Control.Visitor -- {{{
     -- * Implementation
     , VisitorTInstruction(..)
     , VisitorInstruction
-    ) where -- }}}
+    ) where
 
--- Imports {{{
 import Control.Applicative (Alternative(..),Applicative(..))
 import Control.Monad (MonadPlus(..),(>=>),guard,liftM,liftM2,msum)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -62,11 +59,11 @@ import Data.Monoid ((<>),Monoid(..))
 import Data.Serialize (Serialize(),encode)
 
 import Control.Visitor.Utils.MonadStacks
--- }}}
 
--- Classes {{{
+--------------------------------------------------------------------------------
+--------------------------------- Type-classes ---------------------------------
+--------------------------------------------------------------------------------
 
--- Doc: Visitor Features {{{
 {- $type-classes
 
 Visitors are instances of 'MonadVisitor' and/or 'MonadVisitorTrans', which are
@@ -92,12 +89,12 @@ NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
        incredibly large memory footprint, then you are probably better off not
        caching the result.
  -}
--- }}}
+
 
 {-| The 'MonadVisitor' class provides caching functionality when running a pure
     visitor;  at minimum 'cacheMaybe' needs to be defined.
  -}
-class MonadPlus m ⇒ MonadVisitor m where -- {{{
+class MonadPlus m ⇒ MonadVisitor m where
     {-| Cache a value in case we visit this node again. -}
     cache :: Serialize x ⇒ x → m x
     cache = cacheMaybe . Just
@@ -115,12 +112,11 @@ class MonadPlus m ⇒ MonadVisitor m where -- {{{
         this method.
      -}
     cacheMaybe :: Serialize x ⇒ Maybe x → m x
--- }}}
 
 {-| This class is like 'MonadVisitor', but it is designed to work with monad
     stacks;  at minimum 'runAndCacheMaybe' needs to be defined.
  -}
-class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitorTrans m where -- {{{
+class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitorTrans m where
     {-| The next layer down in the monad transformer stack. -}
     type NestedMonadInVisitor m :: * → *
 
@@ -139,20 +135,14 @@ class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitorTrans m wher
         result.
      -}
     runAndCacheMaybe :: Serialize x ⇒ (NestedMonadInVisitor m) (Maybe x) → m x
--- }}}
 
--- }}}
-
--- Types {{{
-
-data VisitorTInstruction m α where -- {{{
+data VisitorTInstruction m α where
     Cache :: Serialize α ⇒ m (Maybe α) → VisitorTInstruction m α
     Choice :: VisitorT m α → VisitorT m α → VisitorTInstruction m α
     Null :: VisitorTInstruction m α
--- }}}
+
 type VisitorInstruction = VisitorTInstruction Identity
 
--- Doc: Visitor types {{{
 {- $types
 The following are the visitor types that are accepted by most of he functions in
 this package.  You do not need to know the details of their definitions unless
@@ -187,7 +177,6 @@ this will do things like automatically erasing the change in state that happened
 between an inner node and a leaf when the visitor jumps back up from the leaf
 to an inner node.
 -}
--- }}}
 
 {-| A pure visitor, which is what you should normally be using. -}
 type Visitor = VisitorT Identity
@@ -200,22 +189,23 @@ type Visitor = VisitorT Identity
 -}
 type VisitorIO = VisitorT IO
 
+
 {-| A visitor run in an arbitrary monad. -}
 newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstruction m) m α }
     deriving (Applicative,Functor,Monad,MonadIO)
 
--- }}}
 
--- Instances {{{
+--------------------------------------------------------------------------------
+---------------------------------- Instances -----------------------------------
+--------------------------------------------------------------------------------
 
 {-| The 'Alternative' instance functions like the 'MonadPlus' instance. -}
-instance Monad m ⇒ Alternative (VisitorT m) where -- {{{
+instance Monad m ⇒ Alternative (VisitorT m) where
     empty = mzero
     (<|>) = mplus
--- }}}
 
 {-| Two visitors are equal if the generate exactly the same tree. -}
-instance Eq α ⇒ Eq (Visitor α) where -- {{{
+instance Eq α ⇒ Eq (Visitor α) where
     (VisitorT x) == (VisitorT y) = e x y
       where
         e x y = case (view x, view y) of
@@ -229,68 +219,59 @@ instance Eq α ⇒ Eq (Visitor α) where -- {{{
             (Choice (VisitorT ax) (VisitorT bx) :>>= kx, Choice (VisitorT ay) (VisitorT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
             _  → False
--- }}}
 
 {-| For this type, 'mplus' provides a branch node with a choice between two
     values and 'mzero' provides a node with no values.
  -}
-instance Monad m ⇒ MonadPlus (VisitorT m) where -- {{{
+instance Monad m ⇒ MonadPlus (VisitorT m) where
     mzero = VisitorT . singleton $ Null
     left `mplus` right = VisitorT . singleton $ Choice left right
--- }}}
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the List monad.
  -}
-instance MonadVisitor [] where -- {{{
+instance MonadVisitor [] where
     cacheMaybe = maybe mzero return
--- }}}
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the 'ListT' monad.
  -}
-instance Monad m ⇒ MonadVisitor (ListT m) where -- {{{
+instance Monad m ⇒ MonadVisitor (ListT m) where
     cacheMaybe = maybe mzero return
--- }}}
 
 {-| Like the 'MonadVisitor' isntance, this instance does no caching. -}
-instance Monad m ⇒ MonadVisitorTrans (ListT m) where -- {{{
+instance Monad m ⇒ MonadVisitorTrans (ListT m) where
     type NestedMonadInVisitor (ListT m) = m
--- }}}
     runAndCacheMaybe = lift >=> maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the 'Maybe' monad.
  -}
-instance MonadVisitor Maybe where -- {{{
+instance MonadVisitor Maybe where
     cacheMaybe = maybe mzero return
--- }}}
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the 'MaybeT' monad.
  -}
-instance Monad m ⇒ MonadVisitor (MaybeT m) where -- {{{
+instance Monad m ⇒ MonadVisitor (MaybeT m) where
     cacheMaybe = maybe mzero return
--- }}}
+
 
 {-| Like the 'MonadVisitor' isntance, this instance does no caching. -}
-instance Monad m ⇒ MonadVisitorTrans (MaybeT m) where -- {{{
+instance Monad m ⇒ MonadVisitorTrans (MaybeT m) where
     type NestedMonadInVisitor (MaybeT m) = m
-    runAndCacheMaybe = maybe mzero lift
--- }}}
+    runAndCacheMaybe = lift >=> maybe mzero return
 
-instance Monad m ⇒ MonadVisitor (VisitorT m) where -- {{{
+instance Monad m ⇒ MonadVisitor (VisitorT m) where
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
     cacheMaybe = runAndCacheMaybe . return
--- }}}
 
-instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
+instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where
     type NestedMonadInVisitor (VisitorT m) = m
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
     runAndCacheMaybe = VisitorT . singleton . Cache
--- }}}
 
 {-| This instance allows you to automatically get a MonadVisitor instance for
     any monad transformer that has `MonadPlus` defined.  (Unfortunately its
@@ -299,24 +280,21 @@ instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where -- {{{
     in practice for there to ever be a case where a given type is satisfied by
     both instances.)
  -}
-instance (MonadTrans t, MonadVisitor m, MonadPlus (t m)) ⇒ MonadVisitor (t m) where -- {{{
+instance (MonadTrans t, MonadVisitor m, MonadPlus (t m)) ⇒ MonadVisitor (t m) where
     cache = lift . cache
     cacheGuard = lift . cacheGuard
     cacheMaybe = lift . cacheMaybe
--- }}}
 
-instance MonadTrans VisitorT where -- {{{
+instance MonadTrans VisitorT where
     lift = VisitorT . lift
--- }}}
 
 {-| The 'Monoid' instance acts like the 'MonadPlus' instance. -}
-instance Monad m ⇒ Monoid (VisitorT m α) where -- {{{
+instance Monad m ⇒ Monoid (VisitorT m α) where
     mempty = mzero
     mappend = mplus
     mconcat = msum
--- }}}
 
-instance Show α ⇒ Show (Visitor α) where -- {{{
+instance Show α ⇒ Show (Visitor α) where
     show = s . unwrapVisitorT
       where
         s x = case view x of
@@ -327,28 +305,34 @@ instance Show α ⇒ Show (Visitor α) where -- {{{
                     Nothing → "NullCache"
                     Just x → "Cache[" ++ (show . encode $ x) ++ "] >>= " ++ (s (k x))
             Choice (VisitorT a) (VisitorT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
--- }}}
 
--- }}}
 
--- Functions {{{
+--------------------------------------------------------------------------------
+---------------------------------- Functions -----------------------------------
+--------------------------------------------------------------------------------
 
-allFrom :: MonadPlus m ⇒ [α] → m α -- {{{
+{- $functions
+There are three kinds of functions in this module:  functions which run visitors
+in various ways, functions to make it easier to build visitors, and functions
+which change the base monad of a pure visitor.
+ -}
+
+allFrom :: MonadPlus m ⇒ [α] → m α
 allFrom = msum . map return
 {-# INLINE allFrom #-}
--- }}}
 
-allFromBalanced :: MonadPlus m ⇒ [α] → m α -- {{{
+
+allFromBalanced :: MonadPlus m ⇒ [α] → m α
 allFromBalanced = msumBalanced . map return
 {-# INLINE allFromBalanced #-}
--- }}}
 
-allFromBalancedGreedy :: MonadPlus m ⇒ [α] → m α -- {{{
+
+allFromBalancedGreedy :: MonadPlus m ⇒ [α] → m α
 allFromBalancedGreedy = msumBalancedGreedy . map return
 {-# INLINE allFromBalancedGreedy #-}
--- }}}
 
-between :: (Enum n, MonadPlus m) ⇒ n → n → m n -- {{{
+
+between :: (Enum n, MonadPlus m) ⇒ n → n → m n
 between x y =
     if a > b
         then mzero
@@ -362,9 +346,9 @@ between x y =
       where
         d = (b-a) `div` 2
 {-# INLINE between #-}
--- }}}
 
-endowVisitor :: Monad m ⇒ Visitor α → VisitorT m α -- {{{
+
+endowVisitor :: Monad m ⇒ Visitor α → VisitorT m α
 endowVisitor visitor =
     case view . unwrapVisitorT $ visitor of
         Return x → return x
@@ -375,9 +359,9 @@ endowVisitor visitor =
                 (endowVisitor left >>= endowVisitor . VisitorT . k)
                 (endowVisitor right >>= endowVisitor . VisitorT . k)
         Null :>>= _ → mzero
--- }}}
 
-msumBalanced :: MonadPlus m ⇒ [m α] → m α -- {{{
+
+msumBalanced :: MonadPlus m ⇒ [m α] → m α
 msumBalanced x = go (length x) x
   where
     go _ []  = mzero
@@ -387,17 +371,14 @@ msumBalanced x = go (length x) x
         (a,b) = splitAt i x
         i = n `div` 2
 {-# INLINE msumBalanced #-}
--- }}}
 
-msumBalancedGreedy :: MonadPlus m ⇒ [m α] → m α -- {{{
+
+msumBalancedGreedy :: MonadPlus m ⇒ [m α] → m α
 msumBalancedGreedy = go emptyStacks
   where
     go !stacks [] = mergeStacks stacks
     go !stacks (x:xs) = go (addToStacks stacks x) xs
 {-# INLINE msumBalancedGreedy #-}
--- }}}
-
-
 
 {- $runners
 The following functions all take a visitor as input and produce the resul of
@@ -408,9 +389,8 @@ satisfy a condition and then return -- plus a seventh function that runs a
 visitor only for its side-effects.
  -}
 
-
 {-| Run a pure visitor until all results have been found and summed together. -}
-runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
+runVisitor :: Monoid α ⇒ Visitor α → α
 runVisitor v =
     case view (unwrapVisitorT v) of
         Return !x → x
@@ -422,11 +402,9 @@ runVisitor v =
             in xy
         (Null :>>= _) → mempty
 {-# INLINEABLE runVisitor #-}
--- }}}
-
 
 {-| Run an impure visitor until all results have been found and summed together. -}
-runVisitorT :: (Monad m, Monoid α) ⇒ VisitorT m α → m α -- {{{
+runVisitorT :: (Monad m, Monoid α) ⇒ VisitorT m α → m α
 runVisitorT = viewT . unwrapVisitorT >=> \view →
     case view of
         Return !x → return x
@@ -439,11 +417,9 @@ runVisitorT = viewT . unwrapVisitorT >=> \view →
 {-# SPECIALIZE runVisitorT :: Monoid α ⇒ Visitor α → Identity α #-}
 {-# SPECIALIZE runVisitorT :: Monoid α ⇒ VisitorIO α → IO α #-}
 {-# INLINEABLE runVisitorT #-}
--- }}}
-
 
 {-| Run an impure visitor for its side-effects, ignoring all results. -}
-runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m () -- {{{
+runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m ()
 runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
     case view of
         Return _ → return ()
@@ -455,13 +431,11 @@ runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
 {-# SPECIALIZE runVisitorTAndIgnoreResults :: Visitor α → Identity () #-}
 {-# SPECIALIZE runVisitorTAndIgnoreResults :: VisitorIO α → IO () #-}
 {-# INLINEABLE runVisitorTAndIgnoreResults #-}
--- }}}
-
 
 {-| Run a pure visitor until a result has been found;  if a result has been
     found then it is returned wrapped in 'Just', otherwise 'Nothing' is returned.
  -}
-runVisitorUntilFirst :: Visitor α → Maybe α -- {{{
+runVisitorUntilFirst :: Visitor α → Maybe α
 runVisitorUntilFirst v =
     case view (unwrapVisitorT v) of
         Return x → Just x
@@ -472,11 +446,9 @@ runVisitorUntilFirst v =
             in if isJust x then x else y
         (Null :>>= _) → Nothing
 {-# INLINEABLE runVisitorUntilFirst #-}
--- }}}
-
 
 {-| Same as 'runVisitorUntilFirst', but taking an impure visitor instead of a pure visitor. -}
-runVisitorTUntilFirst :: Monad m ⇒ VisitorT m α → m (Maybe α) -- {{{
+runVisitorTUntilFirst :: Monad m ⇒ VisitorT m α → m (Maybe α)
 runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
     case view of
         Return !x → return (Just x)
@@ -490,8 +462,6 @@ runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
 {-# SPECIALIZE runVisitorTUntilFirst :: Visitor α → Identity (Maybe α) #-}
 {-# SPECIALIZE runVisitorTUntilFirst :: VisitorIO α → IO (Maybe α) #-}
 {-# INLINEABLE runVisitorTUntilFirst #-}
--- }}}
-
 
 {-| Run a pure visitor summing all results encountered until the current sum
     satisfies the condition provided by the function in the first argument;  if
@@ -499,7 +469,7 @@ runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
     over all results) is returned wrapped in 'Left', otherwise the transformed
     result returned by the condition function is returned wrapped in 'Right'.
  -}
-runVisitorUntilFound :: Monoid α ⇒ (α → Maybe β) → Visitor α → Either α β -- {{{
+runVisitorUntilFound :: Monoid α ⇒ (α → Maybe β) → Visitor α → Either α β
 runVisitorUntilFound f v =
     case view (unwrapVisitorT v) of
         Return x → runThroughFilter x
@@ -517,11 +487,9 @@ runVisitorUntilFound f v =
         (Null :>>= _) → Left mempty
   where
     runThroughFilter x = maybe (Left x) Right . f $ x
--- }}}
-
 
 {-| Same as 'runVisitorUntilFound', but taking an impure visitor instead of a pure visitor. -}
-runVisitorTUntilFound :: (Monad m, Monoid α) ⇒ (α → Maybe β) → VisitorT m α → m (Either α β) -- {{{
+runVisitorTUntilFound :: (Monad m, Monoid α) ⇒ (α → Maybe β) → VisitorT m α → m (Either α β)
 runVisitorTUntilFound f = viewT . unwrapVisitorT >=> \view →
     case view of
         Return x → runThroughFilter x
@@ -541,6 +509,3 @@ runVisitorTUntilFound f = viewT . unwrapVisitorT >=> \view →
         (Null :>>= _) → return (Left mempty)
   where
     runThroughFilter x = return . maybe (Left x) Right . f $ x
--- }}}
-
--- }}}
