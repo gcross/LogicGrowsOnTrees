@@ -40,7 +40,7 @@ class Monad m ⇒ MonadLabeled m where
 
 newtype LabeledT m α = LabeledT { unwrapLabeledT :: ReaderT VisitorLabel m α }
     deriving (Applicative,Functor,Monad,MonadIO,MonadTrans)
-newtype LabeledVisitorT m α = LabeledVisitorT { unwrapLabeledVisitorT :: LabeledT (VisitorT m) α }
+newtype LabeledVisitorT m α = LabeledVisitorT { unwrapLabeledVisitorT :: LabeledT (TreeBuilderT m) α }
     deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLabeled,MonadPlus,Monoid)
 type LabeledVisitorIO = LabeledVisitorT IO
 type LabeledVisitor = LabeledVisitorT Identity
@@ -192,11 +192,11 @@ leftChildLabel :: VisitorLabel → VisitorLabel -- {{{
 leftChildLabel = VisitorLabel . fromJust . leftChild . unwrapVisitorLabel
 -- }}}
 
-normalizeLabeledVisitor :: LabeledVisitor α → Visitor α -- {{{
+normalizeLabeledVisitor :: LabeledVisitor α → TreeBuilder α -- {{{
 normalizeLabeledVisitor = runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-normalizeLabeledVisitorT :: LabeledVisitorT m α → VisitorT m α -- {{{
+normalizeLabeledVisitorT :: LabeledVisitorT m α → TreeBuilderT m α -- {{{
 normalizeLabeledVisitorT = runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
@@ -224,28 +224,28 @@ runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledVisitorT m α → m () 
 runLabeledVisitorTAndIgnoreResults = runVisitorTAndIgnoreResults . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ VisitorT m α → m [Solution α] -- {{{
+runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ TreeBuilderT m α → m [Solution α] -- {{{
 runVisitorTWithLabelsAndGatherResults = runVisitorTWithStartingLabel rootLabel
 -- }}}
 
-runVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m [Solution α] -- {{{
+runVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m [Solution α] -- {{{
 runVisitorTWithStartingLabel label =
-    viewT . unwrapVisitorT >=> \view →
+    viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return x → return [Solution label x]
-        (Cache mx :>>= k) → mx >>= maybe (return []) (runVisitorTWithStartingLabel label . VisitorT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return []) (runVisitorTWithStartingLabel label . TreeBuilderT . k)
         (Choice left right :>>= k) →
             liftM2 (++)
-                (runVisitorTWithStartingLabel (leftChildLabel label) $ left >>= VisitorT . k)
-                (runVisitorTWithStartingLabel (rightChildLabel label) $ right >>= VisitorT . k)
+                (runVisitorTWithStartingLabel (leftChildLabel label) $ left >>= TreeBuilderT . k)
+                (runVisitorTWithStartingLabel (rightChildLabel label) $ right >>= TreeBuilderT . k)
         (Null :>>= _) → return []
 -- }}}
 
-runVisitorWithLabels :: Visitor α → [Solution α] -- {{{
+runVisitorWithLabels :: TreeBuilder α → [Solution α] -- {{{
 runVisitorWithLabels = runIdentity . runVisitorTWithLabelsAndGatherResults
 -- }}}
 
-runVisitorWithStartingLabel :: VisitorLabel → Visitor α → [Solution α] -- {{{
+runVisitorWithStartingLabel :: VisitorLabel → TreeBuilder α → [Solution α] -- {{{
 runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel
 -- }}}
 
@@ -257,11 +257,11 @@ runLabeledVisitorUntilFirstT :: Monad m ⇒ LabeledVisitorT m α → m (Maybe α
 runLabeledVisitorUntilFirstT = runVisitorTUntilFirst . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-runVisitorTUntilFirstWithLabel :: Monad m ⇒ VisitorT m α → m (Maybe (Solution α)) -- {{{
+runVisitorTUntilFirstWithLabel :: Monad m ⇒ TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
 runVisitorTUntilFirstWithLabel = runVisitorTUntilFirstWithStartingLabel rootLabel
 -- }}}
 
-runVisitorTUntilFirstWithStartingLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (Maybe (Solution α)) -- {{{
+runVisitorTUntilFirstWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
 runVisitorTUntilFirstWithStartingLabel = go .* runVisitorTWithStartingLabel
   where
     go = liftM $ \solutions →
@@ -270,38 +270,38 @@ runVisitorTUntilFirstWithStartingLabel = go .* runVisitorTWithStartingLabel
             (x:_) → Just x
 -- }}}
 
-runVisitorUntilFirstWithLabel :: Visitor α → Maybe (Solution α) -- {{{
+runVisitorUntilFirstWithLabel :: TreeBuilder α → Maybe (Solution α) -- {{{
 runVisitorUntilFirstWithLabel = runIdentity . runVisitorTUntilFirstWithLabel
 -- }}}
 
-runVisitorUntilFirstWithStartingLabel :: VisitorLabel → Visitor α → Maybe (Solution α) -- {{{
+runVisitorUntilFirstWithStartingLabel :: VisitorLabel → TreeBuilder α → Maybe (Solution α) -- {{{
 runVisitorUntilFirstWithStartingLabel = runIdentity .* runVisitorTUntilFirstWithStartingLabel
 -- }}}
 
-sendVisitorDownLabel :: VisitorLabel → Visitor α → Visitor α -- {{{
+sendVisitorDownLabel :: VisitorLabel → TreeBuilder α → TreeBuilder α -- {{{
 sendVisitorDownLabel label = runIdentity . sendVisitorTDownLabel label
 -- }}}
 
-sendVisitorTDownLabel :: Monad m ⇒ VisitorLabel → VisitorT m α → m (VisitorT m α) -- {{{
+sendVisitorTDownLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m (TreeBuilderT m α) -- {{{
 sendVisitorTDownLabel (VisitorLabel label) = go root
   where
     go parent visitor
       | parent == label = return visitor
       | otherwise =
-          (viewT . unwrapVisitorT) visitor >>= \view → case view of
+          (viewT . unwrapTreeBuilderT) visitor >>= \view → case view of
             Return _ → throw VisitorTerminatedBeforeEndOfWalk
             Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
-            Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . VisitorT . k)
+            Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . TreeBuilderT . k)
             Choice left right :>>= k →
                 if parent > label
                 then
                     go
                         (fromJust . leftChild $ parent)
-                        (left >>= VisitorT . k)
+                        (left >>= TreeBuilderT . k)
                 else
                     go
                         (fromJust . rightChild $ parent)
-                        (right >>= VisitorT . k)
+                        (right >>= TreeBuilderT . k)
 -- }}}
 
 solutionsToMap :: Foldable t ⇒ t (Solution α) → Map VisitorLabel α -- {{{

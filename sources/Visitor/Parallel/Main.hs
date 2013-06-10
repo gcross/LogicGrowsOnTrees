@@ -61,7 +61,7 @@ import System.Log.Logger.TH
 
 import Text.Printf (printf)
 
-import Visitor (Visitor,VisitorIO,VisitorT)
+import Visitor (TreeBuilder,TreeBuilderIO,TreeBuilderT)
 import Visitor.Checkpoint
 import Visitor.Parallel.Common.Supervisor -- {{{
     ( FunctionOfTimeStatistics(..)
@@ -147,7 +147,7 @@ data Driver -- {{{
         Term supervisor_configuration →
         TermInfo →
         (shared_configuration → IO ()) →
-        (shared_configuration → VisitorT m (ResultFor visitor_mode)) →
+        (shared_configuration → TreeBuilderT m (ResultFor visitor_mode)) →
         (shared_configuration → supervisor_configuration → IO (ProgressFor visitor_mode)) →
         (shared_configuration → supervisor_configuration → RunOutcomeFor visitor_mode → IO ()) →
         (shared_configuration → supervisor_configuration → manager_monad visitor_mode ()) →
@@ -306,7 +306,7 @@ mainVisitor :: -- {{{
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
-    (visitor_configuration → Visitor result) →
+    (visitor_configuration → TreeBuilder result) →
     result_monad ()
 mainVisitor = genericMain AllMode PureVisitor
 -- }}}
@@ -317,7 +317,7 @@ mainVisitorIO :: -- {{{
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
-    (visitor_configuration → VisitorIO result) →
+    (visitor_configuration → TreeBuilderIO result) →
     result_monad ()
 mainVisitorIO = genericMain AllMode IOVisitor
 -- }}}
@@ -329,7 +329,7 @@ mainVisitorT :: -- {{{
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
-    (visitor_configuration → VisitorT m result) →
+    (visitor_configuration → TreeBuilderT m result) →
     result_monad ()
 mainVisitorT = genericMain AllMode . ImpureVisitor
 -- }}}
@@ -383,7 +383,7 @@ genericMain :: -- {{{
     Term visitor_configuration →
     TermInfo →
     (visitor_configuration → RunOutcomeFor visitor_mode → IO ()) →
-    (visitor_configuration → VisitorT m result) →
+    (visitor_configuration → TreeBuilderT m result) →
     result_monad ()
 genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
     run  visitor_mode

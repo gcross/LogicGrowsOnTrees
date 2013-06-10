@@ -100,8 +100,8 @@ import Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitor
 
 -- Instances {{{
 -- Newtypes {{{
-newtype UniqueVisitorT m = UniqueVisitor { unwrapUniqueVisitor :: VisitorT m IntSet }
-newtype NullVisitorT m = NullVisitor { unwrapNullVisitor :: VisitorT m IntSet }
+newtype UniqueVisitorT m = UniqueVisitor { unwrapUniqueVisitor :: TreeBuilderT m IntSet }
+newtype NullVisitorT m = NullVisitor { unwrapNullVisitor :: TreeBuilderT m IntSet }
 -- }}}
 
 -- Arbitrary {{{
@@ -115,10 +115,10 @@ instance Arbitrary UUID where -- {{{
     arbitrary = MkGen (\r _ -> fst (random r))
 -- }}}
 
-instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitrary (VisitorT m α) where -- {{{
+instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitrary (TreeBuilderT m α) where -- {{{
     arbitrary = fmap ($ mempty) (sized arb)
       where
-        arb :: Monoid α ⇒ Int → Gen (α → VisitorT m α)
+        arb :: Monoid α ⇒ Int → Gen (α → TreeBuilderT m α)
         arb 0 = null
         arb 1 = frequency
             [(1,null)
@@ -136,14 +136,14 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
              )
             ]
 
-        null :: Gen (α → VisitorT m α)
+        null :: Gen (α → TreeBuilderT m α)
         null = return (const mzero)
 
-        result, cached :: Gen (VisitorT m α)
+        result, cached :: Gen (TreeBuilderT m α)
         result = fmap return arbitrary
         cached = fmap cache arbitrary
 
-        resultPlus, cachedPlus :: Monoid α ⇒ Gen (α → VisitorT m α)
+        resultPlus, cachedPlus :: Monoid α ⇒ Gen (α → TreeBuilderT m α)
         resultPlus = (\x → flip fmap x . mappend) <$> result
         cachedPlus = (\x → flip fmap x . mappend) <$> cached
 -- }}}
@@ -384,27 +384,27 @@ shuffle items = do
     return (hd:tl)
 -- }}}
 
-randomCheckpointForVisitor :: Monoid α ⇒ Visitor α → Gen (α,Checkpoint) -- {{{
-randomCheckpointForVisitor (VisitorT visitor) = go1 visitor
+randomCheckpointForVisitor :: Monoid α ⇒ TreeBuilder α → Gen (α,Checkpoint) -- {{{
+randomCheckpointForVisitor (TreeBuilderT visitor) = go1 visitor
   where
     go1 visitor = frequency
-        [(1,return (runVisitor (VisitorT visitor),Explored))
+        [(1,return (runVisitor (TreeBuilderT visitor),Explored))
         ,(1,return (mempty,Unexplored))
         ,(3,go2 visitor)
         ]
     go2 (view → Cache (Identity (Just x)) :>>= k) =
         fmap (second $ CacheCheckpoint (encode x)) (go1 (k x))
-    go2 (view → Choice (VisitorT x) (VisitorT y) :>>= k) =
+    go2 (view → Choice (TreeBuilderT x) (TreeBuilderT y) :>>= k) =
         liftM2 (\(left_result,left) (right_result,right) →
             (left_result `mappend` right_result, ChoiceCheckpoint left right)
         ) (go1 (x >>= k)) (go1 (y >>= k))
-    go2 visitor = elements [(runVisitor (VisitorT visitor),Explored),(mempty,Unexplored)]
+    go2 visitor = elements [(runVisitor (TreeBuilderT visitor),Explored),(mempty,Unexplored)]
 -- }}}
 
-randomNullVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → VisitorT m IntSet) -- {{{
+randomNullVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → TreeBuilderT m IntSet) -- {{{
 randomNullVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
   where
-    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → TreeBuilderT m IntSet)
 
     arb1 n intermediate = do
         id ← _1 <+= 1
@@ -426,10 +426,10 @@ randomNullVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (a
 
     generateForNext :: -- {{{
         Monad m ⇒
-        (Int → VisitorT m Int) →
+        (Int → TreeBuilderT m Int) →
         Int →
-        (Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)) →
-        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+        (Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → TreeBuilderT m IntSet)) →
+        StateT (Int,IntSet) Gen ((Int,Int → m ()) → TreeBuilderT m IntSet)
     generateForNext construct intermediate next = do
         x ← lift arbitrary
         let new_intermediate = x `xor` intermediate
@@ -440,14 +440,14 @@ randomNullVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (a
     -- }}}
 -- }}}
 
-randomPathForVisitor :: Visitor α → Gen Path -- {{{
-randomPathForVisitor (VisitorT visitor) = go visitor
+randomPathForVisitor :: TreeBuilder α → Gen Path -- {{{
+randomPathForVisitor (TreeBuilderT visitor) = go visitor
   where
     go (view → Cache (Identity (Just x)) :>>= k) = oneof
         [return Seq.empty
         ,fmap (CacheStep (encode x) <|) (go (k x))
         ]
-    go (view → Choice (VisitorT x) (VisitorT y) :>>= k) = oneof
+    go (view → Choice (TreeBuilderT x) (TreeBuilderT y) :>>= k) = oneof
         [return Seq.empty
         ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
         ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
@@ -455,10 +455,10 @@ randomPathForVisitor (VisitorT visitor) = go visitor
     go _ = return Seq.empty
 -- }}}
 
-randomUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → VisitorT m IntSet) -- {{{
+randomUniqueVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → TreeBuilderT m IntSet) -- {{{
 randomUniqueVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1 n 0) (-1,IntSet.empty)
   where
-    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+    arb1, arb2 :: Int → Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → TreeBuilderT m IntSet)
 
     arb1 n intermediate = do
         id ← _1 <+= 1
@@ -484,9 +484,9 @@ randomUniqueVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT 
 
     generateUnique :: -- {{{
         Monad m ⇒
-        (IntSet → VisitorT m IntSet) →
+        (IntSet → TreeBuilderT m IntSet) →
         Int →
-        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+        StateT (Int,IntSet) Gen ((Int,Int → m ()) → TreeBuilderT m IntSet)
     generateUnique construct intermediate = do
         observed ← use _2
         x ← lift (arbitrary `suchThat` (flip IntSet.notMember observed . (xor intermediate)))
@@ -497,10 +497,10 @@ randomUniqueVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT 
 
     generateForNext :: -- {{{
         Monad m ⇒
-        (Int → VisitorT m Int) →
+        (Int → TreeBuilderT m Int) →
         Int →
-        (Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)) →
-        StateT (Int,IntSet) Gen ((Int,Int → m ()) → VisitorT m IntSet)
+        (Int → StateT (Int,IntSet) Gen ((Int,Int → m ()) → TreeBuilderT m IntSet)) →
+        StateT (Int,IntSet) Gen ((Int,Int → m ()) → TreeBuilderT m IntSet)
     generateForNext construct intermediate next = do
         x ← lift arbitrary
         let new_intermediate = x `xor` intermediate
@@ -511,7 +511,7 @@ randomUniqueVisitorWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT 
     -- }}}
 -- }}}
 
-randomVisitorWithoutCache :: Arbitrary α ⇒ Gen (Visitor α) -- {{{
+randomVisitorWithoutCache :: Arbitrary α ⇒ Gen (TreeBuilder α) -- {{{
 randomVisitorWithoutCache = sized arb
   where
     arb 0 = frequency
@@ -581,7 +581,7 @@ tests = -- {{{
      -- }}}
     ,testGroup "Visitor" -- {{{
         [testGroup "Eq instance" -- {{{
-            [testProperty "self" $ \(v :: Visitor [()]) → v == v
+            [testProperty "self" $ \(v :: TreeBuilder [()]) → v == v
             ]
          -- }}}
         ,testProperty "allFrom" $ \(x :: [Int]) → x == allFrom x
@@ -594,7 +594,7 @@ tests = -- {{{
         ,testProperty "msumBalancedGreedy" $ \(x :: [UUID]) → ((==) `on` sort) x (msumBalancedGreedy (map return x))
         ,testGroup "runVisitor" -- {{{
             [testCase "return" $ runVisitor (return [()]) @?= [()]
-            ,testCase "mzero" $ runVisitor (mzero :: Visitor [()]) @?= []
+            ,testCase "mzero" $ runVisitor (mzero :: TreeBuilder [()]) @?= []
             ,testCase "mplus" $ runVisitor (return [1::Int] `mplus` return [2]) @?= [1,2]
             ,testCase "cache" $ runVisitor (cache [42]) @?= [42::Int]
             ,testGroup "cacheMaybe" -- {{{
@@ -632,7 +632,7 @@ tests = -- {{{
         ,testGroup "runVisitorUntilFirst" -- {{{
             [testCase "return" $ runVisitorUntilFirst (return 42) @=? (Just 42 :: Maybe Int)
             ,testCase "null" $ runVisitorUntilFirst mzero @=? (Nothing :: Maybe Int)
-            ,testProperty "compared to runVisitor" $ \(visitor :: Visitor String) →
+            ,testProperty "compared to runVisitor" $ \(visitor :: TreeBuilder String) →
                 runVisitorUntilFirst visitor
                 ==
                 case runVisitor (fmap (:[]) visitor) of
@@ -643,7 +643,7 @@ tests = -- {{{
         ,testGroup "runVisitorTUntilFirst" -- {{{
             [testCase "return" $ runIdentity (runVisitorTUntilFirst (return 42)) @=? (Just 42 :: Maybe Int)
             ,testCase "null" $ runIdentity(runVisitorTUntilFirst mzero) @=? (Nothing :: Maybe Int)
-            ,testProperty "compared to runVisitorT" $ \(visitor :: VisitorT Identity String) →
+            ,testProperty "compared to runVisitorT" $ \(visitor :: TreeBuilderT Identity String) →
                 runIdentity (runVisitorTUntilFirst visitor)
                 ==
                 case runIdentity (runVisitorT (fmap (:[]) visitor)) of
@@ -685,7 +685,7 @@ tests = -- {{{
                 ==
                 (mergeCheckpointRoot $ CacheCheckpoint (encode i) checkpoint)
              -- }}}
-            ,testProperty "left branch" $ \(inner_checkpoint :: Checkpoint) (other_visitor :: Visitor [()]) (other_checkpoint :: Checkpoint) → -- {{{
+            ,testProperty "left branch" $ \(inner_checkpoint :: Checkpoint) (other_visitor :: TreeBuilder [()]) (other_checkpoint :: Checkpoint) → -- {{{
                 (checkpointFromContext (Seq.singleton (LeftBranchContextStep other_checkpoint other_visitor)) inner_checkpoint)
                 ==
                 (mergeCheckpointRoot $ ChoiceCheckpoint inner_checkpoint other_checkpoint)
@@ -700,7 +700,7 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testProperty "invertCheckpoint" $ \(visitor :: Visitor (Set UUID)) → -- {{{
+        ,testProperty "invertCheckpoint" $ \(visitor :: TreeBuilder (Set UUID)) → -- {{{
             randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
                 partial_result == runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
          -- }}}
@@ -739,7 +739,7 @@ tests = -- {{{
                     runVisitor visitor ==
                         mappend partial_result (runVisitorThroughCheckpoint checkpoint visitor)
              -- }}}
-            ,testProperty "matches walkVisitorThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+            ,testProperty "matches walkVisitorThroughCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
                     runVisitorThroughCheckpoint checkpoint visitor
@@ -757,7 +757,7 @@ tests = -- {{{
                         Nothing → IntSet.null all_results
                         Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
              -- }}}
-            ,testProperty "matches walkVisitorUntilFirstThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+            ,testProperty "matches walkVisitorUntilFirstThroughCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
                     runVisitorUntilFirstThroughCheckpoint checkpoint visitor
@@ -775,7 +775,7 @@ tests = -- {{{
                         Nothing → IntSet.null all_results
                         Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
              -- }}}
-            ,testProperty "matches walkVisitorTUntilFirstThroughCheckpoint" $ \(visitor :: Visitor [Int]) → do -- {{{
+            ,testProperty "matches walkVisitorTUntilFirstThroughCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
                     runIdentity (runVisitorTUntilFirstThroughCheckpoint checkpoint visitor)
@@ -829,7 +829,7 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "walkVisitorThroughCheckpoint" -- {{{
-            [testProperty "matches walk down path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
+            [testProperty "matches walk down path" $ \(visitor :: TreeBuilder [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
                 runVisitor (sendVisitorDownPath path visitor)
                 ==
                 (fst . last) (walkVisitorThroughCheckpoint (checkpointFromUnexploredPath path) visitor)
@@ -837,7 +837,7 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "walkVisitor" -- {{{
-            [testProperty "last checkpoint is correct" $ \(v :: Visitor ()) → -- {{{
+            [testProperty "last checkpoint is correct" $ \(v :: TreeBuilder ()) → -- {{{
                 let checkpoints = walkVisitor v
                 in unsafePerformIO $ (last checkpoints @=? (runVisitor v,Explored)) >> return True
              -- }}}
@@ -851,7 +851,7 @@ tests = -- {{{
             ,testGroup "example instances" -- {{{
                 [testGroup "mplus" -- {{{
                     [testCase "mzero + mzero" $ -- {{{
-                        walkVisitor (mzero `mplus` mzero :: Visitor (Maybe ()))
+                        walkVisitor (mzero `mplus` mzero :: TreeBuilder (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -859,7 +859,7 @@ tests = -- {{{
                         ]
                      -- }}}
                     ,testCase "mzero + return" $ -- {{{
-                        walkVisitor (mzero `mplus` return (Just ()) :: Visitor (Maybe ()))
+                        walkVisitor (mzero `mplus` return (Just ()) :: TreeBuilder (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -867,7 +867,7 @@ tests = -- {{{
                         ]
                      -- }}}
                     ,testCase "return + mzero" $ -- {{{
-                        walkVisitor (return (Just ()) `mplus` mzero :: Visitor (Maybe ()))
+                        walkVisitor (return (Just ()) `mplus` mzero :: TreeBuilder (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Just (),ChoiceCheckpoint Explored Unexplored)
@@ -876,8 +876,8 @@ tests = -- {{{
                      -- }}}
                     ]
                  -- }}}
-                ,testCase "mzero" $ walkVisitor (mzero :: Visitor [Int]) @?= [([],Explored)]
-                ,testCase "return" $ walkVisitor (return [0] :: Visitor [Int]) @?= [([0],Explored)]
+                ,testCase "mzero" $ walkVisitor (mzero :: TreeBuilder [Int]) @?= [([],Explored)]
+                ,testCase "return" $ walkVisitor (return [0] :: TreeBuilder [Int]) @?= [([0],Explored)]
                 ]
              -- }}}
             ]
@@ -923,13 +923,13 @@ tests = -- {{{
             (compare `on` branchingFromLabel) a b == compare a b
          -- }}}
         ,testGroup "runVisitorWithLabels" -- {{{
-            [testProperty "same result as runVisitor" $ \(visitor :: Visitor [()]) →
+            [testProperty "same result as runVisitor" $ \(visitor :: TreeBuilder [()]) →
                  runVisitor ((:[]) <$> visitor) == (solutionResult <$> runVisitorWithLabels visitor)
             ]
          -- }}}
         ,testGroup "sendVisitorDownLabel" -- {{{
             [testProperty "same result as walking down path" $ do -- {{{
-                visitor :: Visitor Int ← randomVisitorWithoutCache
+                visitor :: TreeBuilder Int ← randomVisitorWithoutCache
                 path ← randomPathForVisitor visitor
                 let label = labelFromPath path
                 return $
@@ -1525,7 +1525,7 @@ tests = -- {{{
                 (IVar.nonblocking . IVar.read) workerTerminationFlag >>= assertBool "is the termination flag set?" . isJust
              -- }}}
             ,testGroup "obtains all solutions" -- {{{
-                [testProperty "with no initial path" $ \(visitor :: Visitor [Int]) → unsafePerformIO $ do -- {{{
+                [testProperty "with no initial path" $ \(visitor :: TreeBuilder [Int]) → unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     _ ← forkWorkerThread AllMode PureVisitor
                             (IVar.write solutions_ivar)
@@ -1542,7 +1542,7 @@ tests = -- {{{
                     solutions @?= runVisitor visitor
                     return True
                  -- }}}
-                ,testProperty "with an initial path" $ \(visitor :: Visitor [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
+                ,testProperty "with an initial path" $ \(visitor :: TreeBuilder [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
                     _ ← forkWorkerThread AllMode PureVisitor
                             (IVar.write solutions_ivar)
@@ -1605,7 +1605,7 @@ tests = -- {{{
                     termination_result_ivar ← IVar.new
                     WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
                         (IVar.write termination_result_ivar)
-                        ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
+                        ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowTreeBuilder visitor)
                         entire_workload
                         absurd
                     progress_updates_ref ← newIORef []
@@ -1622,7 +1622,7 @@ tests = -- {{{
                     progress_updates_ref ← newIORef []
                     rec WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
                             (IVar.write termination_result_ivar)
-                            (do value ← endowVisitor visitor
+                            (do value ← endowTreeBuilder visitor
                                 liftIO $ randomIO >>= flip when submitMyProgressUpdateRequest
                                 return value
                             )
@@ -1641,7 +1641,7 @@ tests = -- {{{
                 WorkerEnvironment{..} ←
                     forkWorkerThread AllMode PureVisitor
                         (IVar.write termination_result_ivar)
-                        (mzero :: Visitor [Int])
+                        (mzero :: TreeBuilder [Int])
                         entire_workload
                         absurd
                 termination_result ← IVar.blocking $ IVar.read termination_result_ivar
@@ -1714,7 +1714,7 @@ tests = -- {{{
                                     )
                                     (return (IntSet.singleton 101010101))
                                 )
-                                (endowVisitor visitor)
+                                (endowTreeBuilder visitor)
                     termination_result_ivar ← IVar.new
                     WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
                         (IVar.write termination_result_ivar)
@@ -1759,7 +1759,7 @@ tests = -- {{{
                     termination_result_ivar ← IVar.new
                     WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
                         (IVar.write termination_result_ivar)
-                        ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowVisitor visitor)
+                        ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowTreeBuilder visitor)
                         entire_workload
                         absurd
                     steals_ref ← newIORef []
@@ -1777,7 +1777,7 @@ tests = -- {{{
                     steals_ref ← newIORef []
                     rec WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
                             (IVar.write termination_result_ivar)
-                            (do value ← endowVisitor visitor
+                            (do value ← endowTreeBuilder visitor
                                 liftIO $ randomIO >>= flip when submitMyWorkloadStealRequest
                                 return value
                             )
@@ -1793,7 +1793,7 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testProperty "runVisitorUntilFirst" $ \(visitor :: Visitor String) → morallyDubiousIOProperty $ do -- {{{
+        ,testProperty "runVisitorUntilFirst" $ \(visitor :: TreeBuilder String) → morallyDubiousIOProperty $ do -- {{{
             termination_reason ← Worker.runVisitorUntilFirst visitor
             case termination_reason of
                 WorkerFinished maybe_final_progress → return $ (progressResult <$> maybe_final_progress) == runVisitorUntilFirst visitor
@@ -1818,7 +1818,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: Visitor [Int])
+                            sendVisitorDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: TreeBuilder [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
                      -- }}}
                     ,testCase "choice step with cache" $ -- {{{
@@ -1827,7 +1827,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: Visitor [Int])
+                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: TreeBuilder [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
                      -- }}}
                     ]
@@ -1839,7 +1839,7 @@ tests = -- {{{
                             .
                             runVisitor
                             $
-                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (mzero :: Visitor [Int])
+                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (mzero :: TreeBuilder [Int])
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
                      -- }}}
                     ,testCase "return" $ -- {{{

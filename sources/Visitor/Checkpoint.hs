@@ -57,13 +57,13 @@ type Context m α = Seq (ContextStep m α)
 
 data ContextStep m α = -- {{{
     CacheContextStep ByteString
-  | LeftBranchContextStep Checkpoint (VisitorT m α)
+  | LeftBranchContextStep Checkpoint (TreeBuilderT m α)
   | RightBranchContextStep
 -- }}}
 
 type ContextUpdate m α = -- {{{
     Context m α →
-    Maybe (Context m α, Checkpoint, VisitorT m α)
+    Maybe (Context m α, Checkpoint, TreeBuilderT m α)
 -- }}}
 
 data Progress α = Progress -- {{{
@@ -102,7 +102,7 @@ newtype FoundResultFetcherT m α β = FoundResultFetcherT -- {{{
 data VisitorTState m α = VisitorTState -- {{{
     {   visitorStateContext :: !(Context m α)
     ,   visitorStateCheckpoint :: !Checkpoint
-    ,   visitorStateVisitor :: !(VisitorT m α)
+    ,   visitorStateVisitor :: !(TreeBuilderT m α)
     }
 -- }}}
 type VisitorState = VisitorTState Identity
@@ -233,7 +233,7 @@ gatherResults = go mempty
             (\(result,_,fetcher) → go result fetcher)
 -- }}}
 
-initialVisitorState :: Checkpoint → VisitorT m α → VisitorTState m α -- {{{
+initialVisitorState :: Checkpoint → TreeBuilderT m α → VisitorTState m α -- {{{
 initialVisitorState = VisitorTState Seq.empty
 -- }}}
 
@@ -281,7 +281,7 @@ pathStepFromCursorDifferential (ChoiceCheckpointD active_branch _) = ChoiceStep 
 runVisitorThroughCheckpoint :: -- {{{
     Monoid α ⇒
     Checkpoint →
-    Visitor α →
+    TreeBuilder α →
     α
 runVisitorThroughCheckpoint = runIdentity .* runVisitorTThroughCheckpoint
 -- }}}
@@ -289,7 +289,7 @@ runVisitorThroughCheckpoint = runIdentity .* runVisitorTThroughCheckpoint
 runVisitorTThroughCheckpoint :: -- {{{
     (Monad m, Monoid α) ⇒
     Checkpoint →
-    VisitorT m α →
+    TreeBuilderT m α →
     m α
 runVisitorTThroughCheckpoint = go mempty .* initialVisitorState
   where
@@ -304,7 +304,7 @@ runVisitorTThroughCheckpoint = go mempty .* initialVisitorState
 
 runVisitorUntilFirstThroughCheckpoint :: -- {{{
     Checkpoint →
-    Visitor α →
+    TreeBuilder α →
     Maybe α
 runVisitorUntilFirstThroughCheckpoint = runIdentity .* runVisitorTUntilFirstThroughCheckpoint
 -- }}}
@@ -312,7 +312,7 @@ runVisitorUntilFirstThroughCheckpoint = runIdentity .* runVisitorTUntilFirstThro
 runVisitorTUntilFirstThroughCheckpoint :: -- {{{
     Monad m ⇒
     Checkpoint →
-    VisitorT m α →
+    TreeBuilderT m α →
     m (Maybe α)
 runVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
   where
@@ -329,7 +329,7 @@ runVisitorUntilFoundThroughCheckpoint :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Checkpoint →
-    Visitor α →
+    TreeBuilder α →
     Either α β
 runVisitorUntilFoundThroughCheckpoint = runIdentity .** runVisitorTUntilFoundThroughCheckpoint
 -- }}}
@@ -338,7 +338,7 @@ runVisitorTUntilFoundThroughCheckpoint :: -- {{{
     (Monad m, Monoid α) ⇒
     (α → Maybe β) →
     Checkpoint →
-    VisitorT m α →
+    TreeBuilderT m α →
     m (Either α β)
 runVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
   where
@@ -378,14 +378,14 @@ stepVisitorTThroughCheckpoint (VisitorTState context checkpoint visitor) = case 
                     VisitorTState
                         (context |> CacheContextStep (encode x))
                         Unexplored
-                        (VisitorT . k $ x)
+                        (TreeBuilderT . k $ x)
                 ))
         Choice left right :>>= k → return
             (Nothing, Just $
                 VisitorTState
-                    (context |> LeftBranchContextStep Unexplored (right >>= VisitorT . k))
+                    (context |> LeftBranchContextStep Unexplored (right >>= TreeBuilderT . k))
                     Unexplored
-                    (left >>= VisitorT . k)
+                    (left >>= TreeBuilderT . k)
             )
     CacheCheckpoint cache rest_checkpoint → getView >>= \view → case view of
         Cache _ :>>= k → return
@@ -393,20 +393,20 @@ stepVisitorTThroughCheckpoint (VisitorTState context checkpoint visitor) = case 
                 VisitorTState
                     (context |> CacheContextStep cache)
                     rest_checkpoint
-                    (either error (VisitorT . k) . decode $ cache)
+                    (either error (TreeBuilderT . k) . decode $ cache)
             )
         _ → throw PastVisitorIsInconsistentWithPresentVisitor
     ChoiceCheckpoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
         Choice left right :>>= k → return
             (Nothing, Just $
                 VisitorTState
-                    (context |> LeftBranchContextStep right_checkpoint (right >>= VisitorT . k))
+                    (context |> LeftBranchContextStep right_checkpoint (right >>= TreeBuilderT . k))
                     left_checkpoint
-                    (left >>= VisitorT . k)
+                    (left >>= TreeBuilderT . k)
             )
         _ → throw PastVisitorIsInconsistentWithPresentVisitor
   where
-    getView = viewT . unwrapVisitorT $ visitor
+    getView = viewT . unwrapTreeBuilderT $ visitor
     moveUpContext = go context
       where
         go context = case viewr context of
@@ -423,28 +423,28 @@ stepVisitorTThroughCheckpoint (VisitorTState context checkpoint visitor) = case 
 
 walkVisitor :: -- {{{
     Monoid α ⇒
-    Visitor α →
+    TreeBuilder α →
     [(α,Checkpoint)]
 walkVisitor = walkVisitorThroughCheckpoint Unexplored
 -- }}}
 
 walkVisitorT :: -- {{{
     (Monad m, Monoid α) ⇒
-    VisitorT m α →
+    TreeBuilderT m α →
     ResultFetcher m α
 walkVisitorT = walkVisitorTThroughCheckpoint Unexplored
 {-# INLINE walkVisitorT #-}
 -- }}}
 
 walkVisitorUntilFirst :: -- {{{
-    Visitor α →
+    TreeBuilder α →
     FirstResultFetcher α
 walkVisitorUntilFirst = walkVisitorUntilFirstThroughCheckpoint Unexplored
 -- }}}
 
 walkVisitorTUntilFirst :: -- {{{
     Monad m ⇒
-    VisitorT m α →
+    TreeBuilderT m α →
     FirstResultFetcherT m α
 walkVisitorTUntilFirst = walkVisitorTUntilFirstThroughCheckpoint Unexplored
 -- }}}
@@ -452,7 +452,7 @@ walkVisitorTUntilFirst = walkVisitorTUntilFirstThroughCheckpoint Unexplored
 walkVisitorThroughCheckpoint :: -- {{{
     Monoid α ⇒
     Checkpoint →
-    Visitor α →
+    TreeBuilder α →
     [(α,Checkpoint)]
 walkVisitorThroughCheckpoint = go1 .* walkVisitorTThroughCheckpoint
   where
@@ -468,7 +468,7 @@ walkVisitorThroughCheckpoint = go1 .* walkVisitorTThroughCheckpoint
 walkVisitorTThroughCheckpoint :: -- {{{
     ∀ m α. (Monad m, Monoid α) ⇒
     Checkpoint →
-    VisitorT m α →
+    TreeBuilderT m α →
     ResultFetcher m α
 walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
   where
@@ -490,7 +490,7 @@ walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
 
 walkVisitorUntilFirstThroughCheckpoint :: -- {{{
     Checkpoint →
-    Visitor α →
+    TreeBuilder α →
     FirstResultFetcher α
 walkVisitorUntilFirstThroughCheckpoint = go .* initialVisitorState
   where
@@ -510,7 +510,7 @@ walkVisitorUntilFirstThroughCheckpoint = go .* initialVisitorState
 walkVisitorTUntilFirstThroughCheckpoint :: -- {{{
     Monad m ⇒
     Checkpoint →
-    VisitorT m α →
+    TreeBuilderT m α →
     FirstResultFetcherT m α
 walkVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
   where
@@ -536,7 +536,7 @@ walkVisitorUntilFoundThroughCheckpoint :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Checkpoint →
-    Visitor α →
+    TreeBuilder α →
     FoundResultFetcher α β
 walkVisitorUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
   where
@@ -564,7 +564,7 @@ walkVisitorTUntilFoundThroughCheckpoint :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Checkpoint →
-    VisitorT m α →
+    TreeBuilderT m α →
     FoundResultFetcherT m α β
 walkVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
   where

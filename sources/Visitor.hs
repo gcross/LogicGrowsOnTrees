@@ -11,15 +11,15 @@
 {-| Basic functionality for visitors. -}
 module Visitor
     (
-    -- * Visitor Features
+    -- * TreeBuilder Features
     -- $type-classes
       MonadVisitor(..)
     , MonadVisitorTrans(..)
-    -- * Visitor Types
+    -- * TreeBuilder Types
     -- $types
-    , Visitor
-    , VisitorIO
-    , VisitorT(..)
+    , TreeBuilder
+    , TreeBuilderIO
+    , TreeBuilderT(..)
     -- * Functions
     -- $functions
 
@@ -41,10 +41,10 @@ module Visitor
     , msumBalanced
     , msumBalancedGreedy
     -- ** ...that transform visitors
-    , endowVisitor
+    , endowTreeBuilder
     -- * Implementation
-    , VisitorTInstruction(..)
-    , VisitorInstruction
+    , TreeBuilderTInstruction(..)
+    , TreeBuilderInstruction
     ) where
 
 import Control.Applicative (Alternative(..),Applicative(..))
@@ -78,7 +78,7 @@ visitor that leads to the stolen workload.
 
 These features could have been provided as functions, but there are two reasons
 why they were subsumed into type-classes: first, because one might want to
-add another layer above the 'Visitor' monad transformers in the monad stack
+add another layer above the 'TreeBuilder' monad transformers in the monad stack
 (as is the case in "Visitor.Label"), and second, because one might want
 to run a visitor using a simpler monad such as [] for testing purposes.
 
@@ -178,7 +178,7 @@ to an inner node.
 -}
 
 {-| A pure visitor, which is what you should normally be using. -}
-type Visitor = VisitorT Identity
+type TreeBuilder = TreeBuilderT Identity
 
 {-| A visitor running in the I/O monad, which you should only be using for
     testing purposes or, say, if you are planning on storing each result in an
@@ -186,10 +186,10 @@ type Visitor = VisitorT Identity
     that an action for a given result might be run twice in checkpointing and/or
     parallel settings.
 -}
-type VisitorIO = VisitorT IO
+type TreeBuilderIO = TreeBuilderT IO
 
 {-| A visitor run in an arbitrary monad. -}
-newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstruction m) m α }
+newtype TreeBuilderT m α = TreeBuilderT { unwrapTreeBuilderT :: ProgramT (TreeBuilderTInstruction m) m α }
     deriving (Applicative,Functor,Monad,MonadIO)
 
 --------------------------------------------------------------------------------
@@ -197,13 +197,13 @@ newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstructi
 --------------------------------------------------------------------------------
 
 {-| The 'Alternative' instance functions like the 'MonadPlus' instance. -}
-instance Monad m ⇒ Alternative (VisitorT m) where
+instance Monad m ⇒ Alternative (TreeBuilderT m) where
     empty = mzero
     (<|>) = mplus
 
 {-| Two visitors are equal if the generate exactly the same tree. -}
-instance Eq α ⇒ Eq (Visitor α) where
-    (VisitorT x) == (VisitorT y) = e x y
+instance Eq α ⇒ Eq (TreeBuilder α) where
+    (TreeBuilderT x) == (TreeBuilderT y) = e x y
       where
         e x y = case (view x, view y) of
             (Return x, Return y) → x == y
@@ -213,16 +213,16 @@ instance Eq α ⇒ Eq (Visitor α) where
                     (Nothing, Nothing) → True
                     (Just x, Just y) → e (kx x) (ky y)
                     _ → False
-            (Choice (VisitorT ax) (VisitorT bx) :>>= kx, Choice (VisitorT ay) (VisitorT by) :>>= ky) →
+            (Choice (TreeBuilderT ax) (TreeBuilderT bx) :>>= kx, Choice (TreeBuilderT ay) (TreeBuilderT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
             _  → False
 
 {-| For this type, 'mplus' provides a branch node with a choice between two
     values and 'mzero' provides a node with no values.
  -}
-instance Monad m ⇒ MonadPlus (VisitorT m) where
-    mzero = VisitorT . singleton $ Null
-    left `mplus` right = VisitorT . singleton $ Choice left right
+instance Monad m ⇒ MonadPlus (TreeBuilderT m) where
+    mzero = TreeBuilderT . singleton $ Null
+    left `mplus` right = TreeBuilderT . singleton $ Choice left right
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a visitor using the List monad.
@@ -258,16 +258,16 @@ instance Monad m ⇒ MonadVisitorTrans (MaybeT m) where
     type NestedMonadInVisitor (MaybeT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
 
-instance Monad m ⇒ MonadVisitor (VisitorT m) where
+instance Monad m ⇒ MonadVisitor (TreeBuilderT m) where
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
     cacheMaybe = runAndCacheMaybe . return
 
-instance Monad m ⇒ MonadVisitorTrans (VisitorT m) where
-    type NestedMonadInVisitor (VisitorT m) = m
+instance Monad m ⇒ MonadVisitorTrans (TreeBuilderT m) where
+    type NestedMonadInVisitor (TreeBuilderT m) = m
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
-    runAndCacheMaybe = VisitorT . singleton . Cache
+    runAndCacheMaybe = TreeBuilderT . singleton . Cache
 
 {-| This instance allows you to automatically get a MonadVisitor instance for
     any monad transformer that has `MonadPlus` defined.  (Unfortunately its
@@ -281,17 +281,17 @@ instance (MonadTrans t, MonadVisitor m, MonadPlus (t m)) ⇒ MonadVisitor (t m) 
     cacheGuard = lift . cacheGuard
     cacheMaybe = lift . cacheMaybe
 
-instance MonadTrans VisitorT where
-    lift = VisitorT . lift
+instance MonadTrans TreeBuilderT where
+    lift = TreeBuilderT . lift
 
 {-| The 'Monoid' instance acts like the 'MonadPlus' instance. -}
-instance Monad m ⇒ Monoid (VisitorT m α) where
+instance Monad m ⇒ Monoid (TreeBuilderT m α) where
     mempty = mzero
     mappend = mplus
     mconcat = msum
 
-instance Show α ⇒ Show (Visitor α) where
-    show = s . unwrapVisitorT
+instance Show α ⇒ Show (TreeBuilder α) where
+    show = s . unwrapTreeBuilderT
       where
         s x = case view x of
             Return x → show x
@@ -300,7 +300,7 @@ instance Show α ⇒ Show (Visitor α) where
                 case runIdentity c of
                     Nothing → "NullCache"
                     Just x → "Cache[" ++ (show . encode $ x) ++ "] >>= " ++ (s (k x))
-            Choice (VisitorT a) (VisitorT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
+            Choice (TreeBuilderT a) (TreeBuilderT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
 
 
 --------------------------------------------------------------------------------
@@ -327,15 +327,15 @@ visitor only for its side-effects.
 {-| Run a pure visitor until all results have been found and summed together. -}
 runVisitor ::
     Monoid α ⇒
-    Visitor α {-^ the (pure) visitor to run -} →
+    TreeBuilder α {-^ the (pure) visitor to run -} →
     α {-^ the sum over all results -}
 runVisitor v =
-    case view (unwrapVisitorT v) of
+    case view (unwrapTreeBuilderT v) of
         Return !x → x
-        (Cache mx :>>= k) → maybe mempty (runVisitor . VisitorT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe mempty (runVisitor . TreeBuilderT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let !x = runVisitor $ left >>= VisitorT . k
-                !y = runVisitor $ right >>= VisitorT . k
+            let !x = runVisitor $ left >>= TreeBuilderT . k
+                !y = runVisitor $ right >>= TreeBuilderT . k
                 !xy = mappend x y
             in xy
         (Null :>>= _) → mempty
@@ -344,51 +344,51 @@ runVisitor v =
 {-| Run an impure visitor until all results have been found and summed together. -}
 runVisitorT ::
     (Monad m, Monoid α) ⇒
-    VisitorT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) visitor to run -} →
     m α {-^ the sum over all results -}
-runVisitorT = viewT . unwrapVisitorT >=> \view →
+runVisitorT = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return !x → return x
-        (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorT . VisitorT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorT . TreeBuilderT . k)
         (Choice left right :>>= k) →
             liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
-                (runVisitorT $ left >>= VisitorT . k)
-                (runVisitorT $ right >>= VisitorT . k)
+                (runVisitorT $ left >>= TreeBuilderT . k)
+                (runVisitorT $ right >>= TreeBuilderT . k)
         (Null :>>= _) → return mempty
-{-# SPECIALIZE runVisitorT :: Monoid α ⇒ Visitor α → Identity α #-}
-{-# SPECIALIZE runVisitorT :: Monoid α ⇒ VisitorIO α → IO α #-}
+{-# SPECIALIZE runVisitorT :: Monoid α ⇒ TreeBuilder α → Identity α #-}
+{-# SPECIALIZE runVisitorT :: Monoid α ⇒ TreeBuilderIO α → IO α #-}
 {-# INLINEABLE runVisitorT #-}
 
 {-| Run an impure visitor for its side-effects, ignoring all results. -}
 runVisitorTAndIgnoreResults ::
     Monad m ⇒
-    VisitorT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) visitor to run -} →
     m ()
-runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
+runVisitorTAndIgnoreResults = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return _ → return ()
-        (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorTAndIgnoreResults . VisitorT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorTAndIgnoreResults . TreeBuilderT . k)
         (Choice left right :>>= k) → do
-            runVisitorTAndIgnoreResults $ left >>= VisitorT . k
-            runVisitorTAndIgnoreResults $ right >>= VisitorT . k
+            runVisitorTAndIgnoreResults $ left >>= TreeBuilderT . k
+            runVisitorTAndIgnoreResults $ right >>= TreeBuilderT . k
         (Null :>>= _) → return ()
-{-# SPECIALIZE runVisitorTAndIgnoreResults :: Visitor α → Identity () #-}
-{-# SPECIALIZE runVisitorTAndIgnoreResults :: VisitorIO α → IO () #-}
+{-# SPECIALIZE runVisitorTAndIgnoreResults :: TreeBuilder α → Identity () #-}
+{-# SPECIALIZE runVisitorTAndIgnoreResults :: TreeBuilderIO α → IO () #-}
 {-# INLINEABLE runVisitorTAndIgnoreResults #-}
 
 {-| Run a pure visitor until a result has been found;  if a result has been
     found then it is returned wrapped in 'Just', otherwise 'Nothing' is returned.
  -}
 runVisitorUntilFirst ::
-    Visitor α {-^ the (pure) visitor to run -} →
+    TreeBuilder α {-^ the (pure) visitor to run -} →
     Maybe α {-^ the first result found, if any -}
 runVisitorUntilFirst v =
-    case view (unwrapVisitorT v) of
+    case view (unwrapTreeBuilderT v) of
         Return x → Just x
-        (Cache mx :>>= k) → maybe Nothing (runVisitorUntilFirst . VisitorT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe Nothing (runVisitorUntilFirst . TreeBuilderT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let x = runVisitorUntilFirst $ left >>= VisitorT . k
-                y = runVisitorUntilFirst $ right >>= VisitorT . k
+            let x = runVisitorUntilFirst $ left >>= TreeBuilderT . k
+                y = runVisitorUntilFirst $ right >>= TreeBuilderT . k
             in if isJust x then x else y
         (Null :>>= _) → Nothing
 {-# INLINEABLE runVisitorUntilFirst #-}
@@ -396,20 +396,20 @@ runVisitorUntilFirst v =
 {-| Same as 'runVisitorUntilFirst', but taking an impure visitor instead of a pure visitor. -}
 runVisitorTUntilFirst ::
     Monad m ⇒
-    VisitorT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) visitor to run -} →
     m (Maybe α) {-^ the first result found, if any -}
-runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
+runVisitorTUntilFirst = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return !x → return (Just x)
-        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (runVisitorTUntilFirst . VisitorT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (runVisitorTUntilFirst . TreeBuilderT . k)
         (Choice left right :>>= k) → do
-            x ← runVisitorTUntilFirst $ left >>= VisitorT . k
+            x ← runVisitorTUntilFirst $ left >>= TreeBuilderT . k
             if isJust x
                 then return x
-                else runVisitorTUntilFirst $ right >>= VisitorT . k
+                else runVisitorTUntilFirst $ right >>= TreeBuilderT . k
         (Null :>>= _) → return Nothing
-{-# SPECIALIZE runVisitorTUntilFirst :: Visitor α → Identity (Maybe α) #-}
-{-# SPECIALIZE runVisitorTUntilFirst :: VisitorIO α → IO (Maybe α) #-}
+{-# SPECIALIZE runVisitorTUntilFirst :: TreeBuilder α → Identity (Maybe α) #-}
+{-# SPECIALIZE runVisitorTUntilFirst :: TreeBuilderIO α → IO (Maybe α) #-}
 {-# INLINEABLE runVisitorTUntilFirst #-}
 
 {-| Run a pure visitor summing all results encountered until the current sum
@@ -425,21 +425,21 @@ runVisitorUntilFound ::
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    Visitor α  {-^ the (pure) visitor to run -} →
+    TreeBuilder α  {-^ the (pure) visitor to run -} →
     Either α β {-^ if no acceptable results were found, then 'Left' with the sum
                    over all results;  otherwise 'Right' with the value returned
                    by the function in the first argument
                 -}
 runVisitorUntilFound f v =
-    case view (unwrapVisitorT v) of
+    case view (unwrapTreeBuilderT v) of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
-            maybe (Left mempty) (runVisitorUntilFound f . VisitorT . k)
+            maybe (Left mempty) (runVisitorUntilFound f . TreeBuilderT . k)
             $
             runIdentity mx
         (Choice left right :>>= k) →
-            let x = runVisitorUntilFound f $ left >>= VisitorT . k
-                y = runVisitorUntilFound f $ right >>= VisitorT . k
+            let x = runVisitorUntilFound f $ left >>= TreeBuilderT . k
+                y = runVisitorUntilFound f $ right >>= TreeBuilderT . k
             in case (x,y) of
                 (result@(Right _),_) → result
                 (_,result@(Right _)) → result
@@ -456,24 +456,24 @@ runVisitorTUntilFound ::
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    VisitorT m α {-^ the (impure) visitor to run -} →
+    TreeBuilderT m α {-^ the (impure) visitor to run -} →
     m (Either α β) {-^ if no acceptable results were found, then 'Left' with the
                        sum over all results;  otherwise 'Right' with the value
                        returned by the function in the first argument
                     -}
-runVisitorTUntilFound f = viewT . unwrapVisitorT >=> \view →
+runVisitorTUntilFound f = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
             mx
             >>=
-            maybe (return (Left mempty)) (runVisitorTUntilFound f . VisitorT . k)
+            maybe (return (Left mempty)) (runVisitorTUntilFound f . TreeBuilderT . k)
         (Choice left right :>>= k) → do
-            x ← runVisitorTUntilFound f $ left >>= VisitorT . k
+            x ← runVisitorTUntilFound f $ left >>= TreeBuilderT . k
             case x of
                 result@(Right _) → return result
                 Left a → do
-                    y ← runVisitorTUntilFound f $ right >>= VisitorT . k
+                    y ← runVisitorTUntilFound f $ right >>= TreeBuilderT . k
                     case y of
                         result@(Right _) → return result
                         Left b → runThroughFilter (a <> b)
@@ -622,19 +622,19 @@ msumBalancedGreedy = go emptyStacks
 {-| This function lets you take a pure visitor and transform it into a visitor
     with an arbitrary base monad.
  -}
-endowVisitor ::
+endowTreeBuilder ::
     Monad m ⇒
-    Visitor α {-^ the pure visitor to transformed into an impure visitor -} → 
-    VisitorT m α {-^ the resulting impure visitor -}
-endowVisitor visitor =
-    case view . unwrapVisitorT $ visitor of
+    TreeBuilder α {-^ the pure visitor to transformed into an impure visitor -} →
+    TreeBuilderT m α {-^ the resulting impure visitor -}
+endowTreeBuilder visitor =
+    case view . unwrapTreeBuilderT $ visitor of
         Return x → return x
         Cache mx :>>= k →
-            cacheMaybe (runIdentity mx) >>= endowVisitor . VisitorT . k
+            cacheMaybe (runIdentity mx) >>= endowTreeBuilder . TreeBuilderT . k
         Choice left right :>>= k →
             mplus
-                (endowVisitor left >>= endowVisitor . VisitorT . k)
-                (endowVisitor right >>= endowVisitor . VisitorT . k)
+                (endowTreeBuilder left >>= endowTreeBuilder . TreeBuilderT . k)
+                (endowTreeBuilder right >>= endowTreeBuilder . TreeBuilderT . k)
         Null :>>= _ → mzero
 
 
@@ -643,23 +643,23 @@ endowVisitor visitor =
 --------------------------------------------------------------------------------
 
 {- $implementation
-The implementation of the 'Visitor' types uses the approach described in
+The implementation of the 'TreeBuilder' types uses the approach described in
 "The Operational Monad Tutorial", published in Issue 15 of The Monad.Reader at
 <http://themonadreader.wordpress.com/>;  specifically it uses the `operational`
 package.  The idea is that a list of instructions are provided in
-'VisitorTInstruction', and then the operational monad does all the heavy lifting
+'TreeBuilderTInstruction', and then the operational monad does all the heavy lifting
 of turning them into a monad.
  -}
 
-{-| The core of the implementation of 'Visitor' is mostly contained in this
+{-| The core of the implementation of 'TreeBuilder' is mostly contained in this
     type, which provides a list of primitive instructions for visitors: 'Cache',
     which caches a value, 'Choice', which signals a branch with two choices, and
     'Null', which indicates that there are no more results.
  -}
-data VisitorTInstruction m α where
-    Cache :: Serialize α ⇒ m (Maybe α) → VisitorTInstruction m α
-    Choice :: VisitorT m α → VisitorT m α → VisitorTInstruction m α
-    Null :: VisitorTInstruction m α
+data TreeBuilderTInstruction m α where
+    Cache :: Serialize α ⇒ m (Maybe α) → TreeBuilderTInstruction m α
+    Choice :: TreeBuilderT m α → TreeBuilderT m α → TreeBuilderTInstruction m α
+    Null :: TreeBuilderTInstruction m α
 
 {-| This is just a convenient alias for working with pure visitors. -}
-type VisitorInstruction = VisitorTInstruction Identity
+type TreeBuilderInstruction = TreeBuilderTInstruction Identity

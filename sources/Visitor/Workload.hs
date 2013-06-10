@@ -54,7 +54,7 @@ entire_workload = Workload Seq.empty Unexplored
 runVisitorThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
-    Visitor α →
+    TreeBuilder α →
     α
 runVisitorThroughWorkload =
     (fst . last)
@@ -65,14 +65,14 @@ runVisitorThroughWorkload =
 runVisitorTThroughWorkload :: -- {{{
     (Monad m, Monoid α) ⇒
     Workload →
-    VisitorT m α →
+    TreeBuilderT m α →
     m α
 runVisitorTThroughWorkload = gatherResults .* walkVisitorTThroughWorkload
 -- }}}
 
 runVisitorUntilFirstThroughWorkload :: -- {{{
     Workload →
-    Visitor α →
+    TreeBuilder α →
     Maybe α
 runVisitorUntilFirstThroughWorkload =
     fetchFirstResult
@@ -83,7 +83,7 @@ runVisitorUntilFirstThroughWorkload =
 runVisitorTUntilFirstThroughWorkload :: -- {{{
     Monad m ⇒
     Workload →
-    VisitorT m α →
+    TreeBuilderT m α →
     m (Maybe α)
 runVisitorTUntilFirstThroughWorkload =
     fetchFirstResultT
@@ -95,7 +95,7 @@ runVisitorUntilFoundThroughWorkload :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
-    Visitor α →
+    TreeBuilder α →
     Either α β
 runVisitorUntilFoundThroughWorkload =
     fetchFoundResult
@@ -107,7 +107,7 @@ runVisitorTUntilFoundThroughWorkload :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
-    VisitorT m α →
+    TreeBuilderT m α →
     m (Either α β)
 runVisitorTUntilFoundThroughWorkload =
     fetchFoundResultT
@@ -118,7 +118,7 @@ runVisitorTUntilFoundThroughWorkload =
 walkVisitorThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
-    Visitor α →
+    TreeBuilder α →
     [(α,Checkpoint)]
 walkVisitorThroughWorkload Workload{..} =
     walkVisitorThroughCheckpoint workloadCheckpoint
@@ -129,7 +129,7 @@ walkVisitorThroughWorkload Workload{..} =
 walkVisitorTThroughWorkload :: -- {{{
     (Monad m, Monoid α) ⇒
     Workload →
-    VisitorT m α →
+    TreeBuilderT m α →
     ResultFetcher m α
 walkVisitorTThroughWorkload Workload{..} =
     ResultFetcher
@@ -147,7 +147,7 @@ walkVisitorTThroughWorkload Workload{..} =
 
 walkVisitorUntilFirstThroughWorkload :: -- {{{
     Workload →
-    Visitor α →
+    TreeBuilder α →
     FirstResultFetcher α
 walkVisitorUntilFirstThroughWorkload Workload{..} =
     walkVisitorUntilFirstThroughCheckpoint workloadCheckpoint
@@ -158,7 +158,7 @@ walkVisitorUntilFirstThroughWorkload Workload{..} =
 walkVisitorTUntilFirstThroughWorkload :: -- {{{
     Monad m ⇒
     Workload →
-    VisitorT m α →
+    TreeBuilderT m α →
     FirstResultFetcherT m α
 walkVisitorTUntilFirstThroughWorkload Workload{..} =
     FirstResultFetcherT
@@ -178,7 +178,7 @@ walkVisitorUntilFoundThroughWorkload :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
-    Visitor α →
+    TreeBuilder α →
     FoundResultFetcher α β
 walkVisitorUntilFoundThroughWorkload f Workload{..} =
     walkVisitorUntilFoundThroughCheckpoint f workloadCheckpoint
@@ -190,7 +190,7 @@ walkVisitorTUntilFoundThroughWorkload :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
-    VisitorT m α →
+    TreeBuilderT m α →
     FoundResultFetcherT m α β
 walkVisitorTUntilFoundThroughWorkload f Workload{..} =
     FoundResultFetcherT
