@@ -53,30 +53,30 @@ Library
         void == 0.6.*,
         yjtools >= 0.9.7 && < 0.10
     Exposed-modules:
-        Control.Visitor
-        Control.Visitor.Checkpoint
-        Control.Visitor.Examples.Queens
-        Control.Visitor.Examples.Queens.Implementation
-        Control.Visitor.Examples.Tree
-        Control.Visitor.Label
-        Control.Visitor.Parallel.BackEnd.Threads
-        Control.Visitor.Parallel.Common.Message
-        Control.Visitor.Parallel.Common.Process
-        Control.Visitor.Parallel.Common.Supervisor
-        Control.Visitor.Parallel.Common.Supervisor.Implementation
-        Control.Visitor.Parallel.Common.Supervisor.RequestQueue
-        Control.Visitor.Parallel.Common.VisitorMode
-        Control.Visitor.Parallel.Common.Workgroup
-        Control.Visitor.Parallel.Common.Worker
-        Control.Visitor.Parallel.Main
-        Control.Visitor.Path
-        Control.Visitor.Utils.Handle
-        Control.Visitor.Utils.IntSum
-        Control.Visitor.Utils.MonadStacks
-        Control.Visitor.Utils.Word_
-        Control.Visitor.Utils.WordSum
-        Control.Visitor.Workload
-    Extensions:
+        Visitor
+        Visitor.Checkpoint
+        Visitor.Examples.Queens
+        Visitor.Examples.Queens.Implementation
+        Visitor.Examples.Tree
+        Visitor.Label
+        Visitor.Parallel.BackEnd.Threads
+        Visitor.Parallel.Common.Message
+        Visitor.Parallel.Common.Process
+        Visitor.Parallel.Common.Supervisor
+        Visitor.Parallel.Common.Supervisor.Implementation
+        Visitor.Parallel.Common.Supervisor.RequestQueue
+        Visitor.Parallel.Common.VisitorMode
+        Visitor.Parallel.Common.Workgroup
+        Visitor.Parallel.Common.Worker
+        Visitor.Parallel.Main
+        Visitor.Path
+        Visitor.Utils.Handle
+        Visitor.Utils.IntSum
+        Visitor.Utils.MonadStacks
+        Visitor.Utils.Word_
+        Visitor.Utils.WordSum
+        Visitor.Workload
+    HS-source-dirs: sources
     C-sources: c-sources/queens.c
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing

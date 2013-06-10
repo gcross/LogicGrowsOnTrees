@@ -8,10 +8,10 @@ import Control.Applicative
 
 import System.Console.CmdTheLine
 
-import Control.Visitor.Examples.Tree
-import Control.Visitor.Parallel.Main
-import Control.Visitor.Parallel.BackEnd.Threads
-import Control.Visitor.Utils.WordSum
+import Visitor.Examples.Tree
+import Visitor.Parallel.Main
+import Visitor.Parallel.BackEnd.Threads
+import Visitor.Utils.WordSum
 
 -- }}}
 

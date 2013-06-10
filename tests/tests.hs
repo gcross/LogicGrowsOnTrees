@@ -79,21 +79,21 @@ import Test.SmallCheck ((==>))
 import Test.SmallCheck.Series (Serial(..))
 import Test.SmallCheck.Drivers as Small (test)
 
-import Control.Visitor
-import Control.Visitor.Checkpoint
-import Control.Visitor.Examples.Tree
-import Control.Visitor.Label
-import Control.Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
-import qualified Control.Visitor.Parallel.BackEnd.Threads as Threads
-import Control.Visitor.Parallel.Common.VisitorMode
-import qualified Control.Visitor.Parallel.Common.Workgroup as Workgroup
-import Control.Visitor.Path
-import Control.Visitor.Parallel.Common.Supervisor
-import Control.Visitor.Parallel.Common.Supervisor.RequestQueue
-import Control.Visitor.Utils.WordSum
-import Control.Visitor.Workload
-import qualified Control.Visitor.Parallel.Common.Worker as Worker
-import Control.Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT,runVisitorUntilFirst,runVisitorIOUntilFirst,runVisitorTUntilFirst)
+import Visitor
+import Visitor.Checkpoint
+import Visitor.Examples.Tree
+import Visitor.Label
+import Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
+import qualified Visitor.Parallel.BackEnd.Threads as Threads
+import Visitor.Parallel.Common.VisitorMode
+import qualified Visitor.Parallel.Common.Workgroup as Workgroup
+import Visitor.Path
+import Visitor.Parallel.Common.Supervisor
+import Visitor.Parallel.Common.Supervisor.RequestQueue
+import Visitor.Utils.WordSum
+import Visitor.Workload
+import qualified Visitor.Parallel.Common.Worker as Worker
+import Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT,runVisitorUntilFirst,runVisitorIOUntilFirst,runVisitorTUntilFirst)
 -- }}}
 
 -- Helpers {{{
@@ -579,7 +579,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor" -- {{{
+    ,testGroup "Visitor" -- {{{
         [testGroup "Eq instance" -- {{{
             [testProperty "self" $ \(v :: Visitor [()]) → v == v
             ]
@@ -678,7 +678,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Checkpoint" -- {{{
+    ,testGroup "Visitor.Checkpoint" -- {{{
         [testGroup "contextFromCheckpoint" -- {{{
             [testProperty "cache" $ \(checkpoint :: Checkpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
@@ -884,7 +884,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Examples.Tree" -- {{{
+    ,testGroup "Visitor.Examples.Tree" -- {{{
         [Small.testProperty "trivialTree" . Small.test $ -- {{{
             (liftA2 . liftA2) (==>)
                 (\arity _ → arity >= 2)
@@ -895,7 +895,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Label" -- {{{
+    ,testGroup "Visitor.Label" -- {{{
         [testProperty "branchingFromLabel . labelFromBranching = id" $ -- {{{
             liftA2 (==)
                 (branchingFromLabel . labelFromBranching)
@@ -952,7 +952,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Parallel.BackEnd.Threads" $ -- {{{
+    ,testGroup "Visitor.Parallel.BackEnd.Threads" $ -- {{{
         [testGroup "FirstMode" -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←
@@ -1184,7 +1184,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Parallel.Common.Supervisor" -- {{{
+    ,testGroup "Visitor.Parallel.Common.Supervisor" -- {{{
         [testCase "immediately abort" $ do -- {{{
             SupervisorOutcome{..} ← runSupervisorInAllMode bad_test_supervisor_actions (UnrestrictedProgram abortSupervisor)
             supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
@@ -1504,7 +1504,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Parallel.Common.Worker" -- {{{
+    ,testGroup "Visitor.Parallel.Common.Worker" -- {{{
         [testGroup "forkWorkerThread" -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new
@@ -1801,7 +1801,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Control.Visitor.Path" -- {{{
+    ,testGroup "Visitor.Path" -- {{{
         [testGroup "sendVisitorDownPath" -- {{{
             [testCase "null path" $ (runVisitor . sendVisitorDownPath Seq.empty) (return [42]) @?= [42]
             ,testCase "cache" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]

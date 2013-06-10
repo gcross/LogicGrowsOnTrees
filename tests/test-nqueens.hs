@@ -24,10 +24,10 @@ import Test.HUnit
 
 import Text.Printf
 
-import Control.Visitor
-import Control.Visitor.Examples.Queens
-import Control.Visitor.Examples.Queens.Implementation
-import Control.Visitor.Utils.WordSum
+import Visitor
+import Visitor.Examples.Queens
+import Visitor.Examples.Queens.Implementation
+import Visitor.Utils.WordSum
 -- }}}
 
 -- Functions {{{

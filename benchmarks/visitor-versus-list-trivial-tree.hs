@@ -6,11 +6,11 @@
 import Criterion.Main
 import Data.Monoid
 
-import Control.Visitor
-import Control.Visitor.Checkpoint
-import Control.Visitor.Examples.Tree
-import Control.Visitor.Utils.WordSum
-import qualified Control.Visitor.Parallel.Common.Worker as Worker
+import Visitor
+import Visitor.Checkpoint
+import Visitor.Examples.Tree
+import Visitor.Utils.WordSum
+import qualified Visitor.Parallel.Common.Worker as Worker
 -- }}}
 
 main = defaultMain

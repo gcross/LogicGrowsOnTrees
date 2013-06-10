@@ -7,11 +7,11 @@
 
 import System.Console.CmdTheLine
 
-import Control.Visitor.Parallel.Main
-import Control.Visitor.Parallel.BackEnd.Threads
-import Control.Visitor.Utils.WordSum
+import Visitor.Parallel.Main
+import Visitor.Parallel.BackEnd.Threads
+import Visitor.Utils.WordSum
 
-import Control.Visitor.Examples.Queens
+import Visitor.Examples.Queens
 -- }}}
 
 main =
