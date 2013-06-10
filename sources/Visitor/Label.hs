@@ -33,22 +33,22 @@ import Visitor.Path
 
 -- Classes {{{
 class Monad m ⇒ MonadLabeled m where
-    getLabel :: m VisitorLabel
+    getLabel :: m Label
 -- }}}
 
 -- Types {{{
 
-newtype LabeledT m α = LabeledT { unwrapLabeledT :: ReaderT VisitorLabel m α }
+newtype LabeledT m α = LabeledT { unwrapLabeledT :: ReaderT Label m α }
     deriving (Applicative,Functor,Monad,MonadIO,MonadTrans)
-newtype LabeledVisitorT m α = LabeledVisitorT { unwrapLabeledVisitorT :: LabeledT (TreeBuilderT m) α }
+newtype LabeledTreeBuilderT m α = LabeledTreeBuilderT { unwrapLabeledTreeBuilderT :: LabeledT (TreeBuilderT m) α }
     deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLabeled,MonadPlus,Monoid)
-type LabeledVisitorIO = LabeledVisitorT IO
-type LabeledVisitor = LabeledVisitorT Identity
+type LabeledTreeBuilderIO = LabeledTreeBuilderT IO
+type LabeledTreeBuilder = LabeledTreeBuilderT Identity
 
-newtype VisitorLabel = VisitorLabel { unwrapVisitorLabel :: SequentialIndex } deriving (Eq)
+newtype Label = Label { unwrapLabel :: SequentialIndex } deriving (Eq)
 
 data Solution α = Solution
-    {   solutionLabel :: VisitorLabel
+    {   solutionLabel :: Label
     ,   solutionResult :: α
     } deriving (Eq,Ord,Show)
 
@@ -62,12 +62,12 @@ instance (Alternative m, Monad m) ⇒ Alternative (LabeledT m) where -- {{{
         \branch → (runReaderT left (leftChildLabel branch)) <|> (runReaderT right (rightChildLabel branch))
 -- }}}
 
-instance Monoid VisitorLabel where -- {{{
+instance Monoid Label where -- {{{
     mempty = rootLabel
-    xl@(VisitorLabel x) `mappend` yl@(VisitorLabel y)
+    xl@(Label x) `mappend` yl@(Label y)
       | x == root = yl
       | y == root = xl
-      | otherwise = VisitorLabel $ go y root x
+      | otherwise = Label $ go y root x
       where
         go original_label current_label product_label =
             case current_label `compare` original_label of
@@ -79,11 +79,11 @@ instance Monoid VisitorLabel where -- {{{
                 LT → (go original_label `on` (fromJust . rightChild)) current_label product_label
 -- }}}
 
-instance Ord VisitorLabel where -- {{{
+instance Ord Label where -- {{{
     compare = compare `on` branchingFromLabel
 -- }}}
 
-instance Show VisitorLabel where -- {{{
+instance Show Label where -- {{{
     show = fmap (\branch → case branch of {LeftBranch → 'L'; RightBranch → 'R'}) . branchingFromLabel
 -- }}}
 
@@ -91,8 +91,8 @@ instance Monad m ⇒ MonadLabeled (LabeledT m) where -- {{{
     getLabel = LabeledT $ ask
 -- }}}
 
-instance MonadTrans LabeledVisitorT where -- {{{
-    lift = LabeledVisitorT . lift . lift
+instance MonadTrans LabeledTreeBuilderT where -- {{{
+    lift = LabeledTreeBuilderT . lift . lift
 -- }}}
 
 instance MonadPlus m ⇒ MonadPlus (LabeledT m) where -- {{{
@@ -108,11 +108,11 @@ instance MonadVisitableTrans m ⇒ MonadVisitableTrans (LabeledT m) where -- {{{
     runAndCacheMaybe = LabeledT . lift . runAndCacheMaybe
 -- }}}
 
-instance Monad m ⇒ MonadVisitableTrans (LabeledVisitorT m) where -- {{{
-    type NestedMonadInVisitor (LabeledVisitorT m) = m
-    runAndCache = LabeledVisitorT . runAndCache
-    runAndCacheGuard = LabeledVisitorT . runAndCacheGuard
-    runAndCacheMaybe = LabeledVisitorT . runAndCacheMaybe
+instance Monad m ⇒ MonadVisitableTrans (LabeledTreeBuilderT m) where -- {{{
+    type NestedMonadInVisitor (LabeledTreeBuilderT m) = m
+    runAndCache = LabeledTreeBuilderT . runAndCache
+    runAndCacheGuard = LabeledTreeBuilderT . runAndCacheGuard
+    runAndCacheMaybe = LabeledTreeBuilderT . runAndCacheMaybe
 -- }}}
 
 instance MonadPlus m ⇒ Monoid (LabeledT m α) where -- {{{
@@ -124,7 +124,7 @@ instance MonadPlus m ⇒ Monoid (LabeledT m α) where -- {{{
 
 -- Functions {{{
 
-applyCheckpointCursorToLabel :: CheckpointCursor → VisitorLabel → VisitorLabel -- {{{
+applyCheckpointCursorToLabel :: CheckpointCursor → Label → Label -- {{{
 applyCheckpointCursorToLabel cursor =
     case viewl cursor of
         EmptyL → id
@@ -136,7 +136,7 @@ applyCheckpointCursorToLabel cursor =
                 ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
 -- }}}
 
-applyContextToLabel :: Context m α → VisitorLabel → VisitorLabel -- {{{
+applyContextToLabel :: Context m α → Label → Label -- {{{
 applyContextToLabel context =
     case viewl context of
         EmptyL → id
@@ -149,7 +149,7 @@ applyContextToLabel context =
                 RightBranchContextStep → rightChildLabel
 -- }}}
 
-applyPathToLabel :: Path → VisitorLabel → VisitorLabel -- {{{
+applyPathToLabel :: Path → Label → Label -- {{{
 applyPathToLabel path =
     case viewl path of
         EmptyL → id
@@ -161,8 +161,8 @@ applyPathToLabel path =
                 CacheStep _ → id
 -- }}}
 
-branchingFromLabel :: VisitorLabel → [Branch] -- {{{
-branchingFromLabel = go root . unwrapVisitorLabel
+branchingFromLabel :: Label → [Branch] -- {{{
+branchingFromLabel = go root . unwrapLabel
   where
     go current_label original_label =
         case current_label `compare` original_label of
@@ -171,64 +171,64 @@ branchingFromLabel = go root . unwrapVisitorLabel
             LT → RightBranch:go (fromJust . rightChild $ current_label) original_label
 -- }}}
 
-labelFromBranching :: Foldable t ⇒ t Branch → VisitorLabel -- {{{
+labelFromBranching :: Foldable t ⇒ t Branch → Label -- {{{
 labelFromBranching = Fold.foldl' (flip labelTransformerForBranch) rootLabel
 -- }}}
 
-labelFromContext :: Context m α → VisitorLabel -- {{{
+labelFromContext :: Context m α → Label -- {{{
 labelFromContext = flip applyContextToLabel rootLabel
 -- }}}
 
-labelFromPath :: Path → VisitorLabel -- {{{
+labelFromPath :: Path → Label -- {{{
 labelFromPath = flip applyPathToLabel rootLabel
 -- }}}
 
-labelTransformerForBranch :: Branch → (VisitorLabel → VisitorLabel) -- {{{
+labelTransformerForBranch :: Branch → (Label → Label) -- {{{
 labelTransformerForBranch LeftBranch = leftChildLabel
 labelTransformerForBranch RightBranch = rightChildLabel
 -- }}}
 
-leftChildLabel :: VisitorLabel → VisitorLabel -- {{{
-leftChildLabel = VisitorLabel . fromJust . leftChild . unwrapVisitorLabel
+leftChildLabel :: Label → Label -- {{{
+leftChildLabel = Label . fromJust . leftChild . unwrapLabel
 -- }}}
 
-normalizeLabeledVisitor :: LabeledVisitor α → TreeBuilder α -- {{{
-normalizeLabeledVisitor = runLabeledT . unwrapLabeledVisitorT
+normalizeLabeledTreeBuilder :: LabeledTreeBuilder α → TreeBuilder α -- {{{
+normalizeLabeledTreeBuilder = runLabeledT . unwrapLabeledTreeBuilderT
 -- }}}
 
-normalizeLabeledVisitorT :: LabeledVisitorT m α → TreeBuilderT m α -- {{{
-normalizeLabeledVisitorT = runLabeledT . unwrapLabeledVisitorT
+normalizeLabeledTreeBuilderT :: LabeledTreeBuilderT m α → TreeBuilderT m α -- {{{
+normalizeLabeledTreeBuilderT = runLabeledT . unwrapLabeledTreeBuilderT
 -- }}}
 
-rightChildLabel :: VisitorLabel → VisitorLabel -- {{{
-rightChildLabel = VisitorLabel . fromJust . rightChild . unwrapVisitorLabel
+rightChildLabel :: Label → Label -- {{{
+rightChildLabel = Label . fromJust . rightChild . unwrapLabel
 -- }}}
 
-rootLabel :: VisitorLabel -- {{{
-rootLabel = VisitorLabel root
+rootLabel :: Label -- {{{
+rootLabel = Label root
 -- }}}
 
 runLabeledT :: LabeledT m α → m α -- {{{
 runLabeledT = flip runReaderT rootLabel . unwrapLabeledT
 -- }}}
 
-runLabeledVisitor :: Monoid α ⇒ LabeledVisitor α → α -- {{{
-runLabeledVisitor = visitTree . runLabeledT . unwrapLabeledVisitorT
+runLabeledTreeBuilder :: Monoid α ⇒ LabeledTreeBuilder α → α -- {{{
+runLabeledTreeBuilder = visitTree . runLabeledT . unwrapLabeledTreeBuilderT
 -- }}}
 
-runLabeledVisitorT :: (Monoid α,Monad m) ⇒ LabeledVisitorT m α → m α -- {{{
-runLabeledVisitorT = visitTreeT . runLabeledT . unwrapLabeledVisitorT
+runLabeledTreeBuilderT :: (Monoid α,Monad m) ⇒ LabeledTreeBuilderT m α → m α -- {{{
+runLabeledTreeBuilderT = visitTreeT . runLabeledT . unwrapLabeledTreeBuilderT
 -- }}}
 
-runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledVisitorT m α → m () -- {{{
-runLabeledVisitorTAndIgnoreResults = visitTreeTAndIgnoreResults . runLabeledT . unwrapLabeledVisitorT
+runLabeledTreeBuilderTAndIgnoreResults :: Monad m ⇒ LabeledTreeBuilderT m α → m () -- {{{
+runLabeledTreeBuilderTAndIgnoreResults = visitTreeTAndIgnoreResults . runLabeledT . unwrapLabeledTreeBuilderT
 -- }}}
 
 visitTreeTWithLabelsAndGatherResults :: Monad m ⇒ TreeBuilderT m α → m [Solution α] -- {{{
 visitTreeTWithLabelsAndGatherResults = visitTreeTWithStartingLabel rootLabel
 -- }}}
 
-visitTreeTWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m [Solution α] -- {{{
+visitTreeTWithStartingLabel :: Monad m ⇒ Label → TreeBuilderT m α → m [Solution α] -- {{{
 visitTreeTWithStartingLabel label =
     viewT . unwrapTreeBuilderT >=> \view →
     case view of
@@ -245,23 +245,23 @@ visitTreeWithLabels :: TreeBuilder α → [Solution α] -- {{{
 visitTreeWithLabels = runIdentity . visitTreeTWithLabelsAndGatherResults
 -- }}}
 
-visitTreeWithStartingLabel :: VisitorLabel → TreeBuilder α → [Solution α] -- {{{
+visitTreeWithStartingLabel :: Label → TreeBuilder α → [Solution α] -- {{{
 visitTreeWithStartingLabel = runIdentity .* visitTreeTWithStartingLabel
 -- }}}
 
-runLabeledVisitorUntilFirst :: LabeledVisitor α → Maybe α -- {{{
-runLabeledVisitorUntilFirst = visitTreeUntilFirst . runLabeledT . unwrapLabeledVisitorT
+runLabeledTreeBuilderUntilFirst :: LabeledTreeBuilder α → Maybe α -- {{{
+runLabeledTreeBuilderUntilFirst = visitTreeUntilFirst . runLabeledT . unwrapLabeledTreeBuilderT
 -- }}}
 
-runLabeledVisitorUntilFirstT :: Monad m ⇒ LabeledVisitorT m α → m (Maybe α) -- {{{
-runLabeledVisitorUntilFirstT = visitTreeTUntilFirst . runLabeledT . unwrapLabeledVisitorT
+runLabeledTreeBuilderUntilFirstT :: Monad m ⇒ LabeledTreeBuilderT m α → m (Maybe α) -- {{{
+runLabeledTreeBuilderUntilFirstT = visitTreeTUntilFirst . runLabeledT . unwrapLabeledTreeBuilderT
 -- }}}
 
 visitTreeTUntilFirstWithLabel :: Monad m ⇒ TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
 visitTreeTUntilFirstWithLabel = visitTreeTUntilFirstWithStartingLabel rootLabel
 -- }}}
 
-visitTreeTUntilFirstWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
+visitTreeTUntilFirstWithStartingLabel :: Monad m ⇒ Label → TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
 visitTreeTUntilFirstWithStartingLabel = go .* visitTreeTWithStartingLabel
   where
     go = liftM $ \solutions →
@@ -274,16 +274,16 @@ visitTreeUntilFirstWithLabel :: TreeBuilder α → Maybe (Solution α) -- {{{
 visitTreeUntilFirstWithLabel = runIdentity . visitTreeTUntilFirstWithLabel
 -- }}}
 
-visitTreeUntilFirstWithStartingLabel :: VisitorLabel → TreeBuilder α → Maybe (Solution α) -- {{{
+visitTreeUntilFirstWithStartingLabel :: Label → TreeBuilder α → Maybe (Solution α) -- {{{
 visitTreeUntilFirstWithStartingLabel = runIdentity .* visitTreeTUntilFirstWithStartingLabel
 -- }}}
 
-sendVisitorDownLabel :: VisitorLabel → TreeBuilder α → TreeBuilder α -- {{{
+sendVisitorDownLabel :: Label → TreeBuilder α → TreeBuilder α -- {{{
 sendVisitorDownLabel label = runIdentity . sendVisitorTDownLabel label
 -- }}}
 
-sendVisitorTDownLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m (TreeBuilderT m α) -- {{{
-sendVisitorTDownLabel (VisitorLabel label) = go root
+sendVisitorTDownLabel :: Monad m ⇒ Label → TreeBuilderT m α → m (TreeBuilderT m α) -- {{{
+sendVisitorTDownLabel (Label label) = go root
   where
     go parent visitor
       | parent == label = return visitor
@@ -304,7 +304,7 @@ sendVisitorTDownLabel (VisitorLabel label) = go root
                         (right >>= TreeBuilderT . k)
 -- }}}
 
-solutionsToMap :: Foldable t ⇒ t (Solution α) → Map VisitorLabel α -- {{{
+solutionsToMap :: Foldable t ⇒ t (Solution α) → Map Label α -- {{{
 solutionsToMap = Fold.foldl' (flip $ \(Solution label solution) → Map.insert label solution) Map.empty
 -- }}}
 

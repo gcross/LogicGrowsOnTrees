@@ -168,7 +168,7 @@ instance Arbitrary Checkpoint where -- {{{
                     ]
 -- }}}
 
-instance Arbitrary VisitorLabel where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
+instance Arbitrary Label where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
 
 instance Arbitrary Step where -- {{{
     arbitrary = oneof
@@ -914,12 +914,12 @@ tests = -- {{{
              -- }}}
             ,testProperty "obeys monoid laws" $ -- {{{
                 liftA2 (&&)
-                    (liftA2 (==) id (`mappend` (mempty :: VisitorLabel)))
-                    (liftA2 (==) id ((mempty :: VisitorLabel) `mappend`))
+                    (liftA2 (==) id (`mappend` (mempty :: Label)))
+                    (liftA2 (==) id ((mempty :: Label) `mappend`))
              -- }}}
             ]
          -- }}}
-        ,testProperty "Ord instance of VisitorLabel equivalent to Ord of branching" $ \a b → -- {{{
+        ,testProperty "Ord instance of Label equivalent to Ord of branching" $ \a b → -- {{{
             (compare `on` branchingFromLabel) a b == compare a b
          -- }}}
         ,testGroup "visitTreeWithLabels" -- {{{
@@ -948,7 +948,7 @@ tests = -- {{{
                     left ← gen (leftChildLabel label) left_size
                     right ← gen (rightChildLabel label) right_size
                     return $ left `mplus` right
-            in getAll . runLabeledVisitor <$> sized (gen rootLabel)
+            in getAll . runLabeledTreeBuilder <$> sized (gen rootLabel)
          -- }}}
         ]
      -- }}}
