@@ -108,7 +108,7 @@ instance MonadVisitorTrans m ⇒ MonadVisitorTrans (LabeledT m) where -- {{{
     runAndCacheMaybe = LabeledT . lift . runAndCacheMaybe
 -- }}}
 
-instance (Functor m, Monad m) ⇒ MonadVisitorTrans (LabeledVisitorT m) where -- {{{
+instance Monad m ⇒ MonadVisitorTrans (LabeledVisitorT m) where -- {{{
     type NestedMonadInVisitor (LabeledVisitorT m) = m
     runAndCache = LabeledVisitorT . runAndCache
     runAndCacheGuard = LabeledVisitorT . runAndCacheGuard
