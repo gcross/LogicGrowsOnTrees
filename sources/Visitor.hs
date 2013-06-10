@@ -25,13 +25,13 @@ module Visitor
 
     -- ** ...that run visitors
     -- $runners
-    , runVisitor
-    , runVisitorT
-    , runVisitorTAndIgnoreResults
-    , runVisitorUntilFirst
-    , runVisitorTUntilFirst
-    , runVisitorUntilFound
-    , runVisitorTUntilFound
+    , visitTree
+    , visitTreeT
+    , visitTreeTAndIgnoreResults
+    , visitTreeUntilFirst
+    , visitTreeTUntilFirst
+    , visitTreeUntilFound
+    , visitTreeTUntilFound
     -- ** ...that help creating visitors
     -- $builders
     , allFrom
@@ -325,92 +325,92 @@ visitor only for its side-effects.
  -}
 
 {-| Run a pure visitor until all results have been found and summed together. -}
-runVisitor ::
+visitTree ::
     Monoid α ⇒
     TreeBuilder α {-^ the (pure) visitor to run -} →
     α {-^ the sum over all results -}
-runVisitor v =
+visitTree v =
     case view (unwrapTreeBuilderT v) of
         Return !x → x
-        (Cache mx :>>= k) → maybe mempty (runVisitor . TreeBuilderT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe mempty (visitTree . TreeBuilderT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let !x = runVisitor $ left >>= TreeBuilderT . k
-                !y = runVisitor $ right >>= TreeBuilderT . k
+            let !x = visitTree $ left >>= TreeBuilderT . k
+                !y = visitTree $ right >>= TreeBuilderT . k
                 !xy = mappend x y
             in xy
         (Null :>>= _) → mempty
-{-# INLINEABLE runVisitor #-}
+{-# INLINEABLE visitTree #-}
 
 {-| Run an impure visitor until all results have been found and summed together. -}
-runVisitorT ::
+visitTreeT ::
     (Monad m, Monoid α) ⇒
     TreeBuilderT m α {-^ the (impure) visitor to run -} →
     m α {-^ the sum over all results -}
-runVisitorT = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeT = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return !x → return x
-        (Cache mx :>>= k) → mx >>= maybe (return mempty) (runVisitorT . TreeBuilderT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return mempty) (visitTreeT . TreeBuilderT . k)
         (Choice left right :>>= k) →
             liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
-                (runVisitorT $ left >>= TreeBuilderT . k)
-                (runVisitorT $ right >>= TreeBuilderT . k)
+                (visitTreeT $ left >>= TreeBuilderT . k)
+                (visitTreeT $ right >>= TreeBuilderT . k)
         (Null :>>= _) → return mempty
-{-# SPECIALIZE runVisitorT :: Monoid α ⇒ TreeBuilder α → Identity α #-}
-{-# SPECIALIZE runVisitorT :: Monoid α ⇒ TreeBuilderIO α → IO α #-}
-{-# INLINEABLE runVisitorT #-}
+{-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeBuilder α → Identity α #-}
+{-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeBuilderIO α → IO α #-}
+{-# INLINEABLE visitTreeT #-}
 
 {-| Run an impure visitor for its side-effects, ignoring all results. -}
-runVisitorTAndIgnoreResults ::
+visitTreeTAndIgnoreResults ::
     Monad m ⇒
     TreeBuilderT m α {-^ the (impure) visitor to run -} →
     m ()
-runVisitorTAndIgnoreResults = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeTAndIgnoreResults = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return _ → return ()
-        (Cache mx :>>= k) → mx >>= maybe (return ()) (runVisitorTAndIgnoreResults . TreeBuilderT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return ()) (visitTreeTAndIgnoreResults . TreeBuilderT . k)
         (Choice left right :>>= k) → do
-            runVisitorTAndIgnoreResults $ left >>= TreeBuilderT . k
-            runVisitorTAndIgnoreResults $ right >>= TreeBuilderT . k
+            visitTreeTAndIgnoreResults $ left >>= TreeBuilderT . k
+            visitTreeTAndIgnoreResults $ right >>= TreeBuilderT . k
         (Null :>>= _) → return ()
-{-# SPECIALIZE runVisitorTAndIgnoreResults :: TreeBuilder α → Identity () #-}
-{-# SPECIALIZE runVisitorTAndIgnoreResults :: TreeBuilderIO α → IO () #-}
-{-# INLINEABLE runVisitorTAndIgnoreResults #-}
+{-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeBuilder α → Identity () #-}
+{-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeBuilderIO α → IO () #-}
+{-# INLINEABLE visitTreeTAndIgnoreResults #-}
 
 {-| Run a pure visitor until a result has been found;  if a result has been
     found then it is returned wrapped in 'Just', otherwise 'Nothing' is returned.
  -}
-runVisitorUntilFirst ::
+visitTreeUntilFirst ::
     TreeBuilder α {-^ the (pure) visitor to run -} →
     Maybe α {-^ the first result found, if any -}
-runVisitorUntilFirst v =
+visitTreeUntilFirst v =
     case view (unwrapTreeBuilderT v) of
         Return x → Just x
-        (Cache mx :>>= k) → maybe Nothing (runVisitorUntilFirst . TreeBuilderT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe Nothing (visitTreeUntilFirst . TreeBuilderT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let x = runVisitorUntilFirst $ left >>= TreeBuilderT . k
-                y = runVisitorUntilFirst $ right >>= TreeBuilderT . k
+            let x = visitTreeUntilFirst $ left >>= TreeBuilderT . k
+                y = visitTreeUntilFirst $ right >>= TreeBuilderT . k
             in if isJust x then x else y
         (Null :>>= _) → Nothing
-{-# INLINEABLE runVisitorUntilFirst #-}
+{-# INLINEABLE visitTreeUntilFirst #-}
 
-{-| Same as 'runVisitorUntilFirst', but taking an impure visitor instead of a pure visitor. -}
-runVisitorTUntilFirst ::
+{-| Same as 'visitTreeUntilFirst', but taking an impure visitor instead of a pure visitor. -}
+visitTreeTUntilFirst ::
     Monad m ⇒
     TreeBuilderT m α {-^ the (impure) visitor to run -} →
     m (Maybe α) {-^ the first result found, if any -}
-runVisitorTUntilFirst = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeTUntilFirst = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return !x → return (Just x)
-        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (runVisitorTUntilFirst . TreeBuilderT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (visitTreeTUntilFirst . TreeBuilderT . k)
         (Choice left right :>>= k) → do
-            x ← runVisitorTUntilFirst $ left >>= TreeBuilderT . k
+            x ← visitTreeTUntilFirst $ left >>= TreeBuilderT . k
             if isJust x
                 then return x
-                else runVisitorTUntilFirst $ right >>= TreeBuilderT . k
+                else visitTreeTUntilFirst $ right >>= TreeBuilderT . k
         (Null :>>= _) → return Nothing
-{-# SPECIALIZE runVisitorTUntilFirst :: TreeBuilder α → Identity (Maybe α) #-}
-{-# SPECIALIZE runVisitorTUntilFirst :: TreeBuilderIO α → IO (Maybe α) #-}
-{-# INLINEABLE runVisitorTUntilFirst #-}
+{-# SPECIALIZE visitTreeTUntilFirst :: TreeBuilder α → Identity (Maybe α) #-}
+{-# SPECIALIZE visitTreeTUntilFirst :: TreeBuilderIO α → IO (Maybe α) #-}
+{-# INLINEABLE visitTreeTUntilFirst #-}
 
 {-| Run a pure visitor summing all results encountered until the current sum
     satisfies the condition provided by the function in the first argument;  if
@@ -418,7 +418,7 @@ runVisitorTUntilFirst = viewT . unwrapTreeBuilderT >=> \view →
     over all results) is returned wrapped in 'Left', otherwise the transformed
     result returned by the condition function is returned wrapped in 'Right'.
  -}
-runVisitorUntilFound ::
+visitTreeUntilFound ::
     Monoid α ⇒
     (α → Maybe β) {-^ a function that determines when the desired results have
                       been found;  'Nothing' will cause the search to continue
@@ -430,16 +430,16 @@ runVisitorUntilFound ::
                    over all results;  otherwise 'Right' with the value returned
                    by the function in the first argument
                 -}
-runVisitorUntilFound f v =
+visitTreeUntilFound f v =
     case view (unwrapTreeBuilderT v) of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
-            maybe (Left mempty) (runVisitorUntilFound f . TreeBuilderT . k)
+            maybe (Left mempty) (visitTreeUntilFound f . TreeBuilderT . k)
             $
             runIdentity mx
         (Choice left right :>>= k) →
-            let x = runVisitorUntilFound f $ left >>= TreeBuilderT . k
-                y = runVisitorUntilFound f $ right >>= TreeBuilderT . k
+            let x = visitTreeUntilFound f $ left >>= TreeBuilderT . k
+                y = visitTreeUntilFound f $ right >>= TreeBuilderT . k
             in case (x,y) of
                 (result@(Right _),_) → result
                 (_,result@(Right _)) → result
@@ -448,8 +448,8 @@ runVisitorUntilFound f v =
   where
     runThroughFilter x = maybe (Left x) Right . f $ x
 
-{-| Same as 'runVisitorUntilFound', but taking an impure visitor instead of a pure visitor. -}
-runVisitorTUntilFound ::
+{-| Same as 'visitTreeUntilFound', but taking an impure visitor instead of a pure visitor. -}
+visitTreeTUntilFound ::
     (Monad m, Monoid α) ⇒
     (α → Maybe β) {-^ a function that determines when the desired results have
                       been found;  'Nothing' will cause the search to continue
@@ -461,19 +461,19 @@ runVisitorTUntilFound ::
                        sum over all results;  otherwise 'Right' with the value
                        returned by the function in the first argument
                     -}
-runVisitorTUntilFound f = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeTUntilFound f = viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
             mx
             >>=
-            maybe (return (Left mempty)) (runVisitorTUntilFound f . TreeBuilderT . k)
+            maybe (return (Left mempty)) (visitTreeTUntilFound f . TreeBuilderT . k)
         (Choice left right :>>= k) → do
-            x ← runVisitorTUntilFound f $ left >>= TreeBuilderT . k
+            x ← visitTreeTUntilFound f $ left >>= TreeBuilderT . k
             case x of
                 result@(Right _) → return result
                 Left a → do
-                    y ← runVisitorTUntilFound f $ right >>= TreeBuilderT . k
+                    y ← visitTreeTUntilFound f $ right >>= TreeBuilderT . k
                     case y of
                         result@(Right _) → return result
                         Left b → runThroughFilter (a <> b)

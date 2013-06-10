@@ -28,12 +28,12 @@ module Visitor.Parallel.Common.Worker
     , VisitorKind(..)
     , forkWorkerThread
     , genericRunVisitor
-    , runVisitor
-    , runVisitorIO
-    , runVisitorT
-    , runVisitorUntilFirst
-    , runVisitorIOUntilFirst
-    , runVisitorTUntilFirst
+    , visitTree
+    , visitTreeIO
+    , visitTreeT
+    , visitTreeUntilFirst
+    , visitTreeIOUntilFirst
+    , visitTreeTUntilFirst
     , sendAbortRequest
     , sendProgressUpdateRequest
     , sendWorkloadStealRequest
@@ -69,7 +69,7 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
-import Visitor hiding (runVisitor,runVisitorT,runVisitorUntilFirst,runVisitorTUntilFirst)
+import Visitor hiding (visitTree,visitTreeT,visitTreeUntilFirst,visitTreeTUntilFirst)
 import Visitor.Checkpoint
 import Visitor.Parallel.Common.VisitorMode
 import Visitor.Path
@@ -401,73 +401,73 @@ getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
 getVisitorFunctions PureVisitor = VisitorFunctions{..}
   where
     walk = return .* sendVisitorDownPath
-    step = return . stepVisitorThroughCheckpoint
+    step = return . stepThroughTreeStartingFromCheckpoint
     run = id
 getVisitorFunctions IOVisitor = VisitorFunctions{..}
   where
     walk = sendVisitorTDownPath
-    step = stepVisitorTThroughCheckpoint
+    step = stepThroughTreeTStartingFromCheckpoint
     run = id
 getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
   where
     walk = sendVisitorTDownPath
-    step = stepVisitorTThroughCheckpoint
+    step = stepThroughTreeTStartingFromCheckpoint
 {-# INLINE getVisitorFunctions #-}
 -- }}}
 
-runVisitor :: Monoid α ⇒ TreeBuilder α → IO (WorkerTerminationReason α) -- {{{
-runVisitor = genericRunVisitor AllMode PureVisitor
+visitTree :: Monoid α ⇒ TreeBuilder α → IO (WorkerTerminationReason α) -- {{{
+visitTree = genericRunVisitor AllMode PureVisitor
 -- }}}
 
-runVisitorIO :: Monoid α ⇒ TreeBuilderIO α → IO (WorkerTerminationReason α) -- {{{
-runVisitorIO = genericRunVisitor AllMode IOVisitor
+visitTreeIO :: Monoid α ⇒ TreeBuilderIO α → IO (WorkerTerminationReason α) -- {{{
+visitTreeIO = genericRunVisitor AllMode IOVisitor
 -- }}}
 
-runVisitorT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → TreeBuilderT m α → IO (WorkerTerminationReason α) -- {{{
-runVisitorT = genericRunVisitor AllMode . ImpureVisitor
+visitTreeT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → TreeBuilderT m α → IO (WorkerTerminationReason α) -- {{{
+visitTreeT = genericRunVisitor AllMode . ImpureVisitor
 -- }}}
 
-runVisitorUntilFirst :: TreeBuilder α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-runVisitorUntilFirst = genericRunVisitor FirstMode PureVisitor
+visitTreeUntilFirst :: TreeBuilder α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
+visitTreeUntilFirst = genericRunVisitor FirstMode PureVisitor
 -- }}}
 
-runVisitorIOUntilFirst :: TreeBuilderIO α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-runVisitorIOUntilFirst = genericRunVisitor FirstMode IOVisitor
+visitTreeIOUntilFirst :: TreeBuilderIO α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
+visitTreeIOUntilFirst = genericRunVisitor FirstMode IOVisitor
 -- }}}
 
-runVisitorTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → TreeBuilderT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-runVisitorTUntilFirst = genericRunVisitor FirstMode . ImpureVisitor
+visitTreeTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → TreeBuilderT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
+visitTreeTUntilFirst = genericRunVisitor FirstMode . ImpureVisitor
 -- }}}
 
-runVisitorUntilFound :: -- {{{
+visitTreeUntilFound :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     TreeBuilder α →
     IO (WorkerTerminationReason (Either α (Progress β)))
-runVisitorUntilFound f =
+visitTreeUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .
     genericRunVisitor (FoundModeUsingPull f) PureVisitor
 -- }}}
 
-runVisitorIOUntilFound :: -- {{{
+visitTreeIOUntilFound :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     TreeBuilderIO α →
     IO (WorkerTerminationReason (Either α (Progress β)))
-runVisitorIOUntilFound f =
+visitTreeIOUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .
     genericRunVisitor (FoundModeUsingPull f) IOVisitor
 -- }}}
 
-runVisitorTUntilFound :: -- {{{
+visitTreeTUntilFound :: -- {{{
     (Monoid α, MonadIO m) ⇒
     (α → Maybe β) →
     (∀ η. m η → IO η) →
     TreeBuilderT m α →
     IO (WorkerTerminationReason (Either α (Progress β)))
-runVisitorTUntilFound f =
+visitTreeTUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .*
     (genericRunVisitor (FoundModeUsingPull f)

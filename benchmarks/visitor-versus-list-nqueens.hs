@@ -15,8 +15,8 @@ import qualified Visitor.Parallel.Common.Worker as Worker
 
 main = defaultMain
     [bench "list of Sum" $ nf (getWordSum . mconcat . nqueensCount) n
-    ,bench "visitor" $ nf (getWordSum . runVisitor . nqueensCount) n
-    ,bench "visitor w/ checkpointing" $ nf (getWordSum . runVisitorThroughCheckpoint Unexplored . nqueensCount) n
-    ,bench "visitor using worker" $ Worker.runVisitor (nqueensCount n)
+    ,bench "visitor" $ nf (getWordSum . visitTree . nqueensCount) n
+    ,bench "visitor w/ checkpointing" $ nf (getWordSum . visitTreeStartingFromCheckpoint Unexplored . nqueensCount) n
+    ,bench "visitor using worker" $ Worker.visitTree (nqueensCount n)
     ]
   where n = 13

@@ -51,87 +51,87 @@ entire_workload = Workload Seq.empty Unexplored
 
 -- Functions {{{
 
-runVisitorThroughWorkload :: -- {{{
+visitTreeThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
     TreeBuilder α →
     α
-runVisitorThroughWorkload =
+visitTreeThroughWorkload =
     (fst . last)
     .*
-    walkVisitorThroughWorkload
+    walkThroughTreeThroughWorkload
 -- }}}
 
-runVisitorTThroughWorkload :: -- {{{
+visitTreeTThroughWorkload :: -- {{{
     (Monad m, Monoid α) ⇒
     Workload →
     TreeBuilderT m α →
     m α
-runVisitorTThroughWorkload = gatherResults .* walkVisitorTThroughWorkload
+visitTreeTThroughWorkload = gatherResults .* walkThroughTreeTThroughWorkload
 -- }}}
 
-runVisitorUntilFirstThroughWorkload :: -- {{{
+visitTreeUntilFirstThroughWorkload :: -- {{{
     Workload →
     TreeBuilder α →
     Maybe α
-runVisitorUntilFirstThroughWorkload =
+visitTreeUntilFirstThroughWorkload =
     fetchFirstResult
     .*
-    walkVisitorUntilFirstThroughWorkload
+    walkThroughTreeUntilFirstThroughWorkload
 -- }}}
 
-runVisitorTUntilFirstThroughWorkload :: -- {{{
+visitTreeTUntilFirstThroughWorkload :: -- {{{
     Monad m ⇒
     Workload →
     TreeBuilderT m α →
     m (Maybe α)
-runVisitorTUntilFirstThroughWorkload =
+visitTreeTUntilFirstThroughWorkload =
     fetchFirstResultT
     .*
-    walkVisitorTUntilFirstThroughWorkload
+    walkThroughTreeTUntilFirstThroughWorkload
 -- }}}
 
-runVisitorUntilFoundThroughWorkload :: -- {{{
+visitTreeUntilFoundThroughWorkload :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
     TreeBuilder α →
     Either α β
-runVisitorUntilFoundThroughWorkload =
+visitTreeUntilFoundThroughWorkload =
     fetchFoundResult
     .**
-    walkVisitorUntilFoundThroughWorkload
+    walkThroughTreeUntilFoundThroughWorkload
 -- }}}
 
-runVisitorTUntilFoundThroughWorkload :: -- {{{
+visitTreeTUntilFoundThroughWorkload :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
     TreeBuilderT m α →
     m (Either α β)
-runVisitorTUntilFoundThroughWorkload =
+visitTreeTUntilFoundThroughWorkload =
     fetchFoundResultT
     .**
-    walkVisitorTUntilFoundThroughWorkload
+    walkThroughTreeTUntilFoundThroughWorkload
 -- }}}
 
-walkVisitorThroughWorkload :: -- {{{
+walkThroughTreeThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
     TreeBuilder α →
     [(α,Checkpoint)]
-walkVisitorThroughWorkload Workload{..} =
-    walkVisitorThroughCheckpoint workloadCheckpoint
+walkThroughTreeThroughWorkload Workload{..} =
+    walkThroughTreeStartingFromCheckpoint workloadCheckpoint
     .
     sendVisitorDownPath workloadPath
 -- }}}
 
-walkVisitorTThroughWorkload :: -- {{{
+walkThroughTreeTThroughWorkload :: -- {{{
     (Monad m, Monoid α) ⇒
     Workload →
     TreeBuilderT m α →
     ResultFetcher m α
-walkVisitorTThroughWorkload Workload{..} =
+walkThroughTreeTThroughWorkload Workload{..} =
     ResultFetcher
     .
     join
@@ -139,28 +139,28 @@ walkVisitorTThroughWorkload Workload{..} =
     liftM (
         fetchResult
         .
-        walkVisitorTThroughCheckpoint workloadCheckpoint
+        walkThroughTreeTStartingFromCheckpoint workloadCheckpoint
     )
     .
     sendVisitorTDownPath workloadPath
 -- }}}
 
-walkVisitorUntilFirstThroughWorkload :: -- {{{
+walkThroughTreeUntilFirstThroughWorkload :: -- {{{
     Workload →
     TreeBuilder α →
     FirstResultFetcher α
-walkVisitorUntilFirstThroughWorkload Workload{..} =
-    walkVisitorUntilFirstThroughCheckpoint workloadCheckpoint
+walkThroughTreeUntilFirstThroughWorkload Workload{..} =
+    walkThroughTreeUntilFirstStartingFromCheckpoint workloadCheckpoint
     .
     sendVisitorDownPath workloadPath
 -- }}}
 
-walkVisitorTUntilFirstThroughWorkload :: -- {{{
+walkThroughTreeTUntilFirstThroughWorkload :: -- {{{
     Monad m ⇒
     Workload →
     TreeBuilderT m α →
     FirstResultFetcherT m α
-walkVisitorTUntilFirstThroughWorkload Workload{..} =
+walkThroughTreeTUntilFirstThroughWorkload Workload{..} =
     FirstResultFetcherT
     .
     join
@@ -168,31 +168,31 @@ walkVisitorTUntilFirstThroughWorkload Workload{..} =
     liftM (
         firstResultFetcher
         .
-        walkVisitorTUntilFirstThroughCheckpoint workloadCheckpoint
+        walkThroughTreeTUntilFirstStartingFromCheckpoint workloadCheckpoint
     )
     .
     sendVisitorTDownPath workloadPath
 -- }}}
 
-walkVisitorUntilFoundThroughWorkload :: -- {{{
+walkThroughTreeUntilFoundThroughWorkload :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
     TreeBuilder α →
     FoundResultFetcher α β
-walkVisitorUntilFoundThroughWorkload f Workload{..} =
-    walkVisitorUntilFoundThroughCheckpoint f workloadCheckpoint
+walkThroughTreeUntilFoundThroughWorkload f Workload{..} =
+    walkThroughTreeUntilFoundStartingFromCheckpoint f workloadCheckpoint
     .
     sendVisitorDownPath workloadPath
 -- }}}
 
-walkVisitorTUntilFoundThroughWorkload :: -- {{{
+walkThroughTreeTUntilFoundThroughWorkload :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
     TreeBuilderT m α →
     FoundResultFetcherT m α β
-walkVisitorTUntilFoundThroughWorkload f Workload{..} =
+walkThroughTreeTUntilFoundThroughWorkload f Workload{..} =
     FoundResultFetcherT
     .
     join
@@ -200,7 +200,7 @@ walkVisitorTUntilFoundThroughWorkload f Workload{..} =
     liftM (
         foundResultFetcher
         .
-        walkVisitorTUntilFoundThroughCheckpoint f workloadCheckpoint
+        walkThroughTreeTUntilFoundStartingFromCheckpoint f workloadCheckpoint
     )
     .
     sendVisitorTDownPath workloadPath

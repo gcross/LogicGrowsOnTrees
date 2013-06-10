@@ -206,7 +206,7 @@ tests = -- {{{
                         []
             in -- }}}
             [testGroup "correct blocks" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     nqueensStart
                         (++)
                         (\solution NQueensBreak90State{..} → liftIO $
@@ -249,7 +249,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "correct symmetries" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     nqueensStart
                         (++)
                         (const . checkSymmetry n AllRotations)
@@ -261,7 +261,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "includes all solution exteriors" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . visitTreeT $ do
                     let start_exteriors = Set.fromList . map sort $ getAllSolutions n
                     solution ← nqueensBruteForceSolutions n
                     liftIO
@@ -293,7 +293,7 @@ tests = -- {{{
                     in
                     (flip execStateT Set.empty
                      .
-                     runVisitorT
+                     visitTreeT
                      $
                      nqueensStart
                         (++)
@@ -342,7 +342,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "unique" -- {{{
-                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . visitTreeT $ do
                     old_solutions ← lift get
                     solution ← sort <$>
                         getAllSolutions n
@@ -373,7 +373,7 @@ tests = -- {{{
                             (const . const . return)
             in -- }}}
             [testGroup "correct blocks" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     let break90 =
                             nqueensBreak90
                                 (++)
@@ -419,7 +419,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "correct symmetries" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     let break90 =
                             nqueensBreak90
                                 (++)
@@ -435,7 +435,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "includes all solution exteriors" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . visitTreeT $ do
                     let break90_exteriors = Set.fromList . map sort $ getAllSolutions n
                     solution ← nqueensBruteForceSolutions n
                     let maximum_layers = (n+1) `div` 2
@@ -487,7 +487,7 @@ tests = -- {{{
                                 (nqueensSearch (++) (finalizeValueWithMultiplicity 4))
                     in (flip execStateT Set.empty
                         .
-                        runVisitorT
+                        visitTreeT
                         $
                         break90 [] $ NQueensBreak90State n 0 (fromIntegral n) 0 0 0
                         :: IO (Set NQueensSolution)
@@ -500,7 +500,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "unique" -- {{{
-                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . visitTreeT $ do
                     old_solutions ← lift get
                     solution ← sort <$>
                         getAllSolutions n
@@ -530,7 +530,7 @@ tests = -- {{{
                             (const . const . return)
             in -- }}}
             [testGroup "correct blocks" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     let break180 =
                             nqueensBreak180
                                 (++)
@@ -566,7 +566,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "correct symmetries" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     let break180 =
                             nqueensBreak180
                                 (++)
@@ -584,7 +584,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "includes all solution exteriors" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . visitTreeT $ do
                     let break180_exteriors = Set.fromList . map sort $ getAllSolutions n
                     solution ← nqueensBruteForceSolutions n
                     let maximum_layers = (n+1) `div` 2
@@ -627,7 +627,7 @@ tests = -- {{{
                                 (nqueensSearch (++) (finalizeValueWithMultiplicity $ \x → [x,rotate180 n x]))
                     in (flip execStateT Set.empty
                         .
-                        runVisitorT
+                        visitTreeT
                         $
                         break180 [] $ NQueensBreak180State n 0 (fromIntegral n) 0 0 0 0 0
                         :: IO (Set NQueensSolution)
@@ -640,7 +640,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "unique" -- {{{
-                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . visitTreeT $ do
                     old_solutions ← lift get
                     solution ← sort <$>
                         getAllSolutions n
@@ -669,7 +669,7 @@ tests = -- {{{
                     search = const . const . return
             in -- }}}
             [testGroup "correct blocks" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     let callback90 solution state@NQueensBreak90State{..} =do
                             liftIO $
                               checkBlocks
@@ -729,7 +729,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "correct symmetries" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $
+                [ testCase ("n = " ++ show n) . visitTreeT $
                     let callback90 solution state = do
                             checkSymmetry n AllRotations solution
                             break90 solution state
@@ -765,7 +765,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "includes all solution exteriors" -- {{{
-                [ testCase ("n = " ++ show n) . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . visitTreeT $ do
                     let all_exteriors = Set.fromList . map sort $ getAllSolutions n
                     solution ← nqueensBruteForceSolutions n
                     let maximum_layers = (n+1) `div` 2
@@ -820,7 +820,7 @@ tests = -- {{{
                                 (finalizeValueWithSymmetry NoSymmetries)
                     in (flip execStateT Set.empty
                         .
-                        runVisitorT
+                        visitTreeT
                         $
                         nqueensStart
                             (++)
@@ -839,7 +839,7 @@ tests = -- {{{
                 ]
              -- }}}
             ,testGroup "unique" -- {{{
-                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . runVisitorT $ do
+                [ testCase ("n = " ++ show n) . flip evalStateT Set.empty . visitTreeT $ do
                     old_solutions ← lift get
                     solution ← sort <$>
                         getAllSolutions n
@@ -878,7 +878,7 @@ tests = -- {{{
                 .
                 getWordSum
                 .
-                runVisitor
+                visitTree
                 .
                 nqueensBruteForceCount
                 $
@@ -908,7 +908,7 @@ tests = -- {{{
                 .
                 getWordSum
                 .
-                runVisitor
+                visitTree
                 .
                 nqueensCCount
                 $
@@ -938,7 +938,7 @@ tests = -- {{{
                 .
                 getWordSum
                 .
-                runVisitor
+                visitTree
                 .
                 nqueensCount
                 $
@@ -953,7 +953,7 @@ tests = -- {{{
                 .
                 getWordSum
                 .
-                runVisitor
+                visitTree
                 .
                 nqueensCount
                 $

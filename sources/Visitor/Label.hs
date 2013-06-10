@@ -213,56 +213,56 @@ runLabeledT = flip runReaderT rootLabel . unwrapLabeledT
 -- }}}
 
 runLabeledVisitor :: Monoid α ⇒ LabeledVisitor α → α -- {{{
-runLabeledVisitor = runVisitor . runLabeledT . unwrapLabeledVisitorT
+runLabeledVisitor = visitTree . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
 runLabeledVisitorT :: (Monoid α,Monad m) ⇒ LabeledVisitorT m α → m α -- {{{
-runLabeledVisitorT = runVisitorT . runLabeledT . unwrapLabeledVisitorT
+runLabeledVisitorT = visitTreeT . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
 runLabeledVisitorTAndIgnoreResults :: Monad m ⇒ LabeledVisitorT m α → m () -- {{{
-runLabeledVisitorTAndIgnoreResults = runVisitorTAndIgnoreResults . runLabeledT . unwrapLabeledVisitorT
+runLabeledVisitorTAndIgnoreResults = visitTreeTAndIgnoreResults . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-runVisitorTWithLabelsAndGatherResults :: Monad m ⇒ TreeBuilderT m α → m [Solution α] -- {{{
-runVisitorTWithLabelsAndGatherResults = runVisitorTWithStartingLabel rootLabel
+visitTreeTWithLabelsAndGatherResults :: Monad m ⇒ TreeBuilderT m α → m [Solution α] -- {{{
+visitTreeTWithLabelsAndGatherResults = visitTreeTWithStartingLabel rootLabel
 -- }}}
 
-runVisitorTWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m [Solution α] -- {{{
-runVisitorTWithStartingLabel label =
+visitTreeTWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m [Solution α] -- {{{
+visitTreeTWithStartingLabel label =
     viewT . unwrapTreeBuilderT >=> \view →
     case view of
         Return x → return [Solution label x]
-        (Cache mx :>>= k) → mx >>= maybe (return []) (runVisitorTWithStartingLabel label . TreeBuilderT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return []) (visitTreeTWithStartingLabel label . TreeBuilderT . k)
         (Choice left right :>>= k) →
             liftM2 (++)
-                (runVisitorTWithStartingLabel (leftChildLabel label) $ left >>= TreeBuilderT . k)
-                (runVisitorTWithStartingLabel (rightChildLabel label) $ right >>= TreeBuilderT . k)
+                (visitTreeTWithStartingLabel (leftChildLabel label) $ left >>= TreeBuilderT . k)
+                (visitTreeTWithStartingLabel (rightChildLabel label) $ right >>= TreeBuilderT . k)
         (Null :>>= _) → return []
 -- }}}
 
-runVisitorWithLabels :: TreeBuilder α → [Solution α] -- {{{
-runVisitorWithLabels = runIdentity . runVisitorTWithLabelsAndGatherResults
+visitTreeWithLabels :: TreeBuilder α → [Solution α] -- {{{
+visitTreeWithLabels = runIdentity . visitTreeTWithLabelsAndGatherResults
 -- }}}
 
-runVisitorWithStartingLabel :: VisitorLabel → TreeBuilder α → [Solution α] -- {{{
-runVisitorWithStartingLabel = runIdentity .* runVisitorTWithStartingLabel
+visitTreeWithStartingLabel :: VisitorLabel → TreeBuilder α → [Solution α] -- {{{
+visitTreeWithStartingLabel = runIdentity .* visitTreeTWithStartingLabel
 -- }}}
 
 runLabeledVisitorUntilFirst :: LabeledVisitor α → Maybe α -- {{{
-runLabeledVisitorUntilFirst = runVisitorUntilFirst . runLabeledT . unwrapLabeledVisitorT
+runLabeledVisitorUntilFirst = visitTreeUntilFirst . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
 runLabeledVisitorUntilFirstT :: Monad m ⇒ LabeledVisitorT m α → m (Maybe α) -- {{{
-runLabeledVisitorUntilFirstT = runVisitorTUntilFirst . runLabeledT . unwrapLabeledVisitorT
+runLabeledVisitorUntilFirstT = visitTreeTUntilFirst . runLabeledT . unwrapLabeledVisitorT
 -- }}}
 
-runVisitorTUntilFirstWithLabel :: Monad m ⇒ TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
-runVisitorTUntilFirstWithLabel = runVisitorTUntilFirstWithStartingLabel rootLabel
+visitTreeTUntilFirstWithLabel :: Monad m ⇒ TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
+visitTreeTUntilFirstWithLabel = visitTreeTUntilFirstWithStartingLabel rootLabel
 -- }}}
 
-runVisitorTUntilFirstWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
-runVisitorTUntilFirstWithStartingLabel = go .* runVisitorTWithStartingLabel
+visitTreeTUntilFirstWithStartingLabel :: Monad m ⇒ VisitorLabel → TreeBuilderT m α → m (Maybe (Solution α)) -- {{{
+visitTreeTUntilFirstWithStartingLabel = go .* visitTreeTWithStartingLabel
   where
     go = liftM $ \solutions →
         case solutions of
@@ -270,12 +270,12 @@ runVisitorTUntilFirstWithStartingLabel = go .* runVisitorTWithStartingLabel
             (x:_) → Just x
 -- }}}
 
-runVisitorUntilFirstWithLabel :: TreeBuilder α → Maybe (Solution α) -- {{{
-runVisitorUntilFirstWithLabel = runIdentity . runVisitorTUntilFirstWithLabel
+visitTreeUntilFirstWithLabel :: TreeBuilder α → Maybe (Solution α) -- {{{
+visitTreeUntilFirstWithLabel = runIdentity . visitTreeTUntilFirstWithLabel
 -- }}}
 
-runVisitorUntilFirstWithStartingLabel :: VisitorLabel → TreeBuilder α → Maybe (Solution α) -- {{{
-runVisitorUntilFirstWithStartingLabel = runIdentity .* runVisitorTUntilFirstWithStartingLabel
+visitTreeUntilFirstWithStartingLabel :: VisitorLabel → TreeBuilder α → Maybe (Solution α) -- {{{
+visitTreeUntilFirstWithStartingLabel = runIdentity .* visitTreeTUntilFirstWithStartingLabel
 -- }}}
 
 sendVisitorDownLabel :: VisitorLabel → TreeBuilder α → TreeBuilder α -- {{{

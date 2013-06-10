@@ -23,30 +23,30 @@ module Visitor.Parallel.BackEnd.Threads
     , launchVisitorStartingFrom
     , requestProgressUpdate
     , requestProgressUpdateAsync
-    , runVisitor
-    , runVisitorStartingFrom
-    , runVisitorIO
-    , runVisitorIOStartingFrom
-    , runVisitorT
-    , runVisitorTStartingFrom
-    , runVisitorUntilFirst
-    , runVisitorUntilFirstStartingFrom
-    , runVisitorIOUntilFirst
-    , runVisitorIOUntilFirstStartingFrom
-    , runVisitorTUntilFirst
-    , runVisitorTUntilFirstStartingFrom
-    , runVisitorUntilFoundUsingPull
-    , runVisitorUntilFoundUsingPullStartingFrom
-    , runVisitorIOUntilFoundUsingPull
-    , runVisitorIOUntilFoundUsingPullStartingFrom
-    , runVisitorTUntilFoundUsingPull
-    , runVisitorTUntilFoundUsingPullStartingFrom
-    , runVisitorUntilFoundUsingPush
-    , runVisitorUntilFoundUsingPushStartingFrom
-    , runVisitorIOUntilFoundUsingPush
-    , runVisitorIOUntilFoundUsingPushStartingFrom
-    , runVisitorTUntilFoundUsingPush
-    , runVisitorTUntilFoundUsingPushStartingFrom
+    , visitTree
+    , visitTreeStartingFrom
+    , visitTreeIO
+    , visitTreeIOStartingFrom
+    , visitTreeT
+    , visitTreeTStartingFrom
+    , visitTreeUntilFirst
+    , visitTreeUntilFirstStartingFrom
+    , visitTreeIOUntilFirst
+    , visitTreeIOUntilFirstStartingFrom
+    , visitTreeTUntilFirst
+    , visitTreeTUntilFirstStartingFrom
+    , visitTreeUntilFoundUsingPull
+    , visitTreeUntilFoundUsingPullStartingFrom
+    , visitTreeIOUntilFoundUsingPull
+    , visitTreeIOUntilFoundUsingPullStartingFrom
+    , visitTreeTUntilFoundUsingPull
+    , visitTreeTUntilFoundUsingPullStartingFrom
+    , visitTreeUntilFoundUsingPush
+    , visitTreeUntilFoundUsingPushStartingFrom
+    , visitTreeIOUntilFoundUsingPush
+    , visitTreeIOUntilFoundUsingPushStartingFrom
+    , visitTreeTUntilFoundUsingPush
+    , visitTreeTUntilFoundUsingPushStartingFrom
     ) where
 
 -- Imports {{{
@@ -74,12 +74,12 @@ import Visitor.Parallel.Common.Supervisor.RequestQueue
 import Visitor.Parallel.Common.VisitorMode
 import Visitor.Parallel.Common.Worker as Worker
     hiding
-    (runVisitor
-    ,runVisitorIO
-    ,runVisitorT
-    ,runVisitorUntilFirst
-    ,runVisitorIOUntilFirst
-    ,runVisitorTUntilFirst
+    (visitTree
+    ,visitTreeIO
+    ,visitTreeT
+    ,visitTreeUntilFirst
+    ,visitTreeIOUntilFirst
+    ,visitTreeTUntilFirst
     )
 import Visitor.Parallel.Common.Workgroup hiding (C,unwrapC)
 -- }}}
@@ -133,157 +133,157 @@ changeNumberOfWorkersToMatchCPUs =
     liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
 -- }}}
 
-runVisitor :: -- {{{
+visitTree :: -- {{{
     Monoid result ⇒
     TreeBuilder result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitor = runVisitorStartingFrom mempty
+visitTree = visitTreeStartingFrom mempty
 -- }}}
 
-runVisitorStartingFrom :: -- {{{
+visitTreeStartingFrom :: -- {{{
     Monoid result ⇒
     Progress result →
     TreeBuilder result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorStartingFrom = launchVisitorStartingFrom AllMode PureVisitor
+visitTreeStartingFrom = launchVisitorStartingFrom AllMode PureVisitor
 -- }}}
 
-runVisitorIO :: -- {{{
+visitTreeIO :: -- {{{
     Monoid result ⇒
     TreeBuilderIO result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorIO = runVisitorIOStartingFrom mempty
+visitTreeIO = visitTreeIOStartingFrom mempty
 -- }}}
 
-runVisitorIOStartingFrom :: -- {{{
+visitTreeIOStartingFrom :: -- {{{
     Monoid result ⇒
     Progress result →
     TreeBuilderIO result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorIOStartingFrom = launchVisitorStartingFrom AllMode IOVisitor
+visitTreeIOStartingFrom = launchVisitorStartingFrom AllMode IOVisitor
 -- }}}
 
-runVisitorT :: -- {{{
+visitTreeT :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
     TreeBuilderT m result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorT = flip runVisitorTStartingFrom mempty
+visitTreeT = flip visitTreeTStartingFrom mempty
 -- }}}
 
-runVisitorTStartingFrom :: -- {{{
+visitTreeTStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
     Progress result →
     TreeBuilderT m result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
-runVisitorTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureVisitor
+visitTreeTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureVisitor
 -- }}}
 
-runVisitorUntilFirst :: -- {{{
+visitTreeUntilFirst :: -- {{{
     TreeBuilder result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
-runVisitorUntilFirst = runVisitorUntilFirstStartingFrom mempty
+visitTreeUntilFirst = visitTreeUntilFirstStartingFrom mempty
 -- }}}
 
-runVisitorUntilFirstStartingFrom :: -- {{{
+visitTreeUntilFirstStartingFrom :: -- {{{
     Checkpoint →
     TreeBuilder result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
-runVisitorUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode PureVisitor
+visitTreeUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode PureVisitor
 -- }}}
 
-runVisitorIOUntilFirst :: -- {{{
+visitTreeIOUntilFirst :: -- {{{
     TreeBuilderIO result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
-runVisitorIOUntilFirst = runVisitorIOUntilFirstStartingFrom mempty
+visitTreeIOUntilFirst = visitTreeIOUntilFirstStartingFrom mempty
 -- }}}
 
-runVisitorIOUntilFirstStartingFrom :: -- {{{
+visitTreeIOUntilFirstStartingFrom :: -- {{{
     Checkpoint →
     TreeBuilderIO result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
-runVisitorIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode IOVisitor
+visitTreeIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode IOVisitor
 -- }}}
 
-runVisitorTUntilFirst :: -- {{{
+visitTreeTUntilFirst :: -- {{{
     MonadIO m ⇒
     (∀ α. m α → IO α) →
     TreeBuilderT m result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
-runVisitorTUntilFirst = flip runVisitorTUntilFirstStartingFrom mempty
+visitTreeTUntilFirst = flip visitTreeTUntilFirstStartingFrom mempty
 -- }}}
 
-runVisitorTUntilFirstStartingFrom :: -- {{{
+visitTreeTUntilFirstStartingFrom :: -- {{{
     MonadIO m ⇒
     (∀ α. m α → IO α) →
     Checkpoint →
     TreeBuilderT m result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
-runVisitorTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
+visitTreeTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
 -- }}}
 
-runVisitorUntilFoundUsingPull :: -- {{{
+visitTreeUntilFoundUsingPull :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     TreeBuilder result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorUntilFoundUsingPull = flip runVisitorUntilFoundUsingPullStartingFrom mempty
+visitTreeUntilFoundUsingPull = flip visitTreeUntilFoundUsingPullStartingFrom mempty
 -- }}}
 
-runVisitorUntilFoundUsingPullStartingFrom :: -- {{{
+visitTreeUntilFoundUsingPullStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
     TreeBuilder result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) PureVisitor
+visitTreeUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) PureVisitor
 -- }}}
 
-runVisitorIOUntilFoundUsingPull :: -- {{{
+visitTreeIOUntilFoundUsingPull :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     TreeBuilderIO result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorIOUntilFoundUsingPull = flip runVisitorIOUntilFoundUsingPullStartingFrom mempty
+visitTreeIOUntilFoundUsingPull = flip visitTreeIOUntilFoundUsingPullStartingFrom mempty
 -- }}}
 
-runVisitorIOUntilFoundUsingPullStartingFrom :: -- {{{
+visitTreeIOUntilFoundUsingPullStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
     TreeBuilderIO result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorIOUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) IOVisitor
+visitTreeIOUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) IOVisitor
 -- }}}
 
-runVisitorTUntilFoundUsingPull :: -- {{{
+visitTreeTUntilFoundUsingPull :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
     TreeBuilderT m result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorTUntilFoundUsingPull f run = runVisitorTUntilFoundUsingPullStartingFrom f run mempty
+visitTreeTUntilFoundUsingPull f run = visitTreeTUntilFoundUsingPullStartingFrom f run mempty
 -- }}}
 
-runVisitorTUntilFoundUsingPullStartingFrom :: -- {{{
+visitTreeTUntilFoundUsingPullStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
@@ -291,58 +291,58 @@ runVisitorTUntilFoundUsingPullStartingFrom :: -- {{{
     TreeBuilderT m result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
-runVisitorTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureVisitor
+visitTreeTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureVisitor
 -- }}}
 
-runVisitorUntilFoundUsingPush :: -- {{{
+visitTreeUntilFoundUsingPush :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     TreeBuilder result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
-runVisitorUntilFoundUsingPush = flip runVisitorUntilFoundUsingPushStartingFrom mempty
+visitTreeUntilFoundUsingPush = flip visitTreeUntilFoundUsingPushStartingFrom mempty
 -- }}}
 
-runVisitorUntilFoundUsingPushStartingFrom :: -- {{{
+visitTreeUntilFoundUsingPushStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
     TreeBuilder result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
-runVisitorUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) PureVisitor
+visitTreeUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) PureVisitor
 -- }}}
 
-runVisitorIOUntilFoundUsingPush :: -- {{{
+visitTreeIOUntilFoundUsingPush :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     TreeBuilderIO result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
-runVisitorIOUntilFoundUsingPush = flip runVisitorIOUntilFoundUsingPushStartingFrom mempty
+visitTreeIOUntilFoundUsingPush = flip visitTreeIOUntilFoundUsingPushStartingFrom mempty
 -- }}}
 
-runVisitorIOUntilFoundUsingPushStartingFrom :: -- {{{
+visitTreeIOUntilFoundUsingPushStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
     TreeBuilderIO result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
-runVisitorIOUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) IOVisitor
+visitTreeIOUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) IOVisitor
 -- }}}
 
-runVisitorTUntilFoundUsingPush :: -- {{{
+visitTreeTUntilFoundUsingPush :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
     TreeBuilderT m result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
-runVisitorTUntilFoundUsingPush f run = runVisitorTUntilFoundUsingPushStartingFrom f run mempty
+visitTreeTUntilFoundUsingPush f run = visitTreeTUntilFoundUsingPushStartingFrom f run mempty
 -- }}}
 
-runVisitorTUntilFoundUsingPushStartingFrom :: -- {{{
+visitTreeTUntilFoundUsingPushStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
@@ -350,7 +350,7 @@ runVisitorTUntilFoundUsingPushStartingFrom :: -- {{{
     TreeBuilderT m result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
-runVisitorTUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) . ImpureVisitor
+visitTreeTUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) . ImpureVisitor
 -- }}}
 
 -- }}}

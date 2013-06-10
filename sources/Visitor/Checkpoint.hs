@@ -278,72 +278,72 @@ pathStepFromCursorDifferential (CacheCheckpointD cache) = CacheStep cache
 pathStepFromCursorDifferential (ChoiceCheckpointD active_branch _) = ChoiceStep active_branch
 -- }}}
 
-runVisitorThroughCheckpoint :: -- {{{
+visitTreeStartingFromCheckpoint :: -- {{{
     Monoid α ⇒
     Checkpoint →
     TreeBuilder α →
     α
-runVisitorThroughCheckpoint = runIdentity .* runVisitorTThroughCheckpoint
+visitTreeStartingFromCheckpoint = runIdentity .* visitTreeTStartingFromCheckpoint
 -- }}}
 
-runVisitorTThroughCheckpoint :: -- {{{
+visitTreeTStartingFromCheckpoint :: -- {{{
     (Monad m, Monoid α) ⇒
     Checkpoint →
     TreeBuilderT m α →
     m α
-runVisitorTThroughCheckpoint = go mempty .* initialVisitorState
+visitTreeTStartingFromCheckpoint = go mempty .* initialVisitorState
   where
     go !accum =
-        stepVisitorTThroughCheckpoint
+        stepThroughTreeTStartingFromCheckpoint
         >=>
         \(maybe_solution,maybe_new_visitor_state) →
             let new_accum = maybe id (flip mappend) maybe_solution accum
             in maybe (return new_accum) (go new_accum) maybe_new_visitor_state
-{-# INLINE runVisitorTThroughCheckpoint #-}
+{-# INLINE visitTreeTStartingFromCheckpoint #-}
 -- }}}
 
-runVisitorUntilFirstThroughCheckpoint :: -- {{{
+visitTreeUntilFirstStartingFromCheckpoint :: -- {{{
     Checkpoint →
     TreeBuilder α →
     Maybe α
-runVisitorUntilFirstThroughCheckpoint = runIdentity .* runVisitorTUntilFirstThroughCheckpoint
+visitTreeUntilFirstStartingFromCheckpoint = runIdentity .* visitTreeTUntilFirstStartingFromCheckpoint
 -- }}}
 
-runVisitorTUntilFirstThroughCheckpoint :: -- {{{
+visitTreeTUntilFirstStartingFromCheckpoint :: -- {{{
     Monad m ⇒
     Checkpoint →
     TreeBuilderT m α →
     m (Maybe α)
-runVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
+visitTreeTUntilFirstStartingFromCheckpoint = go .* initialVisitorState
   where
-    go = stepVisitorTThroughCheckpoint
+    go = stepThroughTreeTStartingFromCheckpoint
          >=>
          \(maybe_solution,maybe_new_visitor_state) →
             case maybe_solution of
                 Just _ → return maybe_solution
                 Nothing → maybe (return Nothing) go maybe_new_visitor_state
-{-# INLINE runVisitorTUntilFirstThroughCheckpoint #-}
+{-# INLINE visitTreeTUntilFirstStartingFromCheckpoint #-}
 -- }}}
 
-runVisitorUntilFoundThroughCheckpoint :: -- {{{
+visitTreeUntilFoundStartingFromCheckpoint :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Checkpoint →
     TreeBuilder α →
     Either α β
-runVisitorUntilFoundThroughCheckpoint = runIdentity .** runVisitorTUntilFoundThroughCheckpoint
+visitTreeUntilFoundStartingFromCheckpoint = runIdentity .** visitTreeTUntilFoundStartingFromCheckpoint
 -- }}}
 
-runVisitorTUntilFoundThroughCheckpoint :: -- {{{
+visitTreeTUntilFoundStartingFromCheckpoint :: -- {{{
     (Monad m, Monoid α) ⇒
     (α → Maybe β) →
     Checkpoint →
     TreeBuilderT m α →
     m (Either α β)
-runVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
+visitTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialVisitorState
   where
     go accum =
-        stepVisitorTThroughCheckpoint
+        stepThroughTreeTStartingFromCheckpoint
         >=>
         \(maybe_solution,maybe_new_visitor_state) →
             case maybe_solution of
@@ -353,20 +353,20 @@ runVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
                     in case f new_accum of
                         Nothing → maybe (return (Left new_accum)) (go new_accum) maybe_new_visitor_state
                         Just result → return (Right result)
-{-# INLINE runVisitorTUntilFoundThroughCheckpoint #-}
+{-# INLINE visitTreeTUntilFoundStartingFromCheckpoint #-}
 -- }}}
 
-stepVisitorThroughCheckpoint :: -- {{{
+stepThroughTreeStartingFromCheckpoint :: -- {{{
     VisitorState α →
     (Maybe α,Maybe (VisitorState α))
-stepVisitorThroughCheckpoint = runIdentity . stepVisitorTThroughCheckpoint
+stepThroughTreeStartingFromCheckpoint = runIdentity . stepThroughTreeTStartingFromCheckpoint
 -- }}}
 
-stepVisitorTThroughCheckpoint :: -- {{{
+stepThroughTreeTStartingFromCheckpoint :: -- {{{
     Monad m ⇒
     VisitorTState m α →
     m (Maybe α,Maybe (VisitorTState m α))
-stepVisitorTThroughCheckpoint (VisitorTState context checkpoint visitor) = case checkpoint of
+stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor) = case checkpoint of
     Explored → return (Nothing, moveUpContext)
     Unexplored → getView >>= \view → case view of
         Return x → return (Just x, moveUpContext)
@@ -418,43 +418,43 @@ stepVisitorTThroughCheckpoint (VisitorTState context checkpoint visitor) = case 
                         right_visitor
                      )
             rest_context :> _ → go rest_context
-{-# INLINE stepVisitorTThroughCheckpoint #-}
+{-# INLINE stepThroughTreeTStartingFromCheckpoint #-}
 -- }}}
 
-walkVisitor :: -- {{{
+walkThroughTree :: -- {{{
     Monoid α ⇒
     TreeBuilder α →
     [(α,Checkpoint)]
-walkVisitor = walkVisitorThroughCheckpoint Unexplored
+walkThroughTree = walkThroughTreeStartingFromCheckpoint Unexplored
 -- }}}
 
-walkVisitorT :: -- {{{
+walkThroughTreeT :: -- {{{
     (Monad m, Monoid α) ⇒
     TreeBuilderT m α →
     ResultFetcher m α
-walkVisitorT = walkVisitorTThroughCheckpoint Unexplored
-{-# INLINE walkVisitorT #-}
+walkThroughTreeT = walkThroughTreeTStartingFromCheckpoint Unexplored
+{-# INLINE walkThroughTreeT #-}
 -- }}}
 
-walkVisitorUntilFirst :: -- {{{
+walkThroughTreeUntilFirst :: -- {{{
     TreeBuilder α →
     FirstResultFetcher α
-walkVisitorUntilFirst = walkVisitorUntilFirstThroughCheckpoint Unexplored
+walkThroughTreeUntilFirst = walkThroughTreeUntilFirstStartingFromCheckpoint Unexplored
 -- }}}
 
-walkVisitorTUntilFirst :: -- {{{
+walkThroughTreeTUntilFirst :: -- {{{
     Monad m ⇒
     TreeBuilderT m α →
     FirstResultFetcherT m α
-walkVisitorTUntilFirst = walkVisitorTUntilFirstThroughCheckpoint Unexplored
+walkThroughTreeTUntilFirst = walkThroughTreeTUntilFirstStartingFromCheckpoint Unexplored
 -- }}}
 
-walkVisitorThroughCheckpoint :: -- {{{
+walkThroughTreeStartingFromCheckpoint :: -- {{{
     Monoid α ⇒
     Checkpoint →
     TreeBuilder α →
     [(α,Checkpoint)]
-walkVisitorThroughCheckpoint = go1 .* walkVisitorTThroughCheckpoint
+walkThroughTreeStartingFromCheckpoint = go1 .* walkThroughTreeTStartingFromCheckpoint
   where
     go1 (runIdentity . fetchResult → Just (next_accum,checkpoint,next_result)) = go3 next_accum checkpoint next_result
     go1 _ = [(mempty,Explored)]
@@ -465,16 +465,16 @@ walkVisitorThroughCheckpoint = go1 .* walkVisitorTThroughCheckpoint
     go3 next_accum checkpoint !next_result = (next_accum,checkpoint):go2 next_result
 -- }}}
 
-walkVisitorTThroughCheckpoint :: -- {{{
+walkThroughTreeTStartingFromCheckpoint :: -- {{{
     ∀ m α. (Monad m, Monoid α) ⇒
     Checkpoint →
     TreeBuilderT m α →
     ResultFetcher m α
-walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
+walkThroughTreeTStartingFromCheckpoint = go mempty .* initialVisitorState
   where
     go :: α → VisitorTState m α → ResultFetcher m α
     go accum visitor_state = ResultFetcher $
-        stepVisitorTThroughCheckpoint visitor_state
+        stepThroughTreeTStartingFromCheckpoint visitor_state
         >>=
         \(maybe_solution,maybe_new_state) → return $
             let !new_accum = maybe id (flip mappend) maybe_solution accum
@@ -485,14 +485,14 @@ walkVisitorTThroughCheckpoint = go mempty .* initialVisitorState
                     ,checkpointFromVisitorState new_state
                     ,go new_accum new_state
                     )
-{-# INLINE walkVisitorTThroughCheckpoint #-}
+{-# INLINE walkThroughTreeTStartingFromCheckpoint #-}
 -- }}}
 
-walkVisitorUntilFirstThroughCheckpoint :: -- {{{
+walkThroughTreeUntilFirstStartingFromCheckpoint :: -- {{{
     Checkpoint →
     TreeBuilder α →
     FirstResultFetcher α
-walkVisitorUntilFirstThroughCheckpoint = go .* initialVisitorState
+walkThroughTreeUntilFirstStartingFromCheckpoint = go .* initialVisitorState
   where
     go visitor_state
       | isJust maybe_solution = DoneFetchingFirst maybe_solution
@@ -504,18 +504,18 @@ walkVisitorUntilFirstThroughCheckpoint = go .* initialVisitorState
                     (checkpointFromVisitorState new_state)
                     (go new_state)
       where
-        (maybe_solution,maybe_new_state) = stepVisitorThroughCheckpoint visitor_state
+        (maybe_solution,maybe_new_state) = stepThroughTreeStartingFromCheckpoint visitor_state
 -- }}}
 
-walkVisitorTUntilFirstThroughCheckpoint :: -- {{{
+walkThroughTreeTUntilFirstStartingFromCheckpoint :: -- {{{
     Monad m ⇒
     Checkpoint →
     TreeBuilderT m α →
     FirstResultFetcherT m α
-walkVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
+walkThroughTreeTUntilFirstStartingFromCheckpoint = go .* initialVisitorState
   where
     go visitor_state = FirstResultFetcherT $
-        stepVisitorTThroughCheckpoint visitor_state
+        stepThroughTreeTStartingFromCheckpoint visitor_state
         >>=
         \(maybe_solution,maybe_new_state) → return $
             case maybe_solution of
@@ -529,16 +529,16 @@ walkVisitorTUntilFirstThroughCheckpoint = go .* initialVisitorState
                             (checkpointFromVisitorState new_state
                             ,go new_state
                             )
-{-# INLINE walkVisitorTUntilFirstThroughCheckpoint #-}
+{-# INLINE walkThroughTreeTUntilFirstStartingFromCheckpoint #-}
 -- }}}
 
-walkVisitorUntilFoundThroughCheckpoint :: -- {{{
+walkThroughTreeUntilFoundStartingFromCheckpoint :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Checkpoint →
     TreeBuilder α →
     FoundResultFetcher α β
-walkVisitorUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
+walkThroughTreeUntilFoundStartingFromCheckpoint f = go mempty .* initialVisitorState
   where
     go result visitor_state =
         case maybe_solution of
@@ -549,7 +549,7 @@ walkVisitorUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
                     Nothing → continueWith new_result
             Nothing → continueWith result
       where
-        (maybe_solution,maybe_new_state) = stepVisitorThroughCheckpoint visitor_state
+        (maybe_solution,maybe_new_state) = stepThroughTreeStartingFromCheckpoint visitor_state
 
         continueWith current_result =
             case maybe_new_state of
@@ -560,16 +560,16 @@ walkVisitorUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
                         (go current_result new_state)
 -- }}}
 
-walkVisitorTUntilFoundThroughCheckpoint :: -- {{{
+walkThroughTreeTUntilFoundStartingFromCheckpoint :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Checkpoint →
     TreeBuilderT m α →
     FoundResultFetcherT m α β
-walkVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
+walkThroughTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialVisitorState
   where
     go result visitor_state = FoundResultFetcherT $ do
-        (maybe_solution,maybe_new_state) ← stepVisitorTThroughCheckpoint visitor_state
+        (maybe_solution,maybe_new_state) ← stepThroughTreeTStartingFromCheckpoint visitor_state
         let continueWith current_result =
                 case maybe_new_state of
                     Nothing → (Right . Left $ current_result)
@@ -587,7 +587,7 @@ walkVisitorTUntilFoundThroughCheckpoint f = go mempty .* initialVisitorState
                     in case f new_result of
                         Just x → (Right . Right $ x)
                         Nothing → continueWith new_result
-{-# INLINE walkVisitorTUntilFoundThroughCheckpoint #-}
+{-# INLINE walkThroughTreeTUntilFoundStartingFromCheckpoint #-}
 -- }}}
 
 -- }}}

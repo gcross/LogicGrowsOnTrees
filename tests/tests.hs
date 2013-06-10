@@ -93,7 +93,7 @@ import Visitor.Parallel.Common.Supervisor.RequestQueue
 import Visitor.Utils.WordSum
 import Visitor.Workload
 import qualified Visitor.Parallel.Common.Worker as Worker
-import Visitor.Parallel.Common.Worker hiding (runVisitor,runVisitorIO,runVisitorT,runVisitorUntilFirst,runVisitorIOUntilFirst,runVisitorTUntilFirst)
+import Visitor.Parallel.Common.Worker hiding (visitTree,visitTreeIO,visitTreeT,visitTreeUntilFirst,visitTreeIOUntilFirst,visitTreeTUntilFirst)
 -- }}}
 
 -- Helpers {{{
@@ -388,7 +388,7 @@ randomCheckpointForVisitor :: Monoid α ⇒ TreeBuilder α → Gen (α,Checkpoin
 randomCheckpointForVisitor (TreeBuilderT visitor) = go1 visitor
   where
     go1 visitor = frequency
-        [(1,return (runVisitor (TreeBuilderT visitor),Explored))
+        [(1,return (visitTree (TreeBuilderT visitor),Explored))
         ,(1,return (mempty,Unexplored))
         ,(3,go2 visitor)
         ]
@@ -398,7 +398,7 @@ randomCheckpointForVisitor (TreeBuilderT visitor) = go1 visitor
         liftM2 (\(left_result,left) (right_result,right) →
             (left_result `mappend` right_result, ChoiceCheckpoint left right)
         ) (go1 (x >>= k)) (go1 (y >>= k))
-    go2 visitor = elements [(runVisitor (TreeBuilderT visitor),Explored),(mempty,Unexplored)]
+    go2 visitor = elements [(visitTree (TreeBuilderT visitor),Explored),(mempty,Unexplored)]
 -- }}}
 
 randomNullVisitorWithHooks :: ∀ m. Monad m ⇒ Gen ((Int → m ()) → TreeBuilderT m IntSet) -- {{{
@@ -574,7 +574,7 @@ main = do
 tests = -- {{{
     [testGroup "test helpers" $ -- {{{
         [testProperty "UniqueVisitor has unique results" $ \(UniqueVisitor visitor) → -- {{{
-            let results = runVisitor (fmap (:[]) visitor )
+            let results = visitTree (fmap (:[]) visitor )
             in length results == IntSet.size (mconcat results)
          -- }}}
         ]
@@ -592,26 +592,26 @@ tests = -- {{{
          -- }}}
         ,testProperty "msumBalanced" $ \(x :: [Int]) → x == msumBalanced (map return x)
         ,testProperty "msumBalancedGreedy" $ \(x :: [UUID]) → ((==) `on` sort) x (msumBalancedGreedy (map return x))
-        ,testGroup "runVisitor" -- {{{
-            [testCase "return" $ runVisitor (return [()]) @?= [()]
-            ,testCase "mzero" $ runVisitor (mzero :: TreeBuilder [()]) @?= []
-            ,testCase "mplus" $ runVisitor (return [1::Int] `mplus` return [2]) @?= [1,2]
-            ,testCase "cache" $ runVisitor (cache [42]) @?= [42::Int]
+        ,testGroup "visitTree" -- {{{
+            [testCase "return" $ visitTree (return [()]) @?= [()]
+            ,testCase "mzero" $ visitTree (mzero :: TreeBuilder [()]) @?= []
+            ,testCase "mplus" $ visitTree (return [1::Int] `mplus` return [2]) @?= [1,2]
+            ,testCase "cache" $ visitTree (cache [42]) @?= [42::Int]
             ,testGroup "cacheMaybe" -- {{{
-                [testCase "Nothing" $ runVisitor (cacheMaybe (Nothing :: Maybe [()])) @?= []
-                ,testCase "Just" $ runVisitor (cacheMaybe (Just [42])) @?= [42::Int]
+                [testCase "Nothing" $ visitTree (cacheMaybe (Nothing :: Maybe [()])) @?= []
+                ,testCase "Just" $ visitTree (cacheMaybe (Just [42])) @?= [42::Int]
                 ]
              -- }}}
             ,testGroup "cacheGuard" -- {{{
-                [testCase "True" $ runVisitor (cacheGuard False >> return [()]) @?= []
-                ,testCase "False" $ runVisitor (cacheGuard True >> return [()]) @?= [()]
+                [testCase "True" $ visitTree (cacheGuard False >> return [()]) @?= []
+                ,testCase "False" $ visitTree (cacheGuard True >> return [()]) @?= [()]
                 ]
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorT" -- {{{
+        ,testGroup "visitTreeT" -- {{{
             [testCase "Writer" $ -- {{{
-                (runWriter . runVisitorT $ do
+                (runWriter . visitTreeT $ do
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return [42::Int]
@@ -619,9 +619,9 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorTAndIgnoreResults" -- {{{
+        ,testGroup "visitTreeTAndIgnoreResults" -- {{{
             [testCase "Writer" $ -- {{{
-                (runWriter . runVisitorTAndIgnoreResults $ do
+                (runWriter . visitTreeTAndIgnoreResults $ do
                     cache [1 :: Int] >>= lift . tell
                     (lift (tell [2]) `mplus` lift (tell [3]))
                     return [42::Int]
@@ -629,45 +629,45 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorUntilFirst" -- {{{
-            [testCase "return" $ runVisitorUntilFirst (return 42) @=? (Just 42 :: Maybe Int)
-            ,testCase "null" $ runVisitorUntilFirst mzero @=? (Nothing :: Maybe Int)
-            ,testProperty "compared to runVisitor" $ \(visitor :: TreeBuilder String) →
-                runVisitorUntilFirst visitor
+        ,testGroup "visitTreeUntilFirst" -- {{{
+            [testCase "return" $ visitTreeUntilFirst (return 42) @=? (Just 42 :: Maybe Int)
+            ,testCase "null" $ visitTreeUntilFirst mzero @=? (Nothing :: Maybe Int)
+            ,testProperty "compared to visitTree" $ \(visitor :: TreeBuilder String) →
+                visitTreeUntilFirst visitor
                 ==
-                case runVisitor (fmap (:[]) visitor) of
+                case visitTree (fmap (:[]) visitor) of
                     [] → Nothing
                     (x:_) → Just x
             ]
          -- }}}
-        ,testGroup "runVisitorTUntilFirst" -- {{{
-            [testCase "return" $ runIdentity (runVisitorTUntilFirst (return 42)) @=? (Just 42 :: Maybe Int)
-            ,testCase "null" $ runIdentity(runVisitorTUntilFirst mzero) @=? (Nothing :: Maybe Int)
-            ,testProperty "compared to runVisitorT" $ \(visitor :: TreeBuilderT Identity String) →
-                runIdentity (runVisitorTUntilFirst visitor)
+        ,testGroup "visitTreeTUntilFirst" -- {{{
+            [testCase "return" $ runIdentity (visitTreeTUntilFirst (return 42)) @=? (Just 42 :: Maybe Int)
+            ,testCase "null" $ runIdentity(visitTreeTUntilFirst mzero) @=? (Nothing :: Maybe Int)
+            ,testProperty "compared to visitTreeT" $ \(visitor :: TreeBuilderT Identity String) →
+                runIdentity (visitTreeTUntilFirst visitor)
                 ==
-                case runIdentity (runVisitorT (fmap (:[]) visitor)) of
+                case runIdentity (visitTreeT (fmap (:[]) visitor)) of
                     [] → Nothing
                     (x:_) → Just x
             ]
          -- }}}
-        ,testGroup "runVisitorUntilFound" -- {{{
-            [testProperty "compared to runVisitor" $ do
+        ,testGroup "visitTreeUntilFound" -- {{{
+            [testProperty "compared to visitTree" $ do
                 UniqueVisitor visitor ← arbitrary
-                let solutions = runVisitor visitor
+                let solutions = visitTree visitor
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
                 return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
-                    runVisitorUntilFound (intSetSizeFilter threshold) visitor
+                    visitTreeUntilFound (intSetSizeFilter threshold) visitor
             ]
          -- }}}
-        ,testGroup "runVisitorTUntilFound" -- {{{
-            [testProperty "compared to runVisitorT" $ do
+        ,testGroup "visitTreeTUntilFound" -- {{{
+            [testProperty "compared to visitTreeT" $ do
                 UniqueVisitor visitor ← arbitrary
-                let solutions = runIdentity (runVisitorT visitor)
+                let solutions = runIdentity (visitTreeT visitor)
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
                 let f x | IntSet.size x < threshold = Nothing
                         | otherwise = Just (IntSet.toList x)
-                    found_solutions = runIdentity (runVisitorTUntilFound f visitor)
+                    found_solutions = runIdentity (visitTreeTUntilFound f visitor)
                 return $ case found_solutions of
                     Left x → IntSet.size x < threshold
                     Right x →
@@ -702,16 +702,16 @@ tests = -- {{{
          -- }}}
         ,testProperty "invertCheckpoint" $ \(visitor :: TreeBuilder (Set UUID)) → -- {{{
             randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
-                partial_result == runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
+                partial_result == visitTreeStartingFromCheckpoint (invertCheckpoint checkpoint) visitor
          -- }}}
         ,testGroup "Monoid instance" -- {{{
             [testProperty "product results in intersection of solutions" $ \(UniqueVisitor visitor) → do -- {{{
                 (_,checkpoint1) ← randomCheckpointForVisitor visitor
                 (_,checkpoint2) ← randomCheckpointForVisitor visitor
                 let checkpoint3 = checkpoint1 `mappend` checkpoint2
-                    solutions1 = runVisitorThroughCheckpoint checkpoint1 visitor
-                    solutions2 = runVisitorThroughCheckpoint checkpoint2 visitor
-                    solutions3 = runVisitorThroughCheckpoint checkpoint3 visitor
+                    solutions1 = visitTreeStartingFromCheckpoint checkpoint1 visitor
+                    solutions2 = visitTreeStartingFromCheckpoint checkpoint2 visitor
+                    solutions3 = visitTreeStartingFromCheckpoint checkpoint3 visitor
                 return $ solutions3 == solutions1 `IntSet.intersection` solutions2
              -- }}}
             ,testCase "throws the correct exceptions" $ -- {{{
@@ -733,125 +733,125 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorThroughCheckpoint" -- {{{
+        ,testGroup "visitTreeStartingFromCheckpoint" -- {{{
             [testProperty "completes the solution space" $ \(UniqueVisitor visitor) → -- {{{
                 randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
-                    runVisitor visitor ==
-                        mappend partial_result (runVisitorThroughCheckpoint checkpoint visitor)
+                    visitTree visitor ==
+                        mappend partial_result (visitTreeStartingFromCheckpoint checkpoint visitor)
              -- }}}
-            ,testProperty "matches walkVisitorThroughCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
+            ,testProperty "matches walkThroughTreeStartingFromCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
-                    runVisitorThroughCheckpoint checkpoint visitor
-                        @?= (fst . last $ walkVisitorThroughCheckpoint checkpoint visitor)
+                    visitTreeStartingFromCheckpoint checkpoint visitor
+                        @?= (fst . last $ walkThroughTreeStartingFromCheckpoint checkpoint visitor)
                     return True
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorUntilFirstThroughCheckpoint" -- {{{
+        ,testGroup "visitTreeUntilFirstStartingFromCheckpoint" -- {{{
             [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
                 randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
-                    let all_results = runVisitorThroughCheckpoint checkpoint visitor
-                        maybe_first_result = runVisitorUntilFirstThroughCheckpoint checkpoint visitor
+                    let all_results = visitTreeStartingFromCheckpoint checkpoint visitor
+                        maybe_first_result = visitTreeUntilFirstStartingFromCheckpoint checkpoint visitor
                     in case maybe_first_result of
                         Nothing → IntSet.null all_results
                         Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
              -- }}}
-            ,testProperty "matches walkVisitorUntilFirstThroughCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
+            ,testProperty "matches walkThroughTreeUntilFirstStartingFromCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
-                    runVisitorUntilFirstThroughCheckpoint checkpoint visitor
-                        @?= (fetchFirstResult $ walkVisitorUntilFirstThroughCheckpoint checkpoint visitor)
+                    visitTreeUntilFirstStartingFromCheckpoint checkpoint visitor
+                        @?= (fetchFirstResult $ walkThroughTreeUntilFirstStartingFromCheckpoint checkpoint visitor)
                     return True
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorTUntilFirstThroughCheckpoint" -- {{{
+        ,testGroup "visitTreeTUntilFirstStartingFromCheckpoint" -- {{{
             [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
                 randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
-                    let all_results = runVisitorThroughCheckpoint checkpoint visitor
-                        maybe_first_result = runIdentity $ runVisitorTUntilFirstThroughCheckpoint checkpoint visitor
+                    let all_results = visitTreeStartingFromCheckpoint checkpoint visitor
+                        maybe_first_result = runIdentity $ visitTreeTUntilFirstStartingFromCheckpoint checkpoint visitor
                     in case maybe_first_result of
                         Nothing → IntSet.null all_results
                         Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
              -- }}}
-            ,testProperty "matches walkVisitorTUntilFirstThroughCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
+            ,testProperty "matches walkThroughTreeTUntilFirstStartingFromCheckpoint" $ \(visitor :: TreeBuilder [Int]) → do -- {{{
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
                 morallyDubiousIOProperty $ do
-                    runIdentity (runVisitorTUntilFirstThroughCheckpoint checkpoint visitor)
-                        @?= (runIdentity . fetchFirstResultT $ walkVisitorTUntilFirstThroughCheckpoint checkpoint visitor)
+                    runIdentity (visitTreeTUntilFirstStartingFromCheckpoint checkpoint visitor)
+                        @?= (runIdentity . fetchFirstResultT $ walkThroughTreeTUntilFirstStartingFromCheckpoint checkpoint visitor)
                     return True
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorUntilFoundThroughCheckpoint" -- {{{
+        ,testGroup "visitTreeUntilFoundStartingFromCheckpoint" -- {{{
             [testProperty "bypasses the checkpoint" $ do -- {{{
                 UniqueVisitor visitor ← arbitrary
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
                 return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
-                    runVisitorUntilFoundThroughCheckpoint (intSetSizeFilter threshold) checkpoint visitor
+                    visitTreeUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint visitor
              -- }}}
-            ,testProperty "matches walkVisitorUntilFoundThroughCheckpoint" $ do -- {{{
+            ,testProperty "matches walkThroughTreeUntilFoundStartingFromCheckpoint" $ do -- {{{
                 UniqueVisitor visitor ← arbitrary
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
                 let f = intSetSizeFilter threshold
                 morallyDubiousIOProperty $ do
-                    runVisitorUntilFoundThroughCheckpoint f checkpoint visitor
-                        @?= (fetchFoundResult $ walkVisitorUntilFoundThroughCheckpoint f checkpoint visitor)
+                    visitTreeUntilFoundStartingFromCheckpoint f checkpoint visitor
+                        @?= (fetchFoundResult $ walkThroughTreeUntilFoundStartingFromCheckpoint f checkpoint visitor)
                     return True
              -- }}}
             ]
          -- }}}
-        ,testGroup "runVisitorTUntilFoundThroughCheckpoint" -- {{{
+        ,testGroup "visitTreeTUntilFoundStartingFromCheckpoint" -- {{{
             [testProperty "bypasses the checkpoint" $ do -- {{{
                 UniqueVisitor visitor ← arbitrary
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
                 return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions . runIdentity $
-                    runVisitorTUntilFoundThroughCheckpoint (intSetSizeFilter threshold) checkpoint visitor
+                    visitTreeTUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint visitor
              -- }}}
-            ,testProperty "matches walkVisitorTUntilFoundThroughCheckpoint" $ do -- {{{
+            ,testProperty "matches walkThroughTreeTUntilFoundStartingFromCheckpoint" $ do -- {{{
                 UniqueVisitor visitor ← arbitrary
                 (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = runVisitorThroughCheckpoint checkpoint visitor
+                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
                 let f = intSetSizeFilter threshold
                 morallyDubiousIOProperty $ do
-                    runIdentity (runVisitorTUntilFoundThroughCheckpoint f checkpoint visitor)
-                        @?= runIdentity (fetchFoundResultT $ walkVisitorTUntilFoundThroughCheckpoint f checkpoint visitor)
+                    runIdentity (visitTreeTUntilFoundStartingFromCheckpoint f checkpoint visitor)
+                        @?= runIdentity (fetchFoundResultT $ walkThroughTreeTUntilFoundStartingFromCheckpoint f checkpoint visitor)
                     return True
              -- }}}
             ]
          -- }}}
-        ,testGroup "walkVisitorThroughCheckpoint" -- {{{
+        ,testGroup "walkThroughTreeStartingFromCheckpoint" -- {{{
             [testProperty "matches walk down path" $ \(visitor :: TreeBuilder [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
-                runVisitor (sendVisitorDownPath path visitor)
+                visitTree (sendVisitorDownPath path visitor)
                 ==
-                (fst . last) (walkVisitorThroughCheckpoint (checkpointFromUnexploredPath path) visitor)
+                (fst . last) (walkThroughTreeStartingFromCheckpoint (checkpointFromUnexploredPath path) visitor)
              -- }}}
             ]
          -- }}}
-        ,testGroup "walkVisitor" -- {{{
+        ,testGroup "walkThroughTree" -- {{{
             [testProperty "last checkpoint is correct" $ \(v :: TreeBuilder ()) → -- {{{
-                let checkpoints = walkVisitor v
-                in unsafePerformIO $ (last checkpoints @=? (runVisitor v,Explored)) >> return True
+                let checkpoints = walkThroughTree v
+                in unsafePerformIO $ (last checkpoints @=? (visitTree v,Explored)) >> return True
              -- }}}
             ,testProperty "checkpoints accurately capture remaining search space" $ \(UniqueVisitor v) → -- {{{
                 let results_using_progressive_checkpoints =
-                        [ result `mappend` runVisitorThroughCheckpoint checkpoint v
-                        | (result,checkpoint) ← walkVisitor v
+                        [ result `mappend` visitTreeStartingFromCheckpoint checkpoint v
+                        | (result,checkpoint) ← walkThroughTree v
                         ]
                 in all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
              -- }}}
             ,testGroup "example instances" -- {{{
                 [testGroup "mplus" -- {{{
                     [testCase "mzero + mzero" $ -- {{{
-                        walkVisitor (mzero `mplus` mzero :: TreeBuilder (Maybe ()))
+                        walkThroughTree (mzero `mplus` mzero :: TreeBuilder (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -859,7 +859,7 @@ tests = -- {{{
                         ]
                      -- }}}
                     ,testCase "mzero + return" $ -- {{{
-                        walkVisitor (mzero `mplus` return (Just ()) :: TreeBuilder (Maybe ()))
+                        walkThroughTree (mzero `mplus` return (Just ()) :: TreeBuilder (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Nothing,ChoiceCheckpoint Explored Unexplored)
@@ -867,7 +867,7 @@ tests = -- {{{
                         ]
                      -- }}}
                     ,testCase "return + mzero" $ -- {{{
-                        walkVisitor (return (Just ()) `mplus` mzero :: TreeBuilder (Maybe ()))
+                        walkThroughTree (return (Just ()) `mplus` mzero :: TreeBuilder (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
                         ,(Just (),ChoiceCheckpoint Explored Unexplored)
@@ -876,8 +876,8 @@ tests = -- {{{
                      -- }}}
                     ]
                  -- }}}
-                ,testCase "mzero" $ walkVisitor (mzero :: TreeBuilder [Int]) @?= [([],Explored)]
-                ,testCase "return" $ walkVisitor (return [0] :: TreeBuilder [Int]) @?= [([0],Explored)]
+                ,testCase "mzero" $ walkThroughTree (mzero :: TreeBuilder [Int]) @?= [([],Explored)]
+                ,testCase "return" $ walkThroughTree (return [0] :: TreeBuilder [Int]) @?= [([0],Explored)]
                 ]
              -- }}}
             ]
@@ -890,7 +890,7 @@ tests = -- {{{
                 (\arity _ → arity >= 2)
                 ((liftA2 . liftA2) (==)
                     numberOfLeaves
-                    ((getWordSum . runVisitor) .* trivialTree)
+                    ((getWordSum . visitTree) .* trivialTree)
                 )
          -- }}}
         ]
@@ -922,9 +922,9 @@ tests = -- {{{
         ,testProperty "Ord instance of VisitorLabel equivalent to Ord of branching" $ \a b → -- {{{
             (compare `on` branchingFromLabel) a b == compare a b
          -- }}}
-        ,testGroup "runVisitorWithLabels" -- {{{
-            [testProperty "same result as runVisitor" $ \(visitor :: TreeBuilder [()]) →
-                 runVisitor ((:[]) <$> visitor) == (solutionResult <$> runVisitorWithLabels visitor)
+        ,testGroup "visitTreeWithLabels" -- {{{
+            [testProperty "same result as visitTree" $ \(visitor :: TreeBuilder [()]) →
+                 visitTree ((:[]) <$> visitor) == (solutionResult <$> visitTreeWithLabels visitor)
             ]
          -- }}}
         ,testGroup "sendVisitorDownLabel" -- {{{
@@ -956,7 +956,7 @@ tests = -- {{{
         [testGroup "FirstMode" -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←
-                    Threads.runVisitorIOUntilFirst
+                    Threads.visitTreeIOUntilFirst
                         (liftIO (threadDelay 1) >> endless_visitor
                          `mplus`
                          return ()
@@ -969,7 +969,7 @@ tests = -- {{{
         ,testGroup "FoundModeUsingPull" -- {{{
             [testCase "many threads with combined final result but none finish" $ do -- {{{
                 RunOutcome _ termination_reason ←
-                    Threads.runVisitorIOUntilFoundUsingPull
+                    Threads.visitTreeIOUntilFoundUsingPull
                         (\xs → if length xs == 2 then Just (sum xs) else Nothing)
                         ((return [1] `mplus` endless_visitor) `mplus` (return [2] `mplus` endless_visitor))
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 4)
@@ -982,7 +982,7 @@ tests = -- {{{
         ,testGroup "FoundModeUsingPush" -- {{{
             [testCase "two threads with combined final result but none finish" $ do -- {{{
                 RunOutcome _ termination_reason ←
-                    Threads.runVisitorIOUntilFoundUsingPush
+                    Threads.visitTreeIOUntilFoundUsingPush
                         (\xs → if length xs == 2 then Just (sum xs) else Nothing)
                         ((return [1] `mplus` endless_visitor) `mplus` (return [2] `mplus` endless_visitor))
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
@@ -1041,16 +1041,16 @@ tests = -- {{{
                         request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         result ←
-                            (Threads.runVisitorIO
+                            (Threads.visitTreeIO
                                 (insertHooks cleared_flags_tvar request_queue constructVisitor)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         let visitor = constructVisitor (const $ return ())
-                        correct_result ← runVisitorT visitor
+                        correct_result ← visitTreeT visitor
                         result @?= correct_result
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
-                            runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
-                            runVisitorTThroughCheckpoint checkpoint visitor >>= (@?= correct_result ) . mappend result
+                            visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
+                            visitTreeTStartingFromCheckpoint checkpoint visitor >>= (@?= correct_result ) . mappend result
                          )
                         return True
               in
@@ -1065,21 +1065,21 @@ tests = -- {{{
                         request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         maybe_result ←
-                            (Threads.runVisitorIOUntilFirst
+                            (Threads.visitTreeIOUntilFirst
                                 (insertHooks cleared_flags_tvar request_queue constructVisitor)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         let visitor = constructVisitor (const $ return ())
-                        correct_results ← runVisitorT visitor
+                        correct_results ← visitTreeT visitor
                         case maybe_result of
                             Nothing → assertBool "solutions were missed" (IntSet.null correct_results)
                             Just (Progress checkpoint result) → do
                                 IntSet.size result @?= 1
                                 assertBool "solution was not valid" $ result `IntSet.isSubsetOf` correct_results
-                                runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@=? result)
-                                runVisitorTThroughCheckpoint checkpoint visitor >>= (@=? IntSet.difference correct_results result)
+                                visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor >>= (@=? result)
+                                visitTreeTStartingFromCheckpoint checkpoint visitor >>= (@=? IntSet.difference correct_results result)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\checkpoint → do
-                            runVisitorTUntilFirstThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= Nothing)
+                            visitTreeTUntilFirstStartingFromCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= Nothing)
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
@@ -1094,13 +1094,13 @@ tests = -- {{{
             ,testGroup "FoundModeUsingPull" $ -- {{{
                 let runTest generator generateNoise = generator >>= \constructVisitor → morallyDubiousIOProperty $ do
                         let visitor = constructVisitor (const $ return ())
-                        correct_results ← runVisitorT visitor
+                        correct_results ← visitTreeT visitor
                         number_of_results_to_find ← randomRIO (1,2*IntSet.size correct_results)
                         cleared_flags_tvar ← newTVarIO mempty
                         request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         result ←
-                            (Threads.runVisitorIOUntilFoundUsingPull
+                            (Threads.visitTreeIOUntilFoundUsingPull
                                 (\result → if IntSet.size result >= number_of_results_to_find
                                     then Just $ IntSet.toList result
                                     else Nothing
@@ -1119,13 +1119,13 @@ tests = -- {{{
                                 assertBool "leftover result was not valid" $ leftover_result `IntSet.isSubsetOf` correct_results
                                 assertBool "final and leftover results overlap" . IntSet.null $ IntSet.intersection final_result leftover_result
                                 let all_results = final_result `mappend` leftover_result
-                                runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor
+                                visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor
                                     >>= assertEqual "both returned results together do not match all results covered by the checkpoint" all_results
-                                runVisitorTThroughCheckpoint checkpoint visitor
+                                visitTreeTStartingFromCheckpoint checkpoint visitor
                                     >>= assertEqual "all results minus return results do not match remaining results" (IntSet.difference correct_results all_results)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
-                            runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
-                            runVisitorTThroughCheckpoint checkpoint visitor >>= (@?= correct_results) . mappend result
+                            visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
+                            visitTreeTStartingFromCheckpoint checkpoint visitor >>= (@?= correct_results) . mappend result
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
@@ -1140,13 +1140,13 @@ tests = -- {{{
             ,testGroup "FoundModeUsingPush" $ -- {{{
                 let runTest generator generateNoise = generator >>= \constructVisitor → morallyDubiousIOProperty $ do
                         let visitor = constructVisitor (const $ return ())
-                        correct_results ← runVisitorT visitor
+                        correct_results ← visitTreeT visitor
                         number_of_results_to_find ← randomRIO (1,2*IntSet.size correct_results)
                         cleared_flags_tvar ← newTVarIO mempty
                         request_queue ← newTChanIO
                         progresses_ref ← newIORef []
                         result ←
-                            (Threads.runVisitorIOUntilFoundUsingPush
+                            (Threads.visitTreeIOUntilFoundUsingPush
                                 (\result → if IntSet.size result >= number_of_results_to_find
                                     then Just $ IntSet.toList result
                                     else Nothing
@@ -1162,13 +1162,13 @@ tests = -- {{{
                                 let final_result = IntSet.fromList final_result_as_list
                                 assertBool "result is at least as large as desired" $ IntSet.size final_result >= number_of_results_to_find
                                 assertBool "final result was not valid" $ final_result `IntSet.isSubsetOf` correct_results
-                                runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor
+                                visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor
                                     >>= assertEqual "both returned results together do not match all results covered by the checkpoint" final_result
-                                runVisitorTThroughCheckpoint checkpoint visitor
+                                visitTreeTStartingFromCheckpoint checkpoint visitor
                                     >>= assertEqual "all results minus return results do not match remaining results" (IntSet.difference correct_results final_result)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
-                            runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
-                            runVisitorTThroughCheckpoint checkpoint visitor >>= (@?= correct_results) . mappend result
+                            visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor >>= (@?= result)
+                            visitTreeTStartingFromCheckpoint checkpoint visitor >>= (@?= correct_results) . mappend result
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
@@ -1539,7 +1539,7 @@ tests = -- {{{
                             WorkerFinished final_progress → return final_progress
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= Explored
-                    solutions @?= runVisitor visitor
+                    solutions @?= visitTree visitor
                     return True
                  -- }}}
                 ,testProperty "with an initial path" $ \(visitor :: TreeBuilder [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
@@ -1556,7 +1556,7 @@ tests = -- {{{
                             WorkerFinished final_progress → return final_progress
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= checkpointFromInitialPath path Explored
-                    solutions @?= (runVisitor . sendVisitorDownPath path $ visitor)
+                    solutions @?= (visitTree . sendVisitorDownPath path $ visitor)
                     return True
                  -- }}}
                 ]
@@ -1570,7 +1570,7 @@ tests = -- {{{
                             WorkerAborted → error "worker aborted prematurely"
                         (IVar.nonblocking . IVar.read) termination_flag >>= assertBool "is the termination flag set?" . isJust
                         progress_updates ← reverse <$> readIORef progress_updates_ref
-                        let correct_solutions = runVisitor visitor
+                        let correct_solutions = visitTree visitor
                             update_solutions = map (progressResult . progressUpdateProgress) progress_updates
                             all_solutions = remaining_solutions:update_solutions
                         forM_ (zip [0..] all_solutions) $ \(i,solutions_1) →
@@ -1585,7 +1585,7 @@ tests = -- {{{
                         let accumulated_update_solutions = scanl1 mappend update_solutions
                         sequence_ $
                             zipWith (\accumulated_solutions (ProgressUpdate (Progress checkpoint _) remaining_workload) → do
-                                let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
+                                let remaining_solutions = visitTreeThroughWorkload remaining_workload visitor
                                 assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
                                     (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
                                 assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
@@ -1593,10 +1593,10 @@ tests = -- {{{
                                     (accumulated_solutions `mappend` remaining_solutions)
                                 assertEqual "Is the checkpoint equal to the the remaining solutions?"
                                     remaining_solutions
-                                    (runVisitorThroughCheckpoint checkpoint visitor)
+                                    (visitTreeStartingFromCheckpoint checkpoint visitor)
                                 assertEqual "Is the inverted checkpoint equal to the the accumulated solutions?"
                                     accumulated_solutions
-                                    (runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor)
+                                    (visitTreeStartingFromCheckpoint (invertCheckpoint checkpoint) visitor)
                              ) accumulated_update_solutions progress_updates
                         return True
                 in -- }}}
@@ -1661,7 +1661,7 @@ tests = -- {{{
                             WorkerAborted → error "worker aborted prematurely"
                         (IVar.nonblocking . IVar.read) termination_flag >>= assertBool "is the termination flag set?" . isJust
                         steals ← reverse <$> readIORef steals_ref
-                        let correct_solutions = runVisitor visitor
+                        let correct_solutions = visitTree visitor
                             prestolen_solutions =
                                 map (
                                     progressResult
@@ -1672,7 +1672,7 @@ tests = -- {{{
                                 ) steals
                             stolen_solutions =
                                 map (
-                                    flip runVisitorThroughWorkload visitor
+                                    flip visitTreeThroughWorkload visitor
                                     .
                                     stolenWorkload
                                 ) steals
@@ -1689,7 +1689,7 @@ tests = -- {{{
                         let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
                             accumulated_stolen_solutions = scanl1 mappend stolen_solutions
                         sequence_ $ zipWith3 (\acc_prestolen acc_stolen (StolenWorkload (ProgressUpdate (Progress checkpoint _) remaining_workload) _) → do
-                            let remaining_solutions = runVisitorThroughWorkload remaining_workload visitor
+                            let remaining_solutions = visitTreeThroughWorkload remaining_workload visitor
                                 accumulated_solutions = acc_prestolen `mappend` acc_stolen
                             assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
                                 (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
@@ -1698,7 +1698,7 @@ tests = -- {{{
                                 (accumulated_solutions `mappend` remaining_solutions)
                             assertEqual "Is the checkpoint equal to the stolen plus the remaining solutions?"
                                 (acc_stolen `mappend` remaining_solutions)
-                                (runVisitorThroughCheckpoint checkpoint visitor)
+                                (visitTreeStartingFromCheckpoint checkpoint visitor)
                          ) accumulated_prestolen_solutions accumulated_stolen_solutions steals
                         return True
                 in -- }}}
@@ -1738,10 +1738,10 @@ tests = -- {{{
                         $
                         readIORef maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
-                    runVisitorTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
-                    runVisitorTThroughCheckpoint (invertCheckpoint checkpoint) visitor_with_blocking_value >>= (prestolen_solutions @?=)
-                    correct_solutions ← runVisitorT visitor_with_blocking_value
-                    stolen_solutions ← runVisitorTThroughWorkload stolen_workload visitor_with_blocking_value
+                    visitTreeTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
+                    visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor_with_blocking_value >>= (prestolen_solutions @?=)
+                    correct_solutions ← visitTreeT visitor_with_blocking_value
+                    stolen_solutions ← visitTreeTThroughWorkload stolen_workload visitor_with_blocking_value
                     correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions]
                     assertEqual "There is no overlap between the prestolen solutions and the remaining solutions."
                         IntSet.empty
@@ -1793,22 +1793,22 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testProperty "runVisitorUntilFirst" $ \(visitor :: TreeBuilder String) → morallyDubiousIOProperty $ do -- {{{
-            termination_reason ← Worker.runVisitorUntilFirst visitor
+        ,testProperty "visitTreeUntilFirst" $ \(visitor :: TreeBuilder String) → morallyDubiousIOProperty $ do -- {{{
+            termination_reason ← Worker.visitTreeUntilFirst visitor
             case termination_reason of
-                WorkerFinished maybe_final_progress → return $ (progressResult <$> maybe_final_progress) == runVisitorUntilFirst visitor
+                WorkerFinished maybe_final_progress → return $ (progressResult <$> maybe_final_progress) == visitTreeUntilFirst visitor
                 _ → fail $ "returned " ++ show termination_reason ++ " instead of WorkerFinished"
          -- }}}
         ]
      -- }}}
     ,testGroup "Visitor.Path" -- {{{
         [testGroup "sendVisitorDownPath" -- {{{
-            [testCase "null path" $ (runVisitor . sendVisitorDownPath Seq.empty) (return [42]) @?= [42]
-            ,testCase "cache" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
-            ,testCase "cacheGuard" $ do (runVisitor . sendVisitorDownPath (Seq.singleton (CacheStep (encode ())))) (cacheGuard False >> return [42::Int]) @?= [42]
+            [testCase "null path" $ (visitTree . sendVisitorDownPath Seq.empty) (return [42]) @?= [42]
+            ,testCase "cache" $ do (visitTree . sendVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
+            ,testCase "cacheGuard" $ do (visitTree . sendVisitorDownPath (Seq.singleton (CacheStep (encode ())))) (cacheGuard False >> return [42::Int]) @?= [42]
             ,testCase "choice" $ do -- {{{
-                (runVisitor . sendVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
-                (runVisitor . sendVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]
+                (visitTree . sendVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
+                (visitTree . sendVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]
              -- }}}
             ,testGroup "errors" -- {{{
                 [testGroup "PastVisitorIsInconsistentWithPresentVisitor" -- {{{
@@ -1816,7 +1816,7 @@ tests = -- {{{
                         try (
                             evaluate
                             .
-                            runVisitor
+                            visitTree
                             $
                             sendVisitorDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: TreeBuilder [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
@@ -1825,7 +1825,7 @@ tests = -- {{{
                         try (
                             evaluate
                             .
-                            runVisitor
+                            visitTree
                             $
                             sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: TreeBuilder [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
@@ -1837,7 +1837,7 @@ tests = -- {{{
                         try (
                             evaluate
                             .
-                            runVisitor
+                            visitTree
                             $
                             sendVisitorDownPath (Seq.singleton (undefined :: Step)) (mzero :: TreeBuilder [Int])
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
@@ -1846,7 +1846,7 @@ tests = -- {{{
                         try (
                             evaluate
                             .
-                            runVisitor
+                            visitTree
                             $
                             sendVisitorDownPath (Seq.singleton (undefined :: Step)) (return (undefined :: [Int]))
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
@@ -1857,13 +1857,13 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "walkVisitorT" -- {{{
+        ,testGroup "walkThroughTreeT" -- {{{
             [testCase "cache step" $ do -- {{{
                 let (transformed_visitor,log) =
                         runWriter . sendVisitorTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
                             runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
                 log @?= []
-                (runWriter . runVisitorT $ transformed_visitor) @?= ([24],[])
+                (runWriter . visitTreeT $ transformed_visitor) @?= ([24],[])
              -- }}}
             ,testCase "choice step" $ do -- {{{
                 let (transformed_visitor,log) =
@@ -1873,7 +1873,7 @@ tests = -- {{{
                             lift (tell [4])
                             return [42]
                 log @?= [1]
-                (runWriter . runVisitorT $ transformed_visitor) @?= ([42],[3,4])
+                (runWriter . visitTreeT $ transformed_visitor) @?= ([42],[3,4])
              -- }}}
             ]
          -- }}}
