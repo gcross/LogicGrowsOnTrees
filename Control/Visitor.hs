@@ -12,25 +12,19 @@
 
 module Control.Visitor -- {{{
     (
-    -- * Visitor features
+    -- * Visitor Features
     -- $type-classes
       MonadVisitor(..)
     , MonadVisitorTrans(..)
-    -- * Visitor types
+    -- * Visitor Types
     -- $types
     , Visitor
     , VisitorIO
     , VisitorT(..)
-    -- * Rest
-    , VisitorTInstruction(..)
-    , VisitorInstruction
-    , allFrom
-    , allFromBalanced
-    , allFromBalancedGreedy
-    , between
-    , endowVisitor
-    , msumBalanced
-    , msumBalancedGreedy
+    -- * Functions
+    -- $functions
+    -- ** ...that run visitors
+    -- $runners
     , runVisitor
     , runVisitorT
     , runVisitorTAndIgnoreResults
@@ -38,6 +32,19 @@ module Control.Visitor -- {{{
     , runVisitorTUntilFirst
     , runVisitorUntilFound
     , runVisitorTUntilFound
+    -- ** ...that help creating visitors
+    -- $helpers
+    , allFrom
+    , allFromBalanced
+    , allFromBalancedGreedy
+    , between
+    , msumBalanced
+    , msumBalancedGreedy
+    -- ** ...that transform visitors
+    , endowVisitor
+    -- * Implementation
+    , VisitorTInstruction(..)
+    , VisitorInstruction
     ) where -- }}}
 
 -- Imports {{{
@@ -390,6 +397,19 @@ msumBalancedGreedy = go emptyStacks
 {-# INLINE msumBalancedGreedy #-}
 -- }}}
 
+
+
+{- $runners
+The following functions all take a visitor as input and produce the resul of
+running the visitor as output.  There are seven functions because there are two
+kinds of visitors -- pure and impure -- and three modes for running the visitor
+-- sum all result, return the first result, and gather results until they
+satisfy a condition and then return -- plus a seventh function that runs a
+visitor only for its side-effects.
+ -}
+
+
+{-| Run a pure visitor until all results have been found and summed together. -}
 runVisitor :: Monoid α ⇒ Visitor α → α -- {{{
 runVisitor v =
     case view (unwrapVisitorT v) of
@@ -404,6 +424,8 @@ runVisitor v =
 {-# INLINEABLE runVisitor #-}
 -- }}}
 
+
+{-| Run an impure visitor until all results have been found and summed together. -}
 runVisitorT :: (Monad m, Monoid α) ⇒ VisitorT m α → m α -- {{{
 runVisitorT = viewT . unwrapVisitorT >=> \view →
     case view of
@@ -419,6 +441,8 @@ runVisitorT = viewT . unwrapVisitorT >=> \view →
 {-# INLINEABLE runVisitorT #-}
 -- }}}
 
+
+{-| Run an impure visitor for its side-effects, ignoring all results. -}
 runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m () -- {{{
 runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
     case view of
@@ -433,6 +457,10 @@ runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
 {-# INLINEABLE runVisitorTAndIgnoreResults #-}
 -- }}}
 
+
+{-| Run a pure visitor until a result has been found;  if a result has been
+    found then it is returned wrapped in 'Just', otherwise 'Nothing' is returned.
+ -}
 runVisitorUntilFirst :: Visitor α → Maybe α -- {{{
 runVisitorUntilFirst v =
     case view (unwrapVisitorT v) of
@@ -446,6 +474,8 @@ runVisitorUntilFirst v =
 {-# INLINEABLE runVisitorUntilFirst #-}
 -- }}}
 
+
+{-| Same as 'runVisitorUntilFirst', but taking an impure visitor instead of a pure visitor. -}
 runVisitorTUntilFirst :: Monad m ⇒ VisitorT m α → m (Maybe α) -- {{{
 runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
     case view of
@@ -462,6 +492,13 @@ runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
 {-# INLINEABLE runVisitorTUntilFirst #-}
 -- }}}
 
+
+{-| Run a pure visitor summing all results encountered until the current sum
+    satisfies the condition provided by the function in the first argument;  if
+    the sum never satisfies the condition function then it (that is, the sum
+    over all results) is returned wrapped in 'Left', otherwise the transformed
+    result returned by the condition function is returned wrapped in 'Right'.
+ -}
 runVisitorUntilFound :: Monoid α ⇒ (α → Maybe β) → Visitor α → Either α β -- {{{
 runVisitorUntilFound f v =
     case view (unwrapVisitorT v) of
@@ -482,6 +519,8 @@ runVisitorUntilFound f v =
     runThroughFilter x = maybe (Left x) Right . f $ x
 -- }}}
 
+
+{-| Same as 'runVisitorUntilFound', but taking an impure visitor instead of a pure visitor. -}
 runVisitorTUntilFound :: (Monad m, Monoid α) ⇒ (α → Maybe β) → VisitorT m α → m (Either α β) -- {{{
 runVisitorTUntilFound f = viewT . unwrapVisitorT >=> \view →
     case view of
