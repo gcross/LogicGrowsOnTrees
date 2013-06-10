@@ -8,6 +8,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
+{-| Basic functionality for visitors. -}
 module Control.Visitor
     (
     -- * Visitor Features
@@ -21,6 +22,7 @@ module Control.Visitor
     , VisitorT(..)
     -- * Functions
     -- $functions
+
     -- ** ...that run visitors
     -- $runners
     , runVisitor
@@ -31,7 +33,7 @@ module Control.Visitor
     , runVisitorUntilFound
     , runVisitorTUntilFound
     -- ** ...that help creating visitors
-    -- $helpers
+    -- $builders
     , allFrom
     , allFromBalanced
     , allFromBalancedGreedy
@@ -136,12 +138,9 @@ class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitorTrans m wher
      -}
     runAndCacheMaybe :: Serialize x ⇒ (NestedMonadInVisitor m) (Maybe x) → m x
 
-data VisitorTInstruction m α where
-    Cache :: Serialize α ⇒ m (Maybe α) → VisitorTInstruction m α
-    Choice :: VisitorT m α → VisitorT m α → VisitorTInstruction m α
-    Null :: VisitorTInstruction m α
-
-type VisitorInstruction = VisitorTInstruction Identity
+--------------------------------------------------------------------------------
+------------------------------------- Types ------------------------------------
+--------------------------------------------------------------------------------
 
 {- $types
 The following are the visitor types that are accepted by most of he functions in
@@ -189,11 +188,9 @@ type Visitor = VisitorT Identity
 -}
 type VisitorIO = VisitorT IO
 
-
 {-| A visitor run in an arbitrary monad. -}
 newtype VisitorT m α = VisitorT { unwrapVisitorT :: ProgramT (VisitorTInstruction m) m α }
     deriving (Applicative,Functor,Monad,MonadIO)
-
 
 --------------------------------------------------------------------------------
 ---------------------------------- Instances -----------------------------------
@@ -256,7 +253,6 @@ instance MonadVisitor Maybe where
 instance Monad m ⇒ MonadVisitor (MaybeT m) where
     cacheMaybe = maybe mzero return
 
-
 {-| Like the 'MonadVisitor' isntance, this instance does no caching. -}
 instance Monad m ⇒ MonadVisitorTrans (MaybeT m) where
     type NestedMonadInVisitor (MaybeT m) = m
@@ -317,68 +313,7 @@ in various ways, functions to make it easier to build visitors, and functions
 which change the base monad of a pure visitor.
  -}
 
-allFrom :: MonadPlus m ⇒ [α] → m α
-allFrom = msum . map return
-{-# INLINE allFrom #-}
-
-
-allFromBalanced :: MonadPlus m ⇒ [α] → m α
-allFromBalanced = msumBalanced . map return
-{-# INLINE allFromBalanced #-}
-
-
-allFromBalancedGreedy :: MonadPlus m ⇒ [α] → m α
-allFromBalancedGreedy = msumBalancedGreedy . map return
-{-# INLINE allFromBalancedGreedy #-}
-
-
-between :: (Enum n, MonadPlus m) ⇒ n → n → m n
-between x y =
-    if a > b
-        then mzero
-        else go a b
-  where
-    a = fromEnum x
-    b = fromEnum y
-
-    go a b | a == b    = return (toEnum a)
-    go a b | otherwise = go a (a+d) `mplus` go (a+d+1) b
-      where
-        d = (b-a) `div` 2
-{-# INLINE between #-}
-
-
-endowVisitor :: Monad m ⇒ Visitor α → VisitorT m α
-endowVisitor visitor =
-    case view . unwrapVisitorT $ visitor of
-        Return x → return x
-        Cache mx :>>= k →
-            cacheMaybe (runIdentity mx) >>= endowVisitor . VisitorT . k
-        Choice left right :>>= k →
-            mplus
-                (endowVisitor left >>= endowVisitor . VisitorT . k)
-                (endowVisitor right >>= endowVisitor . VisitorT . k)
-        Null :>>= _ → mzero
-
-
-msumBalanced :: MonadPlus m ⇒ [m α] → m α
-msumBalanced x = go (length x) x
-  where
-    go _ []  = mzero
-    go _ [x] = x
-    go n x   = go i a `mplus` go (n-i) b
-      where
-        (a,b) = splitAt i x
-        i = n `div` 2
-{-# INLINE msumBalanced #-}
-
-
-msumBalancedGreedy :: MonadPlus m ⇒ [m α] → m α
-msumBalancedGreedy = go emptyStacks
-  where
-    go !stacks [] = mergeStacks stacks
-    go !stacks (x:xs) = go (addToStacks stacks x) xs
-{-# INLINE msumBalancedGreedy #-}
+----------------------------------- Runners ------------------------------------
 
 {- $runners
 The following functions all take a visitor as input and produce the resul of
@@ -390,7 +325,10 @@ visitor only for its side-effects.
  -}
 
 {-| Run a pure visitor until all results have been found and summed together. -}
-runVisitor :: Monoid α ⇒ Visitor α → α
+runVisitor ::
+    Monoid α ⇒
+    Visitor α {-^ the (pure) visitor to run -} →
+    α {-^ the sum over all results -}
 runVisitor v =
     case view (unwrapVisitorT v) of
         Return !x → x
@@ -404,7 +342,10 @@ runVisitor v =
 {-# INLINEABLE runVisitor #-}
 
 {-| Run an impure visitor until all results have been found and summed together. -}
-runVisitorT :: (Monad m, Monoid α) ⇒ VisitorT m α → m α
+runVisitorT ::
+    (Monad m, Monoid α) ⇒
+    VisitorT m α {-^ the (impure) visitor to run -} →
+    m α {-^ the sum over all results -}
 runVisitorT = viewT . unwrapVisitorT >=> \view →
     case view of
         Return !x → return x
@@ -419,7 +360,10 @@ runVisitorT = viewT . unwrapVisitorT >=> \view →
 {-# INLINEABLE runVisitorT #-}
 
 {-| Run an impure visitor for its side-effects, ignoring all results. -}
-runVisitorTAndIgnoreResults :: Monad m ⇒ VisitorT m α → m ()
+runVisitorTAndIgnoreResults ::
+    Monad m ⇒
+    VisitorT m α {-^ the (impure) visitor to run -} →
+    m ()
 runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
     case view of
         Return _ → return ()
@@ -435,7 +379,9 @@ runVisitorTAndIgnoreResults = viewT . unwrapVisitorT >=> \view →
 {-| Run a pure visitor until a result has been found;  if a result has been
     found then it is returned wrapped in 'Just', otherwise 'Nothing' is returned.
  -}
-runVisitorUntilFirst :: Visitor α → Maybe α
+runVisitorUntilFirst ::
+    Visitor α {-^ the (pure) visitor to run -} →
+    Maybe α {-^ the first result found, if any -}
 runVisitorUntilFirst v =
     case view (unwrapVisitorT v) of
         Return x → Just x
@@ -448,7 +394,10 @@ runVisitorUntilFirst v =
 {-# INLINEABLE runVisitorUntilFirst #-}
 
 {-| Same as 'runVisitorUntilFirst', but taking an impure visitor instead of a pure visitor. -}
-runVisitorTUntilFirst :: Monad m ⇒ VisitorT m α → m (Maybe α)
+runVisitorTUntilFirst ::
+    Monad m ⇒
+    VisitorT m α {-^ the (impure) visitor to run -} →
+    m (Maybe α) {-^ the first result found, if any -}
 runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
     case view of
         Return !x → return (Just x)
@@ -469,7 +418,18 @@ runVisitorTUntilFirst = viewT . unwrapVisitorT >=> \view →
     over all results) is returned wrapped in 'Left', otherwise the transformed
     result returned by the condition function is returned wrapped in 'Right'.
  -}
-runVisitorUntilFound :: Monoid α ⇒ (α → Maybe β) → Visitor α → Either α β
+runVisitorUntilFound ::
+    Monoid α ⇒
+    (α → Maybe β) {-^ a function that determines when the desired results have
+                      been found;  'Nothing' will cause the search to continue
+                      whereas returning 'Just' will cause the search to stop and
+                      the value in the 'Just' to be returned wrappedi n 'Right'
+                   -} →
+    Visitor α  {-^ the (pure) visitor to run -} →
+    Either α β {-^ if no acceptable results were found, then 'Left' with the sum
+                   over all results;  otherwise 'Right' with the value returned
+                   by the function in the first argument
+                -}
 runVisitorUntilFound f v =
     case view (unwrapVisitorT v) of
         Return x → runThroughFilter x
@@ -489,7 +449,18 @@ runVisitorUntilFound f v =
     runThroughFilter x = maybe (Left x) Right . f $ x
 
 {-| Same as 'runVisitorUntilFound', but taking an impure visitor instead of a pure visitor. -}
-runVisitorTUntilFound :: (Monad m, Monoid α) ⇒ (α → Maybe β) → VisitorT m α → m (Either α β)
+runVisitorTUntilFound ::
+    (Monad m, Monoid α) ⇒
+    (α → Maybe β) {-^ a function that determines when the desired results have
+                      been found;  'Nothing' will cause the search to continue
+                      whereas returning 'Just' will cause the search to stop and
+                      the value in the 'Just' to be returned wrappedi n 'Right'
+                   -} →
+    VisitorT m α {-^ the (impure) visitor to run -} →
+    m (Either α β) {-^ if no acceptable results were found, then 'Left' with the
+                       sum over all results;  otherwise 'Right' with the value
+                       returned by the function in the first argument
+                    -}
 runVisitorTUntilFound f = viewT . unwrapVisitorT >=> \view →
     case view of
         Return x → runThroughFilter x
@@ -509,3 +480,186 @@ runVisitorTUntilFound f = viewT . unwrapVisitorT >=> \view →
         (Null :>>= _) → return (Left mempty)
   where
     runThroughFilter x = return . maybe (Left x) Right . f $ x
+
+---------------------------------- Builders ------------------------------------
+
+{- $builders
+The following functions all construct a visitor from various inputs.  The
+convention for suffixes is as follows:  No suffix means that the visitor will be
+constructed in a naive fashion using 'msum', which takes each item in the list
+and 'mplus'es it with the resut of the list --- that is
+
+>   msum [a,b,c,d]
+
+is equivalent to
+
+>   a `mplus` (b `mplus` (c `mplus` (d `mplus` mzero)))
+
+The downside of this approach is that it produces an incredibly unbalanced tree,
+which will degrade parallization;  this is because if the tree is too
+unbalanced then the work-stealing algorithm will either still only a small
+piece of the remaining workload or nearly all of the remaining workload, and in
+both cases a processor will end up with a small amount of work to do before it
+finishes and immediately needs to steal another workload from someone else.
+
+Given that a balanced tree is desirable, the Balanced functions work by
+splitting the input list and then recursively processing each half;  this
+creates a search tree that is as balanced as it can be.
+
+The downside of the Balanced functions is that they need to scan the list in
+each call in order to split it in half, which adds some performance overhead.
+Thus, the BalancedGreedy functions' approach is to build up a tree in a
+`greedy` manner by doing the following at each step:  take the current element
+and put it in a new `stack`; while there exists a stack of the same size as the
+current stack, merge that stack with the current stack.  When all of the
+elements have been processed, add up all the stacks starting with the smallest
+and ending with the largest. As each of the stacks is a perfectly balanced
+subtree, and the largest stack has a size at least as great as total number of
+elements in the other stacks, the end result is a search tree where at least
+half of the elements are in a perfectly balanced subtree;  this is often close
+enough to being fully balanced tree.
+
+The odd function out in this section is 'between', which takes the lower and
+upper bound if an input range and returns a visitor that generates an optimally
+balanced search tree with all of the results in the range.
+ -}
+
+{-| Returns a visitor that generates all of the results in the input list.
+
+    WARNING:  The generated search tree will be such that every branch has one
+    element in the left branch and the remaining elements in the right branch,
+    which is heavily unbalanced and difficult to parallelize.  You should
+    consider using 'allFromBalanced' and 'allFromBalancedGreedy instead.
+ -}
+allFrom ::
+    MonadPlus m ⇒
+    [α] {-^ the list of results to generate in the visitor -} →
+    m α {-^ a completely unbalanced visitor generating the input results -}
+allFrom = msum . map return
+{-# INLINE allFrom #-}
+
+{-| Returns a visitor that generates all of the results in the input list in
+    an optimally balanced search tree.
+ -}
+allFromBalanced ::
+    MonadPlus m ⇒
+    [α] {-^ the list of results to generate in the visitor -} →
+    m α {-^ the optimally balanced visitor generating the input results -} 
+allFromBalanced = msumBalanced . map return
+{-# INLINE allFromBalanced #-}
+
+{-| Returns a visitor that generates all of the results in the input list in
+    an approximately balanced search tree with less overhead than
+    'allFromBalanced';  see the documentation for this section and/or
+    "Control.Visitor.Utils.MonadStacks" for more information about the exact
+    algorithm used.
+ -}
+allFromBalancedGreedy ::
+    MonadPlus m ⇒
+    [α] {-^ the list of results to generate in the visitor -} →
+    m α {-^ an approximately balanced visitor generating the input results -}
+allFromBalancedGreedy = msumBalancedGreedy . map return
+{-# INLINE allFromBalancedGreedy #-}
+
+{-| Returns a visitor that generates an optimally balanced search tree with all
+    of the elements in the given (inclusive) range;  if the lower bound is
+    greater than the upper bound it returns 'mzero'.
+ -}
+between ::
+    (Enum n, MonadPlus m) ⇒
+    n {-^ the (inclusive) lower bound of the range -} →
+    n {-^ the (inclusive) upper bound of the range -} →
+    m n {-^ a visitor that generates all the results in the range -}
+between x y =
+    if a > b
+        then mzero
+        else go a b
+  where
+    a = fromEnum x
+    b = fromEnum y
+
+    go a b | a == b    = return (toEnum a)
+    go a b | otherwise = go a (a+d) `mplus` go (a+d+1) b
+      where
+        d = (b-a) `div` 2
+{-# INLINE between #-}
+
+{-| Returns a visitor that merges all of the visitors in the input list using
+    an optimally balanced search tree.
+ -}
+msumBalanced ::
+    MonadPlus m ⇒
+    [m α] {-^ the list of visitors to merge -} →
+    m α {-^ the merged visitor -}
+msumBalanced x = go (length x) x
+  where
+    go _ []  = mzero
+    go _ [x] = x
+    go n x   = go i a `mplus` go (n-i) b
+      where
+        (a,b) = splitAt i x
+        i = n `div` 2
+{-# INLINE msumBalanced #-}
+
+{-| Returns a visitor that merges all of the visitors in the input list using
+    an approximately balanced search tree with less overhead than
+    'msumBalanced';  see the documentation for this section and/or
+    "Control.Visitor.Utils.MonadStacks" for more information about the exact
+    algorithm used.
+ -}
+msumBalancedGreedy ::
+    MonadPlus m ⇒
+    [m α] {-^ the list of visitors to merge -} →
+    m α {-^ the merged visitor -}
+msumBalancedGreedy = go emptyStacks
+  where
+    go !stacks [] = mergeStacks stacks
+    go !stacks (x:xs) = go (addToStacks stacks x) xs
+{-# INLINE msumBalancedGreedy #-}
+
+-------------------------------- Transformers ----------------------------------
+
+{-| This function lets you take a pure visitor and transform it into a visitor
+    with an arbitrary base monad.
+ -}
+endowVisitor ::
+    Monad m ⇒
+    Visitor α {-^ the pure visitor to transformed into an impure visitor -} → 
+    VisitorT m α {-^ the resulting impure visitor -}
+endowVisitor visitor =
+    case view . unwrapVisitorT $ visitor of
+        Return x → return x
+        Cache mx :>>= k →
+            cacheMaybe (runIdentity mx) >>= endowVisitor . VisitorT . k
+        Choice left right :>>= k →
+            mplus
+                (endowVisitor left >>= endowVisitor . VisitorT . k)
+                (endowVisitor right >>= endowVisitor . VisitorT . k)
+        Null :>>= _ → mzero
+
+
+--------------------------------------------------------------------------------
+------------------------------- Implementation ---------------------------------
+--------------------------------------------------------------------------------
+
+{- $implementation
+The implementation of the 'Visitor' types uses the approach described in
+"The Operational Monad Tutorial", published in Issue 15 of The Monad.Reader at
+<http://themonadreader.wordpress.com/>;  specifically it uses the `operational`
+package.  The idea is that a list of instructions are provided in
+'VisitorTInstruction', and then the operational monad does all the heavy lifting
+of turning them into a monad.
+ -}
+
+{-| The core of the implementation of 'Visitor' is mostly contained in this
+    type, which provides a list of primitive instructions for visitors: 'Cache',
+    which caches a value, 'Choice', which signals a branch with two choices, and
+    'Null', which indicates that there are no more results.
+ -}
+data VisitorTInstruction m α where
+    Cache :: Serialize α ⇒ m (Maybe α) → VisitorTInstruction m α
+    Choice :: VisitorT m α → VisitorT m α → VisitorTInstruction m α
+    Null :: VisitorTInstruction m α
+
+{-| This is just a convenient alias for working with pure visitors. -}
+type VisitorInstruction = VisitorTInstruction Identity
