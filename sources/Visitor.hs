@@ -600,14 +600,17 @@ msumBalanced ::
     MonadPlus m ⇒
     [m α] {-^ the list of builders to merge -} →
     m α {-^ the merged tree builder -}
-msumBalanced x = go (length x) x
+msumBalanced [] = mzero
+msumBalanced x = go 0 end
   where
-    go _ []  = mzero
-    go _ [x] = x
-    go n x   = go i a `mplus` go (n-i) b
-      where
-        (a,b) = splitAt i x
-        i = n `div` 2
+    end = length x - 1
+    array = listArray (0,end) x
+
+    go a b
+      | a == b = array ! a
+      | otherwise = go a m `mplus` go (m+1) b
+          where
+            m = (a + b) `div` 2
 {-# INLINE msumBalanced #-}
 
 {-| Returns a tree builder that merges all of the tree builders in the input
