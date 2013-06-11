@@ -400,17 +400,17 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
 getVisitorFunctions PureVisitor = VisitorFunctions{..}
   where
-    walk = return .* sendVisitorDownPath
+    walk = return .* sendTreeBuilderDownPath
     step = return . stepThroughTreeStartingFromCheckpoint
     run = id
 getVisitorFunctions IOVisitor = VisitorFunctions{..}
   where
-    walk = sendVisitorTDownPath
+    walk = sendTreeBuilderTDownPath
     step = stepThroughTreeTStartingFromCheckpoint
     run = id
 getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
   where
-    walk = sendVisitorTDownPath
+    walk = sendTreeBuilderTDownPath
     step = stepThroughTreeTStartingFromCheckpoint
 {-# INLINE getVisitorFunctions #-}
 -- }}}

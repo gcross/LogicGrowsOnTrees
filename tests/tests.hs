@@ -830,7 +830,7 @@ tests = -- {{{
          -- }}}
         ,testGroup "walkThroughTreeStartingFromCheckpoint" -- {{{
             [testProperty "matches walk down path" $ \(visitor :: TreeBuilder [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
-                visitTree (sendVisitorDownPath path visitor)
+                visitTree (sendTreeBuilderDownPath path visitor)
                 ==
                 (fst . last) (walkThroughTreeStartingFromCheckpoint (checkpointFromUnexploredPath path) visitor)
              -- }}}
@@ -933,7 +933,7 @@ tests = -- {{{
                 path ← randomPathForVisitor visitor
                 let label = labelFromPath path
                 return $
-                    sendVisitorDownPath path visitor
+                    sendTreeBuilderDownPath path visitor
                     ==
                     sendVisitorDownLabel label visitor
              -- }}}
@@ -1556,7 +1556,7 @@ tests = -- {{{
                             WorkerFinished final_progress → return final_progress
                             other → error ("terminated unsuccessfully with reason " ++ show other)
                     checkpoint @?= checkpointFromInitialPath path Explored
-                    solutions @?= (visitTree . sendVisitorDownPath path $ visitor)
+                    solutions @?= (visitTree . sendTreeBuilderDownPath path $ visitor)
                     return True
                  -- }}}
                 ]
@@ -1802,13 +1802,13 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "Visitor.Path" -- {{{
-        [testGroup "sendVisitorDownPath" -- {{{
-            [testCase "null path" $ (visitTree . sendVisitorDownPath Seq.empty) (return [42]) @?= [42]
-            ,testCase "cache" $ do (visitTree . sendVisitorDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
-            ,testCase "cacheGuard" $ do (visitTree . sendVisitorDownPath (Seq.singleton (CacheStep (encode ())))) (cacheGuard False >> return [42::Int]) @?= [42]
+        [testGroup "sendTreeBuilderDownPath" -- {{{
+            [testCase "null path" $ (visitTree . sendTreeBuilderDownPath Seq.empty) (return [42]) @?= [42]
+            ,testCase "cache" $ do (visitTree . sendTreeBuilderDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
+            ,testCase "cacheGuard" $ do (visitTree . sendTreeBuilderDownPath (Seq.singleton (CacheStep (encode ())))) (cacheGuard False >> return [42::Int]) @?= [42]
             ,testCase "choice" $ do -- {{{
-                (visitTree . sendVisitorDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
-                (visitTree . sendVisitorDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]
+                (visitTree . sendTreeBuilderDownPath (Seq.singleton (ChoiceStep LeftBranch))) (return [42] `mplus` undefined) @?= [42]
+                (visitTree . sendTreeBuilderDownPath (Seq.singleton (ChoiceStep RightBranch))) (undefined `mplus` return [42]) @?= [42]
              -- }}}
             ,testGroup "errors" -- {{{
                 [testGroup "PastVisitorIsInconsistentWithPresentVisitor" -- {{{
@@ -1818,7 +1818,7 @@ tests = -- {{{
                             .
                             visitTree
                             $
-                            sendVisitorDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: TreeBuilder [Int])
+                            sendTreeBuilderDownPath (Seq.singleton (CacheStep undefined :: Step)) (undefined `mplus` undefined :: TreeBuilder [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
                      -- }}}
                     ,testCase "choice step with cache" $ -- {{{
@@ -1827,7 +1827,7 @@ tests = -- {{{
                             .
                             visitTree
                             $
-                            sendVisitorDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: TreeBuilder [Int])
+                            sendTreeBuilderDownPath (Seq.singleton (ChoiceStep undefined :: Step)) (cache undefined :: TreeBuilder [Int])
                         ) >>= (@?= Left PastVisitorIsInconsistentWithPresentVisitor)
                      -- }}}
                     ]
@@ -1839,7 +1839,7 @@ tests = -- {{{
                             .
                             visitTree
                             $
-                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (mzero :: TreeBuilder [Int])
+                            sendTreeBuilderDownPath (Seq.singleton (undefined :: Step)) (mzero :: TreeBuilder [Int])
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
                      -- }}}
                     ,testCase "return" $ -- {{{
@@ -1848,7 +1848,7 @@ tests = -- {{{
                             .
                             visitTree
                             $
-                            sendVisitorDownPath (Seq.singleton (undefined :: Step)) (return (undefined :: [Int]))
+                            sendTreeBuilderDownPath (Seq.singleton (undefined :: Step)) (return (undefined :: [Int]))
                         ) >>= (@?= Left VisitorTerminatedBeforeEndOfWalk)
                      -- }}}
                     ]
@@ -1860,14 +1860,14 @@ tests = -- {{{
         ,testGroup "walkThroughTreeT" -- {{{
             [testCase "cache step" $ do -- {{{
                 let (transformed_visitor,log) =
-                        runWriter . sendVisitorTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
+                        runWriter . sendTreeBuilderTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
                             runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
                 log @?= []
                 (runWriter . visitTreeT $ transformed_visitor) @?= ([24],[])
              -- }}}
             ,testCase "choice step" $ do -- {{{
                 let (transformed_visitor,log) =
-                        runWriter . sendVisitorTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
+                        runWriter . sendTreeBuilderTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
                             lift (tell [1])
                             (lift (tell [2]) `mplus` lift (tell [3]))
                             lift (tell [4])

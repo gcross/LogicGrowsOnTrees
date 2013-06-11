@@ -123,7 +123,7 @@ walkThroughTreeThroughWorkload :: -- {{{
 walkThroughTreeThroughWorkload Workload{..} =
     walkThroughTreeStartingFromCheckpoint workloadCheckpoint
     .
-    sendVisitorDownPath workloadPath
+    sendTreeBuilderDownPath workloadPath
 -- }}}
 
 walkThroughTreeTThroughWorkload :: -- {{{
@@ -142,7 +142,7 @@ walkThroughTreeTThroughWorkload Workload{..} =
         walkThroughTreeTStartingFromCheckpoint workloadCheckpoint
     )
     .
-    sendVisitorTDownPath workloadPath
+    sendTreeBuilderTDownPath workloadPath
 -- }}}
 
 walkThroughTreeUntilFirstThroughWorkload :: -- {{{
@@ -152,7 +152,7 @@ walkThroughTreeUntilFirstThroughWorkload :: -- {{{
 walkThroughTreeUntilFirstThroughWorkload Workload{..} =
     walkThroughTreeUntilFirstStartingFromCheckpoint workloadCheckpoint
     .
-    sendVisitorDownPath workloadPath
+    sendTreeBuilderDownPath workloadPath
 -- }}}
 
 walkThroughTreeTUntilFirstThroughWorkload :: -- {{{
@@ -171,7 +171,7 @@ walkThroughTreeTUntilFirstThroughWorkload Workload{..} =
         walkThroughTreeTUntilFirstStartingFromCheckpoint workloadCheckpoint
     )
     .
-    sendVisitorTDownPath workloadPath
+    sendTreeBuilderTDownPath workloadPath
 -- }}}
 
 walkThroughTreeUntilFoundThroughWorkload :: -- {{{
@@ -183,7 +183,7 @@ walkThroughTreeUntilFoundThroughWorkload :: -- {{{
 walkThroughTreeUntilFoundThroughWorkload f Workload{..} =
     walkThroughTreeUntilFoundStartingFromCheckpoint f workloadCheckpoint
     .
-    sendVisitorDownPath workloadPath
+    sendTreeBuilderDownPath workloadPath
 -- }}}
 
 walkThroughTreeTUntilFoundThroughWorkload :: -- {{{
@@ -203,7 +203,7 @@ walkThroughTreeTUntilFoundThroughWorkload f Workload{..} =
         walkThroughTreeTUntilFoundStartingFromCheckpoint f workloadCheckpoint
     )
     .
-    sendVisitorTDownPath workloadPath
+    sendTreeBuilderTDownPath workloadPath
 -- }}}
 
 workloadDepth :: Workload → Int -- {{{

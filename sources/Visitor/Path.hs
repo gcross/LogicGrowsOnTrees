@@ -60,12 +60,12 @@ oppositeBranchChoiceOf LeftBranch = RightBranch
 oppositeBranchChoiceOf RightBranch = LeftBranch
 -- }}}
 
-sendVisitorDownPath :: Path → TreeBuilder α → TreeBuilder α -- {{{
-sendVisitorDownPath path = runIdentity . sendVisitorTDownPath path
+sendTreeBuilderDownPath :: Path → TreeBuilder α → TreeBuilder α -- {{{
+sendTreeBuilderDownPath path = runIdentity . sendTreeBuilderTDownPath path
 -- }}}
 
-sendVisitorTDownPath :: Monad m ⇒ Path → TreeBuilderT m α → m (TreeBuilderT m α) -- {{{
-sendVisitorTDownPath path visitor =
+sendTreeBuilderTDownPath :: Monad m ⇒ Path → TreeBuilderT m α → m (TreeBuilderT m α) -- {{{
+sendTreeBuilderTDownPath path visitor =
     case viewl path of
         EmptyL → return visitor
         step :< tail → do
@@ -76,11 +76,11 @@ sendVisitorTDownPath path visitor =
                 (Null :>>= _,_) →
                     throw VisitorTerminatedBeforeEndOfWalk
                 (Cache _ :>>= k,CacheStep cache) →
-                    sendVisitorTDownPath tail $ either error (TreeBuilderT . k) (decode cache)
+                    sendTreeBuilderTDownPath tail $ either error (TreeBuilderT . k) (decode cache)
                 (Choice left _ :>>= k,ChoiceStep LeftBranch) →
-                    sendVisitorTDownPath tail (left >>= TreeBuilderT . k)
+                    sendTreeBuilderTDownPath tail (left >>= TreeBuilderT . k)
                 (Choice _ right :>>= k,ChoiceStep RightBranch) →
-                    sendVisitorTDownPath tail (right >>= TreeBuilderT . k)
+                    sendTreeBuilderTDownPath tail (right >>= TreeBuilderT . k)
                 _ → throw PastVisitorIsInconsistentWithPresentVisitor
 -- }}}
 
