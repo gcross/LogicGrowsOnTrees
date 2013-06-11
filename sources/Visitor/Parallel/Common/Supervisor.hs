@@ -76,7 +76,6 @@ import System.Log.Logger.TH
 
 import Visitor.Checkpoint (Progress)
 import Visitor.Parallel.Common.Worker (ProgressUpdateFor,StolenWorkloadFor)
-
 import qualified Visitor.Parallel.Common.Supervisor.Implementation as Implementation
 import Visitor.Parallel.Common.Supervisor.Implementation -- {{{
     ( AbortMonad()
