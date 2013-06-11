@@ -155,9 +155,9 @@ Benchmark balancers
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing
 
-Benchmark visitor-versus-list-trivial-tree
+Benchmark tree-builder-versus-list-trivial-tree
     Type: exitcode-stdio-1.0
-    Main-is: visitor-versus-list-trivial-tree.hs
+    Main-is: tree-builder-versus-list-trivial-tree.hs
     Hs-source-dirs: benchmarks
     Build-depends:
         Visitor,
@@ -166,9 +166,9 @@ Benchmark visitor-versus-list-trivial-tree
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing
 
-Benchmark visitor-versus-list-nqueens
+Benchmark tree-builder-versus-list-nqueens
     Type: exitcode-stdio-1.0
-    Main-is: visitor-versus-list-nqueens.hs
+    Main-is: tree-builder-versus-list-nqueens.hs
     Hs-source-dirs: benchmarks
     Build-depends:
         Visitor,
