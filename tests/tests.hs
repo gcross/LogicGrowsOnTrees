@@ -585,6 +585,8 @@ tests = -- {{{
             ]
          -- }}}
         ,testProperty "allFrom" $ \(x :: [Int]) → x == allFrom x
+        ,testProperty "allFromBalanced" $ \(x :: [Int]) → x == allFromBalanced x
+        ,testProperty "allFromBalancedGreedy" $ \(x :: [Int]) → ((==) `on` sort) x (allFromBalancedGreedy x)
         ,testProperty "between" $ do -- {{{
             x ← choose ( 0,100) :: Gen Int
             y ← choose (50,100)
