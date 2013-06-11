@@ -73,9 +73,10 @@ Library
         Visitor.Utils.Handle
         Visitor.Utils.IntSum
         Visitor.Utils.MonadStacks
-        Visitor.Utils.Word_
         Visitor.Utils.WordSum
         Visitor.Workload
+    Other-modules:
+        Visitor.Utils.Word_
     HS-source-dirs: sources
     C-sources: c-sources/queens.c
     if flag(warnings)

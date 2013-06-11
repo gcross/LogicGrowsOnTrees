@@ -1,22 +1,20 @@
--- Language extensions {{{
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
+{-| This module provides a temporary 'ArgVal' instance for 'Word' (via a newtype
+    wrapper 'Word_' until) 'cmdtheline' releases a new version that includes an
+    instance for 'Word' itself, after which this module will be dropped.
+ -}
 module Visitor.Utils.Word_ where
 
--- Imports {{{
 import Data.Word
 import System.Console.CmdTheLine
 import Text.PrettyPrint
--- }}}
 
--- Types {{{
+{-| Newtype wrapper used to indirectly provide an 'ArgVal' instance for Word. -}
 newtype Word_ = Word_ { getWord :: Word } deriving (Eq,Show)
--- }}}
 
--- Instances {{{
-instance ArgVal Word_ where -- {{{
+instance ArgVal Word_ where
     converter = (parseWord,prettyWord)
       where
         (parseInt,prettyInt) = converter
@@ -29,8 +27,6 @@ instance ArgVal Word_ where -- {{{
             .
             parseInt
         prettyWord = prettyInt . fromIntegral . getWord
--- }}}
-instance ArgVal (Maybe Word_) where -- {{{
+
+instance ArgVal (Maybe Word_) where
     converter = just
--- }}}
--- }}}
