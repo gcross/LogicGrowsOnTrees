@@ -97,6 +97,7 @@ import Visitor.Parallel.Common.Supervisor.Implementation -- {{{
     , time_spent_in_supervisor_monad
     ) -- }}}
 import Visitor.Parallel.Common.VisitorMode
+import Visitor.Path (WalkError(..))
 -- }}}
 
 -- Logging Functions {{{
@@ -244,10 +245,17 @@ receiveStolenWorkload = wrapIntoSupervisorMonad .* Implementation.receiveStolenW
 -- }}}
 
 receiveWorkerFailure :: SupervisorFullConstraint worker_id m ⇒ worker_id → String → SupervisorMonad visitor_mode worker_id m α -- {{{
-receiveWorkerFailure =
-    (wrapIntoSupervisorMonad . Implementation.abortSupervisorWithReason)
-    .*
-    SupervisorFailure
+receiveWorkerFailure worker_id message =
+    wrapIntoSupervisorMonad
+    .
+    Implementation.abortSupervisorWithReason
+    .
+    SupervisorFailure worker_id
+    $
+    if message == show VisitorTerminatedBeforeEndOfWalk ||
+       message == show PastVisitorIsInconsistentWithPresentVisitor
+        then "The given checkpoint is not consistent with the given tree builder."
+        else message
 -- }}}
 
 receiveWorkerFinished :: -- {{{
