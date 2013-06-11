@@ -35,16 +35,16 @@ instance Exception WalkError
 
 -- Types {{{
 
-data Branch = -- {{{
+data BranchChoice = -- {{{
     LeftBranch
   | RightBranch
   deriving (Eq,Ord,Read,Show)
-$( derive makeSerialize ''Branch )
+$( derive makeSerialize ''BranchChoice )
 -- }}}
 
 data Step = -- {{{
     CacheStep ByteString
- |  ChoiceStep Branch
+ |  ChoiceStep BranchChoice
  deriving (Eq,Ord,Show)
 $( derive makeSerialize ''Step )
 -- }}}
@@ -55,9 +55,9 @@ type Path = Seq Step
 
 -- Functions {{{
 
-oppositeBranchOf :: Branch → Branch -- {{{
-oppositeBranchOf LeftBranch = RightBranch
-oppositeBranchOf RightBranch = LeftBranch
+oppositeBranchChoiceOf :: BranchChoice → BranchChoice -- {{{
+oppositeBranchChoiceOf LeftBranch = RightBranch
+oppositeBranchChoiceOf RightBranch = LeftBranch
 -- }}}
 
 sendVisitorDownPath :: Path → TreeBuilder α → TreeBuilder α -- {{{

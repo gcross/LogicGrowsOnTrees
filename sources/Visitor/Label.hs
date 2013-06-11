@@ -133,7 +133,7 @@ applyCheckpointCursorToLabel cursor =
             .
             case step of
                 CacheCheckpointD _ → id
-                ChoiceCheckpointD active_branch _ → labelTransformerForBranch active_branch
+                ChoiceCheckpointD active_branch _ → labelTransformerForBranchChoice active_branch
 -- }}}
 
 applyContextToLabel :: Context m α → Label → Label -- {{{
@@ -157,11 +157,11 @@ applyPathToLabel path =
             applyPathToLabel rest
             .
             case step of
-                ChoiceStep active_branch → labelTransformerForBranch active_branch
+                ChoiceStep active_branch → labelTransformerForBranchChoice active_branch
                 CacheStep _ → id
 -- }}}
 
-branchingFromLabel :: Label → [Branch] -- {{{
+branchingFromLabel :: Label → [BranchChoice] -- {{{
 branchingFromLabel = go root . unwrapLabel
   where
     go current_label original_label =
@@ -171,8 +171,8 @@ branchingFromLabel = go root . unwrapLabel
             LT → RightBranch:go (fromJust . rightChild $ current_label) original_label
 -- }}}
 
-labelFromBranching :: Foldable t ⇒ t Branch → Label -- {{{
-labelFromBranching = Fold.foldl' (flip labelTransformerForBranch) rootLabel
+labelFromBranching :: Foldable t ⇒ t BranchChoice → Label -- {{{
+labelFromBranching = Fold.foldl' (flip labelTransformerForBranchChoice) rootLabel
 -- }}}
 
 labelFromContext :: Context m α → Label -- {{{
@@ -183,9 +183,9 @@ labelFromPath :: Path → Label -- {{{
 labelFromPath = flip applyPathToLabel rootLabel
 -- }}}
 
-labelTransformerForBranch :: Branch → (Label → Label) -- {{{
-labelTransformerForBranch LeftBranch = leftChildLabel
-labelTransformerForBranch RightBranch = rightChildLabel
+labelTransformerForBranchChoice :: BranchChoice → (Label → Label) -- {{{
+labelTransformerForBranchChoice LeftBranch = leftChildLabel
+labelTransformerForBranchChoice RightBranch = rightChildLabel
 -- }}}
 
 leftChildLabel :: Label → Label -- {{{

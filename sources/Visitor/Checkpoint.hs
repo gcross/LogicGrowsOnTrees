@@ -49,7 +49,7 @@ type CheckpointCursor = Seq CheckpointDifferential
 
 data CheckpointDifferential = -- {{{
     CacheCheckpointD ByteString
-  | ChoiceCheckpointD Branch Checkpoint
+  | ChoiceCheckpointD BranchChoice Checkpoint
   deriving (Eq,Read,Show)
 -- }}}
 

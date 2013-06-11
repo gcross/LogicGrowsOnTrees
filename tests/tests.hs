@@ -105,7 +105,7 @@ newtype NullVisitorT m = NullVisitor { unwrapNullVisitor :: TreeBuilderT m IntSe
 -- }}}
 
 -- Arbitrary {{{
-instance Arbitrary Branch where arbitrary = elements [LeftBranch,RightBranch]
+instance Arbitrary BranchChoice where arbitrary = elements [LeftBranch,RightBranch]
 
 instance Arbitrary α ⇒ Arbitrary (DList α) where -- {{{
     arbitrary = DList.fromList <$> listOf arbitrary
@@ -168,7 +168,7 @@ instance Arbitrary Checkpoint where -- {{{
                     ]
 -- }}}
 
-instance Arbitrary Label where arbitrary = fmap labelFromBranching (arbitrary :: Gen [Branch])
+instance Arbitrary Label where arbitrary = fmap labelFromBranching (arbitrary :: Gen [BranchChoice])
 
 instance Arbitrary Step where -- {{{
     arbitrary = oneof
@@ -907,7 +907,7 @@ tests = -- {{{
                 id
          -- }}}
         ,testGroup "Monoid instance" -- {{{
-            [testProperty "equivalent to concatenation of branchings" $ \(parent_branching :: [Branch]) (child_branching :: [Branch]) → -- {{{
+            [testProperty "equivalent to concatenation of branchings" $ \(parent_branching :: [BranchChoice]) (child_branching :: [BranchChoice]) → -- {{{
                 labelFromBranching parent_branching `mappend` labelFromBranching child_branching
                 ==
                 labelFromBranching (parent_branching `mappend` child_branching)
