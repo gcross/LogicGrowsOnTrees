@@ -1,33 +1,28 @@
--- Language extensions {{{
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
+{-| This module contains a type that specializes the 'Sum' 'Monoid' to 'Word'. -}
 module Visitor.Utils.WordSum where
 
--- Imports {{{
 import Data.List (foldl')
 import Data.Monoid (Monoid(..))
 import Data.Serialize (Serialize(..))
 import Data.Typeable (Typeable)
 import Data.Word (Word)
--- }}}
 
--- Types {{{
+{-| A datatype that contains an unboxed 'Word'. -}
 data WordSum = WordSum { getWordSum :: {-# UNPACK #-} !Word } deriving (Eq,Show,Typeable)
--- }}}
 
--- Instances {{{
-
-instance Monoid WordSum where -- {{{
+{-| This instance sums the two contained 'Word's. -}
+instance Monoid WordSum where
     mempty = WordSum 0
     WordSum x `mappend` WordSum y = WordSum (x+y)
     mconcat = foldl' mappend mempty
--- }}}
 
-instance Serialize WordSum where -- {{{
+{-| This instances is equivalent to the instance for 'Word'. -}
+instance Serialize WordSum where
     put = put . getWordSum
     get = fmap WordSum get
--- }}}
 
--- }}}
+
+
