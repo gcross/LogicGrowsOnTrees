@@ -144,6 +144,17 @@ Executable count-all-trivial-tree-leaves
     else
         GHC-Options: -threaded
 
+Benchmark balancers
+    Type: exitcode-stdio-1.0
+    Main-is: balancers.hs
+    Hs-source-dirs: benchmarks
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        criterion >= 0.6 && < 0.9
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
 Benchmark visitor-versus-list-trivial-tree
     Type: exitcode-stdio-1.0
     Main-is: visitor-versus-list-trivial-tree.hs
