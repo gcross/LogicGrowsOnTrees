@@ -55,6 +55,7 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.List (ListT)
 import Control.Monad.Trans.Maybe (MaybeT)
 
+import Data.Array ((!),listArray)
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
 import Data.Monoid ((<>),Monoid(..))
@@ -555,7 +556,17 @@ allFromBalanced ::
     MonadPlus m ⇒
     [α] {-^ the list of results to generate in the resulting tree builder -} →
     m α {-^ a tree builder that builds an optimally balanced tree with the given results -} 
-allFromBalanced = msumBalanced . map return
+allFromBalanced [] = mzero
+allFromBalanced x = go 0 end
+  where
+    end = length x - 1
+    array = listArray (0,end) x
+
+    go a b
+      | a == b = return $ array ! a
+      | otherwise = go a m `mplus` go (m+1) b
+          where
+            m = (a + b) `div` 2
 {-# INLINE allFromBalanced #-}
 
 {-| Returns a tree builder that generates all of the results in the input list in
@@ -567,7 +578,10 @@ allFromBalancedGreedy ::
     MonadPlus m ⇒
     [α] {-^ the list of results to generate in the resulting tree builder -} →
     m α {-^ a tree builder that builds an approximately balanced tree with the given results -}
-allFromBalancedGreedy = msumBalancedGreedy . map return
+allFromBalancedGreedy = go emptyStacks
+  where
+    go !stacks [] = mergeStacks stacks
+    go !stacks (x:xs) = go (addToStacks stacks (return x)) xs
 {-# INLINE allFromBalancedGreedy #-}
 
 {-| Returns a tree builder that builders an optimally balanced tree with all of
