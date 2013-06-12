@@ -36,10 +36,10 @@ module Visitor
     -- $builders
     , allFrom
     , allFromBalanced
-    , allFromBalancedGreedy
+    , allFromBalancedBottomUp
     , between
     , msumBalanced
-    , msumBalancedGreedy
+    , msumBalancedBottomUp
     -- ** ...that transform tree builders
     , endowTreeBuilder
     -- * Implementation
@@ -61,7 +61,7 @@ import Data.Maybe (isJust)
 import Data.Monoid ((<>),Monoid(..))
 import Data.Serialize (Serialize(),encode)
 
-import Visitor.Utils.MonadStacks
+import Visitor.Utils.MonadPlusForest
 
 --------------------------------------------------------------------------------
 ------------------------------------- Types ------------------------------------
@@ -512,22 +512,21 @@ piece of the remaining workload or nearly all of the remaining workload, and in
 both cases a processor will end up with a small amount of work to do before it
 finishes and immediately needs to steal another workload from someone else.
 
-Given that a balanced tree is desirable, the Balanced functions work by
-splitting the input list and then recursively processing each half;  this
-creates a search tree that is as balanced as it can be.
+Given that a balanced tree is desirable, the Balanced functions work by copying
+the input list into an array, starting with a range that covers the whole array,
+and then splitting the range at every choice point until eventually the range
+has length 1, in which case the element of the array is read;  the result is an
+optimally balanced tree.
 
-The downside of the Balanced functions is that they need to scan the list in
-each call in order to split it in half, which adds some performance overhead.
-Thus, the BalancedGreedy functions' approach is to build up a tree in a
-`greedy` manner by doing the following at each step:  take the current element
-and put it in a new `stack`; while there exists a stack of the same size as the
-current stack, merge that stack with the current stack.  When all of the
-elements have been processed, add up all the stacks starting with the smallest
-and ending with the largest. As each of the stacks is a perfectly balanced
-subtree, and the largest stack has a size at least as great as total number of
-elements in the other stacks, the end result is a search tree where at least
-half of the elements are in a perfectly balanced subtree;  this is often close
-enough to being fully balanced tree.
+The downside of the Balanced functions is that they need to process the whole
+list at once rather than one element at a time. The BalancedBottomUp functions
+use a different algorithm that takes 33% less time than the Balanced algorithm
+by processing each element one at a time and building the result tree using a
+bottom-up approach rather than a top-down approach. For details of this
+algoithm, see "Visitor.Utils.MonadPlusForest"; note that it is also possible
+to get a slight speed-up by using the data structures in
+"Visitor.Utils.MonadPlusForest" directly rather than implicitly through the
+BalancedBottomUp functions.
 
 The odd function out in this section is 'between', which takes the lower and
 upper bound if an input range and returns a tree builder that generates an
@@ -540,7 +539,7 @@ optimally balanced search tree with all of the results in the range.
     WARNING: The generated tree will be such that every branch has one element
     in the left branch and the remaining elements in the right branch, which is
     heavily unbalanced and difficult to parallelize. You should consider using
-    'allFromBalanced' and 'allFromBalancedGreedy instead.
+    'allFromBalanced' and 'allFromBalancedBottomUp instead.
  -}
 allFrom ::
     MonadPlus m ⇒
@@ -571,18 +570,18 @@ allFromBalanced x = go 0 end
 
 {-| Returns a tree builder that generates all of the results in the input list in
     an approximately balanced tree with less overhead than 'allFromBalanced';
-    see the documentation for this section and/or "Visitor.Utils.MonadStacks"
+    see the documentation for this section and/or "Visitor.Utils.MonadPlusForest"
     for more information about the exact algorithm used.
  -}
-allFromBalancedGreedy ::
+allFromBalancedBottomUp ::
     MonadPlus m ⇒
     [α] {-^ the list of results to generate in the resulting tree builder -} →
     m α {-^ a tree builder that builds an approximately balanced tree with the given results -}
-allFromBalancedGreedy = go emptyStacks
+allFromBalancedBottomUp = go emptyForest
   where
-    go !stacks [] = mergeStacks stacks
-    go !stacks (x:xs) = go (addToStacks stacks (return x)) xs
-{-# INLINE allFromBalancedGreedy #-}
+    go !forest [] = consolidateForest forest
+    go !forest (x:xs) = go (addToForest forest (return x)) xs
+{-# INLINE allFromBalancedBottomUp #-}
 
 {-| Returns a tree builder that builders an optimally balanced tree with all of
     the elements in the given (inclusive) range; if the lower bound is greater
@@ -630,18 +629,18 @@ msumBalanced x = go 0 end
 {-| Returns a tree builder that merges all of the tree builders in the input
     list using an approximately balanced tree with less overhead than
     'msumBalanced'; see the documentation for this section and/or
-    "Visitor.Utils.MonadStacks" for more information about the exact algorithm
+    "Visitor.Utils.MonadPlusForest" for more information about the exact algorithm
     used.
  -}
-msumBalancedGreedy ::
+msumBalancedBottomUp ::
     MonadPlus m ⇒
     [m α] {-^ the list of builders to merge -} →
     m α {-^ the merged tree builder -}
-msumBalancedGreedy = go emptyStacks
+msumBalancedBottomUp = go emptyForest
   where
-    go !stacks [] = mergeStacks stacks
-    go !stacks (x:xs) = go (addToStacks stacks x) xs
-{-# INLINE msumBalancedGreedy #-}
+    go !forest [] = consolidateForest forest
+    go !forest (x:xs) = go (addToForest forest x) xs
+{-# INLINE msumBalancedBottomUp #-}
 
 -------------------------------- Transformers ----------------------------------
 

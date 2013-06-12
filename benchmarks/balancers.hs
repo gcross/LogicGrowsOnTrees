@@ -12,7 +12,7 @@ import Visitor.Utils.WordSum
 main = defaultMain
     [bgroup "allFrom" $ benchUsing allFrom
     ,bgroup "allFromBalanced" $ benchUsing allFromBalanced
-    ,bgroup "allFromBalancedGreedy" $ benchUsing allFromBalancedGreedy
+    ,bgroup "allFromBalancedBottomUp" $ benchUsing allFromBalancedBottomUp
     ]
   where
     benchUsing f =

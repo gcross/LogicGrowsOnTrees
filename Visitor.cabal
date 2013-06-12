@@ -73,7 +73,7 @@ Library
         Visitor.Path
         Visitor.Utils.Handle
         Visitor.Utils.IntSum
-        Visitor.Utils.MonadStacks
+        Visitor.Utils.MonadPlusForest
         Visitor.Utils.WordSum
         Visitor.Workload
     Other-modules:

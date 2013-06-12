@@ -28,7 +28,7 @@ import Foreign.Ptr (FunPtr,freeHaskellFunPtr,nullFunPtr)
 import System.IO.Unsafe (unsafePerformIO)
 
 import Visitor (TreeBuilder,between)
-import Visitor.Utils.MonadStacks (addToStacks,emptyStacks,mergeStacks)
+import Visitor.Utils.MonadPlusForest (addToForest,emptyForest,consolidateForest)
 import Visitor.Utils.WordSum
 -- }}}
 
@@ -185,13 +185,13 @@ extractExteriorFromSolution size layers = filter . uncurry $ ((||) `on` (liftA2 
 getOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBit -- {{{
 getOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = go emptyStacks (PositionAndBit 0 1)
+    | otherwise = go emptyForest (PositionAndBit 0 1)
   where
     mask = bit size - 1
-    go !stacks !x@(PositionAndBit i b)
-     | i >= size          = mergeStacks stacks
-     | b .&. blocked == 0 = go (addToStacks stacks (return x)) next_x
-     | otherwise          = go stacks next_x
+    go !forest !x@(PositionAndBit i b)
+     | i >= size          = consolidateForest forest
+     | b .&. blocked == 0 = go (addToForest forest (return x)) next_x
+     | otherwise          = go forest next_x
      where
        next_x = PositionAndBit (i+1) (b `unsafeShiftL` 1)
 {-# INLINE getOpenings #-}
@@ -215,15 +215,15 @@ getOpeningsAsList size blocked
 getSymmetricOpenings :: MonadPlus m ⇒ Int → Word64 → m PositionAndBitWithReflection -- {{{
 getSymmetricOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = go emptyStacks (PositionAndBitWithReflection 0 1 end end_bit)
+    | otherwise = go emptyForest (PositionAndBitWithReflection 0 1 end end_bit)
   where
     end = size-1
     end_bit = bit end
     mask = bit size - 1
-    go stacks x@(PositionAndBitWithReflection i b ri rb)
-     | i >= ri            = mergeStacks stacks
-     | b .&. blocked == 0 = go (addToStacks (addToStacks stacks (return x)) (return $ PositionAndBitWithReflection ri rb i b)) next_bit
-     | otherwise          = go stacks next_bit
+    go forest x@(PositionAndBitWithReflection i b ri rb)
+     | i >= ri            = consolidateForest forest
+     | b .&. blocked == 0 = go (addToForest (addToForest forest (return x)) (return $ PositionAndBitWithReflection ri rb i b)) next_bit
+     | otherwise          = go forest next_bit
      where
        next_bit = PositionAndBitWithReflection (i+1) (b `unsafeShiftL` 1) (ri-1) (rb `unsafeShiftR` 1)
 {-# INLINE getSymmetricOpenings #-}
