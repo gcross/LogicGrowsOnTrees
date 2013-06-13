@@ -17,7 +17,7 @@ import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import Visitor (TreeBuilder)
+import Visitor (TreeGenerator)
 import Visitor.Utils.Word_
 import Visitor.Utils.WordSum
 -- }}}
@@ -89,13 +89,13 @@ tree leaf arity depth
   | arity > 0  = msum . genericReplicate arity $ tree leaf arity (depth-1)
   | otherwise  = error "arity must be a positive integer"
 {-# SPECIALIZE tree :: α → Word → Word → [α] #-}
-{-# SPECIALIZE tree :: α → Word → Word → TreeBuilder α #-}
+{-# SPECIALIZE tree :: α → Word → Word → TreeGenerator α #-}
 -- }}}
 
 trivialTree :: MonadPlus m ⇒ Word → Word → m WordSum -- {{{
 trivialTree = tree (WordSum 1)
 {-# SPECIALIZE trivialTree :: Word → Word → [WordSum] #-}
-{-# SPECIALIZE trivialTree :: Word → Word → TreeBuilder WordSum #-}
+{-# SPECIALIZE trivialTree :: Word → Word → TreeGenerator WordSum #-}
 -- }}}
 
 -- }}}

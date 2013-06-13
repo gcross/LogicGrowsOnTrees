@@ -27,7 +27,7 @@ import Foreign.Ptr (FunPtr,freeHaskellFunPtr,nullFunPtr)
 
 import System.IO.Unsafe (unsafePerformIO)
 
-import Visitor (TreeBuilder,between)
+import Visitor (TreeGenerator,between)
 import Visitor.Utils.MonadPlusForest (addToForest,emptyForest,consolidateForest)
 import Visitor.Utils.WordSum
 -- }}}
@@ -812,13 +812,13 @@ nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSear
 nqueensBruteForceCount :: MonadPlus m ⇒ Word → m WordSum -- {{{
 nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ WordSum 1) ()
 {-# SPECIALIZE nqueensBruteForceCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensBruteForceCount :: Word → TreeBuilder WordSum #-}
+{-# SPECIALIZE nqueensBruteForceCount :: Word → TreeGenerator WordSum #-}
 -- }}}
 
 nqueensBruteForceSolutions :: MonadPlus m ⇒ Word → m NQueensSolution -- {{{
 nqueensBruteForceSolutions = nqueensBruteForceGeneric (++) return []
 {-# SPECIALIZE nqueensBruteForceSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensBruteForceSolutions :: Word → TreeBuilder NQueensSolution #-}
+{-# SPECIALIZE nqueensBruteForceSolutions :: Word → TreeGenerator NQueensSolution #-}
 -- }}}
 
 nqueensCGeneric :: -- {{{
@@ -844,13 +844,13 @@ nqueensCGeneric updateValue finalizeValue initial_value n =
 nqueensCCount :: MonadPlus m ⇒ Word → m WordSum -- {{{
 nqueensCCount = nqueensCGeneric (const id) (const . return $ WordSum 1) ()
 {-# SPECIALIZE nqueensCCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensCCount :: Word → TreeBuilder WordSum #-}
+{-# SPECIALIZE nqueensCCount :: Word → TreeGenerator WordSum #-}
 -- }}}
 
 nqueensCSolutions :: MonadPlus m ⇒ Word → m NQueensSolution -- {{{
 nqueensCSolutions = nqueensCGeneric (++) return []
 {-# SPECIALIZE nqueensCSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensCSolutions :: Word → TreeBuilder NQueensSolution #-}
+{-# SPECIALIZE nqueensCSolutions :: Word → TreeGenerator NQueensSolution #-}
 -- }}}
 
 nqueensGeneric :: -- {{{

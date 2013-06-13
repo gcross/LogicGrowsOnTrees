@@ -54,7 +54,7 @@ entire_workload = Workload Seq.empty Unexplored
 visitTreeThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
-    TreeBuilder α →
+    TreeGenerator α →
     α
 visitTreeThroughWorkload =
     (fst . last)
@@ -65,14 +65,14 @@ visitTreeThroughWorkload =
 visitTreeTThroughWorkload :: -- {{{
     (Monad m, Monoid α) ⇒
     Workload →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     m α
 visitTreeTThroughWorkload = gatherResults .* walkThroughTreeTThroughWorkload
 -- }}}
 
 visitTreeUntilFirstThroughWorkload :: -- {{{
     Workload →
-    TreeBuilder α →
+    TreeGenerator α →
     Maybe α
 visitTreeUntilFirstThroughWorkload =
     fetchFirstResult
@@ -83,7 +83,7 @@ visitTreeUntilFirstThroughWorkload =
 visitTreeTUntilFirstThroughWorkload :: -- {{{
     Monad m ⇒
     Workload →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     m (Maybe α)
 visitTreeTUntilFirstThroughWorkload =
     fetchFirstResultT
@@ -95,7 +95,7 @@ visitTreeUntilFoundThroughWorkload :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
-    TreeBuilder α →
+    TreeGenerator α →
     Either α β
 visitTreeUntilFoundThroughWorkload =
     fetchFoundResult
@@ -107,7 +107,7 @@ visitTreeTUntilFoundThroughWorkload :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     m (Either α β)
 visitTreeTUntilFoundThroughWorkload =
     fetchFoundResultT
@@ -118,18 +118,18 @@ visitTreeTUntilFoundThroughWorkload =
 walkThroughTreeThroughWorkload :: -- {{{
     Monoid α ⇒
     Workload →
-    TreeBuilder α →
+    TreeGenerator α →
     [(α,Checkpoint)]
 walkThroughTreeThroughWorkload Workload{..} =
     walkThroughTreeStartingFromCheckpoint workloadCheckpoint
     .
-    sendTreeBuilderDownPath workloadPath
+    sendTreeGeneratorDownPath workloadPath
 -- }}}
 
 walkThroughTreeTThroughWorkload :: -- {{{
     (Monad m, Monoid α) ⇒
     Workload →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     ResultFetcher m α
 walkThroughTreeTThroughWorkload Workload{..} =
     ResultFetcher
@@ -142,23 +142,23 @@ walkThroughTreeTThroughWorkload Workload{..} =
         walkThroughTreeTStartingFromCheckpoint workloadCheckpoint
     )
     .
-    sendTreeBuilderTDownPath workloadPath
+    sendTreeGeneratorTDownPath workloadPath
 -- }}}
 
 walkThroughTreeUntilFirstThroughWorkload :: -- {{{
     Workload →
-    TreeBuilder α →
+    TreeGenerator α →
     FirstResultFetcher α
 walkThroughTreeUntilFirstThroughWorkload Workload{..} =
     walkThroughTreeUntilFirstStartingFromCheckpoint workloadCheckpoint
     .
-    sendTreeBuilderDownPath workloadPath
+    sendTreeGeneratorDownPath workloadPath
 -- }}}
 
 walkThroughTreeTUntilFirstThroughWorkload :: -- {{{
     Monad m ⇒
     Workload →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     FirstResultFetcherT m α
 walkThroughTreeTUntilFirstThroughWorkload Workload{..} =
     FirstResultFetcherT
@@ -171,26 +171,26 @@ walkThroughTreeTUntilFirstThroughWorkload Workload{..} =
         walkThroughTreeTUntilFirstStartingFromCheckpoint workloadCheckpoint
     )
     .
-    sendTreeBuilderTDownPath workloadPath
+    sendTreeGeneratorTDownPath workloadPath
 -- }}}
 
 walkThroughTreeUntilFoundThroughWorkload :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
-    TreeBuilder α →
+    TreeGenerator α →
     FoundResultFetcher α β
 walkThroughTreeUntilFoundThroughWorkload f Workload{..} =
     walkThroughTreeUntilFoundStartingFromCheckpoint f workloadCheckpoint
     .
-    sendTreeBuilderDownPath workloadPath
+    sendTreeGeneratorDownPath workloadPath
 -- }}}
 
 walkThroughTreeTUntilFoundThroughWorkload :: -- {{{
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     FoundResultFetcherT m α β
 walkThroughTreeTUntilFoundThroughWorkload f Workload{..} =
     FoundResultFetcherT
@@ -203,7 +203,7 @@ walkThroughTreeTUntilFoundThroughWorkload f Workload{..} =
         walkThroughTreeTUntilFoundStartingFromCheckpoint f workloadCheckpoint
     )
     .
-    sendTreeBuilderTDownPath workloadPath
+    sendTreeGeneratorTDownPath workloadPath
 -- }}}
 
 workloadDepth :: Workload → Int -- {{{

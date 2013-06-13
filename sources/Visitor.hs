@@ -11,11 +11,11 @@
 {-| Basic functionality for building and visiting trees. -}
 module Visitor
     (
-    -- * TreeBuilder types
+    -- * TreeGenerator types
     -- $types
-      TreeBuilder
-    , TreeBuilderIO
-    , TreeBuilderT(..)
+      TreeGenerator
+    , TreeGeneratorIO
+    , TreeGeneratorT(..)
     -- * Visitable class features
     -- $type-classes
     , MonadVisitable(..)
@@ -41,10 +41,10 @@ module Visitor
     , msumBalanced
     , msumBalancedBottomUp
     -- ** ...that transform tree builders
-    , endowTreeBuilder
+    , endowTreeGenerator
     -- * Implementation
-    , TreeBuilderTInstruction(..)
-    , TreeBuilderInstruction
+    , TreeGeneratorTInstruction(..)
+    , TreeGeneratorInstruction
     ) where
 
 import Control.Applicative (Alternative(..),Applicative(..))
@@ -103,7 +103,7 @@ from the leaf to an inner node, which will usually be what you want.
 -}
 
 {-| A pure tree builder, which is what you should normally be using. -}
-type TreeBuilder = TreeBuilderT Identity
+type TreeGenerator = TreeGeneratorT Identity
 
 {-| A tree builder running in the I/O monad, which you should only be using for
     testing purposes or, say, if you are planning on storing each result in an
@@ -111,10 +111,10 @@ type TreeBuilder = TreeBuilderT Identity
     that an action for a given result might be run twice in checkpointing and/or
     parallel settings.
 -}
-type TreeBuilderIO = TreeBuilderT IO
+type TreeGeneratorIO = TreeGeneratorT IO
 
 {-| A tree builder run in an arbitrary monad. -}
-newtype TreeBuilderT m α = TreeBuilderT { unwrapTreeBuilderT :: ProgramT (TreeBuilderTInstruction m) m α }
+newtype TreeGeneratorT m α = TreeGeneratorT { unwrapTreeGeneratorT :: ProgramT (TreeGeneratorTInstruction m) m α }
     deriving (Applicative,Functor,Monad,MonadIO)
 
 --------------------------------------------------------------------------------
@@ -123,7 +123,7 @@ newtype TreeBuilderT m α = TreeBuilderT { unwrapTreeBuilderT :: ProgramT (TreeB
 
 {- $type-classes
 
-'TreeBuilder's are instances of 'MonadVisitable' and/or 'MonadVisitableTrans',
+'TreeGenerator's are instances of 'MonadVisitable' and/or 'MonadVisitableTrans',
 which are both subclasses of 'MonadPlus'. The additional functionality offered
 by these type-classes is the ability to cache results so that a computation does
 not need to be repeated when a node is visited a second time, which can happen
@@ -133,7 +133,7 @@ builder that leads to the stolen workload.
 
 These features could have been provided as functions, but there are two reasons
 why they were subsumed into type-classes: first, because one might want to
-add another layer above the 'TreeBuilder' monad transformers in the monad stack
+add another layer above the 'TreeGenerator' monad transformers in the monad stack
 (as is the case in "Visitor.Label"), and second, because one might want
 to run a tree builder using a simpler monad such as [] for testing purposes.
 
@@ -197,13 +197,13 @@ class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitableTrans m wh
 --------------------------------------------------------------------------------
 
 {-| The 'Alternative' instance functions like the 'MonadPlus' instance. -}
-instance Monad m ⇒ Alternative (TreeBuilderT m) where
+instance Monad m ⇒ Alternative (TreeGeneratorT m) where
     empty = mzero
     (<|>) = mplus
 
 {-| Two tree builders are equal if they build exactly the same tree. -}
-instance Eq α ⇒ Eq (TreeBuilder α) where
-    (TreeBuilderT x) == (TreeBuilderT y) = e x y
+instance Eq α ⇒ Eq (TreeGenerator α) where
+    (TreeGeneratorT x) == (TreeGeneratorT y) = e x y
       where
         e x y = case (view x, view y) of
             (Return x, Return y) → x == y
@@ -213,16 +213,16 @@ instance Eq α ⇒ Eq (TreeBuilder α) where
                     (Nothing, Nothing) → True
                     (Just x, Just y) → e (kx x) (ky y)
                     _ → False
-            (Choice (TreeBuilderT ax) (TreeBuilderT bx) :>>= kx, Choice (TreeBuilderT ay) (TreeBuilderT by) :>>= ky) →
+            (Choice (TreeGeneratorT ax) (TreeGeneratorT bx) :>>= kx, Choice (TreeGeneratorT ay) (TreeGeneratorT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
             _  → False
 
 {-| For this type, 'mplus' creates a branch node with a choice between two
     subtrees and 'mzero' aborts the tree builder.
  -}
-instance Monad m ⇒ MonadPlus (TreeBuilderT m) where
-    mzero = TreeBuilderT . singleton $ Null
-    left `mplus` right = TreeBuilderT . singleton $ Choice left right
+instance Monad m ⇒ MonadPlus (TreeGeneratorT m) where
+    mzero = TreeGeneratorT . singleton $ Null
+    left `mplus` right = TreeGeneratorT . singleton $ Choice left right
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a tree builder using the List monad.
@@ -258,16 +258,16 @@ instance Monad m ⇒ MonadVisitableTrans (MaybeT m) where
     type NestedMonadInVisitor (MaybeT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
 
-instance Monad m ⇒ MonadVisitable (TreeBuilderT m) where
+instance Monad m ⇒ MonadVisitable (TreeGeneratorT m) where
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
     cacheMaybe = runAndCacheMaybe . return
 
-instance Monad m ⇒ MonadVisitableTrans (TreeBuilderT m) where
-    type NestedMonadInVisitor (TreeBuilderT m) = m
+instance Monad m ⇒ MonadVisitableTrans (TreeGeneratorT m) where
+    type NestedMonadInVisitor (TreeGeneratorT m) = m
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
-    runAndCacheMaybe = TreeBuilderT . singleton . Cache
+    runAndCacheMaybe = TreeGeneratorT . singleton . Cache
 
 {-| This instance allows you to automatically get a MonadVisitable instance for
     any monad transformer that has `MonadPlus` defined.  (Unfortunately its
@@ -281,17 +281,17 @@ instance (MonadTrans t, MonadVisitable m, MonadPlus (t m)) ⇒ MonadVisitable (t
     cacheGuard = lift . cacheGuard
     cacheMaybe = lift . cacheMaybe
 
-instance MonadTrans TreeBuilderT where
-    lift = TreeBuilderT . lift
+instance MonadTrans TreeGeneratorT where
+    lift = TreeGeneratorT . lift
 
 {-| The 'Monoid' instance acts like the 'MonadPlus' instance. -}
-instance Monad m ⇒ Monoid (TreeBuilderT m α) where
+instance Monad m ⇒ Monoid (TreeGeneratorT m α) where
     mempty = mzero
     mappend = mplus
     mconcat = msum
 
-instance Show α ⇒ Show (TreeBuilder α) where
-    show = s . unwrapTreeBuilderT
+instance Show α ⇒ Show (TreeGenerator α) where
+    show = s . unwrapTreeGeneratorT
       where
         s x = case view x of
             Return x → show x
@@ -300,7 +300,7 @@ instance Show α ⇒ Show (TreeBuilder α) where
                 case runIdentity c of
                     Nothing → "NullCache"
                     Just x → "Cache[" ++ (show . encode $ x) ++ "] >>= " ++ (s (k x))
-            Choice (TreeBuilderT a) (TreeBuilderT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
+            Choice (TreeGeneratorT a) (TreeGeneratorT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
 
 
 --------------------------------------------------------------------------------
@@ -331,15 +331,15 @@ the side-effects in the tree builder.
  -}
 visitTree ::
     Monoid α ⇒
-    TreeBuilder α {-^ the (pure) builder of the tree to be visited -} →
+    TreeGenerator α {-^ the (pure) builder of the tree to be visited -} →
     α {-^ the sum over all results -}
 visitTree v =
-    case view (unwrapTreeBuilderT v) of
+    case view (unwrapTreeGeneratorT v) of
         Return !x → x
-        (Cache mx :>>= k) → maybe mempty (visitTree . TreeBuilderT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe mempty (visitTree . TreeGeneratorT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let !x = visitTree $ left >>= TreeBuilderT . k
-                !y = visitTree $ right >>= TreeBuilderT . k
+            let !x = visitTree $ left >>= TreeGeneratorT . k
+                !y = visitTree $ right >>= TreeGeneratorT . k
                 !xy = mappend x y
             in xy
         (Null :>>= _) → mempty
@@ -350,36 +350,36 @@ visitTree v =
  -}
 visitTreeT ::
     (Monad m, Monoid α) ⇒
-    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
+    TreeGeneratorT m α {-^ the (impure) builder of the tree to be visited -} →
     m α {-^ the sum over all results -}
-visitTreeT = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeT = viewT . unwrapTreeGeneratorT >=> \view →
     case view of
         Return !x → return x
-        (Cache mx :>>= k) → mx >>= maybe (return mempty) (visitTreeT . TreeBuilderT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return mempty) (visitTreeT . TreeGeneratorT . k)
         (Choice left right :>>= k) →
             liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
-                (visitTreeT $ left >>= TreeBuilderT . k)
-                (visitTreeT $ right >>= TreeBuilderT . k)
+                (visitTreeT $ left >>= TreeGeneratorT . k)
+                (visitTreeT $ right >>= TreeGeneratorT . k)
         (Null :>>= _) → return mempty
-{-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeBuilder α → Identity α #-}
-{-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeBuilderIO α → IO α #-}
+{-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeGenerator α → Identity α #-}
+{-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeGeneratorIO α → IO α #-}
 {-# INLINEABLE visitTreeT #-}
 
 {-| Visits a tree for the side-effects in its builder, ignoring all results. -}
 visitTreeTAndIgnoreResults ::
     Monad m ⇒
-    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
+    TreeGeneratorT m α {-^ the (impure) builder of the tree to be visited -} →
     m ()
-visitTreeTAndIgnoreResults = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeTAndIgnoreResults = viewT . unwrapTreeGeneratorT >=> \view →
     case view of
         Return _ → return ()
-        (Cache mx :>>= k) → mx >>= maybe (return ()) (visitTreeTAndIgnoreResults . TreeBuilderT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return ()) (visitTreeTAndIgnoreResults . TreeGeneratorT . k)
         (Choice left right :>>= k) → do
-            visitTreeTAndIgnoreResults $ left >>= TreeBuilderT . k
-            visitTreeTAndIgnoreResults $ right >>= TreeBuilderT . k
+            visitTreeTAndIgnoreResults $ left >>= TreeGeneratorT . k
+            visitTreeTAndIgnoreResults $ right >>= TreeGeneratorT . k
         (Null :>>= _) → return ()
-{-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeBuilder α → Identity () #-}
-{-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeBuilderIO α → IO () #-}
+{-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeGenerator α → Identity () #-}
+{-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeGeneratorIO α → IO () #-}
 {-# INLINEABLE visitTreeTAndIgnoreResults #-}
 
 {-| Visits all the nodes in a tree until a result (i.e., a leaf) has been found;
@@ -387,15 +387,15 @@ visitTreeTAndIgnoreResults = viewT . unwrapTreeBuilderT >=> \view →
     'Nothing' is returned.
  -}
 visitTreeUntilFirst ::
-    TreeBuilder α {-^ the (pure) builder of the tree to be visited -} →
+    TreeGenerator α {-^ the (pure) builder of the tree to be visited -} →
     Maybe α {-^ the first result found, if any -}
 visitTreeUntilFirst v =
-    case view (unwrapTreeBuilderT v) of
+    case view (unwrapTreeGeneratorT v) of
         Return x → Just x
-        (Cache mx :>>= k) → maybe Nothing (visitTreeUntilFirst . TreeBuilderT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe Nothing (visitTreeUntilFirst . TreeGeneratorT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let x = visitTreeUntilFirst $ left >>= TreeBuilderT . k
-                y = visitTreeUntilFirst $ right >>= TreeBuilderT . k
+            let x = visitTreeUntilFirst $ left >>= TreeGeneratorT . k
+                y = visitTreeUntilFirst $ right >>= TreeGeneratorT . k
             in if isJust x then x else y
         (Null :>>= _) → Nothing
 {-# INLINEABLE visitTreeUntilFirst #-}
@@ -405,20 +405,20 @@ visitTreeUntilFirst v =
  -}
 visitTreeTUntilFirst ::
     Monad m ⇒
-    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
+    TreeGeneratorT m α {-^ the (impure) builder of the tree to be visited -} →
     m (Maybe α) {-^ the first result found, if any -}
-visitTreeTUntilFirst = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeTUntilFirst = viewT . unwrapTreeGeneratorT >=> \view →
     case view of
         Return !x → return (Just x)
-        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (visitTreeTUntilFirst . TreeBuilderT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (visitTreeTUntilFirst . TreeGeneratorT . k)
         (Choice left right :>>= k) → do
-            x ← visitTreeTUntilFirst $ left >>= TreeBuilderT . k
+            x ← visitTreeTUntilFirst $ left >>= TreeGeneratorT . k
             if isJust x
                 then return x
-                else visitTreeTUntilFirst $ right >>= TreeBuilderT . k
+                else visitTreeTUntilFirst $ right >>= TreeGeneratorT . k
         (Null :>>= _) → return Nothing
-{-# SPECIALIZE visitTreeTUntilFirst :: TreeBuilder α → Identity (Maybe α) #-}
-{-# SPECIALIZE visitTreeTUntilFirst :: TreeBuilderIO α → IO (Maybe α) #-}
+{-# SPECIALIZE visitTreeTUntilFirst :: TreeGenerator α → Identity (Maybe α) #-}
+{-# SPECIALIZE visitTreeTUntilFirst :: TreeGeneratorIO α → IO (Maybe α) #-}
 {-# INLINEABLE visitTreeTUntilFirst #-}
 
 {-| Visits all the nodes in a tree, summing all results (i.e., in the leaves)
@@ -433,21 +433,21 @@ visitTreeUntilFound ::
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    TreeBuilder α {-^ the (pure) builder of the tree to be visited -} →
+    TreeGenerator α {-^ the (pure) builder of the tree to be visited -} →
     Either α β {-^ if no acceptable results were found, then 'Left' with the sum
                    over all results;  otherwise 'Right' with the value returned
                    by the function in the first argument
                 -}
 visitTreeUntilFound f v =
-    case view (unwrapTreeBuilderT v) of
+    case view (unwrapTreeGeneratorT v) of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
-            maybe (Left mempty) (visitTreeUntilFound f . TreeBuilderT . k)
+            maybe (Left mempty) (visitTreeUntilFound f . TreeGeneratorT . k)
             $
             runIdentity mx
         (Choice left right :>>= k) →
-            let x = visitTreeUntilFound f $ left >>= TreeBuilderT . k
-                y = visitTreeUntilFound f $ right >>= TreeBuilderT . k
+            let x = visitTreeUntilFound f $ left >>= TreeGeneratorT . k
+                y = visitTreeUntilFound f $ right >>= TreeGeneratorT . k
             in case (x,y) of
                 (result@(Right _),_) → result
                 (_,result@(Right _)) → result
@@ -466,24 +466,24 @@ visitTreeTUntilFound ::
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    TreeBuilderT m α {-^ the (impure) builder of the tree to be visited -} →
+    TreeGeneratorT m α {-^ the (impure) builder of the tree to be visited -} →
     m (Either α β) {-^ if no acceptable results were found, then 'Left' with the
                        sum over all results;  otherwise 'Right' with the value
                        returned by the function in the first argument
                     -}
-visitTreeTUntilFound f = viewT . unwrapTreeBuilderT >=> \view →
+visitTreeTUntilFound f = viewT . unwrapTreeGeneratorT >=> \view →
     case view of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
             mx
             >>=
-            maybe (return (Left mempty)) (visitTreeTUntilFound f . TreeBuilderT . k)
+            maybe (return (Left mempty)) (visitTreeTUntilFound f . TreeGeneratorT . k)
         (Choice left right :>>= k) → do
-            x ← visitTreeTUntilFound f $ left >>= TreeBuilderT . k
+            x ← visitTreeTUntilFound f $ left >>= TreeGeneratorT . k
             case x of
                 result@(Right _) → return result
                 Left a → do
-                    y ← visitTreeTUntilFound f $ right >>= TreeBuilderT . k
+                    y ← visitTreeTUntilFound f $ right >>= TreeGeneratorT . k
                     case y of
                         result@(Right _) → return result
                         Left b → runThroughFilter (a <> b)
@@ -647,19 +647,19 @@ msumBalancedBottomUp = go emptyForest
 {-| This function lets you take a pure tree builder and transform it into a tree
     builder with an arbitrary base monad.
  -}
-endowTreeBuilder ::
+endowTreeGenerator ::
     Monad m ⇒
-    TreeBuilder α {-^ the pure tree builder to transformed into an impure tree builder -} →
-    TreeBuilderT m α {-^ the resulting impure tree builder -}
-endowTreeBuilder tree_builder =
-    case view . unwrapTreeBuilderT $ tree_builder of
+    TreeGenerator α {-^ the pure tree builder to transformed into an impure tree builder -} →
+    TreeGeneratorT m α {-^ the resulting impure tree builder -}
+endowTreeGenerator tree_builder =
+    case view . unwrapTreeGeneratorT $ tree_builder of
         Return x → return x
         Cache mx :>>= k →
-            cacheMaybe (runIdentity mx) >>= endowTreeBuilder . TreeBuilderT . k
+            cacheMaybe (runIdentity mx) >>= endowTreeGenerator . TreeGeneratorT . k
         Choice left right :>>= k →
             mplus
-                (endowTreeBuilder left >>= endowTreeBuilder . TreeBuilderT . k)
-                (endowTreeBuilder right >>= endowTreeBuilder . TreeBuilderT . k)
+                (endowTreeGenerator left >>= endowTreeGenerator . TreeGeneratorT . k)
+                (endowTreeGenerator right >>= endowTreeGenerator . TreeGeneratorT . k)
         Null :>>= _ → mzero
 
 
@@ -668,23 +668,23 @@ endowTreeBuilder tree_builder =
 --------------------------------------------------------------------------------
 
 {- $implementation
-The implementation of the 'TreeBuilder' types uses the approach described in
+The implementation of the 'TreeGenerator' types uses the approach described in
 "The Operational Monad Tutorial", published in Issue 15 of The Monad.Reader at
 <http://themonadreader.wordpress.com/>;  specifically it uses the `operational`
 package.  The idea is that a list of instructions are provided in
-'TreeBuilderTInstruction', and then the operational monad does all the heavy lifting
+'TreeGeneratorTInstruction', and then the operational monad does all the heavy lifting
 of turning them into a monad.
  -}
 
-{-| The core of the implementation of 'TreeBuilder' is mostly contained in this
+{-| The core of the implementation of 'TreeGenerator' is mostly contained in this
     type, which provides a list of primitive instructions for tree builders:
     'Cache', which caches a value, 'Choice', which signals a branch with two
     choices, and 'Null', which indicates that there are no more results.
  -}
-data TreeBuilderTInstruction m α where
-    Cache :: Serialize α ⇒ m (Maybe α) → TreeBuilderTInstruction m α
-    Choice :: TreeBuilderT m α → TreeBuilderT m α → TreeBuilderTInstruction m α
-    Null :: TreeBuilderTInstruction m α
+data TreeGeneratorTInstruction m α where
+    Cache :: Serialize α ⇒ m (Maybe α) → TreeGeneratorTInstruction m α
+    Choice :: TreeGeneratorT m α → TreeGeneratorT m α → TreeGeneratorTInstruction m α
+    Null :: TreeGeneratorTInstruction m α
 
 {-| This is just a convenient alias for working with pure tree builder. -}
-type TreeBuilderInstruction = TreeBuilderTInstruction Identity
+type TreeGeneratorInstruction = TreeGeneratorTInstruction Identity

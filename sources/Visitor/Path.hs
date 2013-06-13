@@ -11,8 +11,8 @@ module Visitor.Path
     , Path
     -- * Functions
     , oppositeBranchChoiceOf
-    , sendTreeBuilderDownPath
-    , sendTreeBuilderTDownPath
+    , sendTreeGeneratorDownPath
+    , sendTreeGeneratorTDownPath
     -- * Exceptions
     , WalkError(..)
     ) where
@@ -35,7 +35,7 @@ import Visitor
 ---------------------------------- Exceptions ----------------------------------
 --------------------------------------------------------------------------------
 
-{-| This exception is thrown whenever a 'TreeBuilder' is sent down a path which
+{-| This exception is thrown whenever a 'TreeGenerator' is sent down a path which
     is incompatible with it.
  -}
 data WalkError =
@@ -86,21 +86,21 @@ oppositeBranchChoiceOf :: BranchChoice → BranchChoice
 oppositeBranchChoiceOf LeftBranch = RightBranch
 oppositeBranchChoiceOf RightBranch = LeftBranch
 
-{-| Has a 'TreeBuilder' follow a 'Path' guiding it to a particular subtree;  the
+{-| Has a 'TreeGenerator' follow a 'Path' guiding it to a particular subtree;  the
     main use case of this function is for a processor which has been given a
     particular subtree as its workload to get the tree builder to zoom in on
     that subtree.
 
     The way this function works is as follows: as long as the remaining path is
-    non-empty, it runs the 'TreeBuilder' until it encounters either a cache
+    non-empty, it runs the 'TreeGenerator' until it encounters either a cache
     point or a choice point; in the former case the path supplies the cached
     value in the 'CacheStep' constructor, and in the latter case the path
     supplies the branch to take in the 'ChoiceStep' constructor; when the
-    remaining path is empty then the resulting 'TreeBuilder' is returned.
+    remaining path is empty then the resulting 'TreeGenerator' is returned.
 
     WARNING: This function is /not/ valid for all inputs; it makes the
     assumption that the given 'Path' has been derived from the given
-    'TreeBuilder' so that the path will always encounted choice points exactly
+    'TreeGenerator' so that the path will always encounted choice points exactly
     when the tree builder does and likewise for cache points. Furthermore, the
     path must not run out before the tree builder hits a leaf. If any of these
     conditions is violated, a 'WalkError' exception will be thrown; in fact, you
@@ -113,27 +113,27 @@ oppositeBranchChoiceOf RightBranch = LeftBranch
     possibility in practice because there is usually only one tree builder in
     use at a time and all paths in use have come from that tree builder.
  -}
-sendTreeBuilderDownPath :: Path → TreeBuilder α → TreeBuilder α
-sendTreeBuilderDownPath path = runIdentity . sendTreeBuilderTDownPath path
+sendTreeGeneratorDownPath :: Path → TreeGenerator α → TreeGenerator α
+sendTreeGeneratorDownPath path = runIdentity . sendTreeGeneratorTDownPath path
 
-{-| See 'sendTreeBuilderDownPath';  the only difference is that this function
+{-| See 'sendTreeGeneratorDownPath';  the only difference is that this function
     works for impure tree builders.
  -}
-sendTreeBuilderTDownPath :: Monad m ⇒ Path → TreeBuilderT m α → m (TreeBuilderT m α)
-sendTreeBuilderTDownPath path visitor =
+sendTreeGeneratorTDownPath :: Monad m ⇒ Path → TreeGeneratorT m α → m (TreeGeneratorT m α)
+sendTreeGeneratorTDownPath path visitor =
     case viewl path of
         EmptyL → return visitor
         step :< tail → do
-            view ← viewT . unwrapTreeBuilderT $ visitor
+            view ← viewT . unwrapTreeGeneratorT $ visitor
             case (view,step) of
                 (Return _,_) →
                     throw VisitorTerminatedBeforeEndOfWalk
                 (Null :>>= _,_) →
                     throw VisitorTerminatedBeforeEndOfWalk
                 (Cache _ :>>= k,CacheStep cache) →
-                    sendTreeBuilderTDownPath tail $ either error (TreeBuilderT . k) (decode cache)
+                    sendTreeGeneratorTDownPath tail $ either error (TreeGeneratorT . k) (decode cache)
                 (Choice left _ :>>= k,ChoiceStep LeftBranch) →
-                    sendTreeBuilderTDownPath tail (left >>= TreeBuilderT . k)
+                    sendTreeGeneratorTDownPath tail (left >>= TreeGeneratorT . k)
                 (Choice _ right :>>= k,ChoiceStep RightBranch) →
-                    sendTreeBuilderTDownPath tail (right >>= TreeBuilderT . k)
+                    sendTreeGeneratorTDownPath tail (right >>= TreeGeneratorT . k)
                 _ → throw PastVisitorIsInconsistentWithPresentVisitor

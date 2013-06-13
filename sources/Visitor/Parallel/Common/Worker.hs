@@ -102,7 +102,7 @@ data VisitorKind (m :: * → *) (n :: * → *) where -- {{{
 
 data VisitorFunctions (m :: * → *) (n :: * → *) (α :: *) = -- {{{
     MonadIO n ⇒ VisitorFunctions
-    {   walk :: Path → TreeBuilderT m α → n (TreeBuilderT m α)
+    {   walk :: Path → TreeGeneratorT m α → n (TreeGeneratorT m α)
     ,   step :: VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))
     ,   run ::  (∀ β. n β → IO β)
     }
@@ -214,7 +214,7 @@ forkWorkerThread :: -- {{{
     VisitorMode visitor_mode →
     VisitorKind m n →
     (WorkerTerminationReasonFor visitor_mode → IO ()) →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     Workload →
     WorkerPushActionFor visitor_mode →
     IO (WorkerEnvironmentFor visitor_mode)
@@ -370,7 +370,7 @@ genericRunVisitor :: -- {{{
     ) ⇒
     VisitorMode visitor_mode →
     VisitorKind m n →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     IO (WorkerTerminationReason (FinalResultFor visitor_mode))
 genericRunVisitor visitor_mode visitor_kind visitor = do
     final_progress_mvar ← newEmptyMVar
@@ -400,49 +400,49 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
 getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
 getVisitorFunctions PureVisitor = VisitorFunctions{..}
   where
-    walk = return .* sendTreeBuilderDownPath
+    walk = return .* sendTreeGeneratorDownPath
     step = return . stepThroughTreeStartingFromCheckpoint
     run = id
 getVisitorFunctions IOVisitor = VisitorFunctions{..}
   where
-    walk = sendTreeBuilderTDownPath
+    walk = sendTreeGeneratorTDownPath
     step = stepThroughTreeTStartingFromCheckpoint
     run = id
 getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
   where
-    walk = sendTreeBuilderTDownPath
+    walk = sendTreeGeneratorTDownPath
     step = stepThroughTreeTStartingFromCheckpoint
 {-# INLINE getVisitorFunctions #-}
 -- }}}
 
-visitTree :: Monoid α ⇒ TreeBuilder α → IO (WorkerTerminationReason α) -- {{{
+visitTree :: Monoid α ⇒ TreeGenerator α → IO (WorkerTerminationReason α) -- {{{
 visitTree = genericRunVisitor AllMode PureVisitor
 -- }}}
 
-visitTreeIO :: Monoid α ⇒ TreeBuilderIO α → IO (WorkerTerminationReason α) -- {{{
+visitTreeIO :: Monoid α ⇒ TreeGeneratorIO α → IO (WorkerTerminationReason α) -- {{{
 visitTreeIO = genericRunVisitor AllMode IOVisitor
 -- }}}
 
-visitTreeT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → TreeBuilderT m α → IO (WorkerTerminationReason α) -- {{{
+visitTreeT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → TreeGeneratorT m α → IO (WorkerTerminationReason α) -- {{{
 visitTreeT = genericRunVisitor AllMode . ImpureVisitor
 -- }}}
 
-visitTreeUntilFirst :: TreeBuilder α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
+visitTreeUntilFirst :: TreeGenerator α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
 visitTreeUntilFirst = genericRunVisitor FirstMode PureVisitor
 -- }}}
 
-visitTreeIOUntilFirst :: TreeBuilderIO α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
+visitTreeIOUntilFirst :: TreeGeneratorIO α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
 visitTreeIOUntilFirst = genericRunVisitor FirstMode IOVisitor
 -- }}}
 
-visitTreeTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → TreeBuilderT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
+visitTreeTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → TreeGeneratorT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
 visitTreeTUntilFirst = genericRunVisitor FirstMode . ImpureVisitor
 -- }}}
 
 visitTreeUntilFound :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
-    TreeBuilder α →
+    TreeGenerator α →
     IO (WorkerTerminationReason (Either α (Progress β)))
 visitTreeUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
@@ -453,7 +453,7 @@ visitTreeUntilFound f =
 visitTreeIOUntilFound :: -- {{{
     Monoid α ⇒
     (α → Maybe β) →
-    TreeBuilderIO α →
+    TreeGeneratorIO α →
     IO (WorkerTerminationReason (Either α (Progress β)))
 visitTreeIOUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
@@ -465,7 +465,7 @@ visitTreeTUntilFound :: -- {{{
     (Monoid α, MonadIO m) ⇒
     (α → Maybe β) →
     (∀ η. m η → IO η) →
-    TreeBuilderT m α →
+    TreeGeneratorT m α →
     IO (WorkerTerminationReason (Either α (Progress β)))
 visitTreeTUntilFound f =
     liftM (fmap $ mapRight (fmap fst))

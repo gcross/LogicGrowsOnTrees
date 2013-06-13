@@ -19,7 +19,7 @@ import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import Visitor (TreeBuilder)
+import Visitor (TreeGenerator)
 import Visitor.Examples.Queens.Implementation
 import Visitor.Utils.Word_
 import Visitor.Utils.WordSum
@@ -114,13 +114,13 @@ nqueensCorrectCount =
 nqueensCount :: MonadPlus m ⇒ Word → m WordSum -- {{{
 nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensCount :: Word → TreeBuilder WordSum #-}
+{-# SPECIALIZE nqueensCount :: Word → TreeGenerator WordSum #-}
 -- }}}
 
 nqueensSolutions :: MonadPlus m ⇒ Word → m NQueensSolution -- {{{
 nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
 {-# SPECIALIZE nqueensSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensSolutions :: Word → TreeBuilder NQueensSolution #-}
+{-# SPECIALIZE nqueensSolutions :: Word → TreeGenerator NQueensSolution #-}
 -- }}}
 
 -- }}}

@@ -67,7 +67,7 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
-import Visitor (TreeBuilder,TreeBuilderIO,TreeBuilderT)
+import Visitor (TreeGenerator,TreeGeneratorIO,TreeGeneratorT)
 import Visitor.Checkpoint
 import Visitor.Parallel.Main (Driver(Driver),RunOutcome,RunOutcomeFor,mainParser)
 import Visitor.Parallel.Common.Supervisor.RequestQueue
@@ -135,7 +135,7 @@ changeNumberOfWorkersToMatchCPUs =
 
 visitTree :: -- {{{
     Monoid result ⇒
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 visitTree = visitTreeStartingFrom mempty
@@ -144,7 +144,7 @@ visitTree = visitTreeStartingFrom mempty
 visitTreeStartingFrom :: -- {{{
     Monoid result ⇒
     Progress result →
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 visitTreeStartingFrom = launchVisitorStartingFrom AllMode PureVisitor
@@ -152,7 +152,7 @@ visitTreeStartingFrom = launchVisitorStartingFrom AllMode PureVisitor
 
 visitTreeIO :: -- {{{
     Monoid result ⇒
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 visitTreeIO = visitTreeIOStartingFrom mempty
@@ -161,7 +161,7 @@ visitTreeIO = visitTreeIOStartingFrom mempty
 visitTreeIOStartingFrom :: -- {{{
     Monoid result ⇒
     Progress result →
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 visitTreeIOStartingFrom = launchVisitorStartingFrom AllMode IOVisitor
@@ -170,7 +170,7 @@ visitTreeIOStartingFrom = launchVisitorStartingFrom AllMode IOVisitor
 visitTreeT :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 visitTreeT = flip visitTreeTStartingFrom mempty
@@ -180,14 +180,14 @@ visitTreeTStartingFrom :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) →
     Progress result →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (AllMode result) () →
     IO (RunOutcome (Progress result) result)
 visitTreeTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureVisitor
 -- }}}
 
 visitTreeUntilFirst :: -- {{{
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
 visitTreeUntilFirst = visitTreeUntilFirstStartingFrom mempty
@@ -195,14 +195,14 @@ visitTreeUntilFirst = visitTreeUntilFirstStartingFrom mempty
 
 visitTreeUntilFirstStartingFrom :: -- {{{
     Checkpoint →
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
 visitTreeUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode PureVisitor
 -- }}}
 
 visitTreeIOUntilFirst :: -- {{{
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
 visitTreeIOUntilFirst = visitTreeIOUntilFirstStartingFrom mempty
@@ -210,7 +210,7 @@ visitTreeIOUntilFirst = visitTreeIOUntilFirstStartingFrom mempty
 
 visitTreeIOUntilFirstStartingFrom :: -- {{{
     Checkpoint →
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
 visitTreeIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode IOVisitor
@@ -219,7 +219,7 @@ visitTreeIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode IOVisito
 visitTreeTUntilFirst :: -- {{{
     MonadIO m ⇒
     (∀ α. m α → IO α) →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
 visitTreeTUntilFirst = flip visitTreeTUntilFirstStartingFrom mempty
@@ -229,7 +229,7 @@ visitTreeTUntilFirstStartingFrom :: -- {{{
     MonadIO m ⇒
     (∀ α. m α → IO α) →
     Checkpoint →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (FirstMode result) () →
     IO (RunOutcome Checkpoint (Maybe (Progress result)))
 visitTreeTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureVisitor
@@ -238,7 +238,7 @@ visitTreeTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureV
 visitTreeUntilFoundUsingPull :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
 visitTreeUntilFoundUsingPull = flip visitTreeUntilFoundUsingPullStartingFrom mempty
@@ -248,7 +248,7 @@ visitTreeUntilFoundUsingPullStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
 visitTreeUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) PureVisitor
@@ -257,7 +257,7 @@ visitTreeUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundMod
 visitTreeIOUntilFoundUsingPull :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
 visitTreeIOUntilFoundUsingPull = flip visitTreeIOUntilFoundUsingPullStartingFrom mempty
@@ -267,7 +267,7 @@ visitTreeIOUntilFoundUsingPullStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
 visitTreeIOUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) IOVisitor
@@ -277,7 +277,7 @@ visitTreeTUntilFoundUsingPull :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
 visitTreeTUntilFoundUsingPull f run = visitTreeTUntilFoundUsingPullStartingFrom f run mempty
@@ -288,7 +288,7 @@ visitTreeTUntilFoundUsingPullStartingFrom :: -- {{{
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
     Progress result →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
 visitTreeTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureVisitor
@@ -297,7 +297,7 @@ visitTreeTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundMo
 visitTreeUntilFoundUsingPush :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
 visitTreeUntilFoundUsingPush = flip visitTreeUntilFoundUsingPushStartingFrom mempty
@@ -307,7 +307,7 @@ visitTreeUntilFoundUsingPushStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
-    TreeBuilder result →
+    TreeGenerator result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
 visitTreeUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) PureVisitor
@@ -316,7 +316,7 @@ visitTreeUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundMod
 visitTreeIOUntilFoundUsingPush :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
 visitTreeIOUntilFoundUsingPush = flip visitTreeIOUntilFoundUsingPushStartingFrom mempty
@@ -326,7 +326,7 @@ visitTreeIOUntilFoundUsingPushStartingFrom :: -- {{{
     Monoid result ⇒
     (result → Maybe final_result) →
     Progress result →
-    TreeBuilderIO result →
+    TreeGeneratorIO result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
 visitTreeIOUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) IOVisitor
@@ -336,7 +336,7 @@ visitTreeTUntilFoundUsingPush :: -- {{{
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
 visitTreeTUntilFoundUsingPush f run = visitTreeTUntilFoundUsingPushStartingFrom f run mempty
@@ -347,7 +347,7 @@ visitTreeTUntilFoundUsingPushStartingFrom :: -- {{{
     (result → Maybe final_result) →
     (∀ α. m α → IO α) →
     Progress result →
-    TreeBuilderT m result →
+    TreeGeneratorT m result →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
     IO (RunOutcome (Progress result) (Either result (Progress final_result)))
 visitTreeTUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) . ImpureVisitor
@@ -365,7 +365,7 @@ launchVisitorStartingFrom :: -- {{{
     VisitorMode visitor_mode →
     VisitorKind m n →
     (ProgressFor visitor_mode) →
-    TreeBuilderT m (ResultFor visitor_mode) →
+    TreeGeneratorT m (ResultFor visitor_mode) →
     ThreadsControllerMonad visitor_mode () →
     IO (RunOutcomeFor visitor_mode)
 launchVisitorStartingFrom visitor_mode visitor_kind starting_progress visitor (C controller) =
