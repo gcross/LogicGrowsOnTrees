@@ -1001,25 +1001,23 @@ tests = -- {{{
                         Completed result → return result
                         Failure message → error message
                 -- }}}
-                insertHooks cleared_flags_tvar request_queue = ($ \id → do -- {{{
-                    mvar ← liftIO . atomically $ do
-                        cleared_flags ← readTVar cleared_flags_tvar
+                insertHooks cleared_flags_mvar request_queue = ($ \id → liftIO $ do -- {{{
+                    mvar ← modifyMVar cleared_flags_mvar $ \cleared_flags →
                         case Map.lookup id cleared_flags of
                             Nothing → do
-                                mvar ← newEmptyTMVar
-                                modifyTVar cleared_flags_tvar (Map.insert id mvar)
-                                writeTChan request_queue mvar
-                                return mvar
-                            Just mvar → return mvar
-                    liftIO . atomically $ readTMVar mvar
+                                mvar ← newEmptyMVar
+                                writeChan request_queue mvar
+                                return (Map.insert id mvar cleared_flags,mvar)
+                            Just mvar → return (cleared_flags,mvar)
+                    readMVar mvar
                  ) -- }}}
                 receiveProgressInto progresses_ref progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
                 respondToRequests request_queue generateNoise progresses_ref = do -- {{{
                     _ ← Workgroup.changeNumberOfWorkers (const . return $ 1)
                     forever $ do
-                        mvar ← liftIO . atomically $ readTChan request_queue
+                        mvar ← liftIO $ readChan request_queue
                         generateNoise $ receiveProgressInto progresses_ref
-                        liftIO . atomically $ putTMVar mvar ()
+                        liftIO $ putMVar mvar ()
                 -- }}}
                 oneThreadNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
                     0 → void $ do
@@ -1039,12 +1037,12 @@ tests = -- {{{
             in
             [testGroup "AllMode" $ -- {{{
                 let runTest generateNoise = randomUniqueVisitorWithHooks >>= \constructVisitor → morallyDubiousIOProperty $ do
-                        cleared_flags_tvar ← newTVarIO mempty
-                        request_queue ← newTChanIO
+                        cleared_flags_mvar ← newMVar mempty
+                        request_queue ← newChan
                         progresses_ref ← newIORef []
                         result ←
                             (Threads.visitTreeIO
-                                (insertHooks cleared_flags_tvar request_queue constructVisitor)
+                                (insertHooks cleared_flags_mvar request_queue constructVisitor)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         let visitor = constructVisitor (const $ return ())
@@ -1063,12 +1061,12 @@ tests = -- {{{
              -- }}}
             ,testGroup "FirstMode" $ -- {{{
                 let runTest generator generateNoise = generator >>= \constructVisitor → morallyDubiousIOProperty $ do
-                        cleared_flags_tvar ← newTVarIO mempty
-                        request_queue ← newTChanIO
+                        cleared_flags_mvar ← newMVar mempty
+                        request_queue ← newChan
                         progresses_ref ← newIORef []
                         maybe_result ←
                             (Threads.visitTreeIOUntilFirst
-                                (insertHooks cleared_flags_tvar request_queue constructVisitor)
+                                (insertHooks cleared_flags_mvar request_queue constructVisitor)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         let visitor = constructVisitor (const $ return ())
@@ -1098,8 +1096,8 @@ tests = -- {{{
                         let visitor = constructVisitor (const $ return ())
                         correct_results ← visitTreeT visitor
                         number_of_results_to_find ← randomRIO (1,2*IntSet.size correct_results)
-                        cleared_flags_tvar ← newTVarIO mempty
-                        request_queue ← newTChanIO
+                        cleared_flags_mvar ← newMVar mempty
+                        request_queue ← newChan
                         progresses_ref ← newIORef []
                         result ←
                             (Threads.visitTreeIOUntilFoundUsingPull
@@ -1107,7 +1105,7 @@ tests = -- {{{
                                     then Just $ IntSet.toList result
                                     else Nothing
                                 )
-                                (insertHooks cleared_flags_tvar request_queue constructVisitor)
+                                (insertHooks cleared_flags_mvar request_queue constructVisitor)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         case result of
@@ -1144,8 +1142,8 @@ tests = -- {{{
                         let visitor = constructVisitor (const $ return ())
                         correct_results ← visitTreeT visitor
                         number_of_results_to_find ← randomRIO (1,2*IntSet.size correct_results)
-                        cleared_flags_tvar ← newTVarIO mempty
-                        request_queue ← newTChanIO
+                        cleared_flags_mvar ← newMVar mempty
+                        request_queue ← newChan
                         progresses_ref ← newIORef []
                         result ←
                             (Threads.visitTreeIOUntilFoundUsingPush
@@ -1153,7 +1151,7 @@ tests = -- {{{
                                     then Just $ IntSet.toList result
                                     else Nothing
                                 )
-                                (insertHooks cleared_flags_tvar request_queue constructVisitor)
+                                (insertHooks cleared_flags_mvar request_queue constructVisitor)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         case result of
