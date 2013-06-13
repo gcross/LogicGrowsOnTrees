@@ -18,6 +18,7 @@ import System.Console.CmdTheLine
 import Text.PrettyPrint (text)
 
 import Visitor (TreeBuilder)
+import Visitor.Utils.Word_
 import Visitor.Utils.WordSum
 -- }}}
 
@@ -35,16 +36,16 @@ data ArityAndDepth = ArityAndDepth -- {{{
 instance ArgVal Arity where -- {{{
     converter = (parseArity,prettyArity)
       where
-        (parseWord,prettyWord) = converter
+        (parseWord_,prettyWord_) = converter
         parseArity =
-            either Left (\n →
+            either Left (\(Word_ n) →
                 if n >= 2
                     then Right . Arity $ n
                     else Left . text $ "tree arity must be at least 2 (not " ++ show n ++ ")"
             )
             .
-            parseWord
-        prettyArity = prettyWord . getArity
+            parseWord_
+        prettyArity = prettyWord_ . Word_ . getArity
 instance ArgVal (Maybe Arity) where
     converter = just
 -- }}}
@@ -62,7 +63,7 @@ makeArityAndDepthTermAtPositions arity_position depth_position =
                , posDoc = "tree arity"
                }
         )
-    <*> (required $
+    <*> (fmap getWord . required $
          pos depth_position
              Nothing
              posInfo
