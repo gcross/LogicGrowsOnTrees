@@ -6,7 +6,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Visitor.Examples.Queens.Implementation where
+module Visitor.Examples.Queens.Advanced where
 
 -- Imports {{{
 import Control.Applicative ((<$>),liftA2)

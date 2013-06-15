@@ -26,7 +26,7 @@ import Text.Printf
 
 import Visitor
 import Visitor.Examples.Queens
-import Visitor.Examples.Queens.Implementation
+import Visitor.Examples.Queens.Advanced
 import Visitor.Utils.WordSum
 -- }}}
 
@@ -159,6 +159,51 @@ remdups (x : []) =  [x]
 remdups (x : xx : xs)
  | x == xx   = remdups (x : xs)
  | otherwise = x : remdups (xx : xs)
+-- }}}
+
+testSolutionsUsing nqueensSolutions nqueensCount = -- {{{
+    [testGroup "are valid" $ -- {{{
+        map (\n → testCase ("n = " ++ show n) $ checkSolutionsAreValid n (nqueensSolutions n))
+            [1..10]
+     -- }}}
+    ,testGroup "are unique" $ -- {{{
+        [ testCase ("n = " ++ show n) $
+            let solutions_as_list = nqueensSolutions n
+                solutions_as_set = Set.fromList solutions_as_list
+            in length solutions_as_list @?= Set.size solutions_as_set
+        | n ← [1..10]
+        ]
+     -- }}}
+    ,testGroup "have correct size" -- {{{
+        [ testCase ("n = " ++ show n) $
+            (correct_count @=?)
+            .
+            getWordSum
+            .
+            visitTree
+            .
+            nqueensCount
+            $
+            n
+        | n ← [1..14]
+        , let correct_count = nqueensCorrectCount n
+        ]
+     -- }}}
+    ,testGroup "match count" -- {{{
+        [ testCase ("n = " ++ show n) $
+            (nqueensCorrectCount n @=?)
+            .
+            getWordSum
+            .
+            visitTree
+            .
+            nqueensCount
+            $
+            n
+        | n ← [1..10]
+        ]
+     -- }}}
+    ]
 -- }}}
 -- }}}
 
@@ -919,49 +964,8 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "solutions" -- {{{
-        [testGroup "are valid" $ -- {{{
-            map (\n → testCase ("n = " ++ show n) $ checkSolutionsAreValid n (nqueensSolutions n))
-                [1..10]
-         -- }}}
-        ,testGroup "are unique" $ -- {{{
-            [ testCase ("n = " ++ show n) $
-                let solutions_as_list = nqueensSolutions n
-                    solutions_as_set = Set.fromList solutions_as_list
-                in length solutions_as_list @?= Set.size solutions_as_set
-            | n ← [1..10]
-            ]
-         -- }}}
-        ,testGroup "have correct size" -- {{{
-            [ testCase ("n = " ++ show n) $
-                (correct_count @=?)
-                .
-                getWordSum
-                .
-                visitTree
-                .
-                nqueensCount
-                $
-                n
-            | n ← [1..14]
-            , let correct_count = nqueensCorrectCount n
-            ]
-         -- }}}
-        ,testGroup "match count" -- {{{
-            [ testCase ("n = " ++ show n) $
-                (nqueensCorrectCount n @=?)
-                .
-                getWordSum
-                .
-                visitTree
-                .
-                nqueensCount
-                $
-                n
-            | n ← [1..10]
-            ]
-         -- }}}
-        ]
-     -- }}}
+    ,testGroup "solutions" $ testSolutionsUsing nqueensSolutions nqueensCount
+    ,testGroup "solutions using sets" $ testSolutionsUsing nqueensUsingSetsSolutions nqueensUsingSetsCount
+    ,testGroup "solutions using bits" $ testSolutionsUsing nqueensUsingBitsSolutions nqueensUsingBitsCount
     ]
 -- }}}

@@ -1,33 +1,90 @@
--- Language extensions {{{
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
-module Visitor.Examples.Queens where
+{-| This module contains examples of 'TreeGenerator's that generate solutions to
+    the n-queens problem, which is the problem of finding ways to put n queens
+    on an n-by-n chessboard in such a way that they do not conflict;  recall
+    that, in chess, a queen attacks the row it is on, the column it is one, and
+    both diagonals that it is one.  Thus, solutions of the n-queens problem take
+    the form of a list of coordinates such that no coordinates have overlapping
+    rows, columns, or diagonals.
 
--- Imports {{{
-import Control.Monad (MonadPlus)
+    The 'TreeGenerator's in this module are written in such a way that the same
+    code can generate either the full solutions or just the number of solutions.
+    Specifically, the generic form of the functions takes an initial value, a
+    way to update this value when a queen has been placed, and a way to finalize
+    this value when all queens have been placed. For the simple generators in
+    this module, if one is interested in solutions then the initial value is
+    '[]', the updater prepends the column of the new queen to the list (as the
+    queens are in consecutive rows), and the finalizer reverses and adds
+    row-numbers to the column coordinates. If one is only interested in the
+    count then the value is (), the updater returns (), and the finalizer
+    returns `WordSum 1`. (The advanced generators use a more complicated
+    arrangement but are basically the same idea.)  The reason for this design is
+    that it allows one to use one code path to obtain both kinds of results,
+    which means that once the solution generator has been fully tested the count
+    generator should work as well as it uses the same tested code path.
+ -}
+module Visitor.Examples.Queens
+    (
+    -- * Correct solution counts
+      nqueens_correct_counts
+    , nqueens_maximum_size
+    , nqueensCorrectCount
+    -- * Basic generators
+    -- $basic
 
-import Data.Bits (bitSize)
+    -- ** Using sets
+    -- $sets
+    , nqueensUsingSetsGeneric
+    , nqueensUsingSetsSolutions
+    , nqueensUsingSetsCount
+    -- ** Using bits
+    , nqueensUsingBitsGeneric
+    , nqueensUsingBitsSolutions
+    , nqueensUsingBitsCount
+    -- * Advancd generators
+    -- $basic
+    , nqueensGeneric
+    , nqueensSolutions
+    , nqueensCount
+    -- * Board size command argument
+    , BoardSize(..)
+    , makeBoardSizeTermAtPosition
+    ) where
+
+import Control.Monad (MonadPlus,guard)
+
+import Data.Bits ((.|.),(.&.),bit,bitSize,shiftL,shiftR)
 import Data.Functor ((<$>))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import qualified Data.IntSet as IntSet
 import Data.Maybe (fromJust)
-import Data.Word (Word)
+import Data.Word (Word,Word64)
 
 import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import Visitor (TreeGenerator)
-import Visitor.Examples.Queens.Implementation
+import Visitor (TreeGenerator,allFromBalancedBottomUp)
+import qualified Visitor.Examples.Queens.Advanced as Advanced
+import Visitor.Examples.Queens.Advanced (NQueensSolution,NQueensSolutions,multiplySolution,nqueensGeneric)
 import Visitor.Utils.Word_
 import Visitor.Utils.WordSum
--- }}}
 
--- Types {{{
+--------------------------------------------------------------------------------
+---------------------------------- Board size ----------------------------------
+--------------------------------------------------------------------------------
+
+{-| This newtype wrapper is used to provide an ArgVal instance that ensure that
+    an input board size is between 1 and 'maximum_board_size'.  In general you
+    do not need to use this type directly but instead can use the function
+    'makeBoardSizeTermAtPosition'.
+ -}
 newtype BoardSize = BoardSize { getBoardSize :: Word }
-instance ArgVal BoardSize where -- {{{
+instance ArgVal BoardSize where
     converter = (parseBoardSize,prettyBoardSize)
       where
         (parseWord,prettyWord) = converter
@@ -42,11 +99,36 @@ instance ArgVal BoardSize where -- {{{
         prettyBoardSize = prettyWord . Word_ . getBoardSize
 instance ArgVal (Maybe BoardSize) where
     converter = just
--- }}}
--- }}}
 
--- Values -- {{{
+{-| This constructs a term for the `cmdtheline` command line parser that expects
+    a valid board size (i.e., a number between 1 and 'maximum_board_size' at the
+    given positional argument.
+ -}
+makeBoardSizeTermAtPosition ::
+    Int {-^ the position in the commonand line arguments where this argument is expected -} →
+    Term Word
+makeBoardSizeTermAtPosition position =
+    getBoardSize
+    <$>
+    (required
+     $
+     pos position
+        Nothing
+        posInfo
+          { posName = "BOARD_SIZE"
+          , posDoc = "board size"
+          }
+    )
 
+--------------------------------------------------------------------------------
+-------------------------------- Correct counts --------------------------------
+--------------------------------------------------------------------------------
+
+{-| A table with the correct number of solutions for board sizes ranging from 1
+    to `nqueens_maximum_size`.
+
+    This data was pulled from <http://queens.inf.tu-dresden.de/?n=f&l=en>.
+ -}
 nqueens_correct_counts :: IntMap Word
 nqueens_correct_counts = IntMap.fromDistinctAscList $
     [( 1,1)
@@ -78,29 +160,20 @@ nqueens_correct_counts = IntMap.fromDistinctAscList $
     ,(26,22317699616364044)
     ]
 
+{-| The maximum board size in `nqueens_correct_counts`.  In a 64-bit environment
+    this value is equal to the largest board size for which we know the number
+    of solutions, which is 26.  In a 32-bit environment this value is equal to
+    the largest board size such that the number of solutions fits within a
+    32-bit (signed) integer (i.e., the range of 'Int'), which is 18.
+ -}
 nqueens_maximum_size :: Int
 nqueens_maximum_size = fst . IntMap.findMax $ nqueens_correct_counts
 
--- }}}
-
--- Functions {{{
-
-makeBoardSizeTermAtPosition :: Int → Term Word -- {{{
-makeBoardSizeTermAtPosition position =
-    getBoardSize
-    <$>
-    (required
-     $
-     pos position
-        Nothing
-        posInfo
-          { posName = "BOARD_SIZE"
-          , posDoc = "board size"
-          }
-    )
--- }}}
-
-nqueensCorrectCount :: Word → Word -- {{{
+{-| A /partial function/ that returns the number of solutions for the given
+    input board size;  this should only be used when you are sure that the input
+    is less than `nqueens_maximum_size`.
+ -}
+nqueensCorrectCount :: Word → Word
 nqueensCorrectCount =
     fromJust
     .
@@ -109,18 +182,184 @@ nqueensCorrectCount =
     IntMap.lookup
     .
     fromIntegral
--- }}}
 
-nqueensCount :: MonadPlus m ⇒ Word → m WordSum -- {{{
-nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . multiplicityForSymmetry $ symmetry) ()
-{-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensCount :: Word → TreeGenerator WordSum #-}
--- }}}
+--------------------------------------------------------------------------------
+------------------------------- Basic generators -------------------------------
+--------------------------------------------------------------------------------
 
-nqueensSolutions :: MonadPlus m ⇒ Word → m NQueensSolution -- {{{
+{- $basic
+The generators in this section are pretty basic in that they do not make use of
+the many optimizations that are available but which increase code complexity.
+They are provided in order to demonstrate how one can construct generators that
+generate the solutions to a problem, namely the n-queens problem.  Note that
+because they are defined using 'MonadPlus', the generators can be implemented
+using list and also using the 'TreeGenerator' type.
+
+Two basic solutions are included here.  The first uses set operations, and the
+second uses bitwise operations.
+
+ -}
+
+---------------------------------- Using sets ----------------------------------
+
+{- $sets
+The functions in this subsection use 'IntSet's to keep track of which columns
+and diagonals are occupied by queens.  (It is not necessarily to keep track of
+occupied rows because the rows are filled consecutively.)
+ -}
+
+{-| Generate solutions to the n-queens problem using 'IntSet's. -}
+nqueensUsingSetsGeneric ::
+    MonadPlus m ⇒
+    α {-^ the value used to represent a partially built solution -} →
+    (Int → α → α) {-^ a function that adds a newly occupied column to a
+                      partially built solutiona -} →
+    (α → β) {-^ a fucntion that finalizes a now fully built solution -} →
+    Word {-^ the board size -} →
+    m β {-^ the final result -}
+nqueensUsingSetsGeneric initial_value updateValue finalizeValue n =
+    go n
+       0
+       (IntSet.fromDistinctAscList [0..fromIntegral n-1])
+       IntSet.empty
+       IntSet.empty
+       initial_value
+  where
+    go 0 _ _ _ _ !value = return . finalizeValue $ value
+    go !n
+       !row
+       !available_columns
+       !occupied_negative_diagonals
+       !occupied_positive_diagonals
+       !value
+     = do
+        column ← allFromBalancedBottomUp $ IntSet.toList available_columns
+        let negative_diagonal = row + column
+        guard $ IntSet.notMember negative_diagonal occupied_negative_diagonals
+        let positive_diagonal = row - column
+        guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
+        go (n-1)
+           (row+1)
+           (IntSet.delete column available_columns)
+           (IntSet.insert negative_diagonal occupied_negative_diagonals)
+           (IntSet.insert positive_diagonal occupied_positive_diagonals)
+           (column `updateValue` value)
+{-# INLINE nqueensUsingSetsGeneric #-}
+
+{-| Generates the solutions to the n-queens problem with the given board size. -}
+nqueensUsingSetsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
+nqueensUsingSetsSolutions = nqueensUsingSetsGeneric [] ((:) . fromIntegral) (zip [0..] . reverse)
+{-# SPECIALIZE nqueensUsingSetsSolutions :: Word → NQueensSolutions #-}
+{-# SPECIALIZE nqueensUsingSetsSolutions :: Word → TreeGenerator NQueensSolution #-}
+{-# INLINEABLE nqueensUsingSetsSolutions #-}
+
+{-| Generates the solution count to the n-queens problem with the given board
+    size;  you need to sum over all these counts to obtain the total, which is
+    done by the 'visitTree' (and related) functions.
+ -}
+nqueensUsingSetsCount :: MonadPlus m ⇒ Word → m WordSum
+nqueensUsingSetsCount = nqueensUsingSetsGeneric () (const id) (const $ WordSum 1)
+{-# SPECIALIZE nqueensUsingSetsCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensUsingSetsCount :: Word → TreeGenerator WordSum #-}
+{-# INLINEABLE nqueensUsingSetsCount #-}
+
+---------------------------------- Using bits ----------------------------------
+
+{- $bits
+A basic optimization that results in a signiciant performance improvements is to
+use 'Word64's as set implemented using bitwise operations --- that is, a bit in
+position 1 means that column 1 / negative diagonal 1 / positive diagnal 1 is
+occupied.  The total occupied positions can be obtained by taking the bitwise or
+of the occupied columns, positive diagonals, and negative diagonals.
+
+Note that when we go to the next row, we shift the negative diagonals right and
+the positive diagonals left as every negative/positive diagonal that contains a
+square at a given row and column also contains column (x+1)/(x-1) of the
+succeeding row.
+ -}
+
+{-| Generate solutions to the n-queens problem using bitwise-operations. -}
+nqueensUsingBitsGeneric ::
+    MonadPlus m ⇒
+    α {-^ the value used to represent a partially built solution -} →
+    (Int → α → α) {-^ a function that adds a newly occupied column to a
+                      partially built solutiona -} →
+    (α → β) {-^ a fucntion that finalizes a now fully built solution -} →
+    Word {-^ the board size -} →
+    m β {-^ the final result -}
+nqueensUsingBitsGeneric initial_value updateValue finalizeValue n =
+    go n 0 (0::Word64) (0::Word64) (0::Word64) initial_value
+  where
+    go 0 _ _ _ _ !value = return . finalizeValue $ value
+    go !n
+       !row
+       !occupied_columns
+       !occupied_negative_diagonals
+       !occupied_positive_diagonals
+       !value
+     = do
+        column ← allFromBalancedBottomUp . goGetOpenings 0 $
+            occupied_columns .|. 
+            occupied_negative_diagonals .|.
+            occupied_positive_diagonals
+        let column_bit = bit column
+        go (n-1)
+           (row+1)
+           (occupied_columns .|. column_bit)
+           ((occupied_negative_diagonals .|. column_bit) `shiftR` 1)
+           ((occupied_positive_diagonals .|. column_bit) `shiftL` 1)
+           (column `updateValue` value)
+
+    n_as_word = fromIntegral n
+    goGetOpenings column bits
+      | column >= n_as_word = []
+      | bits .&. 1 == 0     = column:next
+      | otherwise           = next
+      where
+        next = goGetOpenings (column + 1) (bits `shiftR` 1)
+{-# INLINE nqueensUsingBitsGeneric #-}
+
+{-| Generates the solutions to the n-queens problem with the given board size. -}
+nqueensUsingBitsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
+nqueensUsingBitsSolutions = nqueensUsingBitsGeneric [] ((:) . fromIntegral) (zip [0..] . reverse)
+{-# SPECIALIZE nqueensUsingBitsSolutions :: Word → NQueensSolutions #-}
+{-# SPECIALIZE nqueensUsingBitsSolutions :: Word → TreeGenerator NQueensSolution #-}
+{-# INLINEABLE nqueensUsingBitsSolutions #-}
+
+{-| Generates the solution count to the n-queens problem with the given board
+    size;  you need to sum over all these counts to obtain the total, which is
+    done by the 'visitTree' (and related) functions.
+ -}
+nqueensUsingBitsCount :: MonadPlus m ⇒ Word → m WordSum
+nqueensUsingBitsCount = nqueensUsingBitsGeneric () (const id) (const $ WordSum 1)
+{-# SPECIALIZE nqueensUsingBitsCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensUsingBitsCount :: Word → TreeGenerator WordSum #-}
+{-# INLINEABLE nqueensUsingBitsCount #-}
+
+--------------------------------------------------------------------------------
+----------------------------- Advanced generators ------------------------------
+--------------------------------------------------------------------------------
+
+{- $advanced
+These generators use a number of advanced techniques to try and squeeze out as
+much performance as possible using the functionality of this package.
+
+For the implementation driving these functions, see the
+"Visitor.Examples.Queens.Advanced" module.
+ -}
+
+{-| Generates the solutions to the n-queens problem with the given board size. -}
+nqueensSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
 {-# SPECIALIZE nqueensSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensSolutions :: Word → TreeGenerator NQueensSolution #-}
--- }}}
 
--- }}}
+{-| Generates the solution count to the n-queens problem with the given board
+    size;  you need to sum over all these counts to obtain the total, which is
+    done by the 'visitTree' (and related) functions.
+ -}
+nqueensCount :: MonadPlus m ⇒ Word → m WordSum
+nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+{-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensCount :: Word → TreeGenerator WordSum #-}
+

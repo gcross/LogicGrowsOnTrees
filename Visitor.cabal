@@ -57,7 +57,7 @@ Library
         Visitor
         Visitor.Checkpoint
         Visitor.Examples.Queens
-        Visitor.Examples.Queens.Implementation
+        Visitor.Examples.Queens.Advanced
         Visitor.Examples.Tree
         Visitor.Label
         Visitor.Parallel.BackEnd.Threads
