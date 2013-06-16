@@ -58,7 +58,6 @@ Library
         Visitor.Checkpoint
         Visitor.Examples.Queens
         Visitor.Examples.Queens.Advanced
-        Visitor.Examples.Tree
         Visitor.Label
         Visitor.Parallel.BackEnd.Threads
         Visitor.Parallel.Common.Message
@@ -74,6 +73,7 @@ Library
         Visitor.Utils.Handle
         Visitor.Utils.IntSum
         Visitor.Utils.MonadPlusForest
+        Visitor.Utils.Tree
         Visitor.Utils.WordSum
         Visitor.Workload
     Other-modules:

@@ -81,7 +81,6 @@ import Test.SmallCheck.Drivers as Small (test)
 
 import Visitor
 import Visitor.Checkpoint
-import Visitor.Examples.Tree
 import Visitor.Label
 import Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import qualified Visitor.Parallel.BackEnd.Threads as Threads
@@ -90,6 +89,7 @@ import qualified Visitor.Parallel.Common.Workgroup as Workgroup
 import Visitor.Path
 import Visitor.Parallel.Common.Supervisor
 import Visitor.Parallel.Common.Supervisor.RequestQueue
+import Visitor.Utils.Tree
 import Visitor.Utils.WordSum
 import Visitor.Workload
 import qualified Visitor.Parallel.Common.Worker as Worker
@@ -883,17 +883,6 @@ tests = -- {{{
                 ]
              -- }}}
             ]
-         -- }}}
-        ]
-     -- }}}
-    ,testGroup "Visitor.Examples.Tree" -- {{{
-        [Small.testProperty "trivialTree" . Small.test $ -- {{{
-            (liftA2 . liftA2) (==>)
-                (\arity _ → arity >= 2)
-                ((liftA2 . liftA2) (==)
-                    numberOfLeaves
-                    ((getWordSum . visitTree) .* trivialTree)
-                )
          -- }}}
         ]
      -- }}}
@@ -1876,6 +1865,17 @@ tests = -- {{{
                 (runWriter . visitTreeT $ transformed_visitor) @?= ([42],[3,4])
              -- }}}
             ]
+         -- }}}
+        ]
+     -- }}}
+    ,testGroup "Visitor.Utils.Tree" -- {{{
+        [Small.testProperty "trivialTree" . Small.test $ -- {{{
+            (liftA2 . liftA2) (==>)
+                (\arity _ → arity >= 2)
+                ((liftA2 . liftA2) (==)
+                    numberOfLeaves
+                    ((getWordSum . visitTree) .* trivialTree)
+                )
          -- }}}
         ]
      -- }}}

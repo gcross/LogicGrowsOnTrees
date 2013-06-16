@@ -8,9 +8,9 @@ import Control.Applicative
 
 import System.Console.CmdTheLine
 
-import Visitor.Examples.Tree
 import Visitor.Parallel.Main
 import Visitor.Parallel.BackEnd.Threads
+import Visitor.Utils.Tree
 import Visitor.Utils.WordSum
 
 -- }}}

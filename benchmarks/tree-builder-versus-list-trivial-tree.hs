@@ -8,7 +8,7 @@ import Data.Monoid
 
 import Visitor
 import Visitor.Checkpoint
-import Visitor.Examples.Tree
+import Visitor.Utils.Tree
 import Visitor.Utils.WordSum
 import qualified Visitor.Parallel.Common.Worker as Worker
 -- }}}

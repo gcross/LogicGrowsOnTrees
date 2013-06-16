@@ -4,7 +4,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 -- }}}
 
-module Visitor.Examples.Tree where
+module Visitor.Utils.Tree where
 
 -- Imports {{{
 import Control.Applicative ((<$>),(<*>))
