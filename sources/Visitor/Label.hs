@@ -132,8 +132,8 @@ applyCheckpointCursorToLabel cursor =
             applyCheckpointCursorToLabel rest
             .
             case step of
-                CacheCheckpointD _ → id
-                ChoiceCheckpointD active_branch _ → labelTransformerForBranchChoice active_branch
+                CachePointD _ → id
+                ChoicePointD active_branch _ → labelTransformerForBranchChoice active_branch
 -- }}}
 
 applyContextToLabel :: Context m α → Label → Label -- {{{

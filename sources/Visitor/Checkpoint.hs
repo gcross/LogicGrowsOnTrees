@@ -37,8 +37,8 @@ import Visitor.Path
 -- Types {{{
 
 data Checkpoint = -- {{{
-    CacheCheckpoint ByteString Checkpoint
-  | ChoiceCheckpoint Checkpoint Checkpoint
+    CachePoint ByteString Checkpoint
+  | ChoicePoint Checkpoint Checkpoint
   | Explored
   | Unexplored
   deriving (Eq,Ord,Read,Show)
@@ -48,8 +48,8 @@ $( derive makeSerialize ''Checkpoint )
 type CheckpointCursor = Seq CheckpointDifferential
 
 data CheckpointDifferential = -- {{{
-    CacheCheckpointD ByteString
-  | ChoiceCheckpointD BranchChoice Checkpoint
+    CachePointD ByteString
+  | ChoicePointD BranchChoice Checkpoint
   deriving (Eq,Read,Show)
 -- }}}
 
@@ -128,10 +128,10 @@ instance Monoid Checkpoint where -- {{{
     _ `mappend` Explored = Explored
     Unexplored `mappend` x = x
     x `mappend` Unexplored = x
-    (ChoiceCheckpoint lx rx) `mappend` (ChoiceCheckpoint ly ry) =
-        mergeCheckpointRoot (ChoiceCheckpoint (lx `mappend` ly) (rx `mappend` ry))
-    (CacheCheckpoint cx x) `mappend` (CacheCheckpoint cy y)
-      | cx == cy = mergeCheckpointRoot (CacheCheckpoint cx (x `mappend` y))
+    (ChoicePoint lx rx) `mappend` (ChoicePoint ly ry) =
+        mergeCheckpointRoot (ChoicePoint (lx `mappend` ly) (rx `mappend` ry))
+    (CachePoint cx x) `mappend` (CachePoint cy y)
+      | cx == cy = mergeCheckpointRoot (CachePoint cx (x `mappend` y))
     mappend x y = throw (InconsistentCheckpoints x y)
 -- }}}
 
@@ -148,25 +148,25 @@ instance Show (ContextStep m α) where -- {{{
 checkpointFromContext :: Context m α → Checkpoint → Checkpoint -- {{{
 checkpointFromContext = checkpointFromSequence $
     \step → case step of
-        CacheContextStep cache → CacheCheckpoint cache
-        LeftBranchContextStep right_checkpoint _ → flip ChoiceCheckpoint right_checkpoint
-        RightBranchContextStep → ChoiceCheckpoint Explored
+        CacheContextStep cache → CachePoint cache
+        LeftBranchContextStep right_checkpoint _ → flip ChoicePoint right_checkpoint
+        RightBranchContextStep → ChoicePoint Explored
 -- }}}
 
 checkpointFromCursor :: CheckpointCursor → Checkpoint → Checkpoint -- {{{
 checkpointFromCursor = checkpointFromSequence $
     \step → case step of
-        CacheCheckpointD cache → CacheCheckpoint cache
-        ChoiceCheckpointD LeftBranch right_checkpoint → flip ChoiceCheckpoint right_checkpoint
-        ChoiceCheckpointD RightBranch left_checkpoint → ChoiceCheckpoint left_checkpoint
+        CachePointD cache → CachePoint cache
+        ChoicePointD LeftBranch right_checkpoint → flip ChoicePoint right_checkpoint
+        ChoicePointD RightBranch left_checkpoint → ChoicePoint left_checkpoint
 -- }}}
 
 checkpointFromInitialPath :: Path → Checkpoint → Checkpoint -- {{{
 checkpointFromInitialPath = checkpointFromSequence $
     \step → case step of
-        CacheStep c → CacheCheckpoint c
-        ChoiceStep LeftBranch → flip ChoiceCheckpoint Unexplored
-        ChoiceStep RightBranch → ChoiceCheckpoint Unexplored
+        CacheStep c → CachePoint c
+        ChoiceStep LeftBranch → flip ChoicePoint Unexplored
+        ChoiceStep RightBranch → ChoicePoint Unexplored
 -- }}}
 
 checkpointFromSequence :: -- {{{
@@ -193,9 +193,9 @@ checkpointFromVisitorState VisitorTState{..} =
 checkpointFromUnexploredPath :: Path → Checkpoint -- {{{
 checkpointFromUnexploredPath path = checkpointFromSequence
     (\step → case step of
-        CacheStep c → CacheCheckpoint c
-        ChoiceStep LeftBranch → flip ChoiceCheckpoint Explored
-        ChoiceStep RightBranch → ChoiceCheckpoint Explored
+        CacheStep c → CachePoint c
+        ChoiceStep LeftBranch → flip ChoicePoint Explored
+        ChoiceStep RightBranch → ChoicePoint Explored
     )
     path
     Unexplored
@@ -240,22 +240,22 @@ initialVisitorState = VisitorTState Seq.empty
 invertCheckpoint :: Checkpoint → Checkpoint -- {{{
 invertCheckpoint Explored = Unexplored
 invertCheckpoint Unexplored = Explored
-invertCheckpoint (CacheCheckpoint cache rest) =
-    mergeCheckpointRoot (CacheCheckpoint cache (invertCheckpoint rest))
-invertCheckpoint (ChoiceCheckpoint left right) =
-    mergeCheckpointRoot (ChoiceCheckpoint (invertCheckpoint left) (invertCheckpoint right))
+invertCheckpoint (CachePoint cache rest) =
+    mergeCheckpointRoot (CachePoint cache (invertCheckpoint rest))
+invertCheckpoint (ChoicePoint left right) =
+    mergeCheckpointRoot (ChoicePoint (invertCheckpoint left) (invertCheckpoint right))
 -- }}}
 
 mergeAllCheckpointNodes :: Checkpoint → Checkpoint -- {{{
-mergeAllCheckpointNodes (ChoiceCheckpoint left right) = mergeCheckpointRoot (ChoiceCheckpoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
-mergeAllCheckpointNodes (CacheCheckpoint cache checkpoint) = mergeCheckpointRoot (CacheCheckpoint cache (mergeAllCheckpointNodes checkpoint))
+mergeAllCheckpointNodes (ChoicePoint left right) = mergeCheckpointRoot (ChoicePoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
+mergeAllCheckpointNodes (CachePoint cache checkpoint) = mergeCheckpointRoot (CachePoint cache (mergeAllCheckpointNodes checkpoint))
 mergeAllCheckpointNodes checkpoint = checkpoint
 -- }}}
 
 mergeCheckpointRoot :: Checkpoint → Checkpoint -- {{{
-mergeCheckpointRoot (ChoiceCheckpoint Unexplored Unexplored) = Unexplored
-mergeCheckpointRoot (ChoiceCheckpoint Explored Explored) = Explored
-mergeCheckpointRoot (CacheCheckpoint _ Explored) = Explored
+mergeCheckpointRoot (ChoicePoint Unexplored Unexplored) = Unexplored
+mergeCheckpointRoot (ChoicePoint Explored Explored) = Explored
+mergeCheckpointRoot (CachePoint _ Explored) = Explored
 mergeCheckpointRoot checkpoint = checkpoint
 -- }}}
 
@@ -274,8 +274,8 @@ pathStepFromContextStep (RightBranchContextStep) = ChoiceStep RightBranch
 -- }}}
 
 pathStepFromCursorDifferential :: CheckpointDifferential → Step -- {{{
-pathStepFromCursorDifferential (CacheCheckpointD cache) = CacheStep cache
-pathStepFromCursorDifferential (ChoiceCheckpointD active_branch _) = ChoiceStep active_branch
+pathStepFromCursorDifferential (CachePointD cache) = CacheStep cache
+pathStepFromCursorDifferential (ChoicePointD active_branch _) = ChoiceStep active_branch
 -- }}}
 
 visitTreeStartingFromCheckpoint :: -- {{{
@@ -387,7 +387,7 @@ stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor
                     Unexplored
                     (left >>= TreeGeneratorT . k)
             )
-    CacheCheckpoint cache rest_checkpoint → getView >>= \view → case view of
+    CachePoint cache rest_checkpoint → getView >>= \view → case view of
         Cache _ :>>= k → return
             (Nothing, Just $
                 VisitorTState
@@ -396,7 +396,7 @@ stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor
                     (either error (TreeGeneratorT . k) . decode $ cache)
             )
         _ → throw PastVisitorIsInconsistentWithPresentVisitor
-    ChoiceCheckpoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
+    ChoicePoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
         Choice left right :>>= k → return
             (Nothing, Just $
                 VisitorTState

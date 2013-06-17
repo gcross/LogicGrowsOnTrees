@@ -163,8 +163,8 @@ instance Arbitrary Checkpoint where -- {{{
         arb n = frequency
                     [(1,return Explored)
                     ,(1,return Unexplored)
-                    ,(1,liftM2 CacheCheckpoint (fmap encode (arbitrary :: Gen Int)) (arb (n-1)))
-                    ,(2,liftM2 ChoiceCheckpoint (arb (n `div` 2)) (arb (n `div` 2)))
+                    ,(1,liftM2 CachePoint (fmap encode (arbitrary :: Gen Int)) (arb (n-1)))
+                    ,(2,liftM2 ChoicePoint (arb (n `div` 2)) (arb (n `div` 2)))
                     ]
 -- }}}
 
@@ -393,10 +393,10 @@ randomCheckpointForVisitor (TreeGeneratorT visitor) = go1 visitor
         ,(3,go2 visitor)
         ]
     go2 (view → Cache (Identity (Just x)) :>>= k) =
-        fmap (second $ CacheCheckpoint (encode x)) (go1 (k x))
+        fmap (second $ CachePoint (encode x)) (go1 (k x))
     go2 (view → Choice (TreeGeneratorT x) (TreeGeneratorT y) :>>= k) =
         liftM2 (\(left_result,left) (right_result,right) →
-            (left_result `mappend` right_result, ChoiceCheckpoint left right)
+            (left_result `mappend` right_result, ChoicePoint left right)
         ) (go1 (x >>= k)) (go1 (y >>= k))
     go2 visitor = elements [(visitTree (TreeGeneratorT visitor),Explored),(mempty,Unexplored)]
 -- }}}
@@ -685,17 +685,17 @@ tests = -- {{{
             [testProperty "cache" $ \(checkpoint :: Checkpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
                 ==
-                (mergeCheckpointRoot $ CacheCheckpoint (encode i) checkpoint)
+                (mergeCheckpointRoot $ CachePoint (encode i) checkpoint)
              -- }}}
             ,testProperty "left branch" $ \(inner_checkpoint :: Checkpoint) (other_visitor :: TreeGenerator [()]) (other_checkpoint :: Checkpoint) → -- {{{
                 (checkpointFromContext (Seq.singleton (LeftBranchContextStep other_checkpoint other_visitor)) inner_checkpoint)
                 ==
-                (mergeCheckpointRoot $ ChoiceCheckpoint inner_checkpoint other_checkpoint)
+                (mergeCheckpointRoot $ ChoicePoint inner_checkpoint other_checkpoint)
              -- }}}
             ,testProperty "right branch" $ \(checkpoint :: Checkpoint) → -- {{{
                 checkpointFromContext (Seq.singleton RightBranchContextStep) checkpoint
                 ==
-                (mergeCheckpointRoot $ ChoiceCheckpoint Explored checkpoint)
+                (mergeCheckpointRoot $ ChoicePoint Explored checkpoint)
              -- }}}
             ,testProperty "empty" $ \(checkpoint :: Checkpoint) → -- {{{
                 checkpointFromContext Seq.empty checkpoint == checkpoint
@@ -726,8 +726,8 @@ tests = -- {{{
                     >>=
                     assertEqual "the thrown exception was incorrect" (Left $ InconsistentCheckpoints x y)
                 )
-                [((CacheCheckpoint (encode (42 :: Int)) Unexplored),(CacheCheckpoint (encode (42 :: Integer)) Unexplored))
-                ,((ChoiceCheckpoint Unexplored Unexplored),CacheCheckpoint (encode (42 :: Int)) Unexplored)
+                [((CachePoint (encode (42 :: Int)) Unexplored),(CachePoint (encode (42 :: Integer)) Unexplored))
+                ,((ChoicePoint Unexplored Unexplored),CachePoint (encode (42 :: Int)) Unexplored)
                 ]
              -- }}}
             ,testProperty "unit element laws" $ \(checkpoint :: Checkpoint) → -- {{{
@@ -856,7 +856,7 @@ tests = -- {{{
                         walkThroughTree (mzero `mplus` mzero :: TreeGenerator (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
-                        ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                        ,(Nothing,ChoicePoint Explored Unexplored)
                         ,(Nothing,Explored)
                         ]
                      -- }}}
@@ -864,7 +864,7 @@ tests = -- {{{
                         walkThroughTree (mzero `mplus` return (Just ()) :: TreeGenerator (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
-                        ,(Nothing,ChoiceCheckpoint Explored Unexplored)
+                        ,(Nothing,ChoicePoint Explored Unexplored)
                         ,(Just (),Explored)
                         ]
                      -- }}}
@@ -872,7 +872,7 @@ tests = -- {{{
                         walkThroughTree (return (Just ()) `mplus` mzero :: TreeGenerator (Maybe ()))
                         @?=
                         [(Nothing,Unexplored)
-                        ,(Just (),ChoiceCheckpoint Explored Unexplored)
+                        ,(Just (),ChoicePoint Explored Unexplored)
                         ,(Just (),Explored)
                         ]
                      -- }}}
@@ -953,7 +953,7 @@ tests = -- {{{
                          return ()
                         )
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
-                termination_reason @?= Completed (Just (Progress (ChoiceCheckpoint Unexplored Explored) ()))
+                termination_reason @?= Completed (Just (Progress (ChoicePoint Unexplored Explored) ()))
              -- }}}
             ]
          -- }}}
@@ -1361,7 +1361,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction actions2
-                let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = Progress (ChoicePoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions3 $ do
                     enableSupervisorDebugMode
                     killWorkloadBuffer
@@ -1378,7 +1378,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                 let actions3 = ignoreAcceptWorkloadAction . ignoreWorkloadStealAction $ actions2
-                let progress = Progress (ChoiceCheckpoint Unexplored Unexplored) (Sum 1)
+                let progress = Progress (ChoicePoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllMode actions3 $ do
                     enableSupervisorDebugMode
                     killWorkloadBuffer
@@ -1412,7 +1412,7 @@ tests = -- {{{
         ,testCase "starting from previous checkpoint" $ do -- {{{
             (maybe_workload_ref,actions1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
             (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
-            let checkpoint = ChoiceCheckpoint Unexplored Unexplored
+            let checkpoint = ChoicePoint Unexplored Unexplored
                 progress = Progress checkpoint (Sum 1)
             SupervisorOutcome{..} ← runUnrestrictedSupervisorInAllModeStartingFrom progress actions2 $ do
                 addWorker ()
@@ -1463,8 +1463,8 @@ tests = -- {{{
                                     (Seq.singleton $ ChoiceStep RightBranch)
                                     Unexplored
                                 )
-                        receiveWorkerFinished True (Progress (ChoiceCheckpoint Explored Unexplored) Nothing)
-                        receiveWorkerFinished False (Progress (ChoiceCheckpoint Unexplored Explored) Nothing)
+                        receiveWorkerFinished True (Progress (ChoicePoint Explored Unexplored) Nothing)
+                        receiveWorkerFinished False (Progress (ChoicePoint Unexplored Explored) Nothing)
                         error "Supervisor did not terminate"
                     supervisorTerminationReason @?= SupervisorCompleted (Nothing :: Maybe (Progress ()))
                  -- }}}
@@ -1486,10 +1486,10 @@ tests = -- {{{
                                     (Seq.singleton $ ChoiceStep RightBranch)
                                     Unexplored
                                 )
-                        receiveWorkerFinished False (Progress (ChoiceCheckpoint Explored Unexplored) (Just False))
-                        receiveWorkerFinished True (Progress (ChoiceCheckpoint Unexplored Explored) (Just True))
+                        receiveWorkerFinished False (Progress (ChoicePoint Explored Unexplored) (Just False))
+                        receiveWorkerFinished True (Progress (ChoicePoint Unexplored Explored) (Just True))
                         error "Supervisor did not terminate"
-                    supervisorTerminationReason @?= SupervisorCompleted (Just (Progress (ChoiceCheckpoint Explored Unexplored) False))
+                    supervisorTerminationReason @?= SupervisorCompleted (Just (Progress (ChoicePoint Explored Unexplored) False))
                  -- }}}
                 ]
              -- }}}
