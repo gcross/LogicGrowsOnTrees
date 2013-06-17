@@ -1,12 +1,23 @@
--- Language extensions {{{
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
-module Visitor.Utils.Tree where
+{-| This modules contains utility functions for constructing perfect trees for
+    use in some of the tests and examples.
+ -}
+module Visitor.Utils.Tree
+    (
+    -- * Tree builders
+      tree
+    , trivialTree
+    , numberOfLeaves
+    -- * Arity and depth parameters
+    , Arity(..)
+    , ArityAndDepth(..)
+    , makeArityAndDepthTermAtPositions
+    , formArityAndDepth
+    ) where
 
--- Imports {{{
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (MonadPlus,msum)
 
@@ -20,20 +31,17 @@ import Text.PrettyPrint (text)
 import Visitor (TreeGenerator)
 import Visitor.Utils.Word_
 import Visitor.Utils.WordSum
--- }}}
 
--- Types {{{
+--------------------------------------------------------------------------------
+-------------------------- Arity and depth parameters --------------------------
+--------------------------------------------------------------------------------
+
+{-| Newtype wrapper for arities that has an 'ArgVal' instance that enforces that
+    the arity be at least 2.
+ -}
 newtype Arity = Arity { getArity :: Word } deriving (Eq,Show)
 
-data ArityAndDepth = ArityAndDepth -- {{{
-    {   arity :: !Word
-    ,   depth :: !Word
-    } deriving (Eq, Show)
--- }}}
--- }}}
-
--- Instances {{{
-instance ArgVal Arity where -- {{{
+instance ArgVal Arity where
     converter = (parseArity,prettyArity)
       where
         (parseWord_,prettyWord_) = converter
@@ -48,11 +56,22 @@ instance ArgVal Arity where -- {{{
         prettyArity = prettyWord_ . Word_ . getArity
 instance ArgVal (Maybe Arity) where
     converter = just
--- }}}
--- }}}
 
--- Values {{{
-makeArityAndDepthTermAtPositions :: Int → Int → Term ArityAndDepth
+{-| Datatype representing the arity and depth of a tree, used for command line
+    argument processing (see 'makeArityAndDepthTermAtPositions').
+ -}
+data ArityAndDepth = ArityAndDepth
+    {   arity :: !Word
+    ,   depth :: !Word
+    } deriving (Eq, Show)
+
+{-| Constructs a configuration term that expects the arity and depth to be at
+    the given command line argument positions.
+ -}
+makeArityAndDepthTermAtPositions ::
+    Int {-^ the position of the arity parameter in the command line -} →
+    Int {-^ the position of the depth parameter in the command line -} →
+    Term ArityAndDepth
 makeArityAndDepthTermAtPositions arity_position depth_position =
     formArityAndDepth
     <$> (required $
@@ -71,31 +90,49 @@ makeArityAndDepthTermAtPositions arity_position depth_position =
                , posDoc = "tree depth (depth 0 means 1 level)"
                }
         )
--- }}}
 
--- Functions {{{
-
-formArityAndDepth :: Arity → Word → ArityAndDepth -- {{{
+{-| A convenience function used when you have an value of type 'Arity' for the
+    arity of the tree rather than a value of type 'Word' and want to construct
+    a value of type 'ArityAndDepth'.
+ -}
+formArityAndDepth :: Arity → Word → ArityAndDepth
 formArityAndDepth (Arity arity) depth = ArityAndDepth{..}
--- }}}
 
-numberOfLeaves :: Word → Word → Word -- {{{
-numberOfLeaves arity depth = arity^depth
--- }}}
+--------------------------------------------------------------------------------
+-------------------------------- Tree builders ---------------------------------
+--------------------------------------------------------------------------------
 
-tree :: MonadPlus m ⇒ α → Word → Word → m α -- {{{
+{-| Generate a perfectly balanced tree with the given leaf value, arity, and leaf. -}
+tree ::
+    MonadPlus m ⇒
+    α {-^ the value to place at the leaves -} →
+    Word {-^ the arity of the tree (i.e., number of branches) -} →
+    Word {-^ the depth of the tree -} →
+    m α {-^ the tree generator -}
 tree leaf arity depth
   | depth == 0 = return leaf
   | arity > 0  = msum . genericReplicate arity $ tree leaf arity (depth-1)
   | otherwise  = error "arity must be a positive integer"
 {-# SPECIALIZE tree :: α → Word → Word → [α] #-}
 {-# SPECIALIZE tree :: α → Word → Word → TreeGenerator α #-}
--- }}}
 
-trivialTree :: MonadPlus m ⇒ Word → Word → m WordSum -- {{{
+{-| 'tree' with @WordSum 1@ at the leaves. -}
+trivialTree ::
+    MonadPlus m ⇒
+    Word {-^ the arity of the tree (i.e., number of branches) -} →
+    Word {-^ the depth of the tree -} →
+    m WordSum {-^ the tree generator -}
 trivialTree = tree (WordSum 1)
 {-# SPECIALIZE trivialTree :: Word → Word → [WordSum] #-}
 {-# SPECIALIZE trivialTree :: Word → Word → TreeGenerator WordSum #-}
--- }}}
 
--- }}}
+{-| Computes the number of leaves in a tree.  It returns a value of type 'Word'
+    so that it can be easily compared to the 'WordSum' value returned by the
+    tre generators, but a consequence of this is that it will blow up if the
+    arity and/or depth arguments are too large.
+ -}
+numberOfLeaves ::
+    Word {-^ the arity (i.e., number of branches) of the tree -} →
+    Word {-^ the depth of the tree -} →
+    Word {-^ the number of leaves in the tree -}
+numberOfLeaves arity depth = arity^depth
