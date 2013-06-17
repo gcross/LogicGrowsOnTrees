@@ -991,6 +991,7 @@ tests = -- {{{
                         Failure message → error message
                 -- }}}
                 insertHooks cleared_flags_mvar request_queue = ($ \id → liftIO $ do -- {{{
+                    threadDelay 10
                     mvar ← modifyMVar cleared_flags_mvar $ \cleared_flags →
                         case Map.lookup id cleared_flags of
                             Nothing → do
@@ -1004,8 +1005,11 @@ tests = -- {{{
                 respondToRequests request_queue generateNoise progresses_ref = do -- {{{
                     _ ← Workgroup.changeNumberOfWorkers (const . return $ 1)
                     forever $ do
+                        liftIO $ threadDelay 10
                         mvar ← liftIO $ readChan request_queue
+                        liftIO $ threadDelay 10
                         generateNoise $ receiveProgressInto progresses_ref
+                        liftIO $ threadDelay 10
                         liftIO $ putMVar mvar ()
                 -- }}}
                 oneThreadNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
