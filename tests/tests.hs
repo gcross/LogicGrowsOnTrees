@@ -685,17 +685,17 @@ tests = -- {{{
             [testProperty "cache" $ \(checkpoint :: Checkpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
                 ==
-                (mergeCheckpointRoot $ CachePoint (encode i) checkpoint)
+                (simplifyCheckpointRoot $ CachePoint (encode i) checkpoint)
              -- }}}
             ,testProperty "left branch" $ \(inner_checkpoint :: Checkpoint) (other_visitor :: TreeGenerator [()]) (other_checkpoint :: Checkpoint) → -- {{{
                 (checkpointFromContext (Seq.singleton (LeftBranchContextStep other_checkpoint other_visitor)) inner_checkpoint)
                 ==
-                (mergeCheckpointRoot $ ChoicePoint inner_checkpoint other_checkpoint)
+                (simplifyCheckpointRoot $ ChoicePoint inner_checkpoint other_checkpoint)
              -- }}}
             ,testProperty "right branch" $ \(checkpoint :: Checkpoint) → -- {{{
                 checkpointFromContext (Seq.singleton RightBranchContextStep) checkpoint
                 ==
-                (mergeCheckpointRoot $ ChoicePoint Explored checkpoint)
+                (simplifyCheckpointRoot $ ChoicePoint Explored checkpoint)
              -- }}}
             ,testProperty "empty" $ \(checkpoint :: Checkpoint) → -- {{{
                 checkpointFromContext Seq.empty checkpoint == checkpoint
@@ -1730,7 +1730,7 @@ tests = -- {{{
                         fmap (fromMaybe (error "stolen workload not available"))
                         $
                         readIORef maybe_workload_ref
-                    assertBool "Does the checkpoint have unexplored nodes?" $ mergeAllCheckpointNodes checkpoint /= Explored
+                    assertBool "Does the checkpoint have unexplored nodes?" $ simplifyAllCheckpointNodes checkpoint /= Explored
                     visitTreeTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
                     visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor_with_blocking_value >>= (prestolen_solutions @?=)
                     correct_solutions ← visitTreeT visitor_with_blocking_value

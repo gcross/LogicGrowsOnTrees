@@ -129,9 +129,9 @@ instance Monoid Checkpoint where -- {{{
     Unexplored `mappend` x = x
     x `mappend` Unexplored = x
     (ChoicePoint lx rx) `mappend` (ChoicePoint ly ry) =
-        mergeCheckpointRoot (ChoicePoint (lx `mappend` ly) (rx `mappend` ry))
+        simplifyCheckpointRoot (ChoicePoint (lx `mappend` ly) (rx `mappend` ry))
     (CachePoint cx x) `mappend` (CachePoint cy y)
-      | cx == cy = mergeCheckpointRoot (CachePoint cx (x `mappend` y))
+      | cx == cy = simplifyCheckpointRoot (CachePoint cx (x `mappend` y))
     mappend x y = throw (InconsistentCheckpoints x y)
 -- }}}
 
@@ -180,7 +180,7 @@ checkpointFromSequence processStep sequence =
         rest :> step →
             checkpointFromSequence processStep rest
             .
-            mergeCheckpointRoot
+            simplifyCheckpointRoot
             .
             processStep step
 -- }}}
@@ -241,22 +241,22 @@ invertCheckpoint :: Checkpoint → Checkpoint -- {{{
 invertCheckpoint Explored = Unexplored
 invertCheckpoint Unexplored = Explored
 invertCheckpoint (CachePoint cache rest) =
-    mergeCheckpointRoot (CachePoint cache (invertCheckpoint rest))
+    simplifyCheckpointRoot (CachePoint cache (invertCheckpoint rest))
 invertCheckpoint (ChoicePoint left right) =
-    mergeCheckpointRoot (ChoicePoint (invertCheckpoint left) (invertCheckpoint right))
+    simplifyCheckpointRoot (ChoicePoint (invertCheckpoint left) (invertCheckpoint right))
 -- }}}
 
-mergeAllCheckpointNodes :: Checkpoint → Checkpoint -- {{{
-mergeAllCheckpointNodes (ChoicePoint left right) = mergeCheckpointRoot (ChoicePoint (mergeAllCheckpointNodes left) (mergeAllCheckpointNodes right))
-mergeAllCheckpointNodes (CachePoint cache checkpoint) = mergeCheckpointRoot (CachePoint cache (mergeAllCheckpointNodes checkpoint))
-mergeAllCheckpointNodes checkpoint = checkpoint
+simplifyAllCheckpointNodes :: Checkpoint → Checkpoint -- {{{
+simplifyAllCheckpointNodes (ChoicePoint left right) = simplifyCheckpointRoot (ChoicePoint (simplifyAllCheckpointNodes left) (simplifyAllCheckpointNodes right))
+simplifyAllCheckpointNodes (CachePoint cache checkpoint) = simplifyCheckpointRoot (CachePoint cache (simplifyAllCheckpointNodes checkpoint))
+simplifyAllCheckpointNodes checkpoint = checkpoint
 -- }}}
 
-mergeCheckpointRoot :: Checkpoint → Checkpoint -- {{{
-mergeCheckpointRoot (ChoicePoint Unexplored Unexplored) = Unexplored
-mergeCheckpointRoot (ChoicePoint Explored Explored) = Explored
-mergeCheckpointRoot (CachePoint _ Explored) = Explored
-mergeCheckpointRoot checkpoint = checkpoint
+simplifyCheckpointRoot :: Checkpoint → Checkpoint -- {{{
+simplifyCheckpointRoot (ChoicePoint Unexplored Unexplored) = Unexplored
+simplifyCheckpointRoot (ChoicePoint Explored Explored) = Explored
+simplifyCheckpointRoot (CachePoint _ Explored) = Explored
+simplifyCheckpointRoot checkpoint = checkpoint
 -- }}}
 
 pathFromContext :: Context m α → Path -- {{{
