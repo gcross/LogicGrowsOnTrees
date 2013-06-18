@@ -735,155 +735,43 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "visitTreeStartingFromCheckpoint" -- {{{
-            [testProperty "completes the solution space" $ \(UniqueVisitor visitor) → -- {{{
-                randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
-                    visitTree visitor ==
-                        mappend partial_result (visitTreeStartingFromCheckpoint checkpoint visitor)
-             -- }}}
-            ,testProperty "matches walkThroughTreeStartingFromCheckpoint" $ \(visitor :: TreeGenerator [Int]) → do -- {{{
-                (_,checkpoint) ← randomCheckpointForVisitor visitor
-                morallyDubiousIOProperty $ do
-                    visitTreeStartingFromCheckpoint checkpoint visitor
-                        @?= (fst . last $ walkThroughTreeStartingFromCheckpoint checkpoint visitor)
-                    return True
-             -- }}}
-            ]
+        ,testProperty "visitTreeStartingFromCheckpoint" $ \(UniqueVisitor visitor) → -- {{{
+            randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
+                visitTree visitor ==
+                    mappend partial_result (visitTreeStartingFromCheckpoint checkpoint visitor)
          -- }}}
-        ,testGroup "visitTreeUntilFirstStartingFromCheckpoint" -- {{{
-            [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
-                randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
-                    let all_results = visitTreeStartingFromCheckpoint checkpoint visitor
-                        maybe_first_result = visitTreeUntilFirstStartingFromCheckpoint checkpoint visitor
-                    in case maybe_first_result of
-                        Nothing → IntSet.null all_results
-                        Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
-             -- }}}
-            ,testProperty "matches walkThroughTreeUntilFirstStartingFromCheckpoint" $ \(visitor :: TreeGenerator [Int]) → do -- {{{
-                (_,checkpoint) ← randomCheckpointForVisitor visitor
-                morallyDubiousIOProperty $ do
-                    visitTreeUntilFirstStartingFromCheckpoint checkpoint visitor
-                        @?= (fetchFirstResult $ walkThroughTreeUntilFirstStartingFromCheckpoint checkpoint visitor)
-                    return True
-             -- }}}
-            ]
+        ,testProperty "visitTreeUntilFirstStartingFromCheckpoint" $ \(UniqueVisitor visitor) → -- {{{
+            randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
+                let all_results = visitTreeStartingFromCheckpoint checkpoint visitor
+                    maybe_first_result = visitTreeUntilFirstStartingFromCheckpoint checkpoint visitor
+                in case maybe_first_result of
+                    Nothing → IntSet.null all_results
+                    Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results
          -- }}}
-        ,testGroup "visitTreeTUntilFirstStartingFromCheckpoint" -- {{{
-            [testProperty "bypasses the checkpoint" $ \(UniqueVisitor visitor) → -- {{{
-                randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
-                    let all_results = visitTreeStartingFromCheckpoint checkpoint visitor
-                        maybe_first_result = runIdentity $ visitTreeTUntilFirstStartingFromCheckpoint checkpoint visitor
-                    in case maybe_first_result of
-                        Nothing → IntSet.null all_results
-                        Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results  
-             -- }}}
-            ,testProperty "matches walkThroughTreeTUntilFirstStartingFromCheckpoint" $ \(visitor :: TreeGenerator [Int]) → do -- {{{
-                (_,checkpoint) ← randomCheckpointForVisitor visitor
-                morallyDubiousIOProperty $ do
-                    runIdentity (visitTreeTUntilFirstStartingFromCheckpoint checkpoint visitor)
-                        @?= (runIdentity . fetchFirstResultT $ walkThroughTreeTUntilFirstStartingFromCheckpoint checkpoint visitor)
-                    return True
-             -- }}}
-            ]
+        ,testProperty "visitTreeTUntilFirstStartingFromCheckpoint" $ \(UniqueVisitor visitor) → -- {{{
+            randomCheckpointForVisitor visitor >>= \(_,checkpoint) → return $
+                let all_results = visitTreeStartingFromCheckpoint checkpoint visitor
+                    maybe_first_result = runIdentity $ visitTreeTUntilFirstStartingFromCheckpoint checkpoint visitor
+                in case maybe_first_result of
+                    Nothing → IntSet.null all_results
+                    Just result → IntSet.size result == 1 && IntSet.member (IntSet.findMin result) all_results
          -- }}}
-        ,testGroup "visitTreeUntilFoundStartingFromCheckpoint" -- {{{
-            [testProperty "bypasses the checkpoint" $ do -- {{{
-                UniqueVisitor visitor ← arbitrary
-                (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
-                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
-                return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
-                    visitTreeUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint visitor
-             -- }}}
-            ,testProperty "matches walkThroughTreeUntilFoundStartingFromCheckpoint" $ do -- {{{
-                UniqueVisitor visitor ← arbitrary
-                (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
-                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
-                let f = intSetSizeFilter threshold
-                morallyDubiousIOProperty $ do
-                    visitTreeUntilFoundStartingFromCheckpoint f checkpoint visitor
-                        @?= (fetchFoundResult $ walkThroughTreeUntilFoundStartingFromCheckpoint f checkpoint visitor)
-                    return True
-             -- }}}
-            ]
+        ,testProperty "visitTreeUntilFoundStartingFromCheckpoint" $ do -- {{{
+            UniqueVisitor visitor ← arbitrary
+            (_,checkpoint) ← randomCheckpointForVisitor visitor
+            let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
+            threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+            return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
+                visitTreeUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint visitor
          -- }}}
-        ,testGroup "visitTreeTUntilFoundStartingFromCheckpoint" -- {{{
-            [testProperty "bypasses the checkpoint" $ do -- {{{
-                UniqueVisitor visitor ← arbitrary
-                (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
-                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
-                return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions . runIdentity $
-                    visitTreeTUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint visitor
-             -- }}}
-            ,testProperty "matches walkThroughTreeTUntilFoundStartingFromCheckpoint" $ do -- {{{
-                UniqueVisitor visitor ← arbitrary
-                (_,checkpoint) ← randomCheckpointForVisitor visitor
-                let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
-                threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
-                let f = intSetSizeFilter threshold
-                morallyDubiousIOProperty $ do
-                    runIdentity (visitTreeTUntilFoundStartingFromCheckpoint f checkpoint visitor)
-                        @?= runIdentity (fetchFoundResultT $ walkThroughTreeTUntilFoundStartingFromCheckpoint f checkpoint visitor)
-                    return True
-             -- }}}
-            ]
-         -- }}}
-        ,testGroup "walkThroughTreeStartingFromCheckpoint" -- {{{
-            [testProperty "matches walk down path" $ \(visitor :: TreeGenerator [Int]) → randomPathForVisitor visitor >>= \path → return $ -- {{{
-                visitTree (sendTreeGeneratorDownPath path visitor)
-                ==
-                (fst . last) (walkThroughTreeStartingFromCheckpoint (checkpointFromUnexploredPath path) visitor)
-             -- }}}
-            ]
-         -- }}}
-        ,testGroup "walkThroughTree" -- {{{
-            [testProperty "last checkpoint is correct" $ \(v :: TreeGenerator ()) → -- {{{
-                let checkpoints = walkThroughTree v
-                in unsafePerformIO $ (last checkpoints @=? (visitTree v,Explored)) >> return True
-             -- }}}
-            ,testProperty "checkpoints accurately capture remaining search space" $ \(UniqueVisitor v) → -- {{{
-                let results_using_progressive_checkpoints =
-                        [ result `mappend` visitTreeStartingFromCheckpoint checkpoint v
-                        | (result,checkpoint) ← walkThroughTree v
-                        ]
-                in all (== head results_using_progressive_checkpoints) (tail results_using_progressive_checkpoints)
-             -- }}}
-            ,testGroup "example instances" -- {{{
-                [testGroup "mplus" -- {{{
-                    [testCase "mzero + mzero" $ -- {{{
-                        walkThroughTree (mzero `mplus` mzero :: TreeGenerator (Maybe ()))
-                        @?=
-                        [(Nothing,Unexplored)
-                        ,(Nothing,ChoicePoint Explored Unexplored)
-                        ,(Nothing,Explored)
-                        ]
-                     -- }}}
-                    ,testCase "mzero + return" $ -- {{{
-                        walkThroughTree (mzero `mplus` return (Just ()) :: TreeGenerator (Maybe ()))
-                        @?=
-                        [(Nothing,Unexplored)
-                        ,(Nothing,ChoicePoint Explored Unexplored)
-                        ,(Just (),Explored)
-                        ]
-                     -- }}}
-                    ,testCase "return + mzero" $ -- {{{
-                        walkThroughTree (return (Just ()) `mplus` mzero :: TreeGenerator (Maybe ()))
-                        @?=
-                        [(Nothing,Unexplored)
-                        ,(Just (),ChoicePoint Explored Unexplored)
-                        ,(Just (),Explored)
-                        ]
-                     -- }}}
-                    ]
-                 -- }}}
-                ,testCase "mzero" $ walkThroughTree (mzero :: TreeGenerator [Int]) @?= [([],Explored)]
-                ,testCase "return" $ walkThroughTree (return [0] :: TreeGenerator [Int]) @?= [([0],Explored)]
-                ]
-             -- }}}
-            ]
-         -- }}}
+        ,testProperty "visitTreeTUntilFoundStartingFromCheckpoint" $ do -- {{{
+            UniqueVisitor visitor ← arbitrary
+            (_,checkpoint) ← randomCheckpointForVisitor visitor
+            let solutions = visitTreeStartingFromCheckpoint checkpoint visitor
+            threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
+            return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions . runIdentity $
+                visitTreeTUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint visitor
+          -- }}}
         ]
      -- }}}
     ,testGroup "Visitor.Label" -- {{{
@@ -1730,7 +1618,7 @@ tests = -- {{{
                         fmap (fromMaybe (error "stolen workload not available"))
                         $
                         readIORef maybe_workload_ref
-                    assertBool "Does the checkpoint have unexplored nodes?" $ simplifyAllCheckpointNodes checkpoint /= Explored
+                    assertBool "Does the checkpoint have unexplored nodes?" $ simplifyCheckpointRoot checkpoint /= Explored
                     visitTreeTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
                     visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor_with_blocking_value >>= (prestolen_solutions @?=)
                     correct_solutions ← visitTreeT visitor_with_blocking_value
