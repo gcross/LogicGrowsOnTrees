@@ -421,10 +421,10 @@ visitTreeTUntilFirst = viewT . unwrapTreeGeneratorT >=> \view →
 {-# SPECIALIZE visitTreeTUntilFirst :: TreeGeneratorIO α → IO (Maybe α) #-}
 {-# INLINEABLE visitTreeTUntilFirst #-}
 
-{-| Visits all the nodes in a tree, summing all results (i.e., in the leaves)
-    encountered until the current sum satisfies the condition provided by the
-    first function;  if this condition is ever satisfied then its result is
-    returned in 'Right', otherwise the final sum is returned in 'Left'.
+{-| Visits all the nodes in a tree, summing all encountered results (i.e., in
+    the leaves) until the current partial sum satisfies the condition provided
+    by the first function; if this condition is ever satisfied then its result
+    is returned in 'Right', otherwise the final sum is returned in 'Left'.
  -}
 visitTreeUntilFound ::
     Monoid α ⇒
