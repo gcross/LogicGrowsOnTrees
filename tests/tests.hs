@@ -735,6 +735,23 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testProperty "stepThroughTreeStartingFromCheckpoint" $ do -- {{{
+            UniqueVisitor visitor ← arbitrary
+            (partial_result,checkpoint) ← randomCheckpointForVisitor visitor
+            let go state@VisitorTState{..} current_result =
+                    visitTreeStartingFromCheckpoint
+                        (invertCheckpoint (checkpointFromVisitorState state))
+                        visitor
+                    ==
+                    current_result
+                    &&
+                    case stepThroughTreeStartingFromCheckpoint state of
+                        (Just result,Nothing) → visitTree visitor == current_result <> result
+                        (Nothing,Nothing) → visitTree visitor == current_result
+                        (Just result,Just new_state) → go new_state (current_result <> result)
+                        (Nothing,Just new_state) → go new_state current_result
+            return $ go (initialVisitorState checkpoint visitor) partial_result
+         -- }}}
         ,testProperty "visitTreeStartingFromCheckpoint" $ \(UniqueVisitor visitor) → -- {{{
             randomCheckpointForVisitor visitor >>= \(partial_result,checkpoint) → return $
                 visitTree visitor ==
