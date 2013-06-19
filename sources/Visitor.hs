@@ -134,7 +134,7 @@ builder that leads to the stolen workload.
 These features could have been provided as functions, but there are two reasons
 why they were subsumed into type-classes: first, because one might want to
 add another layer above the 'TreeGenerator' monad transformers in the monad stack
-(as is the case in "Visitor.Label"), and second, because one might want
+(as is the case in "Visitor.Location"), and second, because one might want
 to run a tree builder using a simpler monad such as [] for testing purposes.
 
 NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something

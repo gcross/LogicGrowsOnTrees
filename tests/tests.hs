@@ -81,7 +81,7 @@ import Test.SmallCheck.Drivers as Small (test)
 
 import Visitor
 import Visitor.Checkpoint
-import Visitor.Label
+import Visitor.Location
 import Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import qualified Visitor.Parallel.BackEnd.Threads as Threads
 import Visitor.Parallel.Common.VisitorMode
@@ -168,7 +168,7 @@ instance Arbitrary Checkpoint where -- {{{
                     ]
 -- }}}
 
-instance Arbitrary Label where arbitrary = fmap labelFromBranching (arbitrary :: Gen [BranchChoice])
+instance Arbitrary Location where arbitrary = fmap labelFromBranching (arbitrary :: Gen [BranchChoice])
 
 instance Arbitrary Step where -- {{{
     arbitrary = oneof
@@ -340,8 +340,8 @@ echo :: Show α ⇒ α → α -- {{{
 echo x = trace (show x) x
 -- }}}
 
-echoWithLabel :: Show α ⇒ String → α → α -- {{{
-echoWithLabel label x = trace (label ++ " " ++ show x) x
+echoWithLocation :: Show α ⇒ String → α → α -- {{{
+echoWithLocation label x = trace (label ++ " " ++ show x) x
 -- }}}
 
 ignoreAcceptWorkloadAction :: -- {{{
@@ -791,15 +791,15 @@ tests = -- {{{
           -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Label" -- {{{
-        [testProperty "branchingFromLabel . labelFromBranching = id" $ -- {{{
+    ,testGroup "Visitor.Location" -- {{{
+        [testProperty "branchingFromLocation . labelFromBranching = id" $ -- {{{
             liftA2 (==)
-                (branchingFromLabel . labelFromBranching)
+                (branchingFromLocation . labelFromBranching)
                 id
          -- }}}
-        ,testProperty "labelFromBranching . branchingFromLabel = id" $ -- {{{
+        ,testProperty "labelFromBranching . branchingFromLocation = id" $ -- {{{
             liftA2 (==)
-                (labelFromBranching . branchingFromLabel)
+                (labelFromBranching . branchingFromLocation)
                 id
          -- }}}
         ,testGroup "Monoid instance" -- {{{
@@ -810,20 +810,20 @@ tests = -- {{{
              -- }}}
             ,testProperty "obeys monoid laws" $ -- {{{
                 liftA2 (&&)
-                    (liftA2 (==) id (`mappend` (mempty :: Label)))
-                    (liftA2 (==) id ((mempty :: Label) `mappend`))
+                    (liftA2 (==) id (`mappend` (mempty :: Location)))
+                    (liftA2 (==) id ((mempty :: Location) `mappend`))
              -- }}}
             ]
          -- }}}
-        ,testProperty "Ord instance of Label equivalent to Ord of branching" $ \a b → -- {{{
-            (compare `on` branchingFromLabel) a b == compare a b
+        ,testProperty "Ord instance of Location equivalent to Ord of branching" $ \a b → -- {{{
+            (compare `on` branchingFromLocation) a b == compare a b
          -- }}}
-        ,testGroup "visitTreeWithLabels" -- {{{
+        ,testGroup "visitTreeWithLocations" -- {{{
             [testProperty "same result as visitTree" $ \(visitor :: TreeGenerator [()]) →
-                 visitTree ((:[]) <$> visitor) == (solutionResult <$> visitTreeWithLabels visitor)
+                 visitTree ((:[]) <$> visitor) == (solutionResult <$> visitTreeWithLocations visitor)
             ]
          -- }}}
-        ,testGroup "sendVisitorDownLabel" -- {{{
+        ,testGroup "sendTreeGeneratorDownLocation" -- {{{
             [testProperty "same result as walking down path" $ do -- {{{
                 visitor :: TreeGenerator Int ← randomVisitorWithoutCache
                 path ← randomPathForVisitor visitor
@@ -831,20 +831,20 @@ tests = -- {{{
                 return $
                     sendTreeGeneratorDownPath path visitor
                     ==
-                    sendVisitorDownLabel label visitor
+                    sendTreeGeneratorDownLocation label visitor
              -- }}}
             ]
          -- }}}
-        ,testProperty "runLabelledVisitor" $ -- {{{
+        ,testProperty "visitLocatableTree" $ -- {{{
             let gen _ 0 = return mzero
-                gen label 1 = return (All . (== label) <$> getLabel)
+                gen label 1 = return (All . (== label) <$> getLocation)
                 gen label n = do
                     left_size ← choose (0,n)
                     let right_size = n-left_size
-                    left ← gen (leftChildLabel label) left_size
-                    right ← gen (rightChildLabel label) right_size
+                    left ← gen (leftBranchOf label) left_size
+                    right ← gen (rightBranchOf label) right_size
                     return $ left `mplus` right
-            in getAll . runLabeledTreeGenerator <$> sized (gen rootLabel)
+            in getAll . visitLocatableTree <$> sized (gen rootLocation)
          -- }}}
         ]
      -- }}}
@@ -1483,7 +1483,7 @@ tests = -- {{{
                         let accumulated_update_solutions = scanl1 mappend update_solutions
                         sequence_ $
                             zipWith (\accumulated_solutions (ProgressUpdate (Progress checkpoint _) remaining_workload) → do
-                                let remaining_solutions = visitTreeThroughWorkload remaining_workload visitor
+                                let remaining_solutions = visitTreeWithinWorkload remaining_workload visitor
                                 assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
                                     (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
                                 assertEqual "Do the accumulated and remaining solutions sum to the correct solutions?"
@@ -1570,7 +1570,7 @@ tests = -- {{{
                                 ) steals
                             stolen_solutions =
                                 map (
-                                    flip visitTreeThroughWorkload visitor
+                                    flip visitTreeWithinWorkload visitor
                                     .
                                     stolenWorkload
                                 ) steals
@@ -1587,7 +1587,7 @@ tests = -- {{{
                         let accumulated_prestolen_solutions = scanl1 mappend prestolen_solutions
                             accumulated_stolen_solutions = scanl1 mappend stolen_solutions
                         sequence_ $ zipWith3 (\acc_prestolen acc_stolen (StolenWorkload (ProgressUpdate (Progress checkpoint _) remaining_workload) _) → do
-                            let remaining_solutions = visitTreeThroughWorkload remaining_workload visitor
+                            let remaining_solutions = visitTreeWithinWorkload remaining_workload visitor
                                 accumulated_solutions = acc_prestolen `mappend` acc_stolen
                             assertBool "Is there overlap between the accumulated solutions and the remaining solutions?"
                                 (IntSet.null $ accumulated_solutions `IntSet.intersection` remaining_solutions)
@@ -1636,10 +1636,10 @@ tests = -- {{{
                         $
                         readIORef maybe_workload_ref
                     assertBool "Does the checkpoint have unexplored nodes?" $ simplifyCheckpointRoot checkpoint /= Explored
-                    visitTreeTThroughWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
+                    visitTreeTWithinWorkload remaining_workload visitor_with_blocking_value >>= (remaining_solutions @?=)
                     visitTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) visitor_with_blocking_value >>= (prestolen_solutions @?=)
                     correct_solutions ← visitTreeT visitor_with_blocking_value
-                    stolen_solutions ← visitTreeTThroughWorkload stolen_workload visitor_with_blocking_value
+                    stolen_solutions ← visitTreeTWithinWorkload stolen_workload visitor_with_blocking_value
                     correct_solutions @=? mconcat [prestolen_solutions,remaining_solutions,stolen_solutions]
                     assertEqual "There is no overlap between the prestolen solutions and the remaining solutions."
                         IntSet.empty

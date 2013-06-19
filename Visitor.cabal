@@ -58,7 +58,7 @@ Library
         Visitor.Checkpoint
         Visitor.Examples.Queens
         Visitor.Examples.Queens.Advanced
-        Visitor.Label
+        Visitor.Location
         Visitor.Parallel.BackEnd.Threads
         Visitor.Parallel.Common.Message
         Visitor.Parallel.Common.Process
