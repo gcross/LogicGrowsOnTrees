@@ -482,7 +482,7 @@ The functions in this section visit the remainder of a tree, starting from the
 given checkpoint.
 -}
 
-{-| Visits the remaing nodes in a purely generated tree, starting from the
+{-| Visits the remaining nodes in a purely generated tree, starting from the
     given checkpoint, and sums over all the results in the leaves.
  -}
 visitTreeStartingFromCheckpoint ::
@@ -492,7 +492,7 @@ visitTreeStartingFromCheckpoint ::
     α
 visitTreeStartingFromCheckpoint = runIdentity .* visitTreeTStartingFromCheckpoint
 
-{-| Visits the remaing nodes in an impurely generated tree, starting from the
+{-| Visits the remaining nodes in an impurely generated tree, starting from the
     given checkpoint, and sums over all the results in the leaves.
  -}
 visitTreeTStartingFromCheckpoint ::
