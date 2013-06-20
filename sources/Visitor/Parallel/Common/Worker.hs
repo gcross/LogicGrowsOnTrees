@@ -25,9 +25,10 @@ module Visitor.Parallel.Common.Worker
     , WorkerEnvironmentFor
     , WorkerTerminationReason(..)
     , WorkerTerminationReasonFor
-    , VisitorKind(..)
+    , Purity(..)
     , forkWorkerThread
     , genericRunVisitor
+    , io_purity
     , visitTree
     , visitTreeIO
     , visitTreeT
@@ -94,10 +95,10 @@ $( derive makeSerialize ''StolenWorkload )
 -- }}}
 type StolenWorkloadFor visitor_mode = StolenWorkload (ProgressFor visitor_mode)
 
-data VisitorKind (m :: * → *) (n :: * → *) where -- {{{
-    PureVisitor :: VisitorKind Identity IO
-    IOVisitor :: VisitorKind IO IO
-    ImpureVisitor :: MonadIO m ⇒ (∀ β. m β → IO β) → VisitorKind m m
+data Purity (m :: * → *) (n :: * → *) where -- {{{
+    Pure :: Purity Identity IO
+    ImpureAtopIO :: MonadIO m ⇒ (∀ β. m β → IO β) → Purity m m
+io_purity = ImpureAtopIO id
 -- }}}
 
 data VisitorFunctions (m :: * → *) (n :: * → *) (α :: *) = -- {{{
@@ -212,7 +213,7 @@ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
 forkWorkerThread :: -- {{{
     ResultFor visitor_mode ~ α ⇒
     VisitorMode visitor_mode →
-    VisitorKind m n →
+    Purity m n →
     (WorkerTerminationReasonFor visitor_mode → IO ()) →
     TreeGeneratorT m α →
     Workload →
@@ -220,7 +221,7 @@ forkWorkerThread :: -- {{{
     IO (WorkerEnvironmentFor visitor_mode)
 forkWorkerThread
     visitor_mode
-    visitor_kind
+    purity
     finishedCallback
     visitor
     (Workload initial_path initial_checkpoint)
@@ -229,7 +230,7 @@ forkWorkerThread
     -- Note:  the following line of code needs to be this way --- that is, using
     --        do notation to extract the value of VisitorFunctions --- or else
     --        GHC's head will explode!
-    VisitorFunctions{..} ← case getVisitorFunctions visitor_kind of x → return x
+    VisitorFunctions{..} ← case getVisitorFunctions purity of x → return x
     pending_requests_ref ← newIORef []
     let loop1 (!result) cursor visitor_state = -- Check for requests {{{
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
@@ -369,14 +370,14 @@ genericRunVisitor :: -- {{{
     , ResultFor visitor_mode ~ α
     ) ⇒
     VisitorMode visitor_mode →
-    VisitorKind m n →
+    Purity m n →
     TreeGeneratorT m α →
     IO (WorkerTerminationReason (FinalResultFor visitor_mode))
-genericRunVisitor visitor_mode visitor_kind visitor = do
+genericRunVisitor visitor_mode purity visitor = do
     final_progress_mvar ← newEmptyMVar
     _ ← forkWorkerThread
             visitor_mode
-            visitor_kind
+            purity
             (putMVar final_progress_mvar)
             visitor
             entire_workload
@@ -397,18 +398,13 @@ genericRunVisitor visitor_mode visitor_kind visitor = do
             _ → error "should never reach here due to incompatible types"
 -- }}}
 
-getVisitorFunctions :: VisitorKind m n → VisitorFunctions m n α -- {{{
-getVisitorFunctions PureVisitor = VisitorFunctions{..}
+getVisitorFunctions :: Purity m n → VisitorFunctions m n α -- {{{
+getVisitorFunctions Pure = VisitorFunctions{..}
   where
     walk = return .* sendTreeGeneratorDownPath
     step = return . stepThroughTreeStartingFromCheckpoint
     run = id
-getVisitorFunctions IOVisitor = VisitorFunctions{..}
-  where
-    walk = sendTreeGeneratorTDownPath
-    step = stepThroughTreeTStartingFromCheckpoint
-    run = id
-getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
+getVisitorFunctions (ImpureAtopIO run) = VisitorFunctions{..}
   where
     walk = sendTreeGeneratorTDownPath
     step = stepThroughTreeTStartingFromCheckpoint
@@ -416,27 +412,27 @@ getVisitorFunctions (ImpureVisitor run) = VisitorFunctions{..}
 -- }}}
 
 visitTree :: Monoid α ⇒ TreeGenerator α → IO (WorkerTerminationReason α) -- {{{
-visitTree = genericRunVisitor AllMode PureVisitor
+visitTree = genericRunVisitor AllMode Pure
 -- }}}
 
 visitTreeIO :: Monoid α ⇒ TreeGeneratorIO α → IO (WorkerTerminationReason α) -- {{{
-visitTreeIO = genericRunVisitor AllMode IOVisitor
+visitTreeIO = genericRunVisitor AllMode io_purity
 -- }}}
 
 visitTreeT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → TreeGeneratorT m α → IO (WorkerTerminationReason α) -- {{{
-visitTreeT = genericRunVisitor AllMode . ImpureVisitor
+visitTreeT = genericRunVisitor AllMode . ImpureAtopIO
 -- }}}
 
 visitTreeUntilFirst :: TreeGenerator α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-visitTreeUntilFirst = genericRunVisitor FirstMode PureVisitor
+visitTreeUntilFirst = genericRunVisitor FirstMode Pure
 -- }}}
 
 visitTreeIOUntilFirst :: TreeGeneratorIO α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-visitTreeIOUntilFirst = genericRunVisitor FirstMode IOVisitor
+visitTreeIOUntilFirst = genericRunVisitor FirstMode io_purity
 -- }}}
 
 visitTreeTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → TreeGeneratorT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-visitTreeTUntilFirst = genericRunVisitor FirstMode . ImpureVisitor
+visitTreeTUntilFirst = genericRunVisitor FirstMode . ImpureAtopIO
 -- }}}
 
 visitTreeUntilFound :: -- {{{
@@ -447,7 +443,7 @@ visitTreeUntilFound :: -- {{{
 visitTreeUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .
-    genericRunVisitor (FoundModeUsingPull f) PureVisitor
+    genericRunVisitor (FoundModeUsingPull f) Pure
 -- }}}
 
 visitTreeIOUntilFound :: -- {{{
@@ -458,7 +454,7 @@ visitTreeIOUntilFound :: -- {{{
 visitTreeIOUntilFound f =
     liftM (fmap $ mapRight (fmap fst))
     .
-    genericRunVisitor (FoundModeUsingPull f) IOVisitor
+    genericRunVisitor (FoundModeUsingPull f) io_purity
 -- }}}
 
 visitTreeTUntilFound :: -- {{{
@@ -472,7 +468,7 @@ visitTreeTUntilFound f =
     .*
     (genericRunVisitor (FoundModeUsingPull f)
      .
-     ImpureVisitor
+     ImpureAtopIO
     )
 -- }}}
 

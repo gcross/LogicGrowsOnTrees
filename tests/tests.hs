@@ -1407,7 +1407,7 @@ tests = -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new
                 semaphore ← newEmptyMVar
-                WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
+                WorkerEnvironment{..} ← forkWorkerThread AllMode io_purity
                     (IVar.write termination_result_ivar)
                     (liftIO (takeMVar semaphore) `mplus` error "should never get here")
                     entire_workload
@@ -1425,7 +1425,7 @@ tests = -- {{{
             ,testGroup "obtains all solutions" -- {{{
                 [testProperty "with no initial path" $ \(visitor :: TreeGenerator [Int]) → unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
-                    _ ← forkWorkerThread AllMode PureVisitor
+                    _ ← forkWorkerThread AllMode Pure
                             (IVar.write solutions_ivar)
                             visitor
                             entire_workload
@@ -1442,7 +1442,7 @@ tests = -- {{{
                  -- }}}
                 ,testProperty "with an initial path" $ \(visitor :: TreeGenerator [Int]) → randomPathForVisitor visitor >>= \path → return . unsafePerformIO $ do -- {{{
                     solutions_ivar ← IVar.new
-                    _ ← forkWorkerThread AllMode PureVisitor
+                    _ ← forkWorkerThread AllMode Pure
                             (IVar.write solutions_ivar)
                             visitor
                             (Workload path Unexplored)
@@ -1501,7 +1501,7 @@ tests = -- {{{
                 [testProperty "continuous progress update requests" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     starting_flag ← IVar.new
                     termination_result_ivar ← IVar.new
-                    WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
+                    WorkerEnvironment{..} ← forkWorkerThread AllMode io_purity
                         (IVar.write termination_result_ivar)
                         ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowTreeGenerator visitor)
                         entire_workload
@@ -1518,7 +1518,7 @@ tests = -- {{{
                 ,testProperty "progress update requests at random leaves" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     termination_result_ivar ← IVar.new
                     progress_updates_ref ← newIORef []
-                    rec WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
+                    rec WorkerEnvironment{..} ← forkWorkerThread AllMode io_purity
                             (IVar.write termination_result_ivar)
                             (do value ← endowTreeGenerator visitor
                                 liftIO $ randomIO >>= flip when submitMyProgressUpdateRequest
@@ -1537,7 +1537,7 @@ tests = -- {{{
             ,testCase "terminates successfully with null visitor" $ do -- {{{
                 termination_result_ivar ← IVar.new
                 WorkerEnvironment{..} ←
-                    forkWorkerThread AllMode PureVisitor
+                    forkWorkerThread AllMode Pure
                         (IVar.write termination_result_ivar)
                         (mzero :: TreeGenerator [Int])
                         entire_workload
@@ -1614,7 +1614,7 @@ tests = -- {{{
                                 )
                                 (endowTreeGenerator visitor)
                     termination_result_ivar ← IVar.new
-                    WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
+                    WorkerEnvironment{..} ← forkWorkerThread AllMode io_purity
                         (IVar.write termination_result_ivar)
                         visitor_with_blocking_value
                         entire_workload
@@ -1655,7 +1655,7 @@ tests = -- {{{
                 ,testProperty "continuous stealing" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     starting_flag ← IVar.new
                     termination_result_ivar ← IVar.new
-                    WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
+                    WorkerEnvironment{..} ← forkWorkerThread AllMode io_purity
                         (IVar.write termination_result_ivar)
                         ((liftIO . IVar.blocking . IVar.read $ starting_flag) >> endowTreeGenerator visitor)
                         entire_workload
@@ -1673,7 +1673,7 @@ tests = -- {{{
                 ,testProperty "stealing at random leaves" $ \(UniqueVisitor visitor) → unsafePerformIO $ do -- {{{
                     termination_result_ivar ← IVar.new
                     steals_ref ← newIORef []
-                    rec WorkerEnvironment{..} ← forkWorkerThread AllMode IOVisitor
+                    rec WorkerEnvironment{..} ← forkWorkerThread AllMode io_purity
                             (IVar.write termination_result_ivar)
                             (do value ← endowTreeGenerator visitor
                                 liftIO $ randomIO >>= flip when submitMyWorkloadStealRequest

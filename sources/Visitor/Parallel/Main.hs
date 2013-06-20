@@ -142,7 +142,7 @@ data Driver -- {{{
         , MonadIO result_monad
         ) ⇒
         VisitorMode visitor_mode →
-        VisitorKind m n →
+        Purity m n →
         Term shared_configuration →
         Term supervisor_configuration →
         TermInfo →
@@ -308,7 +308,7 @@ mainVisitor :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → TreeGenerator result) →
     result_monad ()
-mainVisitor = genericMain AllMode PureVisitor
+mainVisitor = genericMain AllMode Pure
 -- }}}
 
 mainVisitorIO :: -- {{{
@@ -319,7 +319,7 @@ mainVisitorIO :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → TreeGeneratorIO result) →
     result_monad ()
-mainVisitorIO = genericMain AllMode IOVisitor
+mainVisitorIO = genericMain AllMode io_purity
 -- }}}
 
 mainVisitorT :: -- {{{
@@ -331,7 +331,7 @@ mainVisitorT :: -- {{{
     (visitor_configuration → RunOutcome (Progress result) result → IO ()) →
     (visitor_configuration → TreeGeneratorT m result) →
     result_monad ()
-mainVisitorT = genericMain AllMode . ImpureVisitor
+mainVisitorT = genericMain AllMode . ImpureAtopIO
 -- }}}
 
 -- }}}
@@ -373,7 +373,7 @@ genericMain :: -- {{{
     , Serialize (ProgressFor visitor_mode)
     ) ⇒
     VisitorMode visitor_mode →
-    VisitorKind m n →
+    Purity m n →
     Driver
         result_monad
         (SharedConfiguration visitor_configuration)
@@ -385,9 +385,9 @@ genericMain :: -- {{{
     (visitor_configuration → RunOutcomeFor visitor_mode → IO ()) →
     (visitor_configuration → TreeGeneratorT m result) →
     result_monad ()
-genericMain visitor_mode visitor_kind (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
+genericMain visitor_mode purity (Driver run) visitor_configuration_term infomod notifyTerminated constructVisitor =
     run  visitor_mode
-         visitor_kind
+         purity
         (makeSharedConfigurationTerm visitor_configuration_term)
          supervisor_configuration_term
          infomod
