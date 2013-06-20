@@ -101,7 +101,7 @@ data Solution α = Solution
     ,   solutionResult :: α
     } deriving (Eq,Ord,Show)
 
-{-| The 'Monoid instance constructs a location that is the result of appending
+{-| The 'Monoid' instance constructs a location that is the result of appending
     the path in the second argument to the path in the first argument.
  -}
 instance Monoid Location where
