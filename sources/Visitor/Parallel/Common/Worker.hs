@@ -1,4 +1,3 @@
--- Language extensions {{{
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -12,10 +11,17 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
+{-| The 'Worker' module contains the workhorses code of the parallelization
+    infrastructure in the form of the 'forkWorkerThread' function, which
+    visits a tree step by step while continuously polling for requests;  more
+    details for how this function works are available at 'forkWorkerThread'.
+ -}
 module Visitor.Parallel.Common.Worker
-    ( ProgressUpdate(..)
+    (
+    -- * Types
+    -- ** Worker interaction
+      ProgressUpdate(..)
     , ProgressUpdateFor
     , StolenWorkload(..)
     , StolenWorkloadFor
@@ -25,22 +31,18 @@ module Visitor.Parallel.Common.Worker
     , WorkerEnvironmentFor
     , WorkerTerminationReason(..)
     , WorkerTerminationReasonFor
+    , WorkerPushActionFor
+    -- ** Tree generator purity
     , Purity(..)
-    , forkWorkerThread
-    , genericRunVisitor
     , io_purity
-    , visitTree
-    , visitTreeIO
-    , visitTreeT
-    , visitTreeUntilFirst
-    , visitTreeIOUntilFirst
-    , visitTreeTUntilFirst
+    -- * Functions
+    , forkWorkerThread
     , sendAbortRequest
     , sendProgressUpdateRequest
     , sendWorkloadStealRequest
+    , visitTreeGeneric
     ) where
 
--- Imports {{{
 import Prelude hiding (catch)
 
 import Control.Arrow ((&&&))
@@ -75,150 +77,201 @@ import Visitor.Checkpoint
 import Visitor.Parallel.Common.VisitorMode
 import Visitor.Path
 import Visitor.Workload
--- }}}
 
--- Types {{{
 
-data ProgressUpdate progress = ProgressUpdate -- {{{
+--------------------------------------------------------------------------------
+------------------------------------ Types -------------------------------------
+--------------------------------------------------------------------------------
+
+------------------------------ Worker responses --------------------------------
+
+{-| The type of progress updates sent to the supervisor;  it has a component
+    which contains information about how much of the tree has been explored and
+    what results have been found so far, as well as the remaining 'Workload' to
+    be completed by this worker.
+ -}
+data ProgressUpdate progress = ProgressUpdate
     {   progressUpdateProgress :: progress
     ,   progressUpdateRemainingWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''ProgressUpdate )
--- }}}
+
+{-| A convenient type alias for the type of 'ProgressUpdate' corresponding to
+    the given visitor mode. -}
 type ProgressUpdateFor visitor_mode = ProgressUpdate (ProgressFor visitor_mode)
 
-data StolenWorkload progress = StolenWorkload -- {{{
+{-| The type of stolen workloads sent to the supervisor;  in addition to a
+    component with the stolen 'Workload' itself, it also has a 'ProgressUpdate'
+    component, which is required in to maintain the invariant that all of the
+    'Workloads's that the supervisor has on file (both assigned to workers and
+    unassigned) plus the progress equals the full tree.
+ -}
+data StolenWorkload progress = StolenWorkload
     {   stolenWorkloadProgressUpdate :: ProgressUpdate progress
     ,   stolenWorkload :: Workload
     } deriving (Eq,Show)
 $( derive makeSerialize ''StolenWorkload )
--- }}}
+
+{-| A convenient type alias for the type of 'StolenWorkload' corresponding to
+    the given visitor mode. -}
 type StolenWorkloadFor visitor_mode = StolenWorkload (ProgressFor visitor_mode)
 
-data Purity (m :: * → *) (n :: * → *) where -- {{{
-    Pure :: Purity Identity IO
-    ImpureAtopIO :: MonadIO m ⇒ (∀ β. m β → IO β) → Purity m m
-io_purity = ImpureAtopIO id
--- }}}
+------------------------------- Worker requests --------------------------------
 
-data VisitorFunctions (m :: * → *) (n :: * → *) (α :: *) = -- {{{
-    MonadIO n ⇒ VisitorFunctions
-    {   walk :: Path → TreeGeneratorT m α → n (TreeGeneratorT m α)
-    ,   step :: VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))
-    ,   run ::  (∀ β. n β → IO β)
-    }
--- }}}
-
-data WorkerRequest progress = -- {{{
+{-| The type of worker requests. -}
+data WorkerRequest progress =
+    {-| Request that the worker abort. -}
     AbortRequested
+    {-| Request that the worker respond with a progress update. -}
   | ProgressUpdateRequested (ProgressUpdate progress → IO ())
+    {-| Request that the worker respond with a stolen workload (if possible). -}
   | WorkloadStealRequested (Maybe (StolenWorkload progress) → IO ())
--- }}}
+
+{-| A convenient type alias for the type of 'WorkerRequest' corresponding
+    to the given visitor mode. -}
 type WorkerRequestFor visitor_mode = WorkerRequest (ProgressFor visitor_mode)
 
+{-| The type of the queue of worker requests.
+
+    NOTE:  Although the type is a list, and requests are added by prepending
+    them to the list, it still acts as a queue because the worker will reverse
+    the list before processing the requests.
+-}
 type WorkerRequestQueue progress = IORef [WorkerRequest progress]
+{-| A convenient type alias for the type of 'WorkerRequestQueue' corresponding
+    to the given visitor mode. -}
 type WorkerRequestQueueFor visitor_mode = WorkerRequestQueue (ProgressFor visitor_mode)
 
-data WorkerEnvironment progress = WorkerEnvironment -- {{{
-    {   workerInitialPath :: Path
-    ,   workerThreadId :: ThreadId
-    ,   workerPendingRequests :: WorkerRequestQueue progress
-    ,   workerTerminationFlag :: IVar ()
+--------------------------------- Worker types ---------------------------------
+
+{-| The environment of a running worker. -}
+data WorkerEnvironment progress = WorkerEnvironment
+    {   workerInitialPath :: Path {-^ the initial path of the worker's workload -}
+    ,   workerThreadId :: ThreadId {-^ the thread id of the worker thread -}
+    ,   workerPendingRequests :: WorkerRequestQueue progress {-^ the request queue for the worker -}
+    ,   workerTerminationFlag :: IVar () {-^ an IVar that is filled when the worker terminates -}
     }
--- }}}
+
+{-| A convenient type alias for the type of 'WorkerEnvironment' corresponding to
+    the given visitor mode. -}
 type WorkerEnvironmentFor visitor_mode = WorkerEnvironment (ProgressFor visitor_mode)
 
-data WorkerTerminationReason worker_final_progress = -- {{{
+{-| A datatype representing the reason why a worker terminated. -}
+data WorkerTerminationReason worker_final_progress =
+    {-| worker completed normally without error;  included is the final result -}
     WorkerFinished worker_final_progress
+    {-| worker failed;  included is the message of the failure (this would have
+        been a value of type 'SomeException' if it were not for the fact that
+        this value will often have to be sent over communication channels and
+        exceptions cannot be serialized (as they have unknown type), meaning
+        that it usually has to be turned into a 'String' via 'show' anyway)
+     -}
   | WorkerFailed String
+    {-| worker was aborted by either an external request or the 'ThreadKilled' or 'UserInterrupt' exceptions -}
   | WorkerAborted
   deriving (Eq,Show)
--- }}}
+
+{-| The 'Functor' instance lets you manipulate the final progress value when
+    the termination reason is 'WorkerFinished'.
+ -}
+instance Functor WorkerTerminationReason where
+    fmap f (WorkerFinished x) = WorkerFinished (f x)
+    fmap _ (WorkerFailed x) = WorkerFailed x
+    fmap _ WorkerAborted = WorkerAborted
+
+{-| A convenient type alias for the type of 'WorkerTerminationReason'
+    corresponding to the given visitor mode.
+ -}
 type WorkerTerminationReasonFor visitor_mode = WorkerTerminationReason (WorkerFinalProgressFor visitor_mode)
 
--- }}}
-
--- Type families {{{
-type family WorkerPushActionFor visitor_mode :: * -- {{{
+{-| The action that a worker can take to push a result to the supervisor;  this
+    type is effectively null (with value 'absurd' for all modes except
+    'FoundModeUsingPush'.
+ -}
+type family WorkerPushActionFor visitor_mode :: *
 -- NOTE:  Setting the below instances equal to Void → () is a hack around the
 --        fact that using types with constructors result in a weird compiler bug.
 type instance WorkerPushActionFor (AllMode result) = Void → ()
 type instance WorkerPushActionFor (FirstMode result) = Void → ()
 type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = Void → ()
 type instance WorkerPushActionFor (FoundModeUsingPush result final_result) = ProgressUpdate (Progress result) → IO ()
--- }}}
--- }}}
 
--- Instances {{{
-instance Functor WorkerTerminationReason where
-    fmap f (WorkerFinished x) = WorkerFinished (f x)
-    fmap _ (WorkerFailed x) = WorkerFailed x
-    fmap _ WorkerAborted = WorkerAborted
--- }}}
+-------------------------- Tree generator properties ---------------------------
 
--- Logging Functions {{{
+{-| The purity of a tree generator;  the options are 'Pure' for pure generators
+    and 'ImpureAtopIO' for impure generators where the base monad is required
+    to be IO (or at least, it must be possible to translate the monad into an
+    IO action).
+ -} 
+data Purity (m :: * → *) (n :: * → *) where -- {{{
+    Pure :: Purity Identity IO
+    ImpureAtopIO :: MonadIO m ⇒ (∀ β. m β → IO β) → Purity m m
+
+{-| The purity of tree generators in the IO monad. -}
+io_purity = ImpureAtopIO id
+
+{-| Functions for working with a tree generator of a particular purity. -}
+data TreeGeneratorFunctionsForPurity (m :: * → *) (n :: * → *) (α :: *) =
+    MonadIO n ⇒ TreeGeneratorFunctionsForPurity
+    {   walk :: Path → TreeGeneratorT m α → n (TreeGeneratorT m α)
+    ,   step :: VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))
+    ,   run ::  (∀ β. n β → IO β)
+    }
+
+--------------------------------------------------------------------------------
+----------------------------------- Loggers ------------------------------------
+--------------------------------------------------------------------------------
+
 deriveLoggers "Logger" [DEBUG]
--- }}}
 
--- Functions {{{
+--------------------------------------------------------------------------------
+----------------------------- Main worker function -----------------------------
+--------------------------------------------------------------------------------
 
-checkpointFromEnvironment :: -- {{{
-    Path →
-    CheckpointCursor →
-    Context m α →
-    Checkpoint →
-    Checkpoint
-checkpointFromEnvironment initial_path cursor context =
-     checkpointFromInitialPath initial_path
-     .
-     checkpointFromCursor cursor
-     .
-     checkpointFromContext context
--- }}}
+{-| The 'forkWorkerThread' function is the workhorse of the parallization
+    infrastructure; it visits a tree in a separate thread while polling for
+    requests. Specifically, the worker alternates between stepping through the
+    tree and checking to see if there are any new requests in the queue
+    
+    The worker is optimized around the assumption that requests are rare. For
+    this reason, it uses an 'IORef' for the queue to minimize the cost of
+    peeking at it rather than an 'MVar' or other thread synchronization
+    variable; the trade-off is that if a request is added to the queue by a
+    different processor then it might not be noticed immediately until the
+    caches get synchronized, but since requests are rare this not a significant
+    cost to pay. Likewise, the request queue uses the list type rather than
+    something like "Data.Sequence" for simplicity; the vast majority of the time
+    the worker will encounter an empty list, and on the rare occasion when the
+    list is non-empty it will be short enough that 'reverse'ing it will not pose
+    a significant cost.
 
-workloadFromEnvironment :: -- {{{
-    Path →
-    CheckpointCursor →
-    Context m α →
-    Checkpoint →
-    Workload
-workloadFromEnvironment initial_path cursor context =
-    Workload (initial_path >< pathFromCursor cursor)
-    .
-    checkpointFromContext context
--- }}}
+    At any given point in the visiting, there is an initial path which locates
+    the subtree that was given as the original workload, a cursor which
+    indicates the subtree /within/ this subtree that makes up the /current/
+    workload, and the context which indicates the current location in the tree
+    that is being visited. All workers start with an empty cursor; when a
+    workload is stolen, decisions made early on in the the context are frozen
+    and moved into the cursor because if they were not then when the worker
+    backtracked it would explore a workload that it just gave away, resulting in
+    some results being observed twice.
 
-computeProgressUpdate :: -- {{{
+    The worker terminates either if it finishes visiting all the nodes in its
+    (current) workload, if an error occurs, or if it is aborted either via.
+    the 'ThreadKilled' and 'UserInterrupt' exceptions or by an abort request
+    placed in the request queue.
+ -}
+forkWorkerThread ::
     ResultFor visitor_mode ~ α ⇒
-    VisitorMode visitor_mode →
-    WorkerIntermediateValueFor visitor_mode →
-    Path →
-    CheckpointCursor →
-    Context m α →
-    Checkpoint →
-    ProgressUpdate (ProgressFor visitor_mode)
-computeProgressUpdate visitor_mode result initial_path cursor context checkpoint =
-    ProgressUpdate
-        (case visitor_mode of
-            AllMode → Progress full_checkpoint result
-            FirstMode → full_checkpoint
-            FoundModeUsingPull _ → Progress full_checkpoint result
-            FoundModeUsingPush _ → Progress full_checkpoint mempty
-        )
-        (workloadFromEnvironment initial_path cursor context checkpoint)
-  where
-    full_checkpoint = checkpointFromEnvironment initial_path cursor context checkpoint
--- }}}
-
-forkWorkerThread :: -- {{{
-    ResultFor visitor_mode ~ α ⇒
-    VisitorMode visitor_mode →
-    Purity m n →
-    (WorkerTerminationReasonFor visitor_mode → IO ()) →
-    TreeGeneratorT m α →
-    Workload →
-    WorkerPushActionFor visitor_mode →
-    IO (WorkerEnvironmentFor visitor_mode)
+    VisitorMode visitor_mode {-^ the mode in to visit the tree -} →
+    Purity m n {-^ the purity of the tree generator -} →
+    (WorkerTerminationReasonFor visitor_mode → IO ()) {-^ the action to run when the worker has terminated -} →
+    TreeGeneratorT m α {-^ the tree generator -} →
+    Workload {-^ the workload for the worker -} →
+    WorkerPushActionFor visitor_mode
+        {-^ the action to push a result to the supervisor;  this should be equal
+            to 'absurd' except when the visitor mode is 'FoundModeUsingPush'.
+         -} →
+    IO (WorkerEnvironmentFor visitor_mode) {-^ the environment for the worker -}
 forkWorkerThread
     visitor_mode
     purity
@@ -228,19 +281,26 @@ forkWorkerThread
     push
   = do
     -- Note:  the following line of code needs to be this way --- that is, using
-    --        do notation to extract the value of VisitorFunctions --- or else
+    --        do notation to extract the value of TreeGeneratorFunctionsForPurity --- or else
     --        GHC's head will explode!
-    VisitorFunctions{..} ← case getVisitorFunctions purity of x → return x
+    TreeGeneratorFunctionsForPurity{..} ← case getTreeGeneratorFunctionsForPurity purity of x → return x
     pending_requests_ref ← newIORef []
-    let loop1 (!result) cursor visitor_state = -- Check for requests {{{
+
+    ------------------------------- LOOP PHASES --------------------------------
+    let
+    -- LOOP PHASE 1:  Check if there are any pending requests;  if so, proceed
+    --                to phase 2;  otherwise (the most common case), skip to
+    --                phase 3.
+        loop1 (!result) cursor visitor_state =
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
                 [] → loop3 result cursor visitor_state
                 _ → debugM "Worker thread's request queue is non-empty."
                     >> (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
                     >>= loop2 result cursor visitor_state
-        -- }}}
-        loop2 result cursor visitor_state@(VisitorTState context checkpoint visitor) requests = -- Process requests {{{
+
+    -- LOOP PHASE 2:  Process all pending requests.
+        loop2 result cursor visitor_state@(VisitorTState context checkpoint visitor) requests =
             case requests of
                 [] → liftIO yield >> loop3 result cursor visitor_state
                 AbortRequested:_ → do
@@ -262,34 +322,33 @@ forkWorkerThread
                                     (computeProgressUpdate visitor_mode result initial_path new_cursor new_context checkpoint)
                                     workload
                             loop2 initial_intermediate_value new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
-        -- }}}
-        loop3 result cursor visitor_state -- Step visitor {{{
+
+    -- LOOP PHASE 3:  Take a step through the tree, and then (if not finished)
+    --                return to phase 1.
+        loop3 result cursor visitor_state
           = do
             (maybe_solution,maybe_new_visitor_state) ← step visitor_state 
             case maybe_new_visitor_state of
-                Nothing → -- {{{
-                    let explored_checkpoint = -- {{{
+                Nothing → -- We have completed visiting the tree.
+                    let explored_checkpoint =
                             checkpointFromInitialPath initial_path
                             .
                             checkpointFromCursor cursor
                             $
                             Explored
-                        -- }}}
                     in return . WorkerFinished $
                         -- NOTE:  Do *not* refactor the code below; if you do so
                         --        then it will confuse the type-checker.
                         case visitor_mode of
-                            AllMode → -- {{{
+                            AllMode →
                                 Progress
                                     explored_checkpoint
                                     (maybe result (result <>) maybe_solution)
-                            -- }}}
-                            FirstMode → -- {{{
+                            FirstMode →
                                 Progress
                                     explored_checkpoint
                                     maybe_solution
-                            -- }}}
-                            FoundModeUsingPull f → -- {{{
+                            FoundModeUsingPull f →
                                 case maybe_solution of
                                     Nothing →
                                         Progress
@@ -300,36 +359,32 @@ forkWorkerThread
                                         in Progress
                                             explored_checkpoint
                                             (maybe (Left new_result) Right . f $ new_result)
-                            -- }}}
-                            FoundModeUsingPush _ → -- {{{
+                            FoundModeUsingPush _ →
                                 Progress
                                     explored_checkpoint
                                     (fromMaybe mempty maybe_solution)
-                            -- }}}
-                -- }}}
-                Just new_visitor_state@(VisitorTState context checkpoint _) → -- {{{
-                    let new_checkpoint = checkpointFromEnvironment initial_path cursor context checkpoint
+                Just new_visitor_state@(VisitorTState context checkpoint _) →
+                    let new_checkpoint = checkpointFromSetting initial_path cursor context checkpoint
                     in case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
                         Just (!solution) →
                             case visitor_mode of
                                 AllMode → loop1 (result <> solution) cursor new_visitor_state
                                 FirstMode → return . WorkerFinished $ Progress new_checkpoint (Just solution)
-                                FoundModeUsingPull f → -- {{{
+                                FoundModeUsingPull f →
                                     let new_result = result <> solution
                                     in case f new_result of
                                         Nothing → loop1 new_result cursor new_visitor_state
                                         Just final_result → return . WorkerFinished $ Progress new_checkpoint (Right final_result)
-                                -- }}}
-                                FoundModeUsingPush _ → do -- {{{
+
+                                FoundModeUsingPush _ → do
                                     liftIO . push $
                                         ProgressUpdate
                                             (Progress new_checkpoint solution)
-                                            (workloadFromEnvironment initial_path cursor context checkpoint)
+                                            (workloadFromSetting initial_path cursor context checkpoint)
                                     loop1 () cursor new_visitor_state
-                                -- }}}
-                -- }}}
-        -- }}}
+
+    ----------------------------- LAUNCH THE WORKER ----------------------------
     finished_flag ← IVar.new
     thread_id ← forkIO $ do
         termination_reason ←
@@ -363,9 +418,47 @@ forkWorkerThread
   where
     initial_intermediate_value = initialWorkerIntermediateValue visitor_mode
 {-# INLINE forkWorkerThread #-}
--- }}}
 
-genericRunVisitor :: -- {{{
+--------------------------------------------------------------------------------
+------------------------------ Request functions ------------------------------
+--------------------------------------------------------------------------------
+
+{-| Sends a request to abort to the given request queue. -}
+sendAbortRequest :: WorkerRequestQueue progress → IO ()
+sendAbortRequest = flip sendRequest AbortRequested
+
+{-| Sends a request for a progress update along with a response action to
+    perform when the progress update is available.
+ -}
+sendProgressUpdateRequest ::
+    WorkerRequestQueue progress {-^ the request queue -} →
+    (ProgressUpdate progress → IO ()) {-^ the action to perform when the update is available -} →
+    IO ()
+sendProgressUpdateRequest queue = sendRequest queue . ProgressUpdateRequested
+
+{-| Sends a request to steal a workload along with a response action to
+    perform when the progress update is available.
+ -}
+sendWorkloadStealRequest ::
+    WorkerRequestQueue progress {-^ the request queue -} →
+    (Maybe (StolenWorkload progress) → IO ()) {-^ the action to perform when the update is available -} →
+    IO ()
+sendWorkloadStealRequest queue = sendRequest queue . WorkloadStealRequested
+
+{-| Sends a request to a worker. -}
+sendRequest :: WorkerRequestQueue progress → WorkerRequest progress → IO ()
+sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
+
+--------------------------------------------------------------------------------
+------------------------------ Utility functions -------------------------------
+--------------------------------------------------------------------------------
+
+{-| This function visits a tree with the specified purity using the given mode
+    by forking a worker thread and waiting for it to finish;  it exists to
+    facilitate testing and benchmarking and is not a function that you are
+    likely to ever have a need for yourself.
+ -}
+visitTreeGeneric ::
     ( WorkerPushActionFor visitor_mode ~ (Void → ())
     , ResultFor visitor_mode ~ α
     ) ⇒
@@ -373,7 +466,7 @@ genericRunVisitor :: -- {{{
     Purity m n →
     TreeGeneratorT m α →
     IO (WorkerTerminationReason (FinalResultFor visitor_mode))
-genericRunVisitor visitor_mode purity visitor = do
+visitTreeGeneric visitor_mode purity visitor = do
     final_progress_mvar ← newEmptyMVar
     _ ← forkWorkerThread
             visitor_mode
@@ -396,105 +489,58 @@ genericRunVisitor visitor_mode purity visitor = do
                 $
                 progressResult progress
             _ → error "should never reach here due to incompatible types"
--- }}}
 
-getVisitorFunctions :: Purity m n → VisitorFunctions m n α -- {{{
-getVisitorFunctions Pure = VisitorFunctions{..}
+--------------------------------------------------------------------------------
+------------------------------ Internal functions ------------------------------
+--------------------------------------------------------------------------------
+
+checkpointFromSetting ::
+    Path →
+    CheckpointCursor →
+    Context m α →
+    Checkpoint →
+    Checkpoint
+checkpointFromSetting initial_path cursor context =
+     checkpointFromInitialPath initial_path
+     .
+     checkpointFromCursor cursor
+     .
+     checkpointFromContext context
+
+computeProgressUpdate ::
+    ResultFor visitor_mode ~ α ⇒
+    VisitorMode visitor_mode →
+    WorkerIntermediateValueFor visitor_mode →
+    Path →
+    CheckpointCursor →
+    Context m α →
+    Checkpoint →
+    ProgressUpdate (ProgressFor visitor_mode)
+computeProgressUpdate visitor_mode result initial_path cursor context checkpoint =
+    ProgressUpdate
+        (case visitor_mode of
+            AllMode → Progress full_checkpoint result
+            FirstMode → full_checkpoint
+            FoundModeUsingPull _ → Progress full_checkpoint result
+            FoundModeUsingPush _ → Progress full_checkpoint mempty
+        )
+        (workloadFromSetting initial_path cursor context checkpoint)
+  where
+    full_checkpoint = checkpointFromSetting initial_path cursor context checkpoint
+
+getTreeGeneratorFunctionsForPurity :: Purity m n → TreeGeneratorFunctionsForPurity m n α
+getTreeGeneratorFunctionsForPurity Pure = TreeGeneratorFunctionsForPurity{..}
   where
     walk = return .* sendTreeGeneratorDownPath
     step = return . stepThroughTreeStartingFromCheckpoint
     run = id
-getVisitorFunctions (ImpureAtopIO run) = VisitorFunctions{..}
+getTreeGeneratorFunctionsForPurity (ImpureAtopIO run) = TreeGeneratorFunctionsForPurity{..}
   where
     walk = sendTreeGeneratorTDownPath
     step = stepThroughTreeTStartingFromCheckpoint
-{-# INLINE getVisitorFunctions #-}
--- }}}
+{-# INLINE getTreeGeneratorFunctionsForPurity #-}
 
-visitTree :: Monoid α ⇒ TreeGenerator α → IO (WorkerTerminationReason α) -- {{{
-visitTree = genericRunVisitor AllMode Pure
--- }}}
-
-visitTreeIO :: Monoid α ⇒ TreeGeneratorIO α → IO (WorkerTerminationReason α) -- {{{
-visitTreeIO = genericRunVisitor AllMode io_purity
--- }}}
-
-visitTreeT :: (Monoid α, MonadIO m) ⇒ (∀ β. m β → IO β) → TreeGeneratorT m α → IO (WorkerTerminationReason α) -- {{{
-visitTreeT = genericRunVisitor AllMode . ImpureAtopIO
--- }}}
-
-visitTreeUntilFirst :: TreeGenerator α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-visitTreeUntilFirst = genericRunVisitor FirstMode Pure
--- }}}
-
-visitTreeIOUntilFirst :: TreeGeneratorIO α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-visitTreeIOUntilFirst = genericRunVisitor FirstMode io_purity
--- }}}
-
-visitTreeTUntilFirst ::MonadIO m ⇒ (∀ β. m β → IO β) → TreeGeneratorT m α → IO (WorkerTerminationReason (Maybe (Progress α))) -- {{{
-visitTreeTUntilFirst = genericRunVisitor FirstMode . ImpureAtopIO
--- }}}
-
-visitTreeUntilFound :: -- {{{
-    Monoid α ⇒
-    (α → Maybe β) →
-    TreeGenerator α →
-    IO (WorkerTerminationReason (Either α (Progress β)))
-visitTreeUntilFound f =
-    liftM (fmap $ mapRight (fmap fst))
-    .
-    genericRunVisitor (FoundModeUsingPull f) Pure
--- }}}
-
-visitTreeIOUntilFound :: -- {{{
-    Monoid α ⇒
-    (α → Maybe β) →
-    TreeGeneratorIO α →
-    IO (WorkerTerminationReason (Either α (Progress β)))
-visitTreeIOUntilFound f =
-    liftM (fmap $ mapRight (fmap fst))
-    .
-    genericRunVisitor (FoundModeUsingPull f) io_purity
--- }}}
-
-visitTreeTUntilFound :: -- {{{
-    (Monoid α, MonadIO m) ⇒
-    (α → Maybe β) →
-    (∀ η. m η → IO η) →
-    TreeGeneratorT m α →
-    IO (WorkerTerminationReason (Either α (Progress β)))
-visitTreeTUntilFound f =
-    liftM (fmap $ mapRight (fmap fst))
-    .*
-    (genericRunVisitor (FoundModeUsingPull f)
-     .
-     ImpureAtopIO
-    )
--- }}}
-
-sendAbortRequest :: WorkerRequestQueue progress → IO () -- {{{
-sendAbortRequest = flip sendRequest AbortRequested
--- }}}
-
-sendProgressUpdateRequest :: -- {{{
-    WorkerRequestQueue progress →
-    (ProgressUpdate progress → IO ()) →
-    IO ()
-sendProgressUpdateRequest queue = sendRequest queue . ProgressUpdateRequested
--- }}}
-
-sendRequest :: WorkerRequestQueue progress → WorkerRequest progress → IO () -- {{{
-sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
--- }}}
-
-sendWorkloadStealRequest :: -- {{{
-    WorkerRequestQueue progress →
-    (Maybe (StolenWorkload progress) → IO ()) →
-    IO ()
-sendWorkloadStealRequest queue = sendRequest queue . WorkloadStealRequested
--- }}}
-
-tryStealWorkload :: -- {{{
+tryStealWorkload ::
     Path →
     CheckpointCursor →
     Context m α →
@@ -515,6 +561,14 @@ tryStealWorkload initial_path = go
                      )
             RightBranchContextStep :< rest_context →
                 go (cursor |> ChoicePointD RightBranch Explored) rest_context
--- }}}
 
--- }}}
+workloadFromSetting ::
+    Path →
+    CheckpointCursor →
+    Context m α →
+    Checkpoint →
+    Workload
+workloadFromSetting initial_path cursor context =
+    Workload (initial_path >< pathFromCursor cursor)
+    .
+    checkpointFromContext context

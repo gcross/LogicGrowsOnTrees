@@ -1692,7 +1692,7 @@ tests = -- {{{
             ]
          -- }}}
         ,testProperty "visitTreeUntilFirst" $ \(visitor :: TreeGenerator String) → morallyDubiousIOProperty $ do -- {{{
-            termination_reason ← Worker.visitTreeUntilFirst visitor
+            termination_reason ← Worker.visitTreeGeneric FirstMode Pure visitor
             case termination_reason of
                 WorkerFinished maybe_final_progress → return $ (progressResult <$> maybe_final_progress) == visitTreeUntilFirst visitor
                 _ → fail $ "returned " ++ show termination_reason ++ " instead of WorkerFinished"

@@ -10,13 +10,14 @@ import Visitor
 import Visitor.Checkpoint
 import Visitor.Examples.Queens
 import Visitor.Utils.WordSum
-import qualified Visitor.Parallel.Common.Worker as Worker
+import Visitor.Parallel.Common.VisitorMode (VisitorMode(AllMode))
+import Visitor.Parallel.Common.Worker (Purity(Pure),visitTreeGeneric)
 -- }}}
 
 main = defaultMain
     [bench "list of Sum" $ nf (getWordSum . mconcat . nqueensCount) n
     ,bench "tree builder" $ nf (getWordSum . visitTree . nqueensCount) n
     ,bench "tree builder w/ checkpointing" $ nf (getWordSum . visitTreeStartingFromCheckpoint Unexplored . nqueensCount) n
-    ,bench "tree builder using worker" $ Worker.visitTree (nqueensCount n)
+    ,bench "tree builder using worker" $ visitTreeGeneric AllMode Pure (nqueensCount n)
     ]
   where n = 13

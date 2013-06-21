@@ -10,13 +10,14 @@ import Visitor
 import Visitor.Checkpoint
 import Visitor.Utils.Tree
 import Visitor.Utils.WordSum
-import qualified Visitor.Parallel.Common.Worker as Worker
+import Visitor.Parallel.Common.VisitorMode (VisitorMode(AllMode))
+import Visitor.Parallel.Common.Worker (Purity(Pure),visitTreeGeneric)
 -- }}}
 
 main = defaultMain
     [bench "list" $ nf (getWordSum . mconcat . trivialTree 2) depth
     ,bench "tree builder" $ nf (getWordSum . visitTree . trivialTree 2) depth
     ,bench "tree builder w/ checkpointing" $ nf (getWordSum . visitTreeStartingFromCheckpoint Unexplored . trivialTree 2) depth
-    ,bench "tree builder using worker" $ Worker.visitTree (trivialTree 2 depth)
+    ,bench "tree builder using worker" $ visitTreeGeneric AllMode Pure (trivialTree 2 depth)
     ]
   where depth = 15
