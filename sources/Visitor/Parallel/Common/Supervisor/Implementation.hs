@@ -26,8 +26,9 @@ module Visitor.Parallel.Common.Supervisor.Implementation -- {{{
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
-    , SupervisorOutcomeFor
+    , SupervisorOutcomeFor(..)
     , SupervisorTerminationReason(..)
+    , SupervisorTerminationReasonFor(..)
     , SupervisorWorkerIdConstraint
     , IndependentMeasurementsStatistics(..)
     , abortSupervisor
@@ -205,12 +206,16 @@ data ExponentiallyWeightedAverage = ExponentiallyWeightedAverage -- {{{
 $( makeLenses ''ExponentiallyWeightedAverage )
 -- }}}
 
+{-| This datatype represents statistics obtained by integrating a value that is
+    a function of time --- i.e., that holds a single value at any given point in
+    time.
+ -}
 data FunctionOfTimeStatistics α = FunctionOfTimeStatistics -- {{{
-    {   statCount :: !Word
-    ,   statAverage :: !Double
-    ,   statStdDev :: !Double
-    ,   statMin :: !α
-    ,   statMax :: !α
+    {   statCount :: !Word {-^ the number of points at which the function changed -}
+    ,   statAverage :: !Double {-^ the average value of the function over the time period -}
+    ,   statStdDev :: !Double {-^ the standard deviation of the function over the time period -}
+    ,   statMin :: !α {-^ the minimum value of the function over the time period -}
+    ,   statMax :: !α {-^ the maximum value of the function over the time period -}
     } deriving (Eq,Show)
 -- }}}
 
@@ -230,32 +235,36 @@ data OccupationStatistics = OccupationStatistics -- {{{
 $( makeLenses ''OccupationStatistics )
 -- }}}
 
+{-| Statistics gathered about the run. -}
 data RunStatistics = -- {{{
     RunStatistics
-    {   runStartTime :: !UTCTime
-    ,   runEndTime :: !UTCTime
-    ,   runWallTime :: !NominalDiffTime
-    ,   runSupervisorOccupation :: !Float
-    ,   runSupervisorMonadOccupation :: !Float
-    ,   runNumberOfCalls :: !Int
-    ,   runAverageTimePerCall :: !Float
-    ,   runWorkerOccupation :: !Float
-    ,   runWorkerWaitTimes :: !(FunctionOfTimeStatistics NominalDiffTime)
-    ,   runStealWaitTimes :: !IndependentMeasurementsStatistics
-    ,   runWaitingWorkerStatistics :: !(FunctionOfTimeStatistics Int)
-    ,   runAvailableWorkloadStatistics :: !(FunctionOfTimeStatistics Int)
-    ,   runInstantaneousWorkloadRequestRateStatistics :: !(FunctionOfTimeStatistics Float)
-    ,   runInstantaneousWorkloadStealTimeStatistics :: !(FunctionOfTimeStatistics Float)
-    ,   runBufferSizeStatistics :: !(FunctionOfTimeStatistics Int)
+    {   runStartTime :: !UTCTime {-^ the start time of the run -}
+    ,   runEndTime :: !UTCTime {-^ the end time of the run -}
+    ,   runWallTime :: !NominalDiffTime {-^ the wall time of the run -}
+    ,   runSupervisorOccupation :: !Float {-^ the fraction of the time the supervisor spent processing an event -}
+    ,   runSupervisorMonadOccupation :: !Float {-^ the fraction of the time the supervisor spent processing an event while inside the 'SupervisorMonad' -}
+    ,   runNumberOfCalls :: !Int {-^ the number of calls made to functions in "Visitor.Parallel.Common.Supervisor" -}
+    ,   runAverageTimePerCall :: !Float {-^ the average number of time per call made to functions in "Visitor.Parallel.Common.Supervisor" -}
+    ,   runWorkerOccupation :: !Float {-^ the fraction of the total time that workers were occupied -}
+    ,   runWorkerWaitTimes :: !(FunctionOfTimeStatistics NominalDiffTime) {-^ statistics for how long it took for workers to obtain a workload -}
+    ,   runStealWaitTimes :: !IndependentMeasurementsStatistics {-^ statistics for the time needed to steal a workload from a worker -}
+    ,   runWaitingWorkerStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the number of workers waiting for a workload -}
+    ,   runAvailableWorkloadStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the number of available workloads waiting for a worker -}
+    ,   runInstantaneousWorkloadRequestRateStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous rate at which workloads were requested (using an exponentially decaying sum) -}
+    ,   runInstantaneousWorkloadStealTimeStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous time needed for workloads to be stolen (using an exponentially decaying weighted average) -}
+    ,   runBufferSizeStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the size of the workload buffer -}
     } deriving (Eq,Show)
 -- }}}
 
+{-| This datatype represents statistics obtained by collecting a number of
+    independent measurements.
+ -}
 data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics -- {{{
-    {   timeCount :: {-# UNPACK #-} !Int
-    ,   timeMin :: {-# UNPACK #-} !Double
-    ,   timeMax :: {-# UNPACK #-} !Double
-    ,   timeMean :: {-# UNPACK #-} !Double
-    ,   timeStdDev ::  {-# UNPACK #-} !Double
+    {   timeCount :: {-# UNPACK #-} !Int {-^ the number of measurements -}
+    ,   timeMin :: {-# UNPACK #-} !Double {-^ the minimum measuremnt value -}
+    ,   timeMax :: {-# UNPACK #-} !Double {-^ the maximum measurement value -}
+    ,   timeMean :: {-# UNPACK #-} !Double {-^ the average value -}
+    ,   timeStdDev ::  {-# UNPACK #-} !Double {-^ the standard deviation -}
     } deriving (Eq,Show)
 -- }}}
 
@@ -289,12 +298,29 @@ $( makeLenses ''StepFunctionOfTime )
 
 -- }}}
 
+{-| Supervisor callbacks provide the means by which the supervisor logic
+    communicates to the back-end, usually in order to tell it what it wants to
+    say to various workers.
+ -}
 data SupervisorCallbacks visitor_mode worker_id m = -- {{{
     SupervisorCallbacks
-    {   broadcastProgressUpdateToWorkers :: [worker_id] → m ()
-    ,   broadcastWorkloadStealToWorkers :: [worker_id] → m ()
-    ,   receiveCurrentProgress :: ProgressFor visitor_mode → m ()
-    ,   sendWorkloadToWorker :: Workload → worker_id → m ()
+    {   {-| This callback is used by the supervisor to signal that a progress
+            update request should be send to the given list of workers.
+         -}
+        broadcastProgressUpdateToWorkers :: [worker_id] → m ()
+    ,   {-| This callback is used by the supervisor to signal that a workload
+            steal request should be send to the given list of workers.
+         -}
+        broadcastWorkloadStealToWorkers :: [worker_id] → m ()
+    ,   {-| This callback is used by the supervisor to signal that the global
+            progress update that was earlier requested by the back-end has
+            finished, with the current progress given as the argument.
+         -}
+        receiveCurrentProgress :: ProgressFor visitor_mode → m ()
+    ,   {-| This callback is used by the supervisor to signal that a workload
+            should be send to the indicated worker.
+         -}
+     sendWorkloadToWorker :: Workload → worker_id → m ()
     }
 -- }}}
 
@@ -345,14 +371,23 @@ data SupervisorState visitor_mode worker_id = -- {{{
 $( makeLenses ''SupervisorState )
 -- }}}
 
+{-| The reason why the supervisor terminated. -}
 data SupervisorTerminationReason final_result progress worker_id = -- {{{
+    {-| the supervisor aborted before finishing;  included is the current progress at the time it aborted -}
     SupervisorAborted progress
+    {-| the supervisor completed visiting the tree;  included is the final result -}
   | SupervisorCompleted final_result
+    {-| the supervisor failed to visit the tree;  included is the worker where the failure occured as well as the message -}
   | SupervisorFailure worker_id String
   deriving (Eq,Show)
 -- }}}
+{-| A convenient type alias for the 'SupervisorTerminationReason' associated with a given visitor mode. -} 
 type SupervisorTerminationReasonFor visitor_mode = SupervisorTerminationReason (FinalResultFor visitor_mode) (ProgressFor visitor_mode)
 
+{-| This type has the outcome of running the supervisor, which includes the
+    reason why it terminated, the statistics for the run, and the workers that
+    were present when it finished.
+ -}
 data SupervisorOutcome final_result progress worker_id = -- {{{
     SupervisorOutcome
     {   supervisorTerminationReason :: SupervisorTerminationReason final_result progress worker_id
@@ -360,6 +395,7 @@ data SupervisorOutcome final_result progress worker_id = -- {{{
     ,   supervisorRemainingWorkers :: [worker_id]
     } deriving (Eq,Show)
 -- }}}
+{-| A convenient type alias for the 'SupervisorOutcome' associated with a given visitor mode. -} 
 type SupervisorOutcomeFor visitor_mode worker_id = SupervisorOutcome (FinalResultFor visitor_mode) (ProgressFor visitor_mode) worker_id 
 
 type InsideContextMonad visitor_mode worker_id m = -- {{{
@@ -389,8 +425,11 @@ newtype AbortMonad visitor_mode worker_id m α = AbortMonad -- {{{
 type SupervisorReaderConstraint visitor_mode worker_id m m' = MonadReader (SupervisorConstants visitor_mode worker_id m) m'
 type SupervisorStateConstraint visitor_mode worker_id m' = MonadState (SupervisorState visitor_mode worker_id) m'
 
+{-| This is the constraint placed on the monad in which the supervisor is running. -}
 type SupervisorMonadConstraint m = (Functor m, MonadIO m)
+{-| This is the constraint placed on the types that can be used as worker ids. -}
 type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
+{-| This is just a sum of the 'SupervisorMonadConstraint' and the 'SupervisorWorkerIdConstraint'. -}
 type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,SupervisorMonadConstraint m)
 -- }}}
 
