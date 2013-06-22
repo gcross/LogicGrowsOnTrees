@@ -6,3 +6,4 @@ dist/*
 *~
 checkpoint
 log
+.DS_Store
