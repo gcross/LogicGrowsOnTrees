@@ -211,11 +211,11 @@ $( makeLenses ''ExponentiallyWeightedAverage )
     time.
  -}
 data FunctionOfTimeStatistics α = FunctionOfTimeStatistics -- {{{
-    {   statCount :: !Word {-^ the number of points at which the function changed -}
-    ,   statAverage :: !Double {-^ the average value of the function over the time period -}
-    ,   statStdDev :: !Double {-^ the standard deviation of the function over the time period -}
-    ,   statMin :: !α {-^ the minimum value of the function over the time period -}
-    ,   statMax :: !α {-^ the maximum value of the function over the time period -}
+    {   timeCount :: !Word {-^ the number of points at which the function changed -}
+    ,   timeAverage :: !Double {-^ the average value of the function over the time period -}
+    ,   timeStdDev :: !Double {-^ the standard deviation of the function over the time period -}
+    ,   timeMin :: !α {-^ the minimum value of the function over the time period -}
+    ,   timeMax :: !α {-^ the maximum value of the function over the time period -}
     } deriving (Eq,Show)
 -- }}}
 
@@ -260,11 +260,11 @@ data RunStatistics = -- {{{
     independent measurements.
  -}
 data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics -- {{{
-    {   timeCount :: {-# UNPACK #-} !Int {-^ the number of measurements -}
-    ,   timeMin :: {-# UNPACK #-} !Double {-^ the minimum measuremnt value -}
-    ,   timeMax :: {-# UNPACK #-} !Double {-^ the maximum measurement value -}
-    ,   timeMean :: {-# UNPACK #-} !Double {-^ the average value -}
-    ,   timeStdDev ::  {-# UNPACK #-} !Double {-^ the standard deviation -}
+    {   statCount :: {-# UNPACK #-} !Int {-^ the number of measurements -}
+    ,   statAverage :: {-# UNPACK #-} !Double {-^ the average value -}
+    ,   statStdDev ::  {-# UNPACK #-} !Double {-^ the standard deviation -}
+    ,   statMin :: {-# UNPACK #-} !Double {-^ the minimum measuremnt value -}
+    ,   statMax :: {-# UNPACK #-} !Double {-^ the maximum measurement value -}
     } deriving (Eq,Show)
 -- }}}
 
@@ -803,11 +803,11 @@ extractFunctionOfTimeStatistics start_time getWeightedStatistics = do
     getWeightedStatistics >>= (evalStateT $ do
         zoomFunctionOfTime $ do
             total_weight ← realToFrac . (`diffUTCTime` start_time) <$> use previous_time
-            statCount ← use number_of_samples
-            statAverage ← (/total_weight) <$> use first_moment
-            statStdDev ← sqrt . (subtract $ statAverage*statAverage) . (/total_weight) <$> use second_moment
-            statMin ← use minimum_value
-            statMax ← use maximum_value
+            timeCount ← use number_of_samples
+            timeAverage ← (/total_weight) <$> use first_moment
+            timeStdDev ← sqrt . (subtract $ timeAverage*timeAverage) . (/total_weight) <$> use second_moment
+            timeMin ← use minimum_value
+            timeMax ← use maximum_value
             return $ FunctionOfTimeStatistics{..}
      )
 -- }}}
@@ -831,11 +831,11 @@ extractFunctionOfTimeStatisticsWithFinalPoint start_time getFinalValue getWeight
     getWeightedStatistics >>= (evalStateT $ do
         updateFunctionOfTime final_value end_time
         zoomFunctionOfTime $ do
-            statCount ← use number_of_samples
-            statAverage ← (/total_weight) <$> use first_moment
-            statStdDev ← sqrt . (\x → x-statAverage*statAverage) . (/total_weight) <$> use second_moment
-            statMin ← min final_value <$> use minimum_value
-            statMax ← max final_value <$> use maximum_value
+            timeCount ← use number_of_samples
+            timeAverage ← (/total_weight) <$> use first_moment
+            timeStdDev ← sqrt . (\x → x-timeAverage*timeAverage) . (/total_weight) <$> use second_moment
+            timeMin ← min final_value <$> use minimum_value
+            timeMax ← max final_value <$> use maximum_value
             return $ FunctionOfTimeStatistics{..}
      )
 -- }}}
@@ -844,10 +844,10 @@ extractIndependentMeasurementsStatistics :: IndependentMeasurements → Independ
 extractIndependentMeasurementsStatistics =
     IndependentMeasurementsStatistics
         <$>  calcCount
-        <*> (calcMin . timeDataMin)
-        <*> (calcMax . timeDataMax)
         <*>  calcMean
         <*>  calcStddev
+        <*> (calcMin . timeDataMin)
+        <*> (calcMax . timeDataMax)
 -- }}}
 
 finishWithResult :: -- {{{
