@@ -19,6 +19,18 @@
     logic for communicating with your workers into a 'SupervisorProgram' that
     runs in the 'SupervisorMonad' with your state just below the
     'SupervisorMonad' in the monad stack.
+
+    A great deal of the logic in this module deals with gathering statistics.
+    The main purpose of these statistics is twofold. First, these statistics
+    provide data that can be used to determine why the running time is not
+    scaling inversely linear to the number of processors. Second, the workload
+    buffer (a set of workloads kept around so that worker does not have to wait
+    to obtain a new workload) is designed to increase in size with the ratio of
+    the time needed to steal a workload over the time between workload requests
+    --- i.e., if the time needed to steal a workload is twice the time between
+    workload requests then we want to send out twice as many workload steal
+    requests so that the average wait time to steal a workload from someone is
+    on the same order as the time between requests.
  -}
 module Visitor.Parallel.Common.Supervisor
     (
