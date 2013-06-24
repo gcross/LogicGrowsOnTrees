@@ -1,4 +1,3 @@
--- Language extensions {{{
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -7,19 +6,25 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
-module Visitor.Parallel.Common.Workgroup -- {{{
-    ( MessageForSupervisorReceivers(..)
-    , WorkerId
+{-| This module provides most of the common functionality needed to implement a
+    back-end where the number of workers can be adjusted during the run.
+ -}
+module Visitor.Parallel.Common.Workgroup
+    (
+    -- * Type-classes
+      WorkgroupRequestQueueMonad(..)
+    -- * Types
+    , InnerMonad(..)
+    , MessageForSupervisorReceivers(..)
+    , WorkerId(..)
     , WorkgroupCallbacks(..)
     , WorkgroupControllerMonad(..)
-    , WorkgroupRequestQueueMonad(..)
+    -- * Functions
     , changeNumberOfWorkers
     , runWorkgroup
-    ) where -- }}}
+    ) where
 
--- Imports {{{
 import Control.Applicative (Applicative,(<$>))
 import Control.Concurrent (forkIO,killThread)
 import Control.Lens (makeLenses)
@@ -53,57 +58,84 @@ import Visitor.Parallel.Common.Supervisor
 import Visitor.Parallel.Common.Supervisor.RequestQueue
 import Visitor.Parallel.Common.VisitorMode
 import Visitor.Workload
--- }}}
 
--- Logging Functions {{{
+--------------------------------------------------------------------------------
+----------------------------------- Loggers ------------------------------------
+--------------------------------------------------------------------------------
+
 deriveLoggers "Logger" [INFO]
--- }}}
 
--- Types {{{
+--------------------------------------------------------------------------------
+--------------------------------- Type-classes ---------------------------------
+--------------------------------------------------------------------------------
 
+{-| A 'WorkgroupRequestQueueMonad' is a 'RequestQueueMonad' but with the
+    additional ability to change the number of workers in the system.
+ -}
+class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where
+    {-| Change the number of workers;  the first argument is a map that computes
+        new number of workers given the old number of workers (possible running
+        an action in IO in the process), and the second argument is a callback
+        that will be invoked with the new number of workers.
+
+        See 'changeNumberOfWorkers' for the syncronous version of this request.
+     -}
+    changeNumberOfWorkersAsync :: (Int → IO Int) → (Int → IO ()) → m ()
+
+--------------------------------------------------------------------------------
+------------------------------------ Types -------------------------------------
+--------------------------------------------------------------------------------
+
+{-| The type of worker ids that use this module (an alias for 'Int'). -}
 type WorkerId = Int
 
 type RemovalPriority = Word64
 
+{-| This is the monad in which the back-end specific code is run. -}
 type InnerMonad inner_state = StateT inner_state IO
 
-data WorkgroupCallbacks inner_state = WorkgroupCallbacks -- {{{
-    {   createWorker :: WorkerId → InnerMonad inner_state ()
+{-| A set of callbacks invoked by the supervisor code in this module. -}
+data WorkgroupCallbacks inner_state = WorkgroupCallbacks
+    {   {-| Create a worker with the given id. -}
+        createWorker :: WorkerId → InnerMonad inner_state ()
+        {-| Destroy the worker with the given id.  (Ideally this should be
+            implemented by signaling the worker to quit and then waiting for it
+            to respond.)
+         -}
     ,   destroyWorker :: WorkerId → Bool → InnerMonad inner_state ()
+        {-| Kill all of the workers in the given list;  do this in a manner that
+            ensures they are all terminated as promptly as possible. (This will
+            be called at the end of the run and/or when it is aborted.)
+         -}
     ,   killAllWorkers :: [WorkerId] → InnerMonad inner_state ()
+        {-| Send a progress update request to the given worker. -}
     ,   sendProgressUpdateRequestTo :: WorkerId → InnerMonad inner_state ()
+        {-| Send a workload steal request to the given worker. -}
     ,   sendWorkloadStealRequestTo :: WorkerId → InnerMonad inner_state ()
+        {-| Send a workload to the given worker. -}
     ,   sendWorkloadTo :: WorkerId → Workload → InnerMonad inner_state ()
     }
--- }}}
 
-data WorkgroupState = WorkgroupState -- {{{
+data WorkgroupState = WorkgroupState
     {   _pending_quit :: !IntSet
     ,   _next_worker_id :: !WorkerId
     ,   _next_priority :: !RemovalPriority
     ,   _removal_queue :: !(PSQ WorkerId RemovalPriority)
     }
 $( makeLenses ''WorkgroupState )
--- }}}
+
 
 type WorkgroupStateMonad inner_state = StateT WorkgroupState (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
 
 type WorkgroupMonad inner_state visitor_mode = SupervisorMonad visitor_mode WorkerId (WorkgroupStateMonad inner_state)
 
+{-| This is the monad in which the workgroup controller will run. -}
 newtype WorkgroupControllerMonad inner_state visitor_mode α = C { unwrapC :: RequestQueueReader visitor_mode WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad)
--- }}}
 
--- Classes {{{
-class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where -- {{{
-    changeNumberOfWorkersAsync :: (Int → IO Int) → (Int → IO ()) → m ()
--- }}}
--- }}}
-
--- Instances {{{
-instance HasVisitorMode (WorkgroupControllerMonad inner_state visitor_mode) where -- {{{
+instance HasVisitorMode (WorkgroupControllerMonad inner_state visitor_mode) where
     type VisitorModeFor (WorkgroupControllerMonad inner_state visitor_mode) = visitor_mode
--- }}}
-instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state visitor_mode) where -- {{{
+
+instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state visitor_mode) where
     changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
         old_number_of_workers ← numberOfWorkers
         new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
@@ -113,44 +145,54 @@ instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state visito
             EQ → return ()
         liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
      )
--- }}}
--- }}}
 
--- Exposed Functions {{{
+--------------------------------------------------------------------------------
+---------------------------------- Functions -----------------------------------
+--------------------------------------------------------------------------------
 
-changeNumberOfWorkers :: -- {{{
+{-| Like 'changeNumberOfWorkersAsync', but it blocks until the number of workers
+    has been changed and returns the new number of workers.
+ -}
+changeNumberOfWorkers ::
     WorkgroupRequestQueueMonad m ⇒
     (Int → IO Int) →
     m Int
 changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
--- }}}
 
-runWorkgroup :: -- {{{
-    VisitorMode visitor_mode →
-    inner_state →
-    (MessageForSupervisorReceivers visitor_mode WorkerId → WorkgroupCallbacks inner_state) →
-    ProgressFor visitor_mode →
-    WorkgroupControllerMonad inner_state visitor_mode () →
+{-| Visits a tree using a workgroup;  this function is only intended to be uesd
+    by back-ends where the number of workers can be changed on demand.
+ -}
+runWorkgroup ::
+    VisitorMode visitor_mode {-^ the mode in which we are visiting the tree -} →
+    inner_state {-^ the initial back-end specific state of the inner monad -} →
+    (MessageForSupervisorReceivers visitor_mode WorkerId → WorkgroupCallbacks inner_state)
+        {-^ This function constructs a set of callbacks to be used by the
+            supervisor loop in this function to do things like creating and
+            destroying workers;  it is given a set of callbacks that allows the
+            back-end specific code to signal conditions to the supervisor.
+         -} →
+    ProgressFor visitor_mode {-^ the initial progress of the visit -} →
+    WorkgroupControllerMonad inner_state visitor_mode () {-^ the controller, which is at the very least responsible for deciding how many workers should be initially created -} →
     IO (RunOutcomeFor visitor_mode)
 runWorkgroup visitor_mode initial_inner_state constructCallbacks starting_progress (C controller) = do
     request_queue ← newRequestQueue
     let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
         receiveFailureFromWorker = flip enqueueRequest request_queue .* receiveWorkerFailure
-        receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do -- {{{
+        receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do
             removal_flag ← IntSet.member worker_id <$> use pending_quit
             infoM $ if removal_flag
                 then "Worker " ++ show worker_id ++ " has finished, and will be removed."
                 else "Worker " ++ show worker_id ++ " has finished, and will look for another workload."
             receiveWorkerFinishedWithRemovalFlag removal_flag worker_id final_progress
-        -- }}}
-        receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do -- {{{
+
+        receiveQuitFromWorker worker_id = flip enqueueRequest request_queue $ do
             infoM $ "Worker " ++ show worker_id ++ " has quit."
             quitting ← IntSet.member worker_id <$> (pending_quit <<%= IntSet.delete worker_id)
             if quitting
                 then removeWorkerIfPresent worker_id
                 else receiveWorkerFailure worker_id $ "Worker " ++ show worker_id ++ " quit prematurely."
-        -- }}}
+
         broadcastProgressUpdateToWorkers = \worker_ids →
             asks sendProgressUpdateRequestTo >>= liftInner . forM_ worker_ids
         broadcastWorkloadStealToWorkers = \worker_ids →
@@ -186,21 +228,19 @@ runWorkgroup visitor_mode initial_inner_state constructCallbacks starting_progre
             ,   _next_priority = maxBound
             ,   _removal_queue = PSQ.empty
             }
--- }}}
 
--- }}}
+--------------------------------------------------------------------------------
+------------------------------ Internal Functions ------------------------------
+--------------------------------------------------------------------------------
 
--- Internal Functions {{{
-
-bumpWorkerRemovalPriority :: -- {{{
+bumpWorkerRemovalPriority ::
     (MonadState WorkgroupState m) ⇒
     WorkerId →
     m ()
 bumpWorkerRemovalPriority worker_id =
     (next_priority <<%= pred) >>= (removal_queue %=) . PSQ.insert worker_id
--- }}}
 
-fireAWorker :: WorkgroupMonad inner_state visitor_mode () -- {{{
+fireAWorker :: WorkgroupMonad inner_state visitor_mode ()
 fireAWorker =
     tryGetWaitingWorker
     >>= \x → case x of
@@ -221,30 +261,21 @@ fireAWorker =
             pending_quit %= IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ True) . ($ worker_id)
 
--- }}}
-
-hireAWorker :: WorkgroupMonad inner_state visitor_mode () -- {{{
+hireAWorker :: WorkgroupMonad inner_state visitor_mode ()
 hireAWorker = do
     worker_id ← next_worker_id <<%= succ
     bumpWorkerRemovalPriority worker_id
     asks createWorker >>= liftInnerToSupervisor . ($ worker_id)
     addWorker worker_id
--- }}}
 
-liftInner :: InnerMonad inner_state α → WorkgroupStateMonad inner_state α -- {{{
+liftInner :: InnerMonad inner_state α → WorkgroupStateMonad inner_state α
 liftInner = lift . lift
--- }}}
 
-liftInnerToSupervisor :: InnerMonad inner_state α → WorkgroupMonad inner_state visitor_mode α -- {{{
+liftInnerToSupervisor :: InnerMonad inner_state α → WorkgroupMonad inner_state visitor_mode α
 liftInnerToSupervisor = lift . liftInner
--- }}}
 
-numberOfWorkers :: WorkgroupMonad inner_state visitor_mode Int -- {{{
+numberOfWorkers :: WorkgroupMonad inner_state visitor_mode Int
 numberOfWorkers = PSQ.size <$> use removal_queue
--- }}}
 
-removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state visitor_mode () -- {{{
+removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state visitor_mode ()
 removeWorkerFromRemovalQueue = (removal_queue %=) . PSQ.delete
--- }}}
-
--- }}}
