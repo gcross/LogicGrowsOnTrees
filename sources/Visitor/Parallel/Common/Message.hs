@@ -1,13 +1,25 @@
--- Language extensions {{{
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
-module Visitor.Parallel.Common.Message where
+{-| This module contains infrastructure for communicating with workers over an
+    inter-process channel.
 
--- Imports {{{
+    Note:  This module is used by the processes and network back-end, which are
+           provided in separate packages.
+ -}
+module Visitor.Parallel.Common.Message
+    (
+    -- * Types
+      MessageForSupervisor(..)
+    , MessageForSupervisorForMode(..)
+    , MessageForSupervisorReceivers(..)
+    , MessageForWorker(..)
+    -- * Functions
+    , receiveAndProcessMessagesFromWorker
+    , receiveAndProcessMessagesFromWorkerUsingHandle
+    ) where
 
 import Data.Derive.Serialize
 import Data.DeriveTH
@@ -19,43 +31,71 @@ import Visitor.Utils.Handle
 import Visitor.Workload
 
 import System.IO (Handle)
--- }}}
 
--- Types {{{
-data MessageForSupervisor progress worker_final_progress = -- {{{
+--------------------------------------------------------------------------------
+------------------------------------ Types -------------------------------------
+--------------------------------------------------------------------------------
+
+{-| A message from a worker to the supervisor;  the worker id is assumed to be
+    known based on from where the message was received.
+ -}
+data MessageForSupervisor progress worker_final_progress =
+    {-| The worker encountered a failure with the given message while visiting the tree. -}
     Failed String
+    {-| The worker has finished with the given final progress. -}
   | Finished worker_final_progress
+    {-| The worker has responded to the progress update request with the given progress update. -}
   | ProgressUpdate (Worker.ProgressUpdate progress)
+    {-| The worker has responded to the workload steal request with possibly the stolen workload (and 'Nothing' if it was not possible to steal a workload at this time). -}
   | StolenWorkload (Maybe (Worker.StolenWorkload progress))
+    {-| The worker has quit the system and is no longer available -}
   | WorkerQuit
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForSupervisor)
--- }}}
+
+{-| Convenient type alias for obtaining the 'MessageForSupervisor' type corresponding with the given visitor mode. -}
 type MessageForSupervisorForMode visitor_mode = MessageForSupervisor (ProgressFor visitor_mode) (WorkerFinalProgressFor visitor_mode)
 
-data MessageForSupervisorReceivers visitor_mode worker_id = MessageForSupervisorReceivers -- {{{
-    {   receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate (ProgressFor visitor_mode) → IO ()
+{-| This data structure contains callbacks to be invoked when a message has
+    been received, depending on the kind of message.
+ -}
+data MessageForSupervisorReceivers visitor_mode worker_id = MessageForSupervisorReceivers
+    {   {-| called when a progress update has been received from a worker -}
+        receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate (ProgressFor visitor_mode) → IO ()
+        {-| called when a (possibly) stolen workload has been received from a worker -}
     ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload (ProgressFor visitor_mode)) → IO ()
+        {-| called when a failure (with the given message) has been received from a worker -}
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
+        {-| called when a worker has finished withthe given final progress -}
     ,   receiveFinishedFromWorker :: worker_id → WorkerFinalProgressFor visitor_mode → IO ()
+        {-| called when a worker has quit the system and is no longer available -}
     ,   receiveQuitFromWorker :: worker_id → IO ()
     }
--- }}}
 
-data MessageForWorker = -- {{{
-    RequestProgressUpdate
-  | RequestWorkloadSteal
-  | StartWorkload Workload
-  | QuitWorker
+{-| A message from the supervisor to a worker.
+
+    Note: It doesn't make sense to send, say, a progress update request when the
+          worker is not processing a workload, nor does it make sense to send it
+          a workload when it already has one.  It is your responsibility to not
+          send a nonsense message.
+ -}
+data MessageForWorker =
+    RequestProgressUpdate {-^ request a progress update -}
+  | RequestWorkloadSteal {-^ request a stolen workload -}
+  | StartWorkload Workload {-^ start visiting the given workload -}
+  | QuitWorker {-^ stop what you are doing and quit the system -}
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForWorker)
--- }}}
 
-receiveAndProcessMessagesFromWorker :: -- {{{
-    MessageForSupervisorReceivers visitor_mode worker_id →
-    IO (MessageForSupervisorForMode visitor_mode) →
-    worker_id →
-    IO ()
+{-| This function continually performs an IO action to read a message from a
+    worker with the given id and calls one of the given callbacks depending on
+    the content of the message.
+ -}
+receiveAndProcessMessagesFromWorker ::
+    MessageForSupervisorReceivers visitor_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
+    IO (MessageForSupervisorForMode visitor_mode) {-^ an action that fetches the next message -} →
+    worker_id {-^ the id of the worker from which messages are being received -} →
+    IO () {-^ an IO action that continually processes incoming messages from a worker until it quits, at which point it returns -}
 receiveAndProcessMessagesFromWorker
     MessageForSupervisorReceivers{..}
     receiveMessage
@@ -77,18 +117,21 @@ receiveAndProcessMessagesFromWorker
         receiveNextMessage
     processMessage WorkerQuit =
         receiveQuitFromWorker worker_id
--- }}}
 
-receiveAndProcessMessagesFromWorkerUsingHandle :: -- {{{
+{-| This function is the same as 'receiveAndProcessMessagesFromWorker' except
+    that instead of giving it an IO action to fetch a message you provide a
+    'Handle' from which messsages (assumed to be deserializable) are read.
+ -}
+receiveAndProcessMessagesFromWorkerUsingHandle ::
     ( Serialize (ProgressFor visitor_mode)
     , Serialize (WorkerFinalProgressFor visitor_mode)
     ) ⇒
-    MessageForSupervisorReceivers visitor_mode worker_id →
-    Handle →
-    worker_id →
-    IO ()
+    MessageForSupervisorReceivers visitor_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
+    Handle {-^ the handle from which messages should be read -} →
+    worker_id {-^ the id of the worker from which messages are being received -} →
+    IO () {-^ an IO action that continually processes incoming messages from a worker until it quits, at which point it returns -}
 receiveAndProcessMessagesFromWorkerUsingHandle receivers handle worker_id =
     receiveAndProcessMessagesFromWorker receivers (receive handle) worker_id
--- }}}
 
--- }}}
+
+
