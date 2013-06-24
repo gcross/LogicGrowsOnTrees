@@ -1,4 +1,3 @@
--- Language extensions {{{
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -6,11 +5,49 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
-module Visitor.Parallel.Common.Supervisor.RequestQueue where
+{-| To understand the purpose of this module, it helps to know that during the
+    global visiting process there will be two main loops running in the
+    supervisor. The first loop runs inside the 'SupervisorMonad' and is usually
+    taken over by the back-end, which handles the communication between the
+    supervisors and the workers. The second loop (usually referred to as the
+    /controller/) is intended for the user of the back-end to be able to submit
+    requests such as a global progress update to the supervisor, or possibly
+    back-end-specific requests (such as changing the number of workers).
 
--- Imports {{{
+    With this in mind, the purpose of this module is to create infrastructure
+    for the second loop (the controller) to submit requests to the first loop.
+    It provides this functionality through a class so that specific back-ends
+    can extend this to provide requests specific to that back-end (such as
+    changing the number of workers).
+ -}
+module Visitor.Parallel.Common.Supervisor.RequestQueue
+    (
+    -- * Type-classes
+      RequestQueueMonad(..)
+    -- * Types
+    , Request(..)
+    , RequestQueue(..)
+    , RequestQueueReader(..)
+    -- * Functions
+    -- ** Synchronized requests
+    , getCurrentProgress
+    , getNumberOfWorkers
+    , requestProgressUpdate
+    , syncAsync
+    -- ** Request queue management
+    , addProgressReceiver
+    , enqueueRequest
+    , newRequestQueue
+    , tryDequeueRequest
+    -- ** Request processing
+    , processAllRequests
+    , receiveProgress
+    , requestQueueProgram
+    -- ** Miscellaneous
+    , getQuantityAsync
+    ) where
+
 import Prelude hiding (catch)
 
 import Control.Applicative (liftA2)
@@ -31,52 +68,51 @@ import Data.IORef (IORef,atomicModifyIORef,newIORef)
 import qualified Visitor.Parallel.Common.Supervisor as Supervisor
 import Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
 import Visitor.Parallel.Common.VisitorMode
--- }}}
 
--- Classes {{{
+--------------------------------------------------------------------------------
+--------------------------------- Type-classes ---------------------------------
+--------------------------------------------------------------------------------
 
-class -- {{{
-  ( HasVisitorMode m
-  , MonadCatchIO m
-  -- }}}
-  ) ⇒ RequestQueueMonad m where -- {{{
+{-| This class provides a set of supervisor requests common to all back-ends. -}
+class (HasVisitorMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
+    {-| Abort the supervisor. -}
     abort :: m ()
+    {-| Fork a new thread running in this monad. -}
     fork :: m () → m ThreadId
+    {-| Request the current progress, and invoke the given callback with the result;  see 'getCurrentProgress' for the synchronous version. -}
     getCurrentProgressAsync :: (ProgressFor (VisitorModeFor m) → IO ()) → m ()
+    {-| Request the number of workers, and invoke the given callback with the result;  see 'getNumberOfWorkers' for the synchronous version. -}
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
+    {-| Requests that a global progress update be performed, and invoke the given callback with the result;  see 'requestProgressUpdate' for the synchronous version. -}
     requestProgressUpdateAsync :: (ProgressFor (VisitorModeFor m) → IO ()) → m ()
--- }}}
 
--- }}}
+--------------------------------------------------------------------------------
+------------------------------------- Types ------------------------------------
+--------------------------------------------------------------------------------
 
--- Types {{{
-
+{-| The type of a supervisor request. -}
 type Request visitor_mode worker_id m = SupervisorMonad visitor_mode worker_id m ()
-data RequestQueue visitor_mode worker_id m = RequestQueue -- {{{
-    {   requests :: !(TChan (Request visitor_mode worker_id m))
+{-| A basic supervisor request queue. -}
+data RequestQueue visitor_mode worker_id m = RequestQueue
+    {   {-| the queue of requests to the supervisor -}
+        requests :: !(TChan (Request visitor_mode worker_id m))
+        {-| a list of callbacks to invoke when a global progress update has completed -}
     ,   receivers :: !(IORef [ProgressFor visitor_mode → IO ()])
     }
--- }}}
+{-| A basic supervisor request queue monad, which has an implicit 'RequestQueue'
+    object that it uses to communicate with the supervisor loop.
+ -}
 type RequestQueueReader visitor_mode worker_id m = ReaderT (RequestQueue visitor_mode worker_id m) IO
 
--- }}}
-
--- Instances {{{
-
-instance HasVisitorMode (RequestQueueReader visitor_mode worker_id m) where -- {{{
+instance HasVisitorMode (RequestQueueReader visitor_mode worker_id m) where
     type VisitorModeFor (RequestQueueReader visitor_mode worker_id m) = visitor_mode
--- }}}
 
-instance -- {{{
-  ( SupervisorFullConstraint worker_id m
-  , MonadCatchIO m
-  -- }}}
-  ) ⇒ RequestQueueMonad (RequestQueueReader visitor_mode worker_id m) where -- {{{
+instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader visitor_mode worker_id m) where
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
     fork m = ask >>= liftIO . forkIO . runReaderT m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
     getNumberOfWorkersAsync = (ask >>=) . getQuantityAsync Supervisor.getNumberOfWorkers
-    requestProgressUpdateAsync receiveUpdatedProgress = -- {{{
+    requestProgressUpdateAsync receiveUpdatedProgress =
         ask
         >>=
         liftIO
@@ -84,14 +120,42 @@ instance -- {{{
         liftA2 (>>)
             (addProgressReceiver receiveUpdatedProgress)
             (enqueueRequest Supervisor.performGlobalProgressUpdate)
-    -- }}}
--- }}}
 
--- }}}
+--------------------------------------------------------------------------------
+---------------------------------- Functions -----------------------------------
+--------------------------------------------------------------------------------
 
--- Functions {{{
+------------------------------ Synchronized requests ------------------------------
 
-addProgressReceiver :: -- {{{
+{-| Like 'getCurrentProgressAsync', but blocks until the result is ready. -}
+getCurrentProgress :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m))
+getCurrentProgress = syncAsync getCurrentProgressAsync
+
+{-| Like 'getNumberOfWorkersAsync', but blocks until the result is ready. -}
+getNumberOfWorkers :: RequestQueueMonad m ⇒ m Int
+getNumberOfWorkers = syncAsync getNumberOfWorkersAsync
+
+{-| Like 'requestProgressUpdateAsync', but blocks until the progress update has completed. -}
+requestProgressUpdate :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m))
+requestProgressUpdate = syncAsync requestProgressUpdateAsync
+
+{-| General utility function for converting an asynchronous request to a
+    syncronous request;  it uses an 'MVar' to hold the result of the request and
+    blocks until the 'MVar' has been filled.
+ -}
+syncAsync :: MonadIO m ⇒ ((α → IO ()) → m ()) → m α
+syncAsync runCommandAsync = do
+    result_mvar ← liftIO newEmptyMVar
+    runCommandAsync (putMVar result_mvar)
+    liftIO $
+        takeMVar result_mvar
+        `catch`
+        (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for controller to respond to request")
+
+---------------------------- Request queue management -----------------------------
+
+{-| Adds a callback to the given 'RequestQueue' that will be invoked when the current global progress update has completed. -}
+addProgressReceiver ::
     MonadIO m' ⇒
     (ProgressFor visitor_mode → IO ()) →
     RequestQueue visitor_mode worker_id m →
@@ -102,9 +166,26 @@ addProgressReceiver receiver =
     flip atomicModifyIORef ((receiver:) &&& const ())
     .
     receivers
--- }}}
 
-tryDequeueRequest :: -- {{{
+{-| Enqueues a supervisor request into the given queue. -}
+enqueueRequest ::
+    MonadIO m' ⇒
+    Request visitor_mode worker_id m →
+    RequestQueue visitor_mode worker_id m →
+    m' ()
+enqueueRequest = flip $
+    (liftIO . atomically)
+    .*
+    (writeTChan . requests)
+
+{-| Constructs a new 'RequestQueue'. -}
+newRequestQueue ::
+    MonadIO m' ⇒
+    m' (RequestQueue visitor_mode worker_id m)
+newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
+
+{-| Attempt to pop a request from the 'RequestQueue'. -}
+tryDequeueRequest ::
     MonadIO m' ⇒
     RequestQueue visitor_mode worker_id m →
     m' (Maybe (Request visitor_mode worker_id m))
@@ -116,46 +197,13 @@ tryDequeueRequest =
     tryReadTChan
     .
     requests
--- }}}
 
-enqueueRequest :: -- {{{
-    MonadIO m' ⇒
-    Request visitor_mode worker_id m →
-    RequestQueue visitor_mode worker_id m →
-    m' ()
-enqueueRequest = flip $
-    (liftIO . atomically)
-    .*
-    (writeTChan . requests)
--- }}}
+------------------------------- Request processing --------------------------------
 
-getCurrentProgress :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m)) -- {{{
-getCurrentProgress = syncAsync getCurrentProgressAsync
--- }}}
-
-getQuantityAsync :: -- {{{
-    ( MonadIO m'
-    , SupervisorFullConstraint worker_id m
-    ) ⇒
-    SupervisorMonad visitor_mode worker_id m α →
-    (α → IO ()) →
-    RequestQueue visitor_mode worker_id m →
-    m' ()
-getQuantityAsync getQuantity receiveQuantity =
-    enqueueRequest $ getQuantity >>= liftIO . receiveQuantity
--- }}}
-
-getNumberOfWorkers :: RequestQueueMonad m ⇒ m Int -- {{{
-getNumberOfWorkers = syncAsync getNumberOfWorkersAsync
--- }}}
-
-newRequestQueue ::  -- {{{
-    MonadIO m' ⇒
-    m' (RequestQueue visitor_mode worker_id m)
-newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
--- }}}
-
-processAllRequests :: -- {{{
+{-| Processes all of the requests in the given 'RequestQueue', and returns when
+    the queue has been emptied.
+ -}
+processAllRequests ::
     MonadIO m ⇒
     RequestQueue visitor_mode worker_id m →
     SupervisorMonad visitor_mode worker_id m ()
@@ -165,25 +213,9 @@ processAllRequests (RequestQueue requests _) = go
         (liftIO . atomically . tryReadTChan) requests
         >>=
         maybe (return ()) (>> go)
--- }}}
 
-processRequest :: -- {{{
-    MonadIO m ⇒
-    RequestQueue visitor_mode worker_id m →
-    SupervisorMonad visitor_mode worker_id m ()
-processRequest =
-    join
-    .
-    liftIO
-    .
-    atomically
-    .
-    readTChan
-    .
-    requests
--- }}}
-
-receiveProgress :: -- {{{
+{-| Invokes all of the callbacks with the given progress and then clears the list of callbacks. -}
+receiveProgress ::
     MonadIO m' ⇒
     RequestQueue visitor_mode worker_id m →
     ProgressFor visitor_mode →
@@ -200,16 +232,12 @@ receiveProgress queue progress =
     receivers
     $
     queue
--- }}}
 
-requestProgressUpdate :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m)) -- {{{
-requestProgressUpdate = syncAsync requestProgressUpdateAsync
--- }}}
-
-requestQueueProgram :: -- {{{
+{-| Creates a supervisor program that loops forever processing requests from the given queue. -}
+requestQueueProgram ::
     MonadIO m ⇒
-    SupervisorMonad visitor_mode worker_id m () →
-    RequestQueue visitor_mode worker_id m →
+    SupervisorMonad visitor_mode worker_id m () {-^ initialization code to run before the loop is started -} →
+    RequestQueue visitor_mode worker_id m {-^ the request queue -} →
     SupervisorProgram visitor_mode worker_id m
 requestQueueProgram initialize =
     flip (BlockingProgram initialize) id
@@ -221,16 +249,20 @@ requestQueueProgram initialize =
     readTChan
     .
     requests
--- }}}
 
-syncAsync :: MonadIO m ⇒ ((α → IO ()) → m ()) → m α -- {{{
-syncAsync runCommandAsync = do
-    result_mvar ← liftIO newEmptyMVar
-    runCommandAsync (putMVar result_mvar)
-    liftIO $
-        takeMVar result_mvar
-        `catch`
-        (\BlockedIndefinitelyOnMVar → error $ "blocked forever while waiting for controller to respond to request")
--- }}}
+---------------------------------- Miscellaneous ----------------------------------
 
--- }}}
+{-| Submits a 'Request' to the supervisor and invoks the given callback with the
+    result when it is available.  (This function is used by
+    'getCurrentProgressAsync' and 'getNumberOfWorkersAsync'.)
+ -}
+getQuantityAsync ::
+    ( MonadIO m'
+    , SupervisorFullConstraint worker_id m
+    ) ⇒
+    SupervisorMonad visitor_mode worker_id m α →
+    (α → IO ()) →
+    RequestQueue visitor_mode worker_id m →
+    m' ()
+getQuantityAsync getQuantity receiveQuantity =
+    enqueueRequest $ getQuantity >>= liftIO . receiveQuantity
