@@ -16,7 +16,7 @@ import Visitor.Utils.WordSum
 -- }}}
 
 main =
-    mainVisitor
+    mainForVisitTree
         driver
         (makeArityAndDepthTermAtPositions 0 1)
         (defTI { termDoc = "count the leaves of a tree" })

@@ -69,7 +69,7 @@ import System.Log.Logger.TH
 
 import Visitor (TreeGenerator,TreeGeneratorIO,TreeGeneratorT)
 import Visitor.Checkpoint
-import Visitor.Parallel.Main (Driver(Driver),RunOutcome,RunOutcomeFor,mainParser)
+import Visitor.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
 import Visitor.Parallel.Common.Supervisor.RequestQueue
 import Visitor.Parallel.Common.VisitorMode
 import Visitor.Parallel.Common.Worker as Worker
@@ -102,26 +102,16 @@ instance HasVisitorMode (ThreadsControllerMonad visitor_mode) where -- {{{
 
 -- Driver {{{
 driver :: Driver IO shared_configuration supervisor_configuration m n visitor_mode
-driver = Driver $
-    \visitor_mode
-     purity
-     shared_configuration_term
-     supervisor_configuration_term
-     term_info
-     initializeGlobalState
-     constructVisitor
-     getMaybeStartingProgress
-     notifyTerminated
-     constructManager →
- do (shared_configuration,supervisor_configuration) ←
-        mainParser (liftA2 (,) shared_configuration_term supervisor_configuration_term) term_info
+driver = Driver $ \DriverParameters{..} → do
+    (shared_configuration,supervisor_configuration) ←
+        mainParser (liftA2 (,) shared_configuration_term supervisor_configuration_term) program_info
     initializeGlobalState shared_configuration
-    starting_progress ← getMaybeStartingProgress shared_configuration supervisor_configuration
+    starting_progress ← getStartingProgress shared_configuration supervisor_configuration
     launchVisitorStartingFrom
          visitor_mode
          purity
          starting_progress
-        (constructVisitor shared_configuration)
+        (constructTreeGenerator shared_configuration)
         (changeNumberOfWorkersToMatchCPUs >> constructManager shared_configuration supervisor_configuration)
      >>= notifyTerminated shared_configuration supervisor_configuration
 -- }}}

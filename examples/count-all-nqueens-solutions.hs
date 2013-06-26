@@ -15,7 +15,7 @@ import Visitor.Examples.Queens
 -- }}}
 
 main =
-    mainVisitor
+    mainForVisitTree
         driver
         (makeBoardSizeTermAtPosition 0)
         (defTI { termDoc = "count the number of n-queens solutions for a given board size" })
