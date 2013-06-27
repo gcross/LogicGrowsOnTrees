@@ -1,4 +1,3 @@
--- Language extensions {{{
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
@@ -6,23 +5,34 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
+{-| This back-end implements parallelism by spawning multiple threads.  The
+    number of threads can be changed during the run and even be set to zero.
+
+    The driver provided by this back-end sets the number of threads equal to the
+    number of capabilities as reported by 'getNumCapabilities';  that is, if you
+    want @#@ parallel workers, then you need to pass @+RTS -N#@ as command-line
+    arguments to tell the runtime that you want it to run @#@ threads in parallel.
+ -}
 module Visitor.Parallel.BackEnd.Threads
-    ( ThreadsControllerMonad
+    (
+    -- * Driver
+      driver
+    -- * Controller
+    , ThreadsControllerMonad
     , abort
     , changeNumberOfWorkers
     , changeNumberOfWorkersAsync
-    , changeNumberOfWorkersToMatchCPUs
-    , driver
+    , changeNumberOfWorkersToMatchCapabilities
     , fork
     , getCurrentProgress
     , getCurrentProgressAsync
     , getNumberOfWorkers
     , getNumberOfWorkersAsync
-    , launchVisitorStartingFrom
     , requestProgressUpdate
     , requestProgressUpdateAsync
+    -- * Visit functions
+    -- $visit
     , visitTree
     , visitTreeStartingFrom
     , visitTreeIO
@@ -47,9 +57,10 @@ module Visitor.Parallel.BackEnd.Threads
     , visitTreeIOUntilFoundUsingPushStartingFrom
     , visitTreeTUntilFoundUsingPush
     , visitTreeTUntilFoundUsingPushStartingFrom
+    -- * Generic launcher
+    , launchVisitorStartingFrom
     ) where
 
--- Imports {{{
 import Control.Applicative (Applicative,liftA2)
 import Control.Concurrent (getNumCapabilities,killThread)
 import Control.Monad (void)
@@ -82,25 +93,23 @@ import Visitor.Parallel.Common.Worker as Worker
     ,visitTreeTUntilFirst
     )
 import Visitor.Parallel.Common.Workgroup hiding (C,unwrapC)
--- }}}
 
--- Logging Functions {{{
+--------------------------------------------------------------------------------
+----------------------------------- Loggers ------------------------------------
+--------------------------------------------------------------------------------
+
 deriveLoggers "Logger" [DEBUG]
--- }}}
 
--- Types {{{
-newtype ThreadsControllerMonad visitor_mode α =
-    C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor visitor_mode))) visitor_mode α
-      } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
--- }}}
+--------------------------------------------------------------------------------
+------------------------------------ Driver ------------------------------------
+--------------------------------------------------------------------------------
 
--- Instances {{{
-instance HasVisitorMode (ThreadsControllerMonad visitor_mode) where -- {{{
-    type VisitorModeFor (ThreadsControllerMonad visitor_mode) = visitor_mode
--- }}}
--- }}}
-
--- Driver {{{
+{-| This is the driver for the threads back-end.  The number of workers is set
+    to be equal to the number of runtime capabilities, which you set by using
+    the @-N@ option for the RTS --- i.e., by specifying @+RTS -N#@ for @#@
+    parallel workers (or just @+RTS -N@ to set the number of workers equal to
+    the number of processors).
+ -}
 driver :: Driver IO shared_configuration supervisor_configuration m n visitor_mode
 driver = Driver $ \DriverParameters{..} → do
     (shared_configuration,supervisor_configuration) ←
@@ -112,252 +121,338 @@ driver = Driver $ \DriverParameters{..} → do
          purity
          starting_progress
         (constructTreeGenerator shared_configuration)
-        (changeNumberOfWorkersToMatchCPUs >> constructManager shared_configuration supervisor_configuration)
+        (changeNumberOfWorkersToMatchCapabilities >> constructManager shared_configuration supervisor_configuration)
      >>= notifyTerminated shared_configuration supervisor_configuration
--- }}}
 
--- Exposed Functions {{{
+--------------------------------------------------------------------------------
+---------------------------------- Controller ----------------------------------
+--------------------------------------------------------------------------------
 
-changeNumberOfWorkersToMatchCPUs :: ThreadsControllerMonad visitor_mode () -- {{{
-changeNumberOfWorkersToMatchCPUs =
+{-| This is the monad in which the thread controller will run. -}
+newtype ThreadsControllerMonad visitor_mode α =
+    C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor visitor_mode))) visitor_mode α
+      } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
+
+instance HasVisitorMode (ThreadsControllerMonad visitor_mode) where
+    type VisitorModeFor (ThreadsControllerMonad visitor_mode) = visitor_mode
+
+{-| Changes the number of a parallel workers to equal the number of capabilities
+    as reported by 'getNumCapabilities'.
+ -}
+changeNumberOfWorkersToMatchCapabilities :: ThreadsControllerMonad visitor_mode ()
+changeNumberOfWorkersToMatchCapabilities =
     liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
--- }}}
 
-visitTree :: -- {{{
+--------------------------------------------------------------------------------
+------------------------------- Visit functions --------------------------------
+--------------------------------------------------------------------------------
+
+{- $visit
+The functions in this section are provided as a way to use the threads back-end
+directly rather than using the framework provided in "Visitor.Parallel.Main".
+They are all specialized versions of 'launchVisitorStartingFrom', which appears
+in the following section; they are provided for convenience --- specifically, to
+minimize the knowledge needed of the implementation and how the types specialize
+for the various visitor modes.
+
+There are 3 × 2 × 4 = 24 functions in this section; the factor of 3 comes from
+the fact that there are three cases of monad in which the tree visitor is run:
+pure, IO, and impure (where IO is a special case of impure provided for
+convenience); the factor of 2 comes from the fact that one can either start with
+no progress or start with a given progress; the factor of 4 comes from the fact
+that there are four visitor modes: summing over all results, returning the first
+result, summing over all results until a criteria is met with intermediate
+results only being sent to the supervisor upon request, and the previous mode
+but with all intermediate results being sent immediately to the supervisor.
+ -}
+
+{-| Visit the purely generated tree and sum over all result. -}
+visitTree ::
     Monoid result ⇒
-    TreeGenerator result →
-    ThreadsControllerMonad (AllMode result) () →
-    IO (RunOutcome (Progress result) result)
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 visitTree = visitTreeStartingFrom mempty
--- }}}
 
-visitTreeStartingFrom :: -- {{{
+{-| Like 'visitTree' but with a starting progress. -}
+visitTreeStartingFrom ::
     Monoid result ⇒
-    Progress result →
-    TreeGenerator result →
-    ThreadsControllerMonad (AllMode result) () →
-    IO (RunOutcome (Progress result) result)
+    Progress result {-^ the starting progress -} →
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 visitTreeStartingFrom = launchVisitorStartingFrom AllMode Pure
--- }}}
 
-visitTreeIO :: -- {{{
+{-| Like 'visitTree' but with the tree generator running in IO. -}
+visitTreeIO ::
     Monoid result ⇒
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (AllMode result) () →
-    IO (RunOutcome (Progress result) result)
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 visitTreeIO = visitTreeIOStartingFrom mempty
--- }}}
 
-visitTreeIOStartingFrom :: -- {{{
+{-| Like 'visitTreeIO' but with a starting progress. -}
+visitTreeIOStartingFrom ::
     Monoid result ⇒
-    Progress result →
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (AllMode result) () →
-    IO (RunOutcome (Progress result) result)
+    Progress result {-^ the starting progress -} →
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 visitTreeIOStartingFrom = launchVisitorStartingFrom AllMode io_purity
--- }}}
 
-visitTreeT :: -- {{{
+{-| Like 'visitTree' but with a generic impure tree generator. -}
+visitTreeT ::
     (Monoid result, MonadIO m) ⇒
-    (∀ α. m α → IO α) →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (AllMode result) () →
-    IO (RunOutcome (Progress result) result)
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 visitTreeT = flip visitTreeTStartingFrom mempty
--- }}}
 
-visitTreeTStartingFrom :: -- {{{
+{-| Like 'visitTreeT', but with a starting progress. -}
+visitTreeTStartingFrom ::
     (Monoid result, MonadIO m) ⇒
-    (∀ α. m α → IO α) →
-    Progress result →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (AllMode result) () →
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    Progress result {-^ the starting progress -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) result)
 visitTreeTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureAtopIO
--- }}}
 
-visitTreeUntilFirst :: -- {{{
-    TreeGenerator result →
-    ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe (Progress result)))
+{-| Visit the purely generated tree until a result has been found. -}
+visitTreeUntilFirst ::
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 visitTreeUntilFirst = visitTreeUntilFirstStartingFrom mempty
--- }}}
 
-visitTreeUntilFirstStartingFrom :: -- {{{
-    Checkpoint →
-    TreeGenerator result →
-    ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe (Progress result)))
+{-| Like 'visitTreeUntilFirst' but with a starting progress. -}
+visitTreeUntilFirstStartingFrom ::
+    Checkpoint {-^ the starting progress -} →
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 visitTreeUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode Pure
--- }}}
 
-visitTreeIOUntilFirst :: -- {{{
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe (Progress result)))
+{-| Like 'visitTreeUntilFirst' but with the tree generator running in IO. -}
+visitTreeIOUntilFirst ::
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 visitTreeIOUntilFirst = visitTreeIOUntilFirstStartingFrom mempty
--- }}}
 
-visitTreeIOUntilFirstStartingFrom :: -- {{{
-    Checkpoint →
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe (Progress result)))
+{-| Like 'visitTreeIOUntilFirst' but with a starting progress. -}
+visitTreeIOUntilFirstStartingFrom ::
+    Checkpoint {-^ the starting progress -} →
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 visitTreeIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode io_purity
--- }}}
 
-visitTreeTUntilFirst :: -- {{{
+{-| Like 'visitTreeUntilFirst' but with a generic impure tree generator. -}
+visitTreeTUntilFirst ::
     MonadIO m ⇒
-    (∀ α. m α → IO α) →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe (Progress result)))
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 visitTreeTUntilFirst = flip visitTreeTUntilFirstStartingFrom mempty
--- }}}
 
-visitTreeTUntilFirstStartingFrom :: -- {{{
+{-| Like 'visitTreeTUntilFirst', but with a starting progress. -}
+visitTreeTUntilFirstStartingFrom ::
     MonadIO m ⇒
-    (∀ α. m α → IO α) →
-    Checkpoint →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (FirstMode result) () →
-    IO (RunOutcome Checkpoint (Maybe (Progress result)))
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    Checkpoint {-^ the starting progress -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 visitTreeTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureAtopIO
--- }}}
 
-visitTreeUntilFoundUsingPull :: -- {{{
+{-| Visits a tree, summing over all results until the condition function says
+    that we are done.
+
+    Note that at any given point in time there will be partial results at the
+    supervisor and also at each worker.  The run will terminate if one of three
+    things happen:  first, if the condition is satisfied at any worker then that
+    worker will terminate and the result of the condition function will be
+    returned (as well as the partial results at the supervisor, needed if one
+    decides to restart the run at the same point later);  second, if the
+    accumulated results at the supervisor meet the condition function, in which
+    case the supervisor will terminate the run and return the result of the
+    condition function (and 'mempty' for the partial results);  finally, if the
+    condition is never met by the time the whole tree has been visited then the
+    run ends and the partial results found so far are returned.
+
+    Note that results will only be sent to the server when either a workload is
+    stolen or a global progress update is performed.  Thus, one may want to
+    perform a global progress update on a regular basis to gather all of the
+    results at the server to avoid time being wasted where the cumulative
+    results spread around all workers meet the condition but the system does not
+    know this because they are not gathered at one point.
+
+    If you would prefer that results be sent to the supervior as they are found
+    (which makes sense if there are very few results but could be expensive if
+    there will be a large number of results found before the condition is met),
+    then see 'visitTreeUntilFoundUsingPush'.
+ -}
+visitTreeUntilFoundUsingPull ::
     Monoid result ⇒
-    (result → Maybe final_result) →
-    TreeGenerator result →
-    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
+    (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
 visitTreeUntilFoundUsingPull = flip visitTreeUntilFoundUsingPullStartingFrom mempty
--- }}}
 
-visitTreeUntilFoundUsingPullStartingFrom :: -- {{{
+{-| Like 'visitTreeUntilFoundUsingPull' but with a starting progress. -}
+visitTreeUntilFoundUsingPullStartingFrom ::
     Monoid result ⇒
     (result → Maybe final_result) →
-    Progress result →
-    TreeGenerator result →
-    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
+    Progress result {-^ the starting progress -} →
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
 visitTreeUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) Pure
--- }}}
 
-visitTreeIOUntilFoundUsingPull :: -- {{{
+{-| Like 'visitTreeUntilFoundUsingPull' but with the tree generator running in IO. -}
+visitTreeIOUntilFoundUsingPull ::
     Monoid result ⇒
     (result → Maybe final_result) →
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
 visitTreeIOUntilFoundUsingPull = flip visitTreeIOUntilFoundUsingPullStartingFrom mempty
--- }}}
 
-visitTreeIOUntilFoundUsingPullStartingFrom :: -- {{{
+{-| Like 'visitTreeIOUntilFoundUsingPull' but with a starting progress. -}
+visitTreeIOUntilFoundUsingPullStartingFrom ::
     Monoid result ⇒
     (result → Maybe final_result) →
-    Progress result →
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
+    Progress result {-^ the starting progress -} →
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
 visitTreeIOUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) io_purity
--- }}}
 
-visitTreeTUntilFoundUsingPull :: -- {{{
+{-| Like 'visitTreeUntilFoundUsingPull' but with a generic impure tree generator. -}
+visitTreeTUntilFoundUsingPull ::
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
-    (∀ α. m α → IO α) →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
 visitTreeTUntilFoundUsingPull f run = visitTreeTUntilFoundUsingPullStartingFrom f run mempty
--- }}}
 
-visitTreeTUntilFoundUsingPullStartingFrom :: -- {{{
+{-| Like 'visitTreeTUntilFoundUsingPull' but with a starting progress. -}
+visitTreeTUntilFoundUsingPullStartingFrom ::
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
-    (∀ α. m α → IO α) →
-    Progress result →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (FoundModeUsingPull result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result))))
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    Progress result {-^ the starting progress -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
 visitTreeTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureAtopIO
--- }}}
 
-visitTreeUntilFoundUsingPush :: -- {{{
+{-| This function is like 'visitTreeUntilFoundUsingPull' except that each result
+    is immediately pushed to the supervisor rather than being summed locally
+    until pulled by a workload steal or progress update request. If there are a
+    small number of results then this mode will allow the system to recognize
+    that it is done faster, whereas in pull mode the system can be a state where
+    the collective results satisfy the condition but they are spread out so this
+    fact is not recognized; thus, unlike 'visitTreeUntilFoundUsingPull' one does
+    not need to perform a global progress update on a regular basis in order to
+    gather all the results across the system together to see if the condition
+    has been met.
+
+    Note also that, unlike 'visitTreeUntilFoundUsingPull', only the final result
+    is returned (if the condition is met), not a partial result'; this is
+    because all results are in one place so when the condition is met it
+    includes all known results and so there is nothing leftover.
+
+    The downside of using this function (compared to
+    'visitTreeUntilFoundUsingPull') is that if there are a large number of
+    results that need to be found before the condition is satisfied then it
+    could be much less efficient to send each result to the supervisor (possibly
+    over a network) then to sum over partial results and send the current total
+    to the supervisor every once and a while.
+ -}
+visitTreeUntilFoundUsingPush ::
     Monoid result ⇒
     (result → Maybe final_result) →
-    TreeGenerator result →
-    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
 visitTreeUntilFoundUsingPush = flip visitTreeUntilFoundUsingPushStartingFrom mempty
--- }}}
 
-visitTreeUntilFoundUsingPushStartingFrom :: -- {{{
+{-| Like 'visitTreeUntilFoundUsingPush', but with a starting result. -}
+visitTreeUntilFoundUsingPushStartingFrom ::
     Monoid result ⇒
     (result → Maybe final_result) →
-    Progress result →
-    TreeGenerator result →
-    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+    Progress result {-^ the starting progress -} →
+    TreeGenerator result {-^ the (pure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
 visitTreeUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) Pure
--- }}}
 
-visitTreeIOUntilFoundUsingPush :: -- {{{
+{-| Like 'visitTreeUntilFoundUsingPush' but with the tree generator running in IO. -}
+visitTreeIOUntilFoundUsingPush ::
     Monoid result ⇒
     (result → Maybe final_result) →
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
 visitTreeIOUntilFoundUsingPush = flip visitTreeIOUntilFoundUsingPushStartingFrom mempty
--- }}}
 
-visitTreeIOUntilFoundUsingPushStartingFrom :: -- {{{
+{-| Like 'visitTreeIOUntilFoundUsingPush', but with a starting result. -}
+visitTreeIOUntilFoundUsingPushStartingFrom ::
     Monoid result ⇒
     (result → Maybe final_result) →
-    Progress result →
-    TreeGeneratorIO result →
-    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+    Progress result {-^ the starting progress -} →
+    TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
 visitTreeIOUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) io_purity
--- }}}
 
-visitTreeTUntilFoundUsingPush :: -- {{{
+{-| Like 'visitTreeUntilFoundUsingPush' but with a generic impure tree generator. -}
+visitTreeTUntilFoundUsingPush ::
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
-    (∀ α. m α → IO α) →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
 visitTreeTUntilFoundUsingPush f run = visitTreeTUntilFoundUsingPushStartingFrom f run mempty
--- }}}
 
-visitTreeTUntilFoundUsingPushStartingFrom :: -- {{{
+{-| Like 'visitTreeTUntilFoundUsingPush', but with a starting progress. -}
+visitTreeTUntilFoundUsingPushStartingFrom ::
     (Monoid result, MonadIO m) ⇒
     (result → Maybe final_result) →
-    (∀ α. m α → IO α) →
-    Progress result →
-    TreeGeneratorT m result →
-    ThreadsControllerMonad (FoundModeUsingPush result final_result) () →
-    IO (RunOutcome (Progress result) (Either result (Progress final_result)))
+    (∀ α. m α → IO α) {-^ the function that runs the tree generator's monad in IO -} →
+    Progress result {-^ the starting progress -} →
+    TreeGeneratorT m result {-^ the (impure) tree generator -} →
+    ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
 visitTreeTUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) . ImpureAtopIO
--- }}}
 
--- }}}
+--------------------------------------------------------------------------------
+------------------------------- Generic launcher -------------------------------
+--------------------------------------------------------------------------------
 
--- Internal Functions {{{
+{-| Launch the visitor for this back-end, returning the outcome of the run when
+    finished.
 
-fromJustOrBust :: String → Maybe α → α -- {{{
-fromJustOrBust message = fromMaybe (error message)
--- }}}
-
-launchVisitorStartingFrom :: -- {{{
-    VisitorMode visitor_mode →
-    Purity m n →
-    (ProgressFor visitor_mode) →
-    TreeGeneratorT m (ResultFor visitor_mode) →
-    ThreadsControllerMonad visitor_mode () →
-    IO (RunOutcomeFor visitor_mode)
+    This function grants access to all of the functionality of this back-end,
+    but because its generality complicates its use (primarily the fact that the
+    types are dependent on the first parameter) you may find it easier to use
+    one of the specialized functions in the preceding section.
+ -}
+launchVisitorStartingFrom ::
+    VisitorMode visitor_mode {-^ the visitor mode -} →
+    Purity m n {-^ the purity of the tree generator -} →
+    (ProgressFor visitor_mode) {-^ the starting progress -} →
+    TreeGeneratorT m (ResultFor visitor_mode) {-^ the tree generator -} →
+    ThreadsControllerMonad visitor_mode () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcomeFor visitor_mode) {-^ the outcome of the run -}
 launchVisitorStartingFrom visitor_mode purity starting_progress visitor (C controller) =
     runWorkgroup
         visitor_mode
@@ -365,7 +460,7 @@ launchVisitorStartingFrom visitor_mode purity starting_progress visitor (C contr
         (\MessageForSupervisorReceivers{..} →
             let createWorker _ = return ()
                 destroyWorker worker_id False = liftIO $ receiveQuitFromWorker worker_id
-                destroyWorker worker_id True = do -- {{{
+                destroyWorker worker_id True = do
                     get >>=
                         liftIO
                         .
@@ -377,16 +472,16 @@ launchVisitorStartingFrom visitor_mode purity starting_progress visitor (C contr
                         .
                         IntMap.lookup worker_id
                     modify (IntMap.delete worker_id)
-                -- }}}
-                killAllWorkers _ = -- {{{
+
+                killAllWorkers _ =
                     get >>=
                         liftIO
                         .
                         mapM_ (killThread . workerThreadId)
                         .
                         IntMap.elems
-                -- }}}
-                sendRequestToWorker request receiver worker_id = -- {{{
+
+                sendRequestToWorker request receiver worker_id =
                     get >>=
                         liftIO
                         .
@@ -397,10 +492,10 @@ launchVisitorStartingFrom visitor_mode purity starting_progress visitor (C contr
                         )
                         .
                         IntMap.lookup worker_id
-                -- }}}
+
                 sendProgressUpdateRequestTo = sendRequestToWorker Worker.sendProgressUpdateRequest receiveProgressUpdateFromWorker
                 sendWorkloadStealRequestTo = sendRequestToWorker Worker.sendWorkloadStealRequest receiveStolenWorkloadFromWorker
-                sendWorkloadTo worker_id workload = -- {{{
+                sendWorkloadTo worker_id workload =
                     (debugM $ "Sending " ++ show workload ++ " to worker " ++ show worker_id)
                     >>
                     (liftIO $
@@ -431,11 +526,15 @@ launchVisitorStartingFrom visitor_mode purity starting_progress visitor (C contr
                     IntMap.insert worker_id
                     >>
                     (debugM $ "Thread for worker " ++ show worker_id ++ "started.")
-                -- }}}
+
             in WorkgroupCallbacks{..}
         )
         starting_progress
         controller
--- }}}
 
--- }}}
+--------------------------------------------------------------------------------
+----------------------------------- Internal -----------------------------------
+--------------------------------------------------------------------------------
+
+fromJustOrBust :: String → Maybe α → α
+fromJustOrBust message = fromMaybe (error message)
