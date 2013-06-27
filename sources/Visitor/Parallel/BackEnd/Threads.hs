@@ -33,24 +33,36 @@ module Visitor.Parallel.BackEnd.Threads
     , requestProgressUpdateAsync
     -- * Visit functions
     -- $visit
+
+    -- ** Sum over all results
+    -- $all
     , visitTree
     , visitTreeStartingFrom
     , visitTreeIO
     , visitTreeIOStartingFrom
     , visitTreeT
     , visitTreeTStartingFrom
+    -- ** Stop at first result
+    -- $first
     , visitTreeUntilFirst
     , visitTreeUntilFirstStartingFrom
     , visitTreeIOUntilFirst
     , visitTreeIOUntilFirstStartingFrom
     , visitTreeTUntilFirst
     , visitTreeTUntilFirstStartingFrom
+    -- ** Stop when sum of results meets condition
+    -- $found
+
+    -- *** Pull
+    -- $pull
     , visitTreeUntilFoundUsingPull
     , visitTreeUntilFoundUsingPullStartingFrom
     , visitTreeIOUntilFoundUsingPull
     , visitTreeIOUntilFoundUsingPullStartingFrom
     , visitTreeTUntilFoundUsingPull
     , visitTreeTUntilFoundUsingPullStartingFrom
+    -- *** Push
+    -- $push
     , visitTreeUntilFoundUsingPush
     , visitTreeUntilFoundUsingPushStartingFrom
     , visitTreeIOUntilFoundUsingPush
@@ -166,7 +178,14 @@ results only being sent to the supervisor upon request, and the previous mode
 but with all intermediate results being sent immediately to the supervisor.
  -}
 
-{-| Visit the purely generated tree and sum over all result. -}
+---------------------------- Sum over all results ------------------------------
+
+{- $all
+The functions in this section are for when you want to sum over all the results
+in (the leaves of) the tree.
+ -}
+
+{-| Visit the purely generated tree and sum over all results. -}
 visitTree ::
     Monoid result ⇒
     TreeGenerator result {-^ the (pure) tree generator -} →
@@ -219,6 +238,12 @@ visitTreeTStartingFrom ::
     IO (RunOutcome (Progress result) result)
 visitTreeTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureAtopIO
 
+---------------------------- Stop at first result ------------------------------
+
+{- $first
+See "Visitor.Parallel.Main#first" for more details on this mode.
+ -}
+
 {-| Visit the purely generated tree until a result has been found. -}
 visitTreeUntilFirst ::
     TreeGenerator result {-^ the (pure) tree generator -} →
@@ -268,33 +293,22 @@ visitTreeTUntilFirstStartingFrom ::
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 visitTreeTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureAtopIO
 
-{-| Visits a tree, summing over all results until the condition function says
-    that we are done.
+------------------------ Stop when sum of results found ------------------------
 
-    Note that at any given point in time there will be partial results at the
-    supervisor and also at each worker.  The run will terminate if one of three
-    things happen:  first, if the condition is satisfied at any worker then that
-    worker will terminate and the result of the condition function will be
-    returned (as well as the partial results at the supervisor, needed if one
-    decides to restart the run at the same point later);  second, if the
-    accumulated results at the supervisor meet the condition function, in which
-    case the supervisor will terminate the run and return the result of the
-    condition function (and 'mempty' for the partial results);  finally, if the
-    condition is never met by the time the whole tree has been visited then the
-    run ends and the partial results found so far are returned.
+{- $found
+See "Visitor.Parallel.Main#found" (a direct hyper-link to the relevant section) for more information on this mode.
+-}
 
-    Note that results will only be sent to the server when either a workload is
-    stolen or a global progress update is performed.  Thus, one may want to
-    perform a global progress update on a regular basis to gather all of the
-    results at the server to avoid time being wasted where the cumulative
-    results spread around all workers meet the condition but the system does not
-    know this because they are not gathered at one point.
+{- $pull
+See "Visitor.Parallel.Main#pull" (a direct hyper-link to the relevant section) for more information on this mode.
 
-    If you would prefer that results be sent to the supervior as they are found
-    (which makes sense if there are very few results but could be expensive if
-    there will be a large number of results found before the condition is met),
-    then see 'visitTreeUntilFoundUsingPush'.
+Note that because using these functions entails writing the controller yourself,
+it is your responsibility to ensure that a global progress update is performed
+on a regular basis in order to ensure that results are being gathered together
+at the supervisor.
  -}
+
+{-| Visit the purely generated tree until the sum of resuts meets a condition. -}
 visitTreeUntilFoundUsingPull ::
     Monoid result ⇒
     (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
@@ -353,29 +367,12 @@ visitTreeTUntilFoundUsingPullStartingFrom ::
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
 visitTreeTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureAtopIO
 
-{-| This function is like 'visitTreeUntilFoundUsingPull' except that each result
-    is immediately pushed to the supervisor rather than being summed locally
-    until pulled by a workload steal or progress update request. If there are a
-    small number of results then this mode will allow the system to recognize
-    that it is done faster, whereas in pull mode the system can be a state where
-    the collective results satisfy the condition but they are spread out so this
-    fact is not recognized; thus, unlike 'visitTreeUntilFoundUsingPull' one does
-    not need to perform a global progress update on a regular basis in order to
-    gather all the results across the system together to see if the condition
-    has been met.
+{- $push
+See "Visitor.Parallel.Main#push" (a direct hyper-link to the relevant section) for more information on this mode.
+-}
 
-    Note also that, unlike 'visitTreeUntilFoundUsingPull', only the final result
-    is returned (if the condition is met), not a partial result'; this is
-    because all results are in one place so when the condition is met it
-    includes all known results and so there is nothing leftover.
 
-    The downside of using this function (compared to
-    'visitTreeUntilFoundUsingPull') is that if there are a large number of
-    results that need to be found before the condition is satisfied then it
-    could be much less efficient to send each result to the supervisor (possibly
-    over a network) then to sum over partial results and send the current total
-    to the supervisor every once and a while.
- -}
+{-| Visit the purely generated tree until the sum of resuts meets a condition. -}
 visitTreeUntilFoundUsingPush ::
     Monoid result ⇒
     (result → Maybe final_result) →

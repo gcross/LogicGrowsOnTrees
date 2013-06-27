@@ -16,19 +16,20 @@
     function that corresponds to the kind of tree generator, and then provide
     the following:
 
-    1) a driver provided by the back-end you want to use;
+    1. a driver provided by the back-end you want to use;
 
-    2) optional command line arguments that the user can use to specify the tree
+    2. optional command line arguments that the user can use to specify the tree
        being generated;
 
-    3) a 'TermInfo' value that specifies the description of what this program
+    3. a 'TermInfo' value that specifies the description of what this program
        does, a typical example being:
 
         > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
 
-    4) an action to run when the visit has terminated (a function of the command line arguments); and
+    4. an action to run when the visit has terminated (a function of the command
+       line arguments); and
 
-    5) the tree generator, as a function of the command line arguments.
+    5. the tree generator, as a function of the command line arguments.
 
     Specifically, a program created using this module will automatically take
     care of running the supervisor and the workers (which includes figuring out
@@ -50,28 +51,43 @@ module Visitor.Parallel.Main
     -- ** Driver types
       Driver(..)
     , DriverParameters(..)
-    -- ** Specialized driver types
-    -- $specialized
-    , AllModePureGeneratorDriver
-    , AllModeIOGeneratorDriver
-    , AllModeImpureGeneratorDriver
     -- ** Outcome types
     , RunOutcome(..)
     , RunOutcomeFor
     , TerminationReason(..)
     , TerminationReasonFor
-    -- * Functions
-    -- ** Main functions
+    -- * Main functions
     -- $main
+
+    -- ** Sum over all results
+    -- $all
     , mainForVisitTree
     , mainForVisitTreeIO
     , mainForVisitTreeImpure
+    -- ** Stop at first result
+    -- $first
+    , mainForVisitTreeUntilFirst
+    , mainForVisitTreeIOUntilFirst
+    , mainForVisitTreeImpureUntilFirst
+    -- ** Stop when sum of results found
+    -- $found
+
+    -- *** Pull
+    -- $pull
+    , mainForVisitTreeUntilFoundUsingPull
+    , mainForVisitTreeIOUntilFoundUsingPull
+    , mainForVisitTreeImpureUntilFoundUsingPull
+    -- *** Push
+    -- $push
+    , mainForVisitTreeUntilFoundUsingPush
+    , mainForVisitTreeIOUntilFoundUsingPush
+    , mainForVisitTreeImpureUntilFoundUsingPush
+    -- ** Generic main function
     , genericMain
-    -- ** Utility functions
+    -- * Utility functions
     , extractRunOutcomeFromSupervisorOutcome
     , mainParser
     ) where
-
 
 import Prelude hiding (readFile,writeFile)
 
@@ -233,46 +249,6 @@ data DriverParameters
     ,   constructManager :: shared_configuration → supervisor_configuration → manager_monad visitor_mode ()
     }
 
---------------------------- Specialized driver types ---------------------------
-
-{- $specialized
-The types in this section are the driver types specialized for the supported
-visitor modes and tree generator purities.  They are provided both to slightly
-simplify the signatures for the main functions and also to document what driver
-types you get when you specialize the visitor more and purity.
-
-Note that all drivers can be specialized to any of these types, so when you are
-passing a driver as an argument you can treat it as being whichever of these
-types is the type of the parameter.
- -}
-
-{-| The type of drivers with a pure generator that sum over all results. -}
-type AllModePureGeneratorDriver tree_generator_configuration result_monad result =
-    Driver
-        result_monad
-        (SharedConfiguration tree_generator_configuration)
-        SupervisorConfiguration
-        Identity IO
-        (AllMode result)
-
-{-| The type of drivers with an IO monad generator that sum over all results. -}
-type AllModeIOGeneratorDriver tree_generator_configuration result_monad result =
-    Driver
-        result_monad
-        (SharedConfiguration tree_generator_configuration)
-        SupervisorConfiguration
-        IO IO
-        (AllMode result)
-
-{-| The type of drivers with an impure generator that sum over all results. -}
-type AllModeImpureGeneratorDriver tree_generator_configuration result_monad m result =
-    Driver
-        result_monad
-        (SharedConfiguration tree_generator_configuration)
-        SupervisorConfiguration
-        m m
-        (AllMode result)
-
 -------------------------------- Outcome types ---------------------------------
 
 {-| A type that represents the outcome of a run. -}
@@ -311,10 +287,8 @@ instance ArgVal Priority where
                  in return (name,level) `mplus` return (map toLower name,level)
 
 --------------------------------------------------------------------------------
----------------------------------- Functions -----------------------------------
+-------------------------------- Main functions ---------------------------------
 --------------------------------------------------------------------------------
-
--------------------------------- Main functions --------------------------------
 
 {- $main
 The functions in this section all provide a main function that starts up the
@@ -322,14 +296,28 @@ system that visits a tree in parallel using the given tree generator
 (constructed possibly using information supplied on the command line) and the
 given back-end provided via the driver argument.
 
-Specialized versions of these functions exist for all of the supported tree
-generator purities and visitor modes. This is done for two reasons: first, in
-order to make the types more concrete to hopefully improve usability, and
-second, because often the type of the tree generator is generic and so using a
-specialized function automatically specializes the type rather than requiring
-type annotation. The convention is `mainForVisitTreeXY` where `X` is empty for
-pure generators, `IO` for generators running in the IO monad, and 'Impure' for
-generators running in some general monad.
+All of the functionaliy of this module can be accessed through 'genericMain',
+but we nonethless also provide specialized versions of these functions for all
+of the supported tree generator purities and visitor modes. This is done for two
+reasons: first, in order to make the types more concrete to hopefully improve
+usability, and second, because often the type of the tree generator is generic
+and so using a specialized function automatically specializes the type rather
+than requiring type annotation. The convention is @mainForVisitTreeXY@ where @X@
+is empty for pure generators, @IO@ for generators running in the IO monad, and
+@Impure@ for generators running in some general monad, and @Y@ specifies the
+visitor mode, which is empty for 'AllMode' (sum over all results), @UntilFirst@
+for 'FirstMode' (stop when first result found), @UntilFoundUsingPull@ for
+'FoundModeUsingPull' (sum all results until a condition has been met, only
+sending results to the supervisor upon request) and @UntilFoundUsingPush@ for
+'FoundModeUsingPush' (sum all results until a condition has been met, pushing
+all found results immediately to the supervisor).
+ -}
+ 
+---------------------------- Sum over all results ------------------------------
+
+{- $all #all#
+The functions in this section are for when you want to sum over all the results
+in (the leaves of) the tree.
  -}
 
 {-| Visit the given tree in parallel using the given pure generator; the results
@@ -337,7 +325,7 @@ generators running in some general monad.
  -}
 mainForVisitTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    AllModePureGeneratorDriver tree_generator_configuration result_monad result {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -359,7 +347,7 @@ mainForVisitTree = genericMain AllMode Pure
  -}
 mainForVisitTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    AllModeIOGeneratorDriver tree_generator_configuration result_monad result {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -382,7 +370,7 @@ mainForVisitTreeIO = genericMain AllMode io_purity
 mainForVisitTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    AllModeImpureGeneratorDriver tree_generator_configuration result_monad m result {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -399,8 +387,307 @@ mainForVisitTreeImpure ::
     result_monad ()
 mainForVisitTreeImpure = genericMain AllMode . ImpureAtopIO
 
-{-| This function is just like those above except that it is generalized over
-    all tree generator purities and visitor modes.
+---------------------------- Stop at first result ------------------------------
+
+{- $first #first#
+The functions in this section are for when you want to stop as soon as you have
+found a result.
+
+There are two ways in which a system running in this mode can terminate normally:
+
+    1. When a solution is found, in which case a 'Just'-wrapped value is
+       returned with both the found solution and the current 'Checkpoint', the
+       latter allowing one to resume the search to look for more solutions
+       later.
+
+    2. When the whole tree has been visited, in which case 'Nothing' is returned.
+
+ -}
+
+{-| Visit the given tree in parallel using the given pure generator, stopping if
+    a solution is found.
+ -}
+mainForVisitTreeUntilFirst ::
+    (Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGenerator result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeUntilFirst = genericMain FirstMode Pure
+
+{-| Visit the given tree in parallel using the given generator in the IO monad,
+    stopping if a solution is found.
+ -}
+mainForVisitTreeIOUntilFirst ::
+    (Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGeneratorIO result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeIOUntilFirst = genericMain FirstMode io_purity
+
+{-| Visit the given tree in parallel using the given impure generator, stopping
+    if a solution is found.
+ -}
+mainForVisitTreeImpureUntilFirst ::
+    (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (∀ β. m β → IO β) →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeImpureUntilFirst = genericMain FirstMode . ImpureAtopIO
+
+------------------- Stop when sum of results meets condition -------------------
+
+{- $found #found#
+The functions in this section are for when you want sum the results as you find
+them until the sum matches a condition.  There are two versions of this mode,
+based on whether one wants to regularly poll the workers for results or whether
+one wants workers to immediately push every result to the supervisor as soon as
+it is found.
+ -}
+
+{- $pull #pull#
+In this mode, partial results are left on the workers until they receive either
+a workload steal request or a progress update request. The advantage of this
+approach is that it minimizes communication costs as partial results are sent on
+an occasional basis rather than as soon as they are found. The downside of this
+approach is that one has to poll the workers on a regular basis, and between
+polls it might be the case that the sum of all results in the system meets the
+condition but this will not be found out until the next poll, which wastes time
+equal to the amount of time between polls. If you would rather have the system
+immediately terminate as soon as it has found the desired results (at the price
+of paying an additional cost as each workload is found in sending it to the
+supervisor), then look at the push mode ("Visitor.Parallel.Main#push").
+
+There are three ways in which a system running in this mode can terminate:
+
+    1. A worker can have its local sum meet the condition;  in this case the
+       result of the condition function is returned as well as the partial
+       result on the supervisor and the current checkpoint, all wrapped in a
+       'Right'; the latter values are provided to allow one one to resume the
+       search to find more results at a later time.
+
+    2. The supervisor can have its local sum meet the condition;  this is the
+       same as 1 but the partial result is 'mempty'.
+
+    3. The tree can be fully visited, in which case the partial sum is returned
+       in a 'Left'.
+
+WARNING:  If you use this mode then you need to enable checkpointing when the
+          program is run as if you don't then results will very rarely be pulled
+          from the workers and gathered together at the supervisor, meaning that
+          the system could spend a long time in a state where the condition
+          function is met by the sum total of all results in the system but the
+          system does not terminate because it does not know this as the results
+          are scattered around.
+ -}
+
+{-| Visit the given tree in parallel using the given pure generator until the
+    sum of results meets the given condition.
+ -}
+mainForVisitTreeUntilFoundUsingPull ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGenerator result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeUntilFoundUsingPull condition = genericMain (FoundModeUsingPull condition) Pure
+
+{-| Visit the given tree in parallel using the given generator in the IO monad
+    until the sum of results meets the given condition.
+ -}
+mainForVisitTreeIOUntilFoundUsingPull ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGeneratorIO result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeIOUntilFoundUsingPull condition = genericMain (FoundModeUsingPull condition) io_purity
+
+{-| Visit the given tree in parallel using the given impure generator until the
+    sum of results meets the given condition.
+ -}
+mainForVisitTreeImpureUntilFoundUsingPull ::
+    (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (∀ β. m β → IO β) →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPull result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeImpureUntilFoundUsingPull condition = genericMain (FoundModeUsingPull condition) . ImpureAtopIO
+
+{- $push #push#
+In this mode, whenever a result is found it is immediately sent to the
+supervisor. The advantage of this approach is that the system finds out
+immediately when all the results found so far have met the condition, rather
+than waiting for a poll to occur that gathers them together. The downside of
+this approach is that it costs some time for a worker to send a result to the
+supervisor, so if the condition will not be met until a large number of results
+have been found then it be better let the workers accumulate results locally and
+to poll them on a regular basis; to do this, see the pull mode
+("Visitor.Parallel.Main#pull").
+
+There are three ways in which a system running in this mode can terminate:
+
+    1. The supervisor, have just received a new result from a worker, finds that
+       its current sum meets the condition function, in which case it returns
+       the result of the condition function plus the current checkpoint (to
+       allow the search to be resumed later to find more results) wrapped in a
+       'Right'.
+
+    2. The tree can be fully visited, in which case the partial sum is returned
+       in a 'Left'.
+
+(Note that, unlike the pull version, a partial result will not be returned upon
+success as the Supervisor has access to all results and so it will never be in
+the position of only having a partial result upon success.)
+ -}
+
+{-| Visit the given tree in parallel using the given pure generator until the
+    sum of results meets the given condition.
+ -}
+mainForVisitTreeUntilFoundUsingPush ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGenerator result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeUntilFoundUsingPush condition = genericMain (FoundModeUsingPush condition) Pure
+
+{-| Visit the given tree in parallel using the given generator in the IO monad
+    until the sum of results meets the given condition.
+ -}
+mainForVisitTreeIOUntilFoundUsingPush ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGeneratorIO result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeIOUntilFoundUsingPush condition = genericMain (FoundModeUsingPush condition) io_purity
+
+{-| Visit the given tree in parallel using the given impure generator until the
+    sum of results meets the given condition.
+ -}
+mainForVisitTreeImpureUntilFoundUsingPush ::
+    (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (∀ β. m β → IO β) →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPush result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run (as well
+            as the tree generator configuration information);  note that if the
+            run was 'Completed' then the checkpoint file will be deleted if this
+            function finishes successfully
+         -} →
+    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    result_monad ()
+mainForVisitTreeImpureUntilFoundUsingPush condition = genericMain (FoundModeUsingPush condition) . ImpureAtopIO
+
+---------------------------- Generic main function -----------------------------
+
+{-| This function is just like those in the previous functions except that it is
+    generalized over all tree generator purities and visitor modes.
  -}
 genericMain ::
     ( MonadIO result_monad
