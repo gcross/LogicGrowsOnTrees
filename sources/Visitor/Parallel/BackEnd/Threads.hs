@@ -129,7 +129,7 @@ driver = Driver $ \DriverParameters{..} → do
     initializeGlobalState shared_configuration
     starting_progress ← getStartingProgress shared_configuration supervisor_configuration
     launchVisitorStartingFrom
-         visitor_mode
+        (constructVisitorMode shared_configuration)
          purity
          starting_progress
         (constructTreeGenerator shared_configuration)
