@@ -69,14 +69,20 @@ data AllMode result
 {-| Visit nodes until a result is found, and if so then stop. -}
 data FirstMode result
 {-| Visit nodes, summing their results, until a condition has been met, and if
-    so stop and return the condition's result; "Pull" means that each worker's
+    so stop and return the condition's result; `Pull` means that each worker's
     results will be kept and summed locally until a request for them has been
-    received from the supervisor.
+    received from the supervisor, which means that there might be a period of
+    time where the collectively found results meet the condition but the system
+    is unaware of this as they are scattered amongst the workerss.
  -}
 data FoundModeUsingPull result final_result
-{-| Same as 'FoundModeUsingPull', but pushes each result to thesupervisor as it
+{-| Same as 'FoundModeUsingPull', but pushes each result to the supervisor as it
     is found rather than summing them in the worker until they are requested by
-    the supervisor.
+    the supervisor, which guarantees that the system will recognize when the
+    condition has been met as soon as final result needed was found but has the
+    downside that if there are a large number of results needed then sending
+    each one could be much more costly then summing them locally and sending the
+    current total on a regular basis to the supervisor.
  -}
 data FoundModeUsingPush result final_result
 
