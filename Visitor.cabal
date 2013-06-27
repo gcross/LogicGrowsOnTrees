@@ -103,7 +103,6 @@ Executable count-all-nqueens-solutions
     Build-depends:
         Visitor,
         base > 4 && < 5,
-        cereal == 0.3.*,
         cmdtheline == 0.2.*
     if flag(examples)
         Buildable: True
@@ -119,13 +118,68 @@ Executable print-all-nqueens-solutions
     Hs-source-dirs: examples
     Build-depends:
         Visitor,
-        base > 4 && < 5
+        base > 4 && < 5,
+        cmdtheline == 0.2.*,
+        containers >= 0.4 && < 0.6
     if flag(examples)
         Buildable: True
     else
         Buildable: False
     if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable print-an-nqueens-solution
+    Main-is: print-an-nqueens-solution.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        cmdtheline == 0.2.*,
+        containers >= 0.4 && < 0.6
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wan -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable print-some-nqueens-solutions-using-pull
+    Main-is: print-some-nqueens-solutions-using-pull.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        cmdtheline == 0.2.*,
+        containers >= 0.4 && < 0.6
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wsome -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable print-some-nqueens-solutions-using-push
+    Main-is: print-some-nqueens-solutions-using-push.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        Visitor,
+        base > 4 && < 5,
+        cmdtheline == 0.2.*,
+        containers >= 0.4 && < 0.6
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wsome -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
 
 Executable count-all-trivial-tree-leaves
     Main-is: count-all-trivial-tree-leaves.hs
