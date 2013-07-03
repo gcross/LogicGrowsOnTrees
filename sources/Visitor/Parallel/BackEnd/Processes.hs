@@ -8,11 +8,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This back-end implements parallelism by spawning multiple threads.  The
-    number of threads can be changed during the run and even be set to zero.
-
-    The driver provided by this back-end sets the number of processes equal to
-    the value specified by the used via. the (required) "-n" option.
+{-| This back-end implements parallelism by spawning multiple processes.  The
+    number of processes can be changed during the run and even be set to zero.
  -}
 module Visitor.Parallel.BackEnd.Processes
     (
@@ -30,7 +27,8 @@ module Visitor.Parallel.BackEnd.Processes
     , getNumberOfWorkersAsync
     , requestProgressUpdate
     , requestProgressUpdateAsync
-    -- * Visit functions
+    -- * Generic runner functions
+    -- $runners
     , runSupervisor
     , runVisitor
     -- * Utility functions
@@ -90,6 +88,14 @@ deriveLoggers "Logger" [DEBUG,INFO,ERROR]
 ------------------------------------ Driver ------------------------------------
 --------------------------------------------------------------------------------
 
+{-| This is the driver for the threads back-end.  The number of workers is
+    specified via. the (required) command-line option "-n".
+
+    Note that there are not seperate drivers for the supervisor process and the
+    worker process;  instead, the same executable is used for both the
+    supervisor and the worker, with a sentinel argument list determining which
+    mode it should run in.
+ -}
 driver ::
     ( Serialize shared_configuration
     , Serialize (ProgressFor visitor_mode)
@@ -122,6 +128,7 @@ driver = Driver $ \DriverParameters{..} → do
 ---------------------------------- Controller ----------------------------------
 --------------------------------------------------------------------------------
 
+{-| This is the monad in which the processes controller will run. -}
 newtype ProcessesControllerMonad visitor_mode α =
     C { unwrapC :: WorkgroupControllerMonad (IntMap Worker) visitor_mode α
     } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
@@ -133,17 +140,36 @@ instance HasVisitorMode (ProcessesControllerMonad visitor_mode) where
 ------------------------------- Generic runners --------------------------------
 --------------------------------------------------------------------------------
 
+{- $runners
+In this section the full functionality of this module is exposed in case one
+does not want the restrictions of the driver interface. If you decide to go in
+this direction, then you need to decide whether you want there to be a single
+executable for both the supervisor and worker with the process of determining in
+which mode it should run taken care of for you, or whether you want to manually
+solve this problem in order to give yourself more control (such as by having
+separate supervisor and worker executables) at the price of more work.
+
+If you want to use a single executable with automated handling of the
+supervisor and worker roles, then use 'runVisitor'.  Otherwise, use
+'runSupervisor' to run the supervisor loop and on each worker use
+'runWorkerUsingHandles', passing 'stdin' and 'stdout' as the process handles.
+ -}
+
+{-| This runs the supervisor, which will spawn and kill worker processes as
+    needed so that the total number is equal to the number set by the
+    controller.
+ -}
 runSupervisor ::
     ( Serialize (ProgressFor visitor_mode)
     , Serialize (WorkerFinalProgressFor visitor_mode)
     ) ⇒
     VisitorMode visitor_mode {-^ the visitor mode -} →
-    String →
-    [String] →
-    (Handle → IO ()) →
-    ProgressFor visitor_mode →
-    ProcessesControllerMonad visitor_mode () →
-    IO (RunOutcomeFor visitor_mode)
+    String {-^ the path to the worker executable -} →
+    [String] {-^ the arguments to pass to the worker executable -} →
+    (Handle → IO ()) {-^ an action that writes any information needed by the worker to the given handle -} →
+    ProgressFor visitor_mode {-^ the initial progress of the run -} →
+    ProcessesControllerMonad visitor_mode () {-^ the controller of the supervisor, which must at least set the number of workers to be positive for anything to take place -} →
+    IO (RunOutcomeFor visitor_mode) {-^ the result of the run -}
 runSupervisor
     visitor_mode
     worker_filepath
@@ -233,19 +259,35 @@ runSupervisor
         starting_progress
         controller
 
+{-| Visits the given tree using multiple processes to achieve parallelism.
+
+    This function grants access to all of the functionality of this back-end,
+    rather than having to go through the more restricted driver interface. The
+    signature of this function is very complicated because it is meant to be
+    used in both the supervisor and worker;  it figures out which role it is
+    supposed to play based on whether the list of command line arguments matches
+    a sentinel.
+
+    The configuration information is divided into two parts: information shared
+    between the supervisor and the workers, and information that is specific to
+    the supervisor and not sent to the workers. (Note that only the former needs
+    to be serializable.) An action must be supplied that obtains this
+    configuration information, and most of the arguments are functions that are
+    given all or part of this information.
+ -}
 runVisitor ::
     ( Serialize shared_configuration
     , Serialize (ProgressFor visitor_mode)
     , Serialize (WorkerFinalProgressFor visitor_mode)
     ) ⇒
-    (shared_configuration → VisitorMode visitor_mode) →
+    (shared_configuration → VisitorMode visitor_mode) {-^ construct the visitor mode given the shared configuration -} →
     Purity m n {-^ the purity of the tree generator -} →
-    IO (shared_configuration,supervisor_configuration) →
-    (shared_configuration → IO ()) →
-    (shared_configuration → TreeGeneratorT m (ResultFor visitor_mode)) →
-    (shared_configuration → supervisor_configuration → IO (ProgressFor visitor_mode)) →
-    (shared_configuration → supervisor_configuration → ProcessesControllerMonad visitor_mode ()) →
-    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor visitor_mode))
+    IO (shared_configuration,supervisor_configuration) {-^ get the shared and supervisor-specific configuration information (run only on the supervisor) -} →
+    (shared_configuration → IO ()) {-^ initialize the global state of the process given the shared configuration (run on both supervisor and worker processes) -} →
+    (shared_configuration → TreeGeneratorT m (ResultFor visitor_mode)) {-^ construct the tree generator from the shared configuration (run only on the worker) -} →
+    (shared_configuration → supervisor_configuration → IO (ProgressFor visitor_mode)) {-^ get the starting progress given the full configuration information (run only on the supervisor) -} →
+    (shared_configuration → supervisor_configuration → ProcessesControllerMonad visitor_mode ()) {-^ construct the controller for the supervisor (run only on the supervisor) -} →
+    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor visitor_mode)) {-^ the outcome of the run, as well as the full configuration information -}
 runVisitor
     constructVisitorMode
     purity
@@ -281,12 +323,13 @@ runVisitor
                     (constructManager shared_configuration supervisor_configuration)
             return $ Just (configuration,termination_result)
   where
-    sentinel = ["visitor-worker-bee"]
+    sentinel = ["visitor","worker","bee"]
 
 --------------------------------------------------------------------------------
 ------------------------------- Utility funtions -------------------------------
 --------------------------------------------------------------------------------
 
+{-| Gets the full path to this executable. -}
 getProgFilepath :: IO String
 getProgFilepath = liftM2 (</>) getProgPath getProgName
 
