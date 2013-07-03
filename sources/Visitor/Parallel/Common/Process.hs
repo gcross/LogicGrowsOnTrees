@@ -19,7 +19,7 @@ module Visitor.Parallel.Common.Process
     ) where
 
 import Control.Concurrent (killThread)
-import Control.Concurrent.MVar (isEmptyMVar,newEmptyMVar,putMVar,takeMVar,tryTakeMVar)
+import Control.Concurrent.MVar (isEmptyMVar,newEmptyMVar,newMVar,putMVar,takeMVar,tryTakeMVar,withMVar)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
 import Control.Monad.IO.Class
 
@@ -132,5 +132,9 @@ runWorkerUsingHandles ::
         IO (WorkerEnvironment progress)
     ) {-^ code to fork a worker thread with the given termination handler and workload -} →
     IO () {-^ an IO action that loops processing messages until it is quit, at which point it returns -}
-runWorkerUsingHandles receive_handle send_handle =
-    runWorker (receive receive_handle) (send send_handle)
+runWorkerUsingHandles receive_handle send_handle spawnWorker =
+    newMVar () >>= \send_lock →
+    runWorker
+        (receive receive_handle)
+        (withMVar send_lock . const . send send_handle)
+        spawnWorker
