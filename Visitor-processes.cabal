@@ -37,8 +37,20 @@ Library
         process == 1.1.*,
         transformers >= 0.2 && < 0.4
     Exposed-modules:
-        Control.Visitor.Parallel.BackEnd.Processes
-    Extensions:
+        Visitor.Parallel.BackEnd.Processes
+    Hs-source-dirs: sources
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+    if flag(pattern-warnings)
+        GHC-Options: -fwarn-incomplete-patterns
+
+Flag warnings
+    Description: Enables most warnings.
+    Default:     False
+
+Flag pattern-warnings
+    Description: Enables only pattern match warnings.
+    Default:     False
 
 Flag examples
     Description: Enable building the executables.
@@ -57,6 +69,10 @@ Executable count-all-nqueens-solutions
         Buildable: True
     else
         Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+    if flag(pattern-warnings)
+        GHC-Options: -fwarn-incomplete-patterns
 
 Test-Suite tests
     Type: exitcode-stdio-1.0
@@ -74,3 +90,7 @@ Test-Suite tests
         test-framework >= 0.6 && < 0.9,
         test-framework-hunit >= 0.2 && < 0.4,
         transformers >= 0.2 && < 0.4
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+    if flag(pattern-warnings)
+        GHC-Options: -fwarn-incomplete-patterns

@@ -1,9 +1,6 @@
--- Language extensions {{{
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
--- Imports {{{
 import Data.Functor
 import Data.Monoid
 import Data.Serialize (Serialize(..))
@@ -11,15 +8,14 @@ import Data.Serialize (Serialize(..))
 import System.Console.CmdTheLine
 import System.Environment
 
-import Control.Visitor.Parallel.BackEnd.Processes
-import Control.Visitor.Parallel.Main
-import Control.Visitor.Utils.WordSum
+import Visitor.Parallel.BackEnd.Processes
+import Visitor.Parallel.Main
+import Visitor.Utils.WordSum
 
-import Control.Visitor.Examples.Queens
--- }}}
+import Visitor.Examples.Queens
 
 main =
-    mainVisitor
+    mainForVisitTree
         driver
         (getBoardSize <$> required (flip (pos 0) (posInfo
             {   posName = "BOARD_SIZE"

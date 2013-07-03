@@ -29,11 +29,14 @@ import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.HUnit
 
-import qualified Control.Visitor as V
-import Control.Visitor.Checkpoint
-import Control.Visitor.Examples.Queens
-import Control.Visitor.Parallel.Main
-import Control.Visitor.Parallel.BackEnd.Processes
+import qualified Visitor as V
+import Visitor.Checkpoint
+import Visitor.Examples.Queens
+import Visitor.Parallel.BackEnd.Processes
+import Visitor.Parallel.Common.Process (runWorkerUsingHandles)
+import Visitor.Parallel.Common.VisitorMode (VisitorMode(AllMode))
+import Visitor.Parallel.Common.Worker(Purity(Pure))
+import Visitor.Parallel.Main
 -- }}}
 
 -- Logging Functions {{{
@@ -62,7 +65,9 @@ main = do
     args ← getArgs
     case args of
         ["nqueens",read → n] →
-            runWorkerWithVisitor
+            runWorkerUsingHandles
+                AllMode
+                Pure
                 (nqueensCount n)
                 stdin
                 stdout
@@ -87,6 +92,7 @@ tests = -- {{{
         filepath ← getProgFilepath
         RunOutcome _ termination_reason ←
             runSupervisor
+                AllMode
                 filepath
                 ["nqueens","13"]
                 (const $ return ())
@@ -96,11 +102,11 @@ tests = -- {{{
             Aborted _ → error "prematurely aborted"
             Completed result → return result
             Failure message → error message
-        let correct_result = V.runVisitor visitor
+        let correct_result = V.visitTree visitor
         result @?= correct_result
         progresses ← remdups <$> readIORef progresses_ref
         replicateM_ 4 $ randomRIO (0,length progresses-1) >>= \i → do
             let Progress checkpoint result = progresses !! i
-            result @=? runVisitorThroughCheckpoint (invertCheckpoint checkpoint) visitor
-            correct_result @=? result <> (runVisitorThroughCheckpoint checkpoint visitor)
+            result @=? visitTreeStartingFromCheckpoint (invertCheckpoint checkpoint) visitor
+            correct_result @=? result <> (visitTreeStartingFromCheckpoint checkpoint visitor)
 -- }}}
