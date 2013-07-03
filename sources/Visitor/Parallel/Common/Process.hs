@@ -59,6 +59,11 @@ runWorker ::
     ) {-^ code to fork a worker thread with the given termination handler and workload -} →
     IO () {-^ an IO action that loops processing messages until it is quit, at which point it returns -}
 runWorker receiveMessage sendMessage forkVisitorWorkerThread =
+    -- Note:  This an MVar rather than an IORef because it is used by two
+    --        threads --- this one and the worker thread --- and I wanted to use
+    --        a mechanism that ensured that the new value would be observed by
+    --        the other thread immediately rather than when the cache lines
+    --        are flushed to the other processors.
     newEmptyMVar >>= \worker_environment_mvar →
     let processRequest sendRequest constructResponse =
             tryTakeMVar worker_environment_mvar
