@@ -261,11 +261,10 @@ deriveLoggers "Logger" [DEBUG]
     placed in the request queue.
  -}
 forkWorkerThread ::
-    ResultFor visitor_mode ~ α ⇒
     VisitorMode visitor_mode {-^ the mode in to visit the tree -} →
     Purity m n {-^ the purity of the tree generator -} →
     (WorkerTerminationReasonFor visitor_mode → IO ()) {-^ the action to run when the worker has terminated -} →
-    TreeGeneratorT m α {-^ the tree generator -} →
+    TreeGeneratorT m (ResultFor visitor_mode) {-^ the tree generator -} →
     Workload {-^ the workload for the worker -} →
     WorkerPushActionFor visitor_mode
         {-^ the action to push a result to the supervisor;  this should be equal
