@@ -87,14 +87,15 @@ tests = -- {{{
     ]
   where
     runTest generateNoise = do
-        let visitor = nqueensCount 13
+        let n = 15
+            visitor = nqueensCount n
         progresses_ref ← newIORef []
         filepath ← getProgFilepath
         RunOutcome _ termination_reason ←
             runSupervisor
                 AllMode
                 filepath
-                ["nqueens","13"]
+                ["nqueens",show n]
                 (const $ return ())
                 mempty
                 (forever $ requestProgressUpdate >>= (liftIO . modifyIORef progresses_ref . (:)) >> generateNoise)
