@@ -287,7 +287,11 @@ runVisitor ::
     (shared_configuration → TreeGeneratorT m (ResultFor visitor_mode)) {-^ construct the tree generator from the shared configuration (run only on the worker) -} →
     (shared_configuration → supervisor_configuration → IO (ProgressFor visitor_mode)) {-^ get the starting progress given the full configuration information (run only on the supervisor) -} →
     (shared_configuration → supervisor_configuration → ProcessesControllerMonad visitor_mode ()) {-^ construct the controller for the supervisor, which must at least set the number of workers to be non-zero (run only on the supervisor) -} →
-    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor visitor_mode)) {-^ the outcome of the run, as well as the full configuration information -}
+    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor visitor_mode))
+        {-^ if this process is the supervisor, then returns the outcome of the
+            run as well as the configuration information wrapped in 'Just';
+            otherwise, if this process is a worker, it returns 'Nothing'
+         -}
 runVisitor
     constructVisitorMode
     purity
