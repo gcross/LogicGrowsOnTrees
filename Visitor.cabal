@@ -134,6 +134,13 @@ Description:         This package provides a distributed implementation of logic
                      'SupervisorMonad' monad in the stack;  for an example,
                      look at the @Visitor-network@ module.
                      .
+                     NOTE: This package uses the @hslogger@ package for logging;
+                     if you set the log level to INFO or DEBUG (either by
+                     calling the functions in @hslogger@ yourself or by using
+                     the @-l@ command line option if you are using Main) then
+                     many status messages will be printed to the screen (or
+                     wherever else the log has been configured to be written).
+                     .
                      The modules are organized as follows:
                      .
                         ["Visitor"] basic infrastructure for generating and visiting search trees
