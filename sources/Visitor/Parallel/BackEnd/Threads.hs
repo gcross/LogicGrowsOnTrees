@@ -69,8 +69,8 @@ module Visitor.Parallel.BackEnd.Threads
     , visitTreeIOUntilFoundUsingPushStartingFrom
     , visitTreeTUntilFoundUsingPush
     , visitTreeTUntilFoundUsingPushStartingFrom
-    -- * Generic launcher
-    , launchVisitorStartingFrom
+    -- * Generic runner
+    , runVisitor
     ) where
 
 import Control.Applicative (Applicative,liftA2)
@@ -128,7 +128,7 @@ driver = Driver $ \DriverParameters{..} → do
         mainParser (liftA2 (,) shared_configuration_term supervisor_configuration_term) program_info
     initializeGlobalState shared_configuration
     starting_progress ← getStartingProgress shared_configuration supervisor_configuration
-    launchVisitorStartingFrom
+    runVisitor
         (constructVisitorMode shared_configuration)
          purity
          starting_progress
@@ -162,7 +162,7 @@ changeNumberOfWorkersToMatchCapabilities =
 {- $visit
 The functions in this section are provided as a way to use the threads back-end
 directly rather than using the framework provided in "Visitor.Parallel.Main".
-They are all specialized versions of 'launchVisitorStartingFrom', which appears
+They are all specialized versions of 'runVisitor', which appears
 in the following section; they are provided for convenience --- specifically, to
 minimize the knowledge needed of the implementation and how the types specialize
 for the various visitor modes.
@@ -200,7 +200,7 @@ visitTreeStartingFrom ::
     TreeGenerator result {-^ the (pure) tree generator -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
-visitTreeStartingFrom = launchVisitorStartingFrom AllMode Pure
+visitTreeStartingFrom = runVisitor AllMode Pure
 
 {-| Like 'visitTree' but with the tree generator running in IO. -}
 visitTreeIO ::
@@ -217,7 +217,7 @@ visitTreeIOStartingFrom ::
     TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
-visitTreeIOStartingFrom = launchVisitorStartingFrom AllMode io_purity
+visitTreeIOStartingFrom = runVisitor AllMode io_purity
 
 {-| Like 'visitTree' but with a generic impure tree generator. -}
 visitTreeT ::
@@ -236,7 +236,7 @@ visitTreeTStartingFrom ::
     TreeGeneratorT m result {-^ the (impure) tree generator -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) result)
-visitTreeTStartingFrom = launchVisitorStartingFrom AllMode  . ImpureAtopIO
+visitTreeTStartingFrom = runVisitor AllMode  . ImpureAtopIO
 
 ---------------------------- Stop at first result ------------------------------
 
@@ -257,7 +257,7 @@ visitTreeUntilFirstStartingFrom ::
     TreeGenerator result {-^ the (pure) tree generator -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
-visitTreeUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode Pure
+visitTreeUntilFirstStartingFrom = runVisitor FirstMode Pure
 
 {-| Like 'visitTreeUntilFirst' but with the tree generator running in IO. -}
 visitTreeIOUntilFirst ::
@@ -272,7 +272,7 @@ visitTreeIOUntilFirstStartingFrom ::
     TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
-visitTreeIOUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode io_purity
+visitTreeIOUntilFirstStartingFrom = runVisitor FirstMode io_purity
 
 {-| Like 'visitTreeUntilFirst' but with a generic impure tree generator. -}
 visitTreeTUntilFirst ::
@@ -291,7 +291,7 @@ visitTreeTUntilFirstStartingFrom ::
     TreeGeneratorT m result {-^ the (impure) tree generator -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
-visitTreeTUntilFirstStartingFrom = launchVisitorStartingFrom FirstMode . ImpureAtopIO
+visitTreeTUntilFirstStartingFrom = runVisitor FirstMode . ImpureAtopIO
 
 ------------------------ Stop when sum of results found ------------------------
 
@@ -325,7 +325,7 @@ visitTreeUntilFoundUsingPullStartingFrom ::
     TreeGenerator result {-^ the (pure) tree generator -} →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
-visitTreeUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) Pure
+visitTreeUntilFoundUsingPullStartingFrom f = runVisitor (FoundModeUsingPull f) Pure
 
 {-| Like 'visitTreeUntilFoundUsingPull' but with the tree generator running in IO. -}
 visitTreeIOUntilFoundUsingPull ::
@@ -344,7 +344,7 @@ visitTreeIOUntilFoundUsingPullStartingFrom ::
     TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
-visitTreeIOUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) io_purity
+visitTreeIOUntilFoundUsingPullStartingFrom f = runVisitor (FoundModeUsingPull f) io_purity
 
 {-| Like 'visitTreeUntilFoundUsingPull' but with a generic impure tree generator. -}
 visitTreeTUntilFoundUsingPull ::
@@ -365,7 +365,7 @@ visitTreeTUntilFoundUsingPullStartingFrom ::
     TreeGeneratorT m result {-^ the (impure) tree generator -} →
     ThreadsControllerMonad (FoundModeUsingPull result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) (Either result (Progress (final_result,result)))) {-^ the outcome of the run -}
-visitTreeTUntilFoundUsingPullStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPull f) . ImpureAtopIO
+visitTreeTUntilFoundUsingPullStartingFrom f = runVisitor (FoundModeUsingPull f) . ImpureAtopIO
 
 {- $push
 See "Visitor.Parallel.Main#push" (a direct hyper-link to the relevant section) for more information on this mode.
@@ -389,7 +389,7 @@ visitTreeUntilFoundUsingPushStartingFrom ::
     TreeGenerator result {-^ the (pure) tree generator -} →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
-visitTreeUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) Pure
+visitTreeUntilFoundUsingPushStartingFrom f = runVisitor (FoundModeUsingPush f) Pure
 
 {-| Like 'visitTreeUntilFoundUsingPush' but with the tree generator running in IO. -}
 visitTreeIOUntilFoundUsingPush ::
@@ -408,7 +408,7 @@ visitTreeIOUntilFoundUsingPushStartingFrom ::
     TreeGeneratorIO result {-^ the tree generator (which runs in the IO monad) -} →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
-visitTreeIOUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) io_purity
+visitTreeIOUntilFoundUsingPushStartingFrom f = runVisitor (FoundModeUsingPush f) io_purity
 
 {-| Like 'visitTreeUntilFoundUsingPush' but with a generic impure tree generator. -}
 visitTreeTUntilFoundUsingPush ::
@@ -429,28 +429,27 @@ visitTreeTUntilFoundUsingPushStartingFrom ::
     TreeGeneratorT m result {-^ the (impure) tree generator -} →
     ThreadsControllerMonad (FoundModeUsingPush result final_result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcome (Progress result) (Either result (Progress final_result))) {-^ the outcome of the run -}
-visitTreeTUntilFoundUsingPushStartingFrom f = launchVisitorStartingFrom (FoundModeUsingPush f) . ImpureAtopIO
+visitTreeTUntilFoundUsingPushStartingFrom f = runVisitor (FoundModeUsingPush f) . ImpureAtopIO
 
 --------------------------------------------------------------------------------
-------------------------------- Generic launcher -------------------------------
+-------------------------------- Generic runner --------------------------------
 --------------------------------------------------------------------------------
 
-{-| Launch the visitor for this back-end, returning the outcome of the run when
-    finished.
+{-| Visits the given tree using multiple threads to achieve parallelism.
 
     This function grants access to all of the functionality of this back-end,
     but because its generality complicates its use (primarily the fact that the
     types are dependent on the first parameter) you may find it easier to use
     one of the specialized functions in the preceding section.
  -}
-launchVisitorStartingFrom ::
+runVisitor ::
     VisitorMode visitor_mode {-^ the visitor mode -} →
     Purity m n {-^ the purity of the tree generator -} →
     (ProgressFor visitor_mode) {-^ the starting progress -} →
     TreeGeneratorT m (ResultFor visitor_mode) {-^ the tree generator -} →
     ThreadsControllerMonad visitor_mode () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     IO (RunOutcomeFor visitor_mode) {-^ the outcome of the run -}
-launchVisitorStartingFrom visitor_mode purity starting_progress visitor (C controller) =
+runVisitor visitor_mode purity starting_progress visitor (C controller) =
     runWorkgroup
         visitor_mode
         mempty
