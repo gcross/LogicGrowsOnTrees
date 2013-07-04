@@ -135,7 +135,7 @@ newtype ProcessesControllerMonad visitor_mode α =
 
 instance HasVisitorMode (ProcessesControllerMonad visitor_mode) where
     type VisitorModeFor (ProcessesControllerMonad visitor_mode) = visitor_mode
-                     
+
 --------------------------------------------------------------------------------
 ------------------------------- Generic runners --------------------------------
 --------------------------------------------------------------------------------
