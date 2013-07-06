@@ -37,7 +37,7 @@ import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
 import Visitor (TreeGeneratorT)
-import Visitor.Parallel.Common.Message (MessageForSupervisor(..),MessageForSupervisorForMode(..),MessageForWorker(..))
+import Visitor.Parallel.Common.Message (MessageForSupervisor(..),MessageForSupervisorFor(..),MessageForWorker(..))
 import Visitor.Parallel.Common.VisitorMode (ProgressFor(..),ResultFor(..),VisitorMode(..),WorkerFinalProgressFor(..))
 import Visitor.Parallel.Common.Worker hiding (ProgressUpdate,StolenWorkload)
 import Visitor.Utils.Handle
@@ -62,7 +62,7 @@ runWorker ::
     Purity m n {-^ the purity of the tree generator -} →
     TreeGeneratorT m (ResultFor visitor_mode) {-^ the tree generator -} →
     IO MessageForWorker {-^ the action used to fetch the next message -} →
-    (MessageForSupervisorForMode visitor_mode → IO ()) {-^ the action to send a message to the supervisor;  note that this might occur in a different thread from the worker loop -} →
+    (MessageForSupervisorFor visitor_mode → IO ()) {-^ the action to send a message to the supervisor;  note that this might occur in a different thread from the worker loop -} →
     IO () {-^ an IO action that loops processing messages until it is quit, at which point it returns -}
 runWorker visitor_mode purity tree_generator receiveMessage sendMessage =
     -- Note:  This an MVar rather than an IORef because it is used by two
@@ -73,7 +73,7 @@ runWorker visitor_mode purity tree_generator receiveMessage sendMessage =
     newEmptyMVar >>= \worker_environment_mvar →
     let processRequest ::
             (WorkerRequestQueue (ProgressFor visitor_mode) → (α → IO ()) → IO ()) →
-            (α → MessageForSupervisorForMode visitor_mode) →
+            (α → MessageForSupervisorFor visitor_mode) →
             IO ()
         processRequest sendRequest constructResponse =
             tryTakeMVar worker_environment_mvar

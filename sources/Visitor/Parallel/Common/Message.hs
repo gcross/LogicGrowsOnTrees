@@ -13,7 +13,7 @@ module Visitor.Parallel.Common.Message
     (
     -- * Types
       MessageForSupervisor(..)
-    , MessageForSupervisorForMode(..)
+    , MessageForSupervisorFor(..)
     , MessageForSupervisorReceivers(..)
     , MessageForWorker(..)
     -- * Functions
@@ -54,7 +54,7 @@ data MessageForSupervisor progress worker_final_progress =
 $(derive makeSerialize ''MessageForSupervisor)
 
 {-| Convenient type alias for obtaining the 'MessageForSupervisor' type corresponding with the given visitor mode. -}
-type MessageForSupervisorForMode visitor_mode = MessageForSupervisor (ProgressFor visitor_mode) (WorkerFinalProgressFor visitor_mode)
+type MessageForSupervisorFor visitor_mode = MessageForSupervisor (ProgressFor visitor_mode) (WorkerFinalProgressFor visitor_mode)
 
 {-| This data structure contains callbacks to be invoked when a message has
     been received, depending on the kind of message.
@@ -93,7 +93,7 @@ $(derive makeSerialize ''MessageForWorker)
  -}
 receiveAndProcessMessagesFromWorker ::
     MessageForSupervisorReceivers visitor_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
-    IO (MessageForSupervisorForMode visitor_mode) {-^ an action that fetches the next message -} →
+    IO (MessageForSupervisorFor visitor_mode) {-^ an action that fetches the next message -} →
     worker_id {-^ the id of the worker from which messages are being received -} →
     IO () {-^ an IO action that continually processes incoming messages from a worker until it quits, at which point it returns -}
 receiveAndProcessMessagesFromWorker
