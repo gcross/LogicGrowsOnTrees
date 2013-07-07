@@ -39,12 +39,12 @@ import Visitor
     is incompatible with it.
  -}
 data WalkError =
-    {-| Indicates that a path is too long for a given tree builder --- i.e., the
-        builder hits a leaf before the path finishes.
+    {-| Indicates that a path is too long for a given tree generator --- i.e., the
+        generator hits a leaf before the path finishes.
      -}
     VisitorTerminatedBeforeEndOfWalk
     {-| Indicates that a choice step in a path coincided with a cache point in
-        a tree builder, or vice versa.
+        a tree generator, or vice versa.
      -}
   | PastVisitorIsInconsistentWithPresentVisitor
   deriving (Eq,Show,Typeable)
@@ -88,7 +88,7 @@ oppositeBranchChoiceOf RightBranch = LeftBranch
 
 {-| Has a 'TreeGenerator' follow a 'Path' guiding it to a particular subtree;  the
     main use case of this function is for a processor which has been given a
-    particular subtree as its workload to get the tree builder to zoom in on
+    particular subtree as its workload to get the tree generator to zoom in on
     that subtree.
 
     The way this function works is as follows: as long as the remaining path is
@@ -101,23 +101,23 @@ oppositeBranchChoiceOf RightBranch = LeftBranch
     WARNING: This function is /not/ valid for all inputs; it makes the
     assumption that the given 'Path' has been derived from the given
     'TreeGenerator' so that the path will always encounted choice points exactly
-    when the tree builder does and likewise for cache points. Furthermore, the
-    path must not run out before the tree builder hits a leaf. If any of these
+    when the tree generator does and likewise for cache points. Furthermore, the
+    path must not run out before the tree generator hits a leaf. If any of these
     conditions is violated, a 'WalkError' exception will be thrown; in fact, you
     should hope than exception is thrown because it will let you know that there
     is a bug your code as the alternative is that you accidently give it a path
-    that is not derived from the given tree builder but which coincidentally
+    that is not derived from the given tree generator but which coincidentally
     matches it which means that it will silently return a nonsense result.
 
     Having said all that, you should almost never need to worry about this
-    possibility in practice because there is usually only one tree builder in
-    use at a time and all paths in use have come from that tree builder.
+    possibility in practice because there is usually only one tree generator in
+    use at a time and all paths in use have come from that tree generator.
  -}
 sendTreeGeneratorDownPath :: Path → TreeGenerator α → TreeGenerator α
 sendTreeGeneratorDownPath path = runIdentity . sendTreeGeneratorTDownPath path
 
 {-| See 'sendTreeGeneratorDownPath';  the only difference is that this function
-    works for impure tree builders.
+    works for impure tree generators.
  -}
 sendTreeGeneratorTDownPath :: Monad m ⇒ Path → TreeGeneratorT m α → m (TreeGeneratorT m α)
 sendTreeGeneratorTDownPath path visitor =

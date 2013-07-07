@@ -278,7 +278,7 @@ receiveWorkerFailure worker_id message =
     $
     if message == show VisitorTerminatedBeforeEndOfWalk ||
        message == show PastVisitorIsInconsistentWithPresentVisitor
-        then "The given checkpoint is not consistent with the given tree builder."
+        then "The given checkpoint is not consistent with the given tree generator."
         else message
 
 {-| Informs the supervisor that a worker has finished its current workload and

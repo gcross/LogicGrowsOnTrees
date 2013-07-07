@@ -7,7 +7,7 @@
  -}
 module Visitor.Utils.Tree
     (
-    -- * Tree builders
+    -- * Tree generators
       tree
     , trivialTree
     , numberOfLeaves
@@ -99,7 +99,7 @@ formArityAndDepth :: Arity → Word → ArityAndDepth
 formArityAndDepth (Arity arity) depth = ArityAndDepth{..}
 
 --------------------------------------------------------------------------------
--------------------------------- Tree builders ---------------------------------
+------------------------------- Tree generators --------------------------------
 --------------------------------------------------------------------------------
 
 {-| Generate a perfectly balanced tree with the given leaf value, arity, and leaf. -}
