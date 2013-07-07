@@ -55,6 +55,9 @@ import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.List (ListT)
 import Control.Monad.Trans.Maybe (MaybeT)
 
+import Data.Foldable (Foldable)
+import qualified Data.Foldable as Fold
+
 import Data.Array ((!),listArray)
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
@@ -542,10 +545,10 @@ optimally balanced search tree with all of the results in the range.
     'allFromBalanced' and 'allFromBalancedBottomUp instead.
  -}
 allFrom ::
-    MonadPlus m ⇒
-    [α] {-^ the list of results to generate in the resulting tree generator -} →
+    (Foldable t, Functor t, MonadPlus m) ⇒
+    t α {-^ the list of results to generate in the resulting tree generator -} →
     m α {-^ a tree generator that generates a completely unbalanced tree with the given results -}
-allFrom = msum . map return
+allFrom = Fold.msum . fmap return
 {-# INLINE allFrom #-}
 
 {-| Returns a tree generator that generates a tree with all of the results in the
@@ -569,19 +572,22 @@ allFromBalanced x = go 0 end
 {-# INLINE allFromBalanced #-}
 
 {-| Returns a tree generator (or some other 'MonadPlus') that generates all of
-    the results in the input list in an approximately balanced tree with less
-    overhead than 'allFromBalanced'; see the documentation for this section
-    and/or "Visitor.Utils.MonadPlusForest" for more information about the exact
+    the results in the input list (or some other 'Foldable') in an approximately
+    balanced tree with less overhead than 'allFromBalanced'; see the
+    documentation for this section and/or "Visitor.Utils.MonadPlusForest" for
+    more information about the exact
     algorithm used.
  -}
 allFromBalancedBottomUp ::
-    MonadPlus m ⇒
-    [α] {-^ the list of results to generate in the resulting tree generator -} →
+    (Foldable t, MonadPlus m) ⇒
+    t α {-^ the list of results to generate in the resulting tree generator -} →
     m α {-^ a tree generator that generates an approximately balanced tree with the given results -}
-allFromBalancedBottomUp = go emptyForest
-  where
-    go !forest [] = consolidateForest forest
-    go !forest (x:xs) = go (addToForest forest (return x)) xs
+allFromBalancedBottomUp =
+    consolidateForest
+    .
+    Fold.foldl
+        (\(!forest) x → addToForest forest (return x))
+        emptyForest
 {-# INLINE allFromBalancedBottomUp #-}
 
 {-| Returns a tree generator (or some other 'MonadPlus') that generators an
@@ -629,19 +635,21 @@ msumBalanced x = go 0 end
 {-# INLINE msumBalanced #-}
 
 {-| Returns a tree generator (or some other 'MonadPlus') that merges all of the
-    tree generators in the input list using an approximately balanced tree with
-    less overhead than 'msumBalanced'; see the documentation for this section
-    and/or "Visitor.Utils.MonadPlusForest" for more information about the exact
-    algorithm used.
+    tree generators in the input list (or some other 'Foldable') using an
+    approximately balanced tree with less overhead than 'msumBalanced'; see the
+    documentation for this section and/or "Visitor.Utils.MonadPlusForest" for
+    more information about the exact algorithm used.
  -}
 msumBalancedBottomUp ::
-    MonadPlus m ⇒
-    [m α] {-^ the list of generators to merge -} →
+    (Foldable t, MonadPlus m) ⇒
+    t (m α) {-^ the list of generators to merge -} →
     m α {-^ the merged tree generator -}
-msumBalancedBottomUp = go emptyForest
-  where
-    go !forest [] = consolidateForest forest
-    go !forest (x:xs) = go (addToForest forest x) xs
+msumBalancedBottomUp =
+    consolidateForest
+    .
+    Fold.foldl
+        (\(!forest) x → addToForest forest x)
+        emptyForest
 {-# INLINE msumBalancedBottomUp #-}
 
 -------------------------------- Transformers ----------------------------------
