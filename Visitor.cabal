@@ -5,31 +5,39 @@ License-file:        LICENSE
 Author:              Gregory Crosswhite
 Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
 Stability:           Provisional
-Synopsis:            a distributed (parallel) implementation of logic programming via. dynamically generated search trees
-Description:         This package provides a distributed implementation of logic
-                     programming via dynamically generated search trees.
-                     You use it by writing a function that generates a search
-                     tree using 'MonadPlus' (which is where the /logic programming/
-                     comes in) and then you use one of the facilities of this
-                     package or its siblings to visit the tree in parallel
-                     searching for all, some, or the first of the results,
-                     possibly using many workers that might not even be on the
-                     same computer (hence the /distributed/ property).
+Synopsis:            a distributed (parallel) implementation of logic programming via. dynamically generated trees
+Description:         You can think of this package in two equvalent ways. First,
+                     you can think of it as an implementation of logic
+                     programming that is designed to be parellelized using
+                     workers that have no memory shared between them (hence,
+                     "distributed"), which means that one can use supercomputers
+                     with large numbers of nodes. Second, one can think of this
+                     package as providing infrastructure for exploring a tree in
+                     parallel. The connection between these two perspectives is
+                     that logic programming involves making nondeterministic
+                     choices, and each such choice is equivalent to a branch
+                     point in a tree representing the search space of the
+                     logic program.  In the rest of the documentation we will
+                     focus on the tree perspective simply because a lot of the
+                     functionality makes the most sense from the perspective of
+                     working with trees, but one is always free to ignore this
+                     and simply write a logic program using the standard
+                     approach of using 'MonadPlus' to indicate choice and
+                     failure, and the 'Tree' implementation of this typeclass
+                     will take care of the details of turning your logic program
+                     into tree.
                      .
-                     To use this package, you first write a function that
-                     generates a search tree;  the "Visitor" module provides
-                     functionality to assist in this.  You can write such a
-                     function by writing a function that
-                     returns a generic 'MonadPlus' (which can then be
-                     specialized into a 'TreeGenerator'), or if there are points
-                     in the search tree where an expensive calculation is
-                     performed then you can use the 'MonadVisitable' class to
-                     cache the result of the calculation so that subsequent
-                     visits down the same path in the search tree will not need
-                     to re-compute it.  Finally, one can also simply write a
-                     function that returns a 'TreeGenerator' (or one of its
-                     impure friends) directly.  You can then test your tree
-                     generator using the visting functions in the "Visitor" module.
+                     To use this package, you first write a function that builds
+                     a tree (say, by using logic programming); the "Visitor"
+                     module provides functionality to assist in this. You may
+                     have your function either return a generic 'MonadPlus' or
+                     'MonadVisitable' (where the latter lets you cache expensive
+                     intermediate calculations so that they do not have to be
+                     performed again if this path is re-explored later), or you
+                     may have it directly return a 'TreeGenerator' (or one of
+                     its impure friends) directly. You can then test your tree
+                     generator using the visting functions in the "Visitor"
+                     module.
                      .
                      WARNING: If you need something like state in your
                      generator, then you should stack the state monad (or
