@@ -84,7 +84,7 @@ import Visitor.Checkpoint
 import Visitor.Location
 import Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import qualified Visitor.Parallel.BackEnd.Threads as Threads
-import Visitor.Parallel.Common.VisitorMode
+import Visitor.Parallel.Common.ExplorationMode
 import qualified Visitor.Parallel.Common.Workgroup as Workgroup
 import Visitor.Path
 import Visitor.Parallel.Common.Supervisor
@@ -251,8 +251,8 @@ type NullVisitor = NullVisitorT Identity
 
 -- Functions {{{
 addAcceptOneWorkloadAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    IO (IORef (Maybe (worker_id,Workload)),SupervisorCallbacks visitor_mode worker_id IO)
+    SupervisorCallbacks exploration_mode worker_id IO →
+    IO (IORef (Maybe (worker_id,Workload)),SupervisorCallbacks exploration_mode worker_id IO)
 addAcceptOneWorkloadAction actions = do
     maybe_worker_and_workload_ref ← newIORef (Nothing :: Maybe (worker_id,Workload))
     return (maybe_worker_and_workload_ref, actions {
@@ -266,8 +266,8 @@ addAcceptOneWorkloadAction actions = do
 -- }}}
 
 addAcceptMultipleWorkloadsAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    IO (IORef [(worker_id,Workload)],SupervisorCallbacks visitor_mode worker_id IO)
+    SupervisorCallbacks exploration_mode worker_id IO →
+    IO (IORef [(worker_id,Workload)],SupervisorCallbacks exploration_mode worker_id IO)
 addAcceptMultipleWorkloadsAction actions = do
     workers_and_workloads_ref ← newIORef []
     return (workers_and_workloads_ref, actions {
@@ -279,8 +279,8 @@ addAcceptMultipleWorkloadsAction actions = do
 -- }}}
 
 addAppendWorkloadStealBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    IO (IORef [[worker_id]],SupervisorCallbacks visitor_mode worker_id IO)
+    SupervisorCallbacks exploration_mode worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks exploration_mode worker_id IO)
 addAppendWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
@@ -290,8 +290,8 @@ addAppendWorkloadStealBroadcastIdsAction actions = do
 -- }}}
 
 addAppendProgressBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    IO (IORef [[worker_id]],SupervisorCallbacks visitor_mode worker_id IO)
+    SupervisorCallbacks exploration_mode worker_id IO →
+    IO (IORef [[worker_id]],SupervisorCallbacks exploration_mode worker_id IO)
 addAppendProgressBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [[worker_id]])
     return (broadcasts_ref, actions {
@@ -301,8 +301,8 @@ addAppendProgressBroadcastIdsAction actions = do
 -- }}}
 
 addReceiveCurrentProgressAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    IO (IORef (Maybe (ProgressFor visitor_mode)),SupervisorCallbacks visitor_mode worker_id IO)
+    SupervisorCallbacks exploration_mode worker_id IO →
+    IO (IORef (Maybe (ProgressFor exploration_mode)),SupervisorCallbacks exploration_mode worker_id IO)
 addReceiveCurrentProgressAction actions = do
     maybe_progress_ref ← newIORef (Nothing :: Maybe ip)
     return (maybe_progress_ref, actions {
@@ -316,8 +316,8 @@ addReceiveCurrentProgressAction actions = do
 -- }}}
 
 addSetWorkloadStealBroadcastIdsAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    IO (IORef [worker_id],SupervisorCallbacks visitor_mode worker_id IO)
+    SupervisorCallbacks exploration_mode worker_id IO →
+    IO (IORef [worker_id],SupervisorCallbacks exploration_mode worker_id IO)
 addSetWorkloadStealBroadcastIdsAction actions = do
     broadcasts_ref ← newIORef ([] :: [worker_id])
     return (broadcasts_ref, actions {
@@ -345,14 +345,14 @@ echoWithLocation label x = trace (label ++ " " ++ show x) x
 -- }}}
 
 ignoreAcceptWorkloadAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    SupervisorCallbacks visitor_mode worker_id IO
+    SupervisorCallbacks exploration_mode worker_id IO →
+    SupervisorCallbacks exploration_mode worker_id IO
 ignoreAcceptWorkloadAction actions = actions { sendWorkloadToWorker = \_ _ → return () }
 -- }}}
 
 ignoreWorkloadStealAction :: -- {{{
-    SupervisorCallbacks visitor_mode worker_id IO →
-    SupervisorCallbacks visitor_mode worker_id IO
+    SupervisorCallbacks exploration_mode worker_id IO →
+    SupervisorCallbacks exploration_mode worker_id IO
 ignoreWorkloadStealAction actions = actions { broadcastWorkloadStealToWorkers = \_ → return () }
 -- }}}
 
@@ -540,7 +540,7 @@ remdups (x : xx : xs)
 -- }}}
 
 -- Values {{{
-bad_test_supervisor_actions :: SupervisorCallbacks visitor_mode worker_id m -- {{{
+bad_test_supervisor_actions :: SupervisorCallbacks exploration_mode worker_id m -- {{{
 bad_test_supervisor_actions =
     SupervisorCallbacks
     {   broadcastProgressUpdateToWorkers =
@@ -553,7 +553,7 @@ bad_test_supervisor_actions =
             error "sendWorkloadToWorker called! :-/"
     }
 -- }}}
-ignore_supervisor_actions :: Monad m ⇒ SupervisorCallbacks visitor_mode worker_id m -- {{{
+ignore_supervisor_actions :: Monad m ⇒ SupervisorCallbacks exploration_mode worker_id m -- {{{
 ignore_supervisor_actions =
     SupervisorCallbacks
     {   broadcastProgressUpdateToWorkers = const $ return ()

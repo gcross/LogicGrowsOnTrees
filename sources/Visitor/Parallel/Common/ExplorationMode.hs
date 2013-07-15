@@ -14,21 +14,21 @@
     around a mode parameter that dictates its behavior at various points as well
     as some of the types in the system.
 
-    The implementation of the 'VisitorMode' uses a GADT where each constructor
-    causes 'VisitorMode' to have a different type parameter;  this was done so
+    The implementation of the 'ExplorationMode' uses a GADT where each constructor
+    causes 'ExplorationMode' to have a different type parameter;  this was done so
     that pattern matching can be used when the specific mode matters and also
     type families can be used to specialized types depending on the constructor.
  -}
-module Visitor.Parallel.Common.VisitorMode
+module Visitor.Parallel.Common.ExplorationMode
     (
     -- * Types
-      VisitorMode(..)
+      ExplorationMode(..)
     , AllMode(..)
     , FirstMode(..)
     , FoundModeUsingPull(..)
     , FoundModeUsingPush(..)
     -- * Type-classes
-    , HasVisitorMode(..)
+    , HasExplorationMode(..)
     -- * Type families
     , ResultFor
     , ProgressFor
@@ -56,13 +56,13 @@ import Visitor.Checkpoint
 
     Unfortunately Haddock does not seem to support documenting the constructors
     of a GADT, so for the documentation for each constructor refer to the types
-    used to tag them, defined after the 'VisitorMode' type.
+    used to tag them, defined after the 'ExplorationMode' type.
  -}
-data VisitorMode visitor_mode where
-    AllMode :: Monoid result ⇒ VisitorMode (AllMode result)
-    FirstMode :: VisitorMode (FirstMode result)
-    FoundModeUsingPull :: Monoid result ⇒ (result → Maybe final_result) → VisitorMode (FoundModeUsingPull result final_result)
-    FoundModeUsingPush :: Monoid result ⇒ (result → Maybe final_result) → VisitorMode (FoundModeUsingPush result final_result)
+data ExplorationMode exploration_mode where
+    AllMode :: Monoid result ⇒ ExplorationMode (AllMode result)
+    FirstMode :: ExplorationMode (FirstMode result)
+    FoundModeUsingPull :: Monoid result ⇒ (result → Maybe final_result) → ExplorationMode (FoundModeUsingPull result final_result)
+    FoundModeUsingPush :: Monoid result ⇒ (result → Maybe final_result) → ExplorationMode (FoundModeUsingPush result final_result)
 
 {-| Visit all nodes and sum the results in all of the leaves. -}
 data AllMode result
@@ -90,11 +90,11 @@ data FoundModeUsingPush result final_result
 --------------------------------- Type-classes ---------------------------------
 --------------------------------------------------------------------------------
 
-{-| This class indicates that a monad has information about the current visitor
-    mode tag type that can be extracted from it.
+{-| This class indicates that a monad has information about the current
+    exploration mode tag type that can be extracted from it.
  -}
-class HasVisitorMode (monad :: * → *) where
-    type VisitorModeFor monad :: *
+class HasExplorationMode (monad :: * → *) where
+    type ExplorationModeFor monad :: *
 
 --------------------------------------------------------------------------------
 -------------------------------- Type families ---------------------------------
@@ -102,11 +102,11 @@ class HasVisitorMode (monad :: * → *) where
 
 {- $families
 The type families in this section allow the types to be used at various places
-to be specialized based on the current visitor mode.
+to be specialized based on the current exploration mode.
 -}
 
 {-| The result type of the tree generator. -}
-type family ResultFor visitor_mode :: *
+type family ResultFor exploration_mode :: *
 type instance ResultFor (AllMode result) = result
 type instance ResultFor (FirstMode result) = result
 type instance ResultFor (FoundModeUsingPull result final_result) = result
@@ -115,28 +115,28 @@ type instance ResultFor (FoundModeUsingPush result final_result) = result
 {-| The type of progress, which keeps track of how much of the tree has already
     been visited.
  -}
-type family ProgressFor visitor_mode :: *
+type family ProgressFor exploration_mode :: *
 type instance ProgressFor (AllMode result) = Progress result
 type instance ProgressFor (FirstMode result) = Checkpoint
 type instance ProgressFor (FoundModeUsingPull result final_result) = Progress result
 type instance ProgressFor (FoundModeUsingPush result final_result) = Progress result
 
 {-| The final result of visiting the tree. -}
-type family FinalResultFor visitor_mode :: *
+type family FinalResultFor exploration_mode :: *
 type instance FinalResultFor (AllMode result) = result
 type instance FinalResultFor (FirstMode result) = Maybe (Progress result)
 type instance FinalResultFor (FoundModeUsingPull result final_result) = Either result (Progress (final_result,result))
 type instance FinalResultFor (FoundModeUsingPush result final_result) = Either result (Progress final_result)
 
 {-| The intermediate value being maintained internally by the worker. -}
-type family WorkerIntermediateValueFor visitor_mode :: *
+type family WorkerIntermediateValueFor exploration_mode :: *
 type instance WorkerIntermediateValueFor (AllMode result) = result
 type instance WorkerIntermediateValueFor (FirstMode result) = ()
 type instance WorkerIntermediateValueFor (FoundModeUsingPull result final_result) = result
 type instance WorkerIntermediateValueFor (FoundModeUsingPush result final_result) = ()
 
 {-| The final progress returned by a worker that has finished. -}
-type family WorkerFinalProgressFor visitor_mode :: *
+type family WorkerFinalProgressFor exploration_mode :: *
 type instance WorkerFinalProgressFor (AllMode result) = Progress result
 type instance WorkerFinalProgressFor (FirstMode result) = Progress (Maybe result)
 type instance WorkerFinalProgressFor (FoundModeUsingPull result final_result) = Progress (Either result final_result)
@@ -148,8 +148,8 @@ type instance WorkerFinalProgressFor (FoundModeUsingPush result final_result) = 
 
 {-| Extracts the 'Checkpoint' component from a progress value. -}
 checkpointFromIntermediateProgress ::
-    VisitorMode visitor_mode →
-    ProgressFor visitor_mode →
+    ExplorationMode exploration_mode →
+    ProgressFor exploration_mode →
     Checkpoint
 checkpointFromIntermediateProgress AllMode = progressCheckpoint
 checkpointFromIntermediateProgress FirstMode = id
@@ -157,7 +157,7 @@ checkpointFromIntermediateProgress (FoundModeUsingPull _) = progressCheckpoint
 checkpointFromIntermediateProgress (FoundModeUsingPush _) = progressCheckpoint
 
 {-| The initial progress at the start of the visiting. -}
-initialProgress :: VisitorMode visitor_mode → ProgressFor visitor_mode
+initialProgress :: ExplorationMode exploration_mode → ProgressFor exploration_mode
 initialProgress AllMode = mempty
 initialProgress FirstMode = mempty
 initialProgress (FoundModeUsingPull _) = mempty
@@ -165,8 +165,8 @@ initialProgress (FoundModeUsingPush _) = mempty
 
 {-| The initial intermediate value for the worker. -}
 initialWorkerIntermediateValue ::
-    VisitorMode visitor_mode →
-    WorkerIntermediateValueFor visitor_mode
+    ExplorationMode exploration_mode →
+    WorkerIntermediateValueFor exploration_mode
 initialWorkerIntermediateValue AllMode = mempty
 initialWorkerIntermediateValue FirstMode = ()
 initialWorkerIntermediateValue (FoundModeUsingPull _) = mempty

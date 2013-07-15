@@ -65,49 +65,49 @@ import Control.Monad.Trans.Reader (ReaderT(..),ask)
 import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,newIORef)
 
+import Visitor.Parallel.Common.ExplorationMode
 import qualified Visitor.Parallel.Common.Supervisor as Supervisor
 import Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
-import Visitor.Parallel.Common.VisitorMode
 
 --------------------------------------------------------------------------------
 --------------------------------- Type-classes ---------------------------------
 --------------------------------------------------------------------------------
 
 {-| This class provides a set of supervisor requests common to all back-ends. -}
-class (HasVisitorMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
+class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()
     {-| Fork a new thread running in this monad. -}
     fork :: m () → m ThreadId
     {-| Request the current progress, and invoke the given callback with the result;  see 'getCurrentProgress' for the synchronous version. -}
-    getCurrentProgressAsync :: (ProgressFor (VisitorModeFor m) → IO ()) → m ()
+    getCurrentProgressAsync :: (ProgressFor (ExplorationModeFor m) → IO ()) → m ()
     {-| Request the number of workers, and invoke the given callback with the result;  see 'getNumberOfWorkers' for the synchronous version. -}
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
     {-| Requests that a global progress update be performed, and invoke the given callback with the result;  see 'requestProgressUpdate' for the synchronous version. -}
-    requestProgressUpdateAsync :: (ProgressFor (VisitorModeFor m) → IO ()) → m ()
+    requestProgressUpdateAsync :: (ProgressFor (ExplorationModeFor m) → IO ()) → m ()
 
 --------------------------------------------------------------------------------
 ------------------------------------- Types ------------------------------------
 --------------------------------------------------------------------------------
 
 {-| The type of a supervisor request. -}
-type Request visitor_mode worker_id m = SupervisorMonad visitor_mode worker_id m ()
+type Request exploration_mode worker_id m = SupervisorMonad exploration_mode worker_id m ()
 {-| A basic supervisor request queue. -}
-data RequestQueue visitor_mode worker_id m = RequestQueue
+data RequestQueue exploration_mode worker_id m = RequestQueue
     {   {-| the queue of requests to the supervisor -}
-        requests :: !(TChan (Request visitor_mode worker_id m))
+        requests :: !(TChan (Request exploration_mode worker_id m))
         {-| a list of callbacks to invoke when a global progress update has completed -}
-    ,   receivers :: !(IORef [ProgressFor visitor_mode → IO ()])
+    ,   receivers :: !(IORef [ProgressFor exploration_mode → IO ()])
     }
 {-| A basic supervisor request queue monad, which has an implicit 'RequestQueue'
     object that it uses to communicate with the supervisor loop.
  -}
-type RequestQueueReader visitor_mode worker_id m = ReaderT (RequestQueue visitor_mode worker_id m) IO
+type RequestQueueReader exploration_mode worker_id m = ReaderT (RequestQueue exploration_mode worker_id m) IO
 
-instance HasVisitorMode (RequestQueueReader visitor_mode worker_id m) where
-    type VisitorModeFor (RequestQueueReader visitor_mode worker_id m) = visitor_mode
+instance HasExplorationMode (RequestQueueReader exploration_mode worker_id m) where
+    type ExplorationModeFor (RequestQueueReader exploration_mode worker_id m) = exploration_mode
 
-instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader visitor_mode worker_id m) where
+instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader exploration_mode worker_id m) where
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
     fork m = ask >>= liftIO . forkIO . runReaderT m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
@@ -128,7 +128,7 @@ instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueue
 ------------------------------ Synchronized requests ------------------------------
 
 {-| Like 'getCurrentProgressAsync', but blocks until the result is ready. -}
-getCurrentProgress :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m))
+getCurrentProgress :: RequestQueueMonad m ⇒ m (ProgressFor (ExplorationModeFor m))
 getCurrentProgress = syncAsync getCurrentProgressAsync
 
 {-| Like 'getNumberOfWorkersAsync', but blocks until the result is ready. -}
@@ -136,7 +136,7 @@ getNumberOfWorkers :: RequestQueueMonad m ⇒ m Int
 getNumberOfWorkers = syncAsync getNumberOfWorkersAsync
 
 {-| Like 'requestProgressUpdateAsync', but blocks until the progress update has completed. -}
-requestProgressUpdate :: RequestQueueMonad m ⇒ m (ProgressFor (VisitorModeFor m))
+requestProgressUpdate :: RequestQueueMonad m ⇒ m (ProgressFor (ExplorationModeFor m))
 requestProgressUpdate = syncAsync requestProgressUpdateAsync
 
 {-| General utility function for converting an asynchronous request to a
@@ -157,8 +157,8 @@ syncAsync runCommandAsync = do
 {-| Adds a callback to the given 'RequestQueue' that will be invoked when the current global progress update has completed. -}
 addProgressReceiver ::
     MonadIO m' ⇒
-    (ProgressFor visitor_mode → IO ()) →
-    RequestQueue visitor_mode worker_id m →
+    (ProgressFor exploration_mode → IO ()) →
+    RequestQueue exploration_mode worker_id m →
     m' ()
 addProgressReceiver receiver =
     liftIO
@@ -170,8 +170,8 @@ addProgressReceiver receiver =
 {-| Enqueues a supervisor request into the given queue. -}
 enqueueRequest ::
     MonadIO m' ⇒
-    Request visitor_mode worker_id m →
-    RequestQueue visitor_mode worker_id m →
+    Request exploration_mode worker_id m →
+    RequestQueue exploration_mode worker_id m →
     m' ()
 enqueueRequest = flip $
     (liftIO . atomically)
@@ -181,14 +181,14 @@ enqueueRequest = flip $
 {-| Constructs a new 'RequestQueue'. -}
 newRequestQueue ::
     MonadIO m' ⇒
-    m' (RequestQueue visitor_mode worker_id m)
+    m' (RequestQueue exploration_mode worker_id m)
 newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
 
 {-| Attempt to pop a request from the 'RequestQueue'. -}
 tryDequeueRequest ::
     MonadIO m' ⇒
-    RequestQueue visitor_mode worker_id m →
-    m' (Maybe (Request visitor_mode worker_id m))
+    RequestQueue exploration_mode worker_id m →
+    m' (Maybe (Request exploration_mode worker_id m))
 tryDequeueRequest =
     liftIO
     .
@@ -205,8 +205,8 @@ tryDequeueRequest =
  -}
 processAllRequests ::
     MonadIO m ⇒
-    RequestQueue visitor_mode worker_id m →
-    SupervisorMonad visitor_mode worker_id m ()
+    RequestQueue exploration_mode worker_id m →
+    SupervisorMonad exploration_mode worker_id m ()
 processAllRequests (RequestQueue requests _) = go
   where
     go =
@@ -217,8 +217,8 @@ processAllRequests (RequestQueue requests _) = go
 {-| Invokes all of the callbacks with the given progress and then clears the list of callbacks. -}
 receiveProgress ::
     MonadIO m' ⇒
-    RequestQueue visitor_mode worker_id m →
-    ProgressFor visitor_mode →
+    RequestQueue exploration_mode worker_id m →
+    ProgressFor exploration_mode →
     m' ()
 receiveProgress queue progress =
     liftIO
@@ -236,9 +236,9 @@ receiveProgress queue progress =
 {-| Creates a supervisor program that loops forever processing requests from the given queue. -}
 requestQueueProgram ::
     MonadIO m ⇒
-    SupervisorMonad visitor_mode worker_id m () {-^ initialization code to run before the loop is started -} →
-    RequestQueue visitor_mode worker_id m {-^ the request queue -} →
-    SupervisorProgram visitor_mode worker_id m
+    SupervisorMonad exploration_mode worker_id m () {-^ initialization code to run before the loop is started -} →
+    RequestQueue exploration_mode worker_id m {-^ the request queue -} →
+    SupervisorProgram exploration_mode worker_id m
 requestQueueProgram initialize =
     flip (BlockingProgram initialize) id
     .
@@ -260,9 +260,9 @@ getQuantityAsync ::
     ( MonadIO m'
     , SupervisorFullConstraint worker_id m
     ) ⇒
-    SupervisorMonad visitor_mode worker_id m α →
+    SupervisorMonad exploration_mode worker_id m α →
     (α → IO ()) →
-    RequestQueue visitor_mode worker_id m →
+    RequestQueue exploration_mode worker_id m →
     m' ()
 getQuantityAsync getQuantity receiveQuantity =
     enqueueRequest $ getQuantity >>= liftIO . receiveQuantity

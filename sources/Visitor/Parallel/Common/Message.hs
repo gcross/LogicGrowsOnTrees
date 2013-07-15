@@ -25,7 +25,7 @@ import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Serialize
 
-import Visitor.Parallel.Common.VisitorMode
+import Visitor.Parallel.Common.ExplorationMode
 import qualified Visitor.Parallel.Common.Worker as Worker
 import Visitor.Utils.Handle
 import Visitor.Workload
@@ -53,21 +53,21 @@ data MessageForSupervisor progress worker_final_progress =
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForSupervisor)
 
-{-| Convenient type alias for obtaining the 'MessageForSupervisor' type corresponding with the given visitor mode. -}
-type MessageForSupervisorFor visitor_mode = MessageForSupervisor (ProgressFor visitor_mode) (WorkerFinalProgressFor visitor_mode)
+{-| Convenient type alias for obtaining the 'MessageForSupervisor' type corresponding with the given exploration mode. -}
+type MessageForSupervisorFor exploration_mode = MessageForSupervisor (ProgressFor exploration_mode) (WorkerFinalProgressFor exploration_mode)
 
 {-| This data structure contains callbacks to be invoked when a message has
     been received, depending on the kind of message.
  -}
-data MessageForSupervisorReceivers visitor_mode worker_id = MessageForSupervisorReceivers
+data MessageForSupervisorReceivers exploration_mode worker_id = MessageForSupervisorReceivers
     {   {-| called when a progress update has been received from a worker -}
-        receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate (ProgressFor visitor_mode) → IO ()
+        receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate (ProgressFor exploration_mode) → IO ()
         {-| called when a (possibly) stolen workload has been received from a worker -}
-    ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload (ProgressFor visitor_mode)) → IO ()
+    ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload (ProgressFor exploration_mode)) → IO ()
         {-| called when a failure (with the given message) has been received from a worker -}
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
         {-| called when a worker has finished withthe given final progress -}
-    ,   receiveFinishedFromWorker :: worker_id → WorkerFinalProgressFor visitor_mode → IO ()
+    ,   receiveFinishedFromWorker :: worker_id → WorkerFinalProgressFor exploration_mode → IO ()
         {-| called when a worker has quit the system and is no longer available -}
     ,   receiveQuitFromWorker :: worker_id → IO ()
     }
@@ -92,8 +92,8 @@ $(derive makeSerialize ''MessageForWorker)
     the content of the message.
  -}
 receiveAndProcessMessagesFromWorker ::
-    MessageForSupervisorReceivers visitor_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
-    IO (MessageForSupervisorFor visitor_mode) {-^ an action that fetches the next message -} →
+    MessageForSupervisorReceivers exploration_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
+    IO (MessageForSupervisorFor exploration_mode) {-^ an action that fetches the next message -} →
     worker_id {-^ the id of the worker from which messages are being received -} →
     IO () {-^ an IO action that continually processes incoming messages from a worker until it quits, at which point it returns -}
 receiveAndProcessMessagesFromWorker
@@ -123,10 +123,10 @@ receiveAndProcessMessagesFromWorker
     'Handle' from which messsages (assumed to be deserializable) are read.
  -}
 receiveAndProcessMessagesFromWorkerUsingHandle ::
-    ( Serialize (ProgressFor visitor_mode)
-    , Serialize (WorkerFinalProgressFor visitor_mode)
+    ( Serialize (ProgressFor exploration_mode)
+    , Serialize (WorkerFinalProgressFor exploration_mode)
     ) ⇒
-    MessageForSupervisorReceivers visitor_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
+    MessageForSupervisorReceivers exploration_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
     Handle {-^ the handle from which messages should be read -} →
     worker_id {-^ the id of the worker from which messages are being received -} →
     IO () {-^ an IO action that continually processes incoming messages from a worker until it quits, at which point it returns -}

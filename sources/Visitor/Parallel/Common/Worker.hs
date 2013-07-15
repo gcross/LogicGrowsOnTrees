@@ -74,7 +74,7 @@ import System.Log.Logger.TH
 
 import Visitor hiding (visitTree,visitTreeT,visitTreeUntilFirst,visitTreeTUntilFirst)
 import Visitor.Checkpoint
-import Visitor.Parallel.Common.VisitorMode
+import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Path
 import Visitor.Workload
 
@@ -97,8 +97,8 @@ data ProgressUpdate progress = ProgressUpdate
 $( derive makeSerialize ''ProgressUpdate )
 
 {-| A convenient type alias for the type of 'ProgressUpdate' corresponding to
-    the given visitor mode. -}
-type ProgressUpdateFor visitor_mode = ProgressUpdate (ProgressFor visitor_mode)
+    the given exploration mode. -}
+type ProgressUpdateFor exploration_mode = ProgressUpdate (ProgressFor exploration_mode)
 
 {-| The type of stolen workloads sent to the supervisor;  in addition to a
     component with the stolen 'Workload' itself, it also has a 'ProgressUpdate'
@@ -113,8 +113,8 @@ data StolenWorkload progress = StolenWorkload
 $( derive makeSerialize ''StolenWorkload )
 
 {-| A convenient type alias for the type of 'StolenWorkload' corresponding to
-    the given visitor mode. -}
-type StolenWorkloadFor visitor_mode = StolenWorkload (ProgressFor visitor_mode)
+    the given exploration mode. -}
+type StolenWorkloadFor exploration_mode = StolenWorkload (ProgressFor exploration_mode)
 
 ------------------------------- Worker requests --------------------------------
 
@@ -128,8 +128,8 @@ data WorkerRequest progress =
   | WorkloadStealRequested (Maybe (StolenWorkload progress) → IO ())
 
 {-| A convenient type alias for the type of 'WorkerRequest' corresponding
-    to the given visitor mode. -}
-type WorkerRequestFor visitor_mode = WorkerRequest (ProgressFor visitor_mode)
+    to the given exploration mode. -}
+type WorkerRequestFor exploration_mode = WorkerRequest (ProgressFor exploration_mode)
 
 {-| The type of the queue of worker requests.
 
@@ -139,8 +139,8 @@ type WorkerRequestFor visitor_mode = WorkerRequest (ProgressFor visitor_mode)
 -}
 type WorkerRequestQueue progress = IORef [WorkerRequest progress]
 {-| A convenient type alias for the type of 'WorkerRequestQueue' corresponding
-    to the given visitor mode. -}
-type WorkerRequestQueueFor visitor_mode = WorkerRequestQueue (ProgressFor visitor_mode)
+    to the given exploration mode. -}
+type WorkerRequestQueueFor exploration_mode = WorkerRequestQueue (ProgressFor exploration_mode)
 
 --------------------------------- Worker types ---------------------------------
 
@@ -153,8 +153,8 @@ data WorkerEnvironment progress = WorkerEnvironment
     }
 
 {-| A convenient type alias for the type of 'WorkerEnvironment' corresponding to
-    the given visitor mode. -}
-type WorkerEnvironmentFor visitor_mode = WorkerEnvironment (ProgressFor visitor_mode)
+    the given exploration mode. -}
+type WorkerEnvironmentFor exploration_mode = WorkerEnvironment (ProgressFor exploration_mode)
 
 {-| A datatype representing the reason why a worker terminated. -}
 data WorkerTerminationReason worker_final_progress =
@@ -180,15 +180,15 @@ instance Functor WorkerTerminationReason where
     fmap _ WorkerAborted = WorkerAborted
 
 {-| A convenient type alias for the type of 'WorkerTerminationReason'
-    corresponding to the given visitor mode.
+    corresponding to the given exploration mode.
  -}
-type WorkerTerminationReasonFor visitor_mode = WorkerTerminationReason (WorkerFinalProgressFor visitor_mode)
+type WorkerTerminationReasonFor exploration_mode = WorkerTerminationReason (WorkerFinalProgressFor exploration_mode)
 
 {-| The action that a worker can take to push a result to the supervisor;  this
     type is effectively null (with value 'absurd' for all modes except
     'FoundModeUsingPush'.
  -}
-type family WorkerPushActionFor visitor_mode :: *
+type family WorkerPushActionFor exploration_mode :: *
 -- NOTE:  Setting the below instances equal to Void → () is a hack around the
 --        fact that using types with constructors result in a weird compiler bug.
 type instance WorkerPushActionFor (AllMode result) = Void → ()
@@ -261,18 +261,18 @@ deriveLoggers "Logger" [DEBUG]
     placed in the request queue.
  -}
 forkWorkerThread ::
-    VisitorMode visitor_mode {-^ the mode in to visit the tree -} →
+    ExplorationMode exploration_mode {-^ the mode in to visit the tree -} →
     Purity m n {-^ the purity of the tree generator -} →
-    (WorkerTerminationReasonFor visitor_mode → IO ()) {-^ the action to run when the worker has terminated -} →
-    TreeGeneratorT m (ResultFor visitor_mode) {-^ the tree generator -} →
+    (WorkerTerminationReasonFor exploration_mode → IO ()) {-^ the action to run when the worker has terminated -} →
+    TreeGeneratorT m (ResultFor exploration_mode) {-^ the tree generator -} →
     Workload {-^ the workload for the worker -} →
-    WorkerPushActionFor visitor_mode
+    WorkerPushActionFor exploration_mode
         {-^ the action to push a result to the supervisor;  this should be equal
-            to 'absurd' except when the visitor mode is 'FoundModeUsingPush'.
+            to 'absurd' except when the exploration mode is 'FoundModeUsingPush'.
          -} →
-    IO (WorkerEnvironmentFor visitor_mode) {-^ the environment for the worker -}
+    IO (WorkerEnvironmentFor exploration_mode) {-^ the environment for the worker -}
 forkWorkerThread
-    visitor_mode
+    exploration_mode
     purity
     finishedCallback
     visitor
@@ -307,7 +307,7 @@ forkWorkerThread
                     return WorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     debugM "Worker thread received progress update request."
-                    liftIO . submitProgress $ computeProgressUpdate visitor_mode result initial_path cursor context checkpoint
+                    liftIO . submitProgress $ computeProgressUpdate exploration_mode result initial_path cursor context checkpoint
                     loop2 initial_intermediate_value cursor visitor_state rest_requests
                 WorkloadStealRequested submitMaybeWorkload:rest_requests → do
                     debugM "Worker thread received workload steal."
@@ -318,7 +318,7 @@ forkWorkerThread
                         Just (new_cursor,new_context,workload) → do
                             liftIO . submitMaybeWorkload . Just $
                                 StolenWorkload
-                                    (computeProgressUpdate visitor_mode result initial_path new_cursor new_context checkpoint)
+                                    (computeProgressUpdate exploration_mode result initial_path new_cursor new_context checkpoint)
                                     workload
                             loop2 initial_intermediate_value new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
 
@@ -338,7 +338,7 @@ forkWorkerThread
                     in return . WorkerFinished $
                         -- NOTE:  Do *not* refactor the code below; if you do so
                         --        then it will confuse the type-checker.
-                        case visitor_mode of
+                        case exploration_mode of
                             AllMode →
                                 Progress
                                     explored_checkpoint
@@ -367,7 +367,7 @@ forkWorkerThread
                     in case maybe_solution of
                         Nothing → loop1 result cursor new_visitor_state
                         Just (!solution) →
-                            case visitor_mode of
+                            case exploration_mode of
                                 AllMode → loop1 (result <> solution) cursor new_visitor_state
                                 FirstMode → return . WorkerFinished $ Progress new_checkpoint (Just solution)
                                 FoundModeUsingPull f →
@@ -415,7 +415,7 @@ forkWorkerThread
             pending_requests_ref
             finished_flag
   where
-    initial_intermediate_value = initialWorkerIntermediateValue visitor_mode
+    initial_intermediate_value = initialWorkerIntermediateValue exploration_mode
 {-# INLINE forkWorkerThread #-}
 
 --------------------------------------------------------------------------------
@@ -458,17 +458,17 @@ sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
     likely to ever have a need for yourself.
  -}
 visitTreeGeneric ::
-    ( WorkerPushActionFor visitor_mode ~ (Void → ())
-    , ResultFor visitor_mode ~ α
+    ( WorkerPushActionFor exploration_mode ~ (Void → ())
+    , ResultFor exploration_mode ~ α
     ) ⇒
-    VisitorMode visitor_mode →
+    ExplorationMode exploration_mode →
     Purity m n →
     TreeGeneratorT m α →
-    IO (WorkerTerminationReason (FinalResultFor visitor_mode))
-visitTreeGeneric visitor_mode purity visitor = do
+    IO (WorkerTerminationReason (FinalResultFor exploration_mode))
+visitTreeGeneric exploration_mode purity visitor = do
     final_progress_mvar ← newEmptyMVar
     _ ← forkWorkerThread
-            visitor_mode
+            exploration_mode
             purity
             (putMVar final_progress_mvar)
             visitor
@@ -476,7 +476,7 @@ visitTreeGeneric visitor_mode purity visitor = do
             absurd
     final_progress ← takeMVar final_progress_mvar
     return . flip fmap final_progress $ \progress →
-        case visitor_mode of
+        case exploration_mode of
             AllMode → progressResult progress
             FirstMode → Progress (progressCheckpoint progress) <$> progressResult progress
             FoundModeUsingPull _ →
@@ -507,17 +507,17 @@ checkpointFromSetting initial_path cursor context =
      checkpointFromContext context
 
 computeProgressUpdate ::
-    ResultFor visitor_mode ~ α ⇒
-    VisitorMode visitor_mode →
-    WorkerIntermediateValueFor visitor_mode →
+    ResultFor exploration_mode ~ α ⇒
+    ExplorationMode exploration_mode →
+    WorkerIntermediateValueFor exploration_mode →
     Path →
     CheckpointCursor →
     Context m α →
     Checkpoint →
-    ProgressUpdate (ProgressFor visitor_mode)
-computeProgressUpdate visitor_mode result initial_path cursor context checkpoint =
+    ProgressUpdate (ProgressFor exploration_mode)
+computeProgressUpdate exploration_mode result initial_path cursor context checkpoint =
     ProgressUpdate
-        (case visitor_mode of
+        (case exploration_mode of
             AllMode → Progress full_checkpoint result
             FirstMode → full_checkpoint
             FoundModeUsingPull _ → Progress full_checkpoint result

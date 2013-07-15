@@ -52,11 +52,11 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(INFO))
 import System.Log.Logger.TH
 
-import Visitor.Parallel.Main (RunOutcomeFor,extractRunOutcomeFromSupervisorOutcome)
+import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Parallel.Common.Message
 import Visitor.Parallel.Common.Supervisor
 import Visitor.Parallel.Common.Supervisor.RequestQueue
-import Visitor.Parallel.Common.VisitorMode
+import Visitor.Parallel.Main (RunOutcomeFor,extractRunOutcomeFromSupervisorOutcome)
 import Visitor.Workload
 
 --------------------------------------------------------------------------------
@@ -127,15 +127,15 @@ $( makeLenses ''WorkgroupState )
 
 type WorkgroupStateMonad inner_state = StateT WorkgroupState (ReaderT (WorkgroupCallbacks inner_state) (InnerMonad inner_state))
 
-type WorkgroupMonad inner_state visitor_mode = SupervisorMonad visitor_mode WorkerId (WorkgroupStateMonad inner_state)
+type WorkgroupMonad inner_state exploration_mode = SupervisorMonad exploration_mode WorkerId (WorkgroupStateMonad inner_state)
 
 {-| This is the monad in which the workgroup controller will run. -}
-newtype WorkgroupControllerMonad inner_state visitor_mode α = C { unwrapC :: RequestQueueReader visitor_mode WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad)
+newtype WorkgroupControllerMonad inner_state exploration_mode α = C { unwrapC :: RequestQueueReader exploration_mode WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad)
 
-instance HasVisitorMode (WorkgroupControllerMonad inner_state visitor_mode) where
-    type VisitorModeFor (WorkgroupControllerMonad inner_state visitor_mode) = visitor_mode
+instance HasExplorationMode (WorkgroupControllerMonad inner_state exploration_mode) where
+    type ExplorationModeFor (WorkgroupControllerMonad inner_state exploration_mode) = exploration_mode
 
-instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state visitor_mode) where
+instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state exploration_mode) where
     changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
         old_number_of_workers ← numberOfWorkers
         new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
@@ -163,18 +163,18 @@ changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
     by back-ends where the number of workers can be changed on demand.
  -}
 runWorkgroup ::
-    VisitorMode visitor_mode {-^ the mode in which we are visiting the tree -} →
+    ExplorationMode exploration_mode {-^ the mode in which we are visiting the tree -} →
     inner_state {-^ the initial back-end specific state of the inner monad -} →
-    (MessageForSupervisorReceivers visitor_mode WorkerId → WorkgroupCallbacks inner_state)
+    (MessageForSupervisorReceivers exploration_mode WorkerId → WorkgroupCallbacks inner_state)
         {-^ This function constructs a set of callbacks to be used by the
             supervisor loop in this function to do things like creating and
             destroying workers;  it is given a set of callbacks that allows the
             back-end specific code to signal conditions to the supervisor.
          -} →
-    ProgressFor visitor_mode {-^ the initial progress of the visit -} →
-    WorkgroupControllerMonad inner_state visitor_mode () {-^ the controller, which is at the very least responsible for deciding how many workers should be initially created -} →
-    IO (RunOutcomeFor visitor_mode)
-runWorkgroup visitor_mode initial_inner_state constructCallbacks starting_progress (C controller) = do
+    ProgressFor exploration_mode {-^ the initial progress of the visit -} →
+    WorkgroupControllerMonad inner_state exploration_mode () {-^ the controller, which is at the very least responsible for deciding how many workers should be initially created -} →
+    IO (RunOutcomeFor exploration_mode)
+runWorkgroup exploration_mode initial_inner_state constructCallbacks starting_progress (C controller) = do
     request_queue ← newRequestQueue
     let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
         receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
@@ -212,7 +212,7 @@ runWorkgroup visitor_mode initial_inner_state constructCallbacks starting_progre
         $
         do  supervisor_outcome@SupervisorOutcome{supervisorRemainingWorkers} ←
                 runSupervisorStartingFrom
-                    visitor_mode
+                    exploration_mode
                     starting_progress
                     SupervisorCallbacks{..}
                     (requestQueueProgram (return ()) request_queue)
@@ -240,7 +240,7 @@ bumpWorkerRemovalPriority ::
 bumpWorkerRemovalPriority worker_id =
     (next_priority <<%= pred) >>= (removal_queue %=) . PSQ.insert worker_id
 
-fireAWorker :: WorkgroupMonad inner_state visitor_mode ()
+fireAWorker :: WorkgroupMonad inner_state exploration_mode ()
 fireAWorker =
     tryGetWaitingWorker
     >>= \x → case x of
@@ -261,7 +261,7 @@ fireAWorker =
             pending_quit %= IntSet.insert worker_id
             asks destroyWorker >>= liftInnerToSupervisor . ($ True) . ($ worker_id)
 
-hireAWorker :: WorkgroupMonad inner_state visitor_mode ()
+hireAWorker :: WorkgroupMonad inner_state exploration_mode ()
 hireAWorker = do
     worker_id ← next_worker_id <<%= succ
     bumpWorkerRemovalPriority worker_id
@@ -271,11 +271,11 @@ hireAWorker = do
 liftInner :: InnerMonad inner_state α → WorkgroupStateMonad inner_state α
 liftInner = lift . lift
 
-liftInnerToSupervisor :: InnerMonad inner_state α → WorkgroupMonad inner_state visitor_mode α
+liftInnerToSupervisor :: InnerMonad inner_state α → WorkgroupMonad inner_state exploration_mode α
 liftInnerToSupervisor = lift . liftInner
 
-numberOfWorkers :: WorkgroupMonad inner_state visitor_mode Int
+numberOfWorkers :: WorkgroupMonad inner_state exploration_mode Int
 numberOfWorkers = PSQ.size <$> use removal_queue
 
-removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state visitor_mode ()
+removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state exploration_mode ()
 removeWorkerFromRemovalQueue = (removal_queue %=) . PSQ.delete

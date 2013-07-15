@@ -122,6 +122,7 @@ import Text.Printf (printf)
 
 import Visitor (TreeGenerator,TreeGeneratorIO,TreeGeneratorT)
 import Visitor.Checkpoint
+import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Parallel.Common.Supervisor
     ( FunctionOfTimeStatistics(..)
     , IndependentMeasurementsStatistics(..)
@@ -131,7 +132,6 @@ import Visitor.Parallel.Common.Supervisor
     )
 
 import Visitor.Parallel.Common.Supervisor.RequestQueue
-import Visitor.Parallel.Common.VisitorMode
 import Visitor.Parallel.Common.Worker
 
 --------------------------------------------------------------------------------
@@ -199,20 +199,20 @@ data Driver
     shared_configuration
     supervisor_configuration
     m n
-    visitor_mode
+    exploration_mode
   = ∀ manager_monad.
-    ( RequestQueueMonad (manager_monad visitor_mode)
-    , VisitorModeFor (manager_monad visitor_mode) ~ visitor_mode
+    ( RequestQueueMonad (manager_monad exploration_mode)
+    , ExplorationModeFor (manager_monad exploration_mode) ~ exploration_mode
     ) ⇒
     Driver (
-        ( Serialize (ProgressFor visitor_mode)
+        ( Serialize (ProgressFor exploration_mode)
         , MonadIO result_monad
         ) ⇒
         DriverParameters
             shared_configuration
             supervisor_configuration
             m n
-            visitor_mode
+            exploration_mode
             manager_monad
         → result_monad ()
     )
@@ -224,11 +224,11 @@ data DriverParameters
     shared_configuration
     supervisor_configuration
     m n
-    visitor_mode
+    exploration_mode
     manager_monad =
     DriverParameters
     {   {-| the mode in which the visitor is being run -}
-        constructVisitorMode :: shared_configuration → VisitorMode visitor_mode
+        constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
         {-| the purity of the tree generator -}
     ,   purity :: Purity m n
         {-| configuration options that are shared between the supervisor and the worker -}
@@ -240,13 +240,13 @@ data DriverParameters
         {-| action that initializes the global state of all processes, both worker and supervisor -}
     ,   initializeGlobalState :: shared_configuration → IO ()
         {-| constructs the tree generator given the shared configuration -}
-    ,   constructTreeGenerator :: shared_configuration → TreeGeneratorT m (ResultFor visitor_mode)
+    ,   constructTreeGenerator :: shared_configuration → TreeGeneratorT m (ResultFor exploration_mode)
         {-| in the supervisor process, gets the starting progress for the visit;  this is where a checkpoint is loaded, if one exists -}
-    ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor visitor_mode)
+    ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
         {-| in the supervisor process, respond to the termination of the run -}
-    ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor visitor_mode → IO ()
+    ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
         {-| in the supervisor process, construct the manager that does things like periodic checkpointing -}
-    ,   constructManager :: shared_configuration → supervisor_configuration → manager_monad visitor_mode ()
+    ,   constructManager :: shared_configuration → supervisor_configuration → manager_monad exploration_mode ()
     }
 
 -------------------------------- Outcome types ---------------------------------
@@ -259,8 +259,8 @@ data RunOutcome progress final_result = RunOutcome
     ,   runTerminationReason :: TerminationReason progress final_result
     } deriving (Eq,Show)
 
-{-| A convenient type alias that obtains the 'RunOutcome' type for the given visitor mode. -}
-type RunOutcomeFor visitor_mode = RunOutcome (ProgressFor visitor_mode) (FinalResultFor visitor_mode)
+{-| A convenient type alias that obtains the 'RunOutcome' type for the given exploration mode. -}
+type RunOutcomeFor exploration_mode = RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
 
 {-| A type that represents the reason why a run terminated. -}
 data TerminationReason progress final_result =
@@ -272,8 +272,8 @@ data TerminationReason progress final_result =
   | Failure String
   deriving (Eq,Show)
 
-{-| A convenient type alias that obtains the 'TerminationReason' type for the given visitor mode. -}
-type TerminationReasonFor visitor_mode = TerminationReason (ProgressFor visitor_mode) (FinalResultFor visitor_mode)
+{-| A convenient type alias that obtains the 'TerminationReason' type for the given exploration mode. -}
+type TerminationReasonFor exploration_mode = TerminationReason (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
 
 --------------------------------------------------------------------------------
 ---------------------------------- Instances -----------------------------------
@@ -298,14 +298,14 @@ given back-end provided via the driver argument.
 
 All of the functionaliy of this module can be accessed through 'genericMain',
 but we nonethless also provide specialized versions of these functions for all
-of the supported tree generator purities and visitor modes. This is done for two
+of the supported tree generator purities and exploration modes. This is done for two
 reasons: first, in order to make the types more concrete to hopefully improve
 usability, and second, because often the type of the tree generator is generic
 and so using a specialized function automatically specializes the type rather
 than requiring type annotation. The convention is @mainForVisitTreeXY@ where @X@
 is empty for pure generators, @IO@ for generators running in the IO monad, and
 @Impure@ for generators running in some general monad, and @Y@ specifies the
-visitor mode, which is empty for 'AllMode' (sum over all results), @UntilFirst@
+exploration mode, which is empty for 'AllMode' (sum over all results), @UntilFirst@
 for 'FirstMode' (stop when first result found), @UntilFoundUsingPull@ for
 'FoundModeUsingPull' (sum all results until a condition has been met, only
 sending results to the supervisor upon request) and @UntilFoundUsingPush@ for
@@ -687,17 +687,17 @@ mainForVisitTreeImpureUntilFoundUsingPush constructCondition = genericMain (Foun
 ---------------------------- Generic main function -----------------------------
 
 {-| This function is just like those in the previous functions except that it is
-    generalized over all tree generator purities and visitor modes.
+    generalized over all tree generator purities and exploration modes.
  -}
 genericMain ::
     ( MonadIO result_monad
-    , ResultFor visitor_mode ~ result
-    , Serialize (ProgressFor visitor_mode)
+    , ResultFor exploration_mode ~ result
+    , Serialize (ProgressFor exploration_mode)
     ) ⇒
-    (tree_generator_configuration → VisitorMode visitor_mode)
-        {-^ constructs the visitor mode given the tree generator configuration;
+    (tree_generator_configuration → ExplorationMode exploration_mode)
+        {-^ constructs the exploration mode given the tree generator configuration;
             note that the constructor that this function returns is restricted
-            by the value of the visitor_mode type variable
+            by the value of the exploration_mode type variable
          -} →
     Purity m n {-^ the purity of the tree generator -} →
     Driver
@@ -705,7 +705,7 @@ genericMain ::
         (SharedConfiguration tree_generator_configuration)
         SupervisorConfiguration
         m n
-        visitor_mode
+        exploration_mode
         {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
@@ -713,7 +713,7 @@ genericMain ::
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcomeFor visitor_mode → IO ())
+    (tree_generator_configuration → RunOutcomeFor exploration_mode → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
             as the tree generator configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
@@ -721,10 +721,10 @@ genericMain ::
          -} →
     (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
     result_monad ()
-genericMain constructVisitorMode_ purity (Driver run) tree_generator_configuration_term program_info notifyTerminated_ constructTreeGenerator_ =
+genericMain constructExplorationMode_ purity (Driver run) tree_generator_configuration_term program_info notifyTerminated_ constructTreeGenerator_ =
     run DriverParameters{..}
   where
-    constructVisitorMode = constructVisitorMode_ . tree_generator_configuration
+    constructExplorationMode = constructExplorationMode_ . tree_generator_configuration
     shared_configuration_term = makeSharedConfigurationTerm tree_generator_configuration_term
     supervisor_configuration_term =
         SupervisorConfiguration
@@ -744,7 +744,7 @@ genericMain constructVisitorMode_ purity (Driver run) tree_generator_configurati
                     (noticeM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
                     (return initial_progress)
       where
-        initial_progress = initialProgress . constructVisitorMode $ shared_configuration
+        initial_progress = initialProgress . constructExplorationMode $ shared_configuration
     notifyTerminated SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} =
         do showStatistics statistics_configuration runStatistics
            notifyTerminated_ tree_generator_configuration run_outcome
@@ -846,7 +846,7 @@ makeSharedConfigurationTerm tree_generator_configuration_term =
 
 checkpointLoop ::
     ( RequestQueueMonad m
-    , Serialize (ProgressFor (VisitorModeFor m))
+    , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ CheckpointConfiguration → m α
 checkpointLoop CheckpointConfiguration{..} = forever $ do
     liftIO $ threadDelay delay
@@ -856,7 +856,7 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
 
 managerLoop ::
     ( RequestQueueMonad m
-    , Serialize (ProgressFor (VisitorModeFor m))
+    , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ SupervisorConfiguration → m ()
 managerLoop SupervisorConfiguration{..} = do
     maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration

@@ -246,11 +246,11 @@ Library
         Visitor.Examples.Queens.Advanced
         Visitor.Location
         Visitor.Parallel.BackEnd.Threads
+        Visitor.Parallel.Common.ExplorationMode
         Visitor.Parallel.Common.Message
         Visitor.Parallel.Common.Process
         Visitor.Parallel.Common.Supervisor
         Visitor.Parallel.Common.Supervisor.RequestQueue
-        Visitor.Parallel.Common.VisitorMode
         Visitor.Parallel.Common.Workgroup
         Visitor.Parallel.Common.Worker
         Visitor.Parallel.Main

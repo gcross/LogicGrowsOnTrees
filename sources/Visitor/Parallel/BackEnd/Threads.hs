@@ -93,8 +93,8 @@ import System.Log.Logger.TH
 import Visitor (TreeGenerator,TreeGeneratorIO,TreeGeneratorT)
 import Visitor.Checkpoint
 import Visitor.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
+import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Parallel.Common.Supervisor.RequestQueue
-import Visitor.Parallel.Common.VisitorMode
 import Visitor.Parallel.Common.Worker as Worker
     hiding
     (visitTree
@@ -122,14 +122,14 @@ deriveLoggers "Logger" [DEBUG]
     parallel workers (or just @+RTS -N@ to set the number of workers equal to
     the number of processors).
  -}
-driver :: Driver IO shared_configuration supervisor_configuration m n visitor_mode
+driver :: Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
     (shared_configuration,supervisor_configuration) ←
         mainParser (liftA2 (,) shared_configuration_term supervisor_configuration_term) program_info
     initializeGlobalState shared_configuration
     starting_progress ← getStartingProgress shared_configuration supervisor_configuration
     runVisitor
-        (constructVisitorMode shared_configuration)
+        (constructExplorationMode shared_configuration)
          purity
          starting_progress
         (constructTreeGenerator shared_configuration)
@@ -141,17 +141,17 @@ driver = Driver $ \DriverParameters{..} → do
 --------------------------------------------------------------------------------
 
 {-| This is the monad in which the thread controller will run. -}
-newtype ThreadsControllerMonad visitor_mode α =
-    C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor visitor_mode))) visitor_mode α
+newtype ThreadsControllerMonad exploration_mode α =
+    C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor exploration_mode))) exploration_mode α
       } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
 
-instance HasVisitorMode (ThreadsControllerMonad visitor_mode) where
-    type VisitorModeFor (ThreadsControllerMonad visitor_mode) = visitor_mode
+instance HasExplorationMode (ThreadsControllerMonad exploration_mode) where
+    type ExplorationModeFor (ThreadsControllerMonad exploration_mode) = exploration_mode
 
 {-| Changes the number of a parallel workers to equal the number of capabilities
     as reported by 'getNumCapabilities'.
  -}
-changeNumberOfWorkersToMatchCapabilities :: ThreadsControllerMonad visitor_mode ()
+changeNumberOfWorkersToMatchCapabilities :: ThreadsControllerMonad exploration_mode ()
 changeNumberOfWorkersToMatchCapabilities =
     liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
 
@@ -165,14 +165,14 @@ directly rather than using the framework provided in "Visitor.Parallel.Main".
 They are all specialized versions of 'runVisitor', which appears
 in the following section; they are provided for convenience --- specifically, to
 minimize the knowledge needed of the implementation and how the types specialize
-for the various visitor modes.
+for the various exploration modes.
 
 There are 3 × 2 × 4 = 24 functions in this section; the factor of 3 comes from
 the fact that there are three cases of monad in which the tree visitor is run:
 pure, IO, and impure (where IO is a special case of impure provided for
 convenience); the factor of 2 comes from the fact that one can either start with
 no progress or start with a given progress; the factor of 4 comes from the fact
-that there are four visitor modes: summing over all results, returning the first
+that there are four exploration modes: summing over all results, returning the first
 result, summing over all results until a criteria is met with intermediate
 results only being sent to the supervisor upon request, and the previous mode
 but with all intermediate results being sent immediately to the supervisor.
@@ -443,15 +443,15 @@ visitTreeTUntilFoundUsingPushStartingFrom f = runVisitor (FoundModeUsingPush f) 
     one of the specialized functions in the preceding section.
  -}
 runVisitor ::
-    VisitorMode visitor_mode {-^ the visitor mode -} →
+    ExplorationMode exploration_mode {-^ the exploration mode -} →
     Purity m n {-^ the purity of the tree generator -} →
-    (ProgressFor visitor_mode) {-^ the starting progress -} →
-    TreeGeneratorT m (ResultFor visitor_mode) {-^ the tree generator -} →
-    ThreadsControllerMonad visitor_mode () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
-    IO (RunOutcomeFor visitor_mode) {-^ the outcome of the run -}
-runVisitor visitor_mode purity starting_progress visitor (C controller) =
+    (ProgressFor exploration_mode) {-^ the starting progress -} →
+    TreeGeneratorT m (ResultFor exploration_mode) {-^ the tree generator -} →
+    ThreadsControllerMonad exploration_mode () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    IO (RunOutcomeFor exploration_mode) {-^ the outcome of the run -}
+runVisitor exploration_mode purity starting_progress visitor (C controller) =
     runWorkgroup
-        visitor_mode
+        exploration_mode
         mempty
         (\MessageForSupervisorReceivers{..} →
             let createWorker _ = return ()
@@ -496,7 +496,7 @@ runVisitor visitor_mode purity starting_progress visitor (C controller) =
                     >>
                     (liftIO $
                         forkWorkerThread
-                            visitor_mode
+                            exploration_mode
                             purity
                             (\termination_reason →
                                 case termination_reason of
@@ -509,7 +509,7 @@ runVisitor visitor_mode purity starting_progress visitor (C controller) =
                             )
                             visitor
                             workload
-                            (case visitor_mode of
+                            (case exploration_mode of
                                 AllMode → absurd
                                 FirstMode → absurd
                                 FoundModeUsingPull _ → absurd
