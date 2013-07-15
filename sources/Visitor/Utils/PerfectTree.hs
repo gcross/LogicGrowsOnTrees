@@ -5,11 +5,11 @@
 {-| This modules contains utility functions for constructing perfect trees for
     use in some of the tests and examples.
  -}
-module Visitor.Utils.Tree
+module Visitor.Utils.PerfectTree
     (
     -- * Tree generators
-      tree
-    , trivialTree
+      perfectTree
+    , trivialPerfectTree
     , numberOfLeaves
     -- * Arity and depth parameters
     , Arity(..)
@@ -103,28 +103,28 @@ formArityAndDepth (Arity arity) depth = ArityAndDepth{..}
 --------------------------------------------------------------------------------
 
 {-| Generate a perfectly balanced tree with the given leaf value, arity, and leaf. -}
-tree ::
+perfectTree ::
     MonadPlus m ⇒
     α {-^ the value to place at the leaves -} →
     Word {-^ the arity of the tree (i.e., number of branches) -} →
     Word {-^ the depth of the tree -} →
     m α {-^ the tree generator -}
-tree leaf arity depth
+perfectTree leaf arity depth
   | depth == 0 = return leaf
-  | arity > 0  = msum . genericReplicate arity $ tree leaf arity (depth-1)
+  | arity > 0  = msum . genericReplicate arity $ perfectTree leaf arity (depth-1)
   | otherwise  = error "arity must be a positive integer"
-{-# SPECIALIZE tree :: α → Word → Word → [α] #-}
-{-# SPECIALIZE tree :: α → Word → Word → TreeGenerator α #-}
+{-# SPECIALIZE perfectTree :: α → Word → Word → [α] #-}
+{-# SPECIALIZE perfectTree :: α → Word → Word → TreeGenerator α #-}
 
 {-| 'tree' with @WordSum 1@ at the leaves. -}
-trivialTree ::
+trivialPerfectTree ::
     MonadPlus m ⇒
     Word {-^ the arity of the tree (i.e., number of branches) -} →
     Word {-^ the depth of the tree -} →
     m WordSum {-^ the tree generator -}
-trivialTree = tree (WordSum 1)
-{-# SPECIALIZE trivialTree :: Word → Word → [WordSum] #-}
-{-# SPECIALIZE trivialTree :: Word → Word → TreeGenerator WordSum #-}
+trivialPerfectTree = perfectTree (WordSum 1)
+{-# SPECIALIZE trivialPerfectTree :: Word → Word → [WordSum] #-}
+{-# SPECIALIZE trivialPerfectTree :: Word → Word → TreeGenerator WordSum #-}
 
 {-| Computes the number of leaves in a tree.  It returns a value of type 'Word'
     so that it can be easily compared to the 'WordSum' value returned by the

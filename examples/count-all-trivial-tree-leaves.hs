@@ -10,7 +10,7 @@ import System.Console.CmdTheLine
 
 import Visitor.Parallel.Main
 import Visitor.Parallel.BackEnd.Threads
-import Visitor.Utils.Tree
+import Visitor.Utils.PerfectTree
 import Visitor.Utils.WordSum
 
 -- }}}
@@ -26,4 +26,4 @@ main =
                 Completed (WordSum count) → print count
                 Failure message → error $ "error: " ++ message
         )
-        (trivialTree <$> arity <*> depth)
+        (trivialPerfectTree <$> arity <*> depth)

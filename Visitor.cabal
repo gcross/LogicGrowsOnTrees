@@ -179,7 +179,7 @@ Description:         This package provides a distributed implementation of logic
                      .
                         ["Visitor.Utils.MonadPlusForest"] provides an algorithm for efficiently building up a tree from a sequence of leaves
                      .
-                        ["Visitor.Utils.Tree"] provides algorithms for generating various simple trees
+                        ["Visitor.Utils.PerfectTree"] provides algorithms for generating various simple trees
                      .
                         ["Visitor.Utils.WordSum"] a monoid that contains an 'Word' to be summed over
                      .
@@ -250,7 +250,7 @@ Library
         Visitor.Utils.Handle
         Visitor.Utils.IntSum
         Visitor.Utils.MonadPlusForest
-        Visitor.Utils.Tree
+        Visitor.Utils.PerfectTree
         Visitor.Utils.WordSum
         Visitor.Workload
     Other-modules:

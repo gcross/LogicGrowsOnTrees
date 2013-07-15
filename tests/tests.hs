@@ -89,7 +89,7 @@ import qualified Visitor.Parallel.Common.Workgroup as Workgroup
 import Visitor.Path
 import Visitor.Parallel.Common.Supervisor
 import Visitor.Parallel.Common.Supervisor.RequestQueue
-import Visitor.Utils.Tree
+import Visitor.Utils.PerfectTree
 import Visitor.Utils.WordSum
 import Visitor.Workload
 import qualified Visitor.Parallel.Common.Worker as Worker
@@ -1777,13 +1777,13 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Utils.Tree" -- {{{
-        [Small.testProperty "trivialTree" . Small.test $ -- {{{
+    ,testGroup "Visitor.Utils.PerfectTree" -- {{{
+        [Small.testProperty "trivialPerfectTree" . Small.test $ -- {{{
             (liftA2 . liftA2) (==>)
                 (\arity _ → arity >= 2)
                 ((liftA2 . liftA2) (==)
                     numberOfLeaves
-                    ((getWordSum . visitTree) .* trivialTree)
+                    ((getWordSum . visitTree) .* trivialPerfectTree)
                 )
          -- }}}
         ]
