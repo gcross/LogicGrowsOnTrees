@@ -39,7 +39,7 @@ Library
         process == 1.1.*,
         transformers >= 0.2 && < 0.4
     Exposed-modules:
-        Visitor.Parallel.BackEnd.Processes
+        Visitor.Parallel.Adapter.Processes
     Hs-source-dirs: sources
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing

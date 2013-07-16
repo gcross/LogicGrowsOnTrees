@@ -8,10 +8,10 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This back-end implements parallelism by spawning multiple processes.  The
+{-| This adapter implements parallelism by spawning multiple processes.  The
     number of processes can be changed during the run and even be set to zero.
  -}
-module Visitor.Parallel.BackEnd.Processes
+module Visitor.Parallel.Adapter.Processes
     (
     -- * Driver
       driver
@@ -88,7 +88,7 @@ deriveLoggers "Logger" [DEBUG,INFO,ERROR]
 ------------------------------------ Driver ------------------------------------
 --------------------------------------------------------------------------------
 
-{-| This is the driver for the threads back-end.  The number of workers is
+{-| This is the driver for the threads adapter.  The number of workers is
     specified via. the (required) command-line option "-n".
 
     Note that there are not seperate drivers for the supervisor process and the
@@ -261,7 +261,7 @@ runSupervisor
 
 {-| Visits the given tree using multiple processes to achieve parallelism.
 
-    This function grants access to all of the functionality of this back-end,
+    This function grants access to all of the functionality of this adapter,
     rather than having to go through the more restricted driver interface. The
     signature of this function is very complicated because it is meant to be
     used in both the supervisor and worker;  it figures out which role it is

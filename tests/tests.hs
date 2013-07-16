@@ -32,7 +32,7 @@ import Test.HUnit
 import qualified Visitor as V
 import Visitor.Checkpoint
 import Visitor.Examples.Queens
-import Visitor.Parallel.BackEnd.Processes
+import Visitor.Parallel.Adapter.Processes
 import Visitor.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
 import Visitor.Parallel.Common.Process (runWorkerUsingHandles)
 import Visitor.Parallel.Common.Worker(Purity(Pure))

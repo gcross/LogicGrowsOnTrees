@@ -8,7 +8,7 @@ import Data.Serialize (Serialize(..))
 import System.Console.CmdTheLine
 import System.Environment
 
-import Visitor.Parallel.BackEnd.Processes
+import Visitor.Parallel.Adapter.Processes
 import Visitor.Parallel.Main
 import Visitor.Utils.WordSum
 
