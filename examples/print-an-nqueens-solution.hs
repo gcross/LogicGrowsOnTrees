@@ -6,7 +6,7 @@ import System.Console.CmdTheLine
 
 import Visitor.Checkpoint (Progress(..))
 import Visitor.Parallel.Main
-import Visitor.Parallel.BackEnd.Threads
+import Visitor.Parallel.Adapter.Threads
 
 import Visitor.Examples.Queens
 

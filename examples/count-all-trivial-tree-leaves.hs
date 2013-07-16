@@ -9,7 +9,7 @@ import Control.Applicative
 import System.Console.CmdTheLine
 
 import Visitor.Parallel.Main
-import Visitor.Parallel.BackEnd.Threads
+import Visitor.Parallel.Adapter.Threads
 import Visitor.Utils.PerfectTree
 import Visitor.Utils.WordSum
 

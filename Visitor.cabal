@@ -82,29 +82,32 @@ Description:         You can think of this package in two equvalent ways. First,
                      often as you desire;  at any time the visiting can be
                      aborted and resumed later.
                      .
-                     Most likely, though, you will be interested in
-                     using the parallelization infrastructure rather than just
-                     the checkpointing infrastructure.  The parallelization
+                     Most likely, though, you will be interested in using the
+                     parallelization infrastructure rather than just the
+                     checkpointing infrastructure. The parallelization
                      infrastructure uses a supervisor/worker model, and is
                      designed such that the logic used to keep track of the
                      workers and the current progress is abstracted away into
-                     the "Visitor.Parallel.Common.Supervisor" module which can
-                     be re-used for various "back-ends" such as threads,
-                     processes, network, and MPI, all but the first of which are
-                     provided in separate packages.  Parallelization is obtained
-                     via. stealing a workload from a worker;  specifically, a
-                     selected worker will look back at the (non-frozen) choices
-                     it has made so far, pick the first one, freeze it (so that
-                     it won't backtrack and try the other branch), and then hand
-                     the other branch to the supervisor which will then give it
-                     to a waiting worker.
+                     the "Visitor.Parallel.Common.Supervisor" module; one then
+                     uses one of the provided adapters (or possibly your own) to
+                     connect the abstract model to a particular means of running
+                     multiple computations in parallel, such as multiple
+                     threads, multiple processes on the same machine, multiple
+                     processes on a network, and MPI, all but the first of which
+                     are provided in their own packages. Parallelization is
+                     obtained via. stealing workloads from workers;
+                     specifically, a selected worker will look back at the
+                     (non-frozen) choices it has made so far, pick the first
+                     one, freeze it (so that it won't backtrack and try the
+                     other branch), and then hand the other branch to the
+                     supervisor which will then give it to a waiting worker.
                      .
                      To use the parallelization infrastructure, you have two
-                     choices.  First, you can opt to use the back-end directly;
-                     the visiting functions provided by the back-end are
+                     choices.  First, you can opt to use the adapter directly;
+                     the visiting functions provided by the adapter are
                      relatively simple (compared to the alternative to be
                      discussed in a moment) and they furthermore give you
-                     maximum control over the back-end, but the downside is that
+                     maximum control over the adapter, but the downside is that
                      you will have to re-implement features such as regular
                      checkpointing and forwarding information from the command
                      line to the workers yourself.  Second, you can use the
@@ -114,13 +117,13 @@ Description:         You can think of this package in two equvalent ways. First,
                      how many workers (if applicable) to start up, offering the
                      user a command line option to specify whether, where and
                      how often to checkpoint, etc.;  furthermore, this
-                     infrastructure is completely back-end independent, which
-                     means that when switching from one back-end to another
+                     infrastructure is completely adapter independent, which
+                     means that when switching from one adapter to another
                      all you have to do is change one of the arguments in your
                      call to the main function you are using in
                      "Visitor.Parallel.Main".  The downside is that the call to
                      use this functionality is a bit more complex than the call
-                     to use a particular back-end precisely because of its
+                     to use a particular adapter precisely because of its
                      generality.
                      .
                      If you want to see examples of using the
@@ -128,15 +131,14 @@ Description:         You can think of this package in two equvalent ways. First,
                      executables in the examples/ subdirectory of the source
                      distribution.
                      .
-                     If you are interested in writing a new back-end, then there
-                     are a couple of possibilities.  First, if your back-end
+                     If you are interested in writing a new adapter, then you have couple of options.  First, if your adapter
                      can spawn and destroy workers on demand, then you should
                      look at the "Visitor.Parallel.Common.Workgroup" module as
                      it has infrastructure designed for this case;  look at
-                     "Visitor.Parallel.BackEnd.Threads" for an example of
-                     using it.  Second, if your back-end does not meet this
+                     "Visitor.Parallel.Adapter.Threads" for an example of
+                     using it.  Second, if your adapter does not meet this
                      criteria, then you should look at the
-                     "Visitor.Parallel.Common.Supervisor" module;  your back-end
+                     "Visitor.Parallel.Common.Supervisor" module;  your adapter
                      will need to run within the 'SupervisorMonad', with its
                      own state contained in its own monad below
                      'SupervisorMonad' monad in the stack;  for an example,
@@ -161,7 +163,7 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["Visitor.Location"] infrastructure for when you want your tree generator to have knowledge of its current location within the tree
                      .
-                        ["Visitor.Parallel.BackEnd.Threads"] the threads back-end
+                        ["Visitor.Parallel.Adapter.Threads"] the threads adapter
                      .
                         ["Visitor.Parallel.Common.Message"] common infrastructure for exchanging messages between worker and supervisor
                      .
@@ -177,7 +179,7 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["Visitor.Parallel.Common.Workgroup"] common infrastructure for the case where workers can be added and removed from the system on demand
                      .
-                        ["Visitor.Parallel.Main"] a unified interface to the various back-ends that automates much of the process such as processing the command, forwarding the needed information to the workers, and performing regular checkpointing if requested via. a command line argument
+                        ["Visitor.Parallel.Main"] a unified interface to the various adapters that automates much of the process such as processing the command, forwarding the needed information to the workers, and performing regular checkpointing if requested via. a command line argument
                      .
                         ["Visitor.Path"] infrastructure for working with paths trough the search tree
                      .
@@ -245,7 +247,7 @@ Library
         Visitor.Examples.Queens
         Visitor.Examples.Queens.Advanced
         Visitor.Location
-        Visitor.Parallel.BackEnd.Threads
+        Visitor.Parallel.Adapter.Threads
         Visitor.Parallel.Common.ExplorationMode
         Visitor.Parallel.Common.Message
         Visitor.Parallel.Common.Process

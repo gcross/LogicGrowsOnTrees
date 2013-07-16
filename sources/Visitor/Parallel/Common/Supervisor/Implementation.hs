@@ -299,7 +299,7 @@ $( makeLenses ''StepFunctionOfTime )
 -- }}}
 
 {-| Supervisor callbacks provide the means by which the supervisor logic
-    communicates to the back-end, usually in order to tell it what it wants to
+    communicates to the adapter, usually in order to tell it what it wants to
     say to various workers.
  -}
 data SupervisorCallbacks exploration_mode worker_id m = -- {{{
@@ -313,7 +313,7 @@ data SupervisorCallbacks exploration_mode worker_id m = -- {{{
          -}
         broadcastWorkloadStealToWorkers :: [worker_id] → m ()
     ,   {-| This callback is used by the supervisor to signal that the global
-            progress update that was earlier requested by the back-end has
+            progress update that was earlier requested by the adapter has
             finished, with the current progress given as the argument.
          -}
         receiveCurrentProgress :: ProgressFor exploration_mode → m ()

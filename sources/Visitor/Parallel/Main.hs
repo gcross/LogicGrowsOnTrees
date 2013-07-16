@@ -16,7 +16,7 @@
     function that corresponds to the kind of tree generator, and then provide
     the following:
 
-    1. a driver provided by the back-end you want to use;
+    1. a driver provided by the adapter you want to use;
 
     2. optional command line arguments that the user can use to specify the tree
        being generated;
@@ -38,11 +38,11 @@
     checkpoint file should be created (an will resume from an existing
     checkpoint file if it exists) as well as what supervisor statistics (if any)
     should be printed to the screen at the end, and it also provides options for
-    the current back-end that specify things like the number of workers to
+    the current adapter that specify things like the number of workers to
     create. Your command line options, if any, will be merged in with the rest
     and will be displayed if the user requests help with how to use the program.
 
-    All of this functionality is back-end independent, so if you want to use a
+    All of this functionality is adapter independent, so if you want to use a
     different back end you only need to change the driver argument.
  -}
 module Visitor.Parallel.Main
@@ -186,7 +186,7 @@ $( derive makeSerialize ''SharedConfiguration )
 
 --------------------------------- Driver types ---------------------------------
 
-{-| The 'Driver' is the core type that abstracts the various back-ends behind a
+{-| The 'Driver' is the core type that abstracts the various adapters behind a
     common interface that can be invoked by the main functions; it specifies a
     function that is called to start the run with a set of parameters specified
     in 'DriverParameters'.
@@ -294,7 +294,7 @@ instance ArgVal Priority where
 The functions in this section all provide a main function that starts up the
 system that visits a tree in parallel using the given tree generator
 (constructed possibly using information supplied on the command line) and the
-given back-end provided via the driver argument.
+given adapter provided via the driver argument.
 
 All of the functionaliy of this module can be accessed through 'genericMain',
 but we nonethless also provide specialized versions of these functions for all
@@ -325,7 +325,7 @@ in (the leaves of) the tree.
  -}
 mainForVisitTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -347,7 +347,7 @@ mainForVisitTree = genericMain (const AllMode) Pure
  -}
 mainForVisitTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -370,7 +370,7 @@ mainForVisitTreeIO = genericMain (const AllMode) io_purity
 mainForVisitTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -409,7 +409,7 @@ There are two ways in which a system running in this mode can terminate normally
  -}
 mainForVisitTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -431,7 +431,7 @@ mainForVisitTreeUntilFirst = genericMain (const FirstMode) Pure
  -}
 mainForVisitTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -454,7 +454,7 @@ mainForVisitTreeIOUntilFirst = genericMain (const FirstMode) io_purity
 mainForVisitTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -523,7 +523,7 @@ WARNING:  If you use this mode then you need to enable checkpointing when the
 mainForVisitTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -546,7 +546,7 @@ mainForVisitTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeU
 mainForVisitTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -570,7 +570,7 @@ mainForVisitTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPull result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -620,7 +620,7 @@ the position of only having a partial result upon success.)
 mainForVisitTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -643,7 +643,7 @@ mainForVisitTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeU
 mainForVisitTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -667,7 +667,7 @@ mainForVisitTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPush result final_result) {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:
@@ -706,7 +706,7 @@ genericMain ::
         SupervisorConfiguration
         m n
         exploration_mode
-        {-^ the driver for the desired back-end (note that all drivers can be specialized to this type) -} →
+        {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
     TermInfo
         {-^ information about the program; should look something like the following:

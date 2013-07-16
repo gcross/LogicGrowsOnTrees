@@ -6,15 +6,15 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This back-end implements parallelism by spawning multiple threads.  The
+{-| This adapter implements parallelism by spawning multiple threads.  The
     number of threads can be changed during the run and even be set to zero.
 
-    The driver provided by this back-end sets the number of threads equal to the
+    The driver provided by this adapter sets the number of threads equal to the
     number of capabilities as reported by 'getNumCapabilities';  that is, if you
     want @#@ parallel workers, then you need to pass @+RTS -N#@ as command-line
     arguments to tell the runtime that you want it to run @#@ threads in parallel.
  -}
-module Visitor.Parallel.BackEnd.Threads
+module Visitor.Parallel.Adapter.Threads
     (
     -- * Driver
       driver
@@ -116,7 +116,7 @@ deriveLoggers "Logger" [DEBUG]
 ------------------------------------ Driver ------------------------------------
 --------------------------------------------------------------------------------
 
-{-| This is the driver for the threads back-end.  The number of workers is set
+{-| This is the driver for the threads adapter.  The number of workers is set
     to be equal to the number of runtime capabilities, which you set by using
     the @-N@ option for the RTS --- i.e., by specifying @+RTS -N#@ for @#@
     parallel workers (or just @+RTS -N@ to set the number of workers equal to
@@ -160,7 +160,7 @@ changeNumberOfWorkersToMatchCapabilities =
 --------------------------------------------------------------------------------
 
 {- $visit
-The functions in this section are provided as a way to use the threads back-end
+The functions in this section are provided as a way to use the threads adapter
 directly rather than using the framework provided in "Visitor.Parallel.Main".
 They are all specialized versions of 'runVisitor', which appears
 in the following section; they are provided for convenience --- specifically, to
@@ -437,7 +437,7 @@ visitTreeTUntilFoundUsingPushStartingFrom f = runVisitor (FoundModeUsingPush f) 
 
 {-| Visits the given tree using multiple threads to achieve parallelism.
 
-    This function grants access to all of the functionality of this back-end,
+    This function grants access to all of the functionality of this adapter,
     but because its generality complicates its use (primarily the fact that the
     types are dependent on the first parameter) you may find it easier to use
     one of the specialized functions in the preceding section.

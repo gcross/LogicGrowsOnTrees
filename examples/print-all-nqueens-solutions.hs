@@ -7,7 +7,7 @@ import Data.List (sort)
 import qualified Data.Sequence as Seq
 
 import Visitor.Parallel.Main
-import Visitor.Parallel.BackEnd.Threads
+import Visitor.Parallel.Adapter.Threads
 
 import Visitor.Examples.Queens
 

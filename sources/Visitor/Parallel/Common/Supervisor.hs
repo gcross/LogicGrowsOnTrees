@@ -14,7 +14,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 
-{-| The Supervisor module contains logic that is common to all of the back-ends
+{-| The Supervisor module contains logic that is common to all of the adapters
     for the parallization infrastructure. The way to use it is to build the
     logic for communicating with your workers into a 'SupervisorProgram' that
     runs in the 'SupervisorMonad' with your state just below the
@@ -186,7 +186,7 @@ data SupervisorProgram exploration_mode worker_id m =
         note that it must run forever until the logic in the 'SupervisorModule'
         decides to exit --- although you can always force it to abort by calling
         'abortSupervisor'.  This mode exists for testing rather than to be used
-        by a back-end, but if you do use it then you take on responsibility for
+        by an adapter, but if you do use it then you take on responsibility for
         calling 'beginSupervisorOccupied' and 'endSupervisorOccupied' when
         respectively the supervisor has begun and ended processing an event so
         that the supervisor occupation statistics are correct.
@@ -401,7 +401,7 @@ enableSupervisorDebugMode = setSupervisorDebugMode True
 
 {-| Sets whether the supervisor is in debug mode;  when it is in this mode it
     performs continuous self-consistency checks.  This mode is intended for
-    assisting in debugging new back-ends.
+    assisting in debugging new adapters.
  -}
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad exploration_mode worker_id m ()
 setSupervisorDebugMode = wrapIntoSupervisorMonad . Implementation.setSupervisorDebugMode

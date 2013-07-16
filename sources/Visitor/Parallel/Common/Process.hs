@@ -7,14 +7,14 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| This module contains functions that let one easily implement the worker side
-    of a back-end under the assumption that the worker uses a two-way
+    of an adapter under the assumption that the worker uses a two-way
     communication channel with the supervisor for sending and receiving
-    messages.  (Examples of when this is NOT the case is the threads back-end,
+    messages.  (Examples of when this is NOT the case is the threads adapter,
     where you can communicate with the worker threads directly, and the MPI
-    back-end, which has communication primitives that don't quite align with
+    adapter, which has communication primitives that don't quite align with
     this setup.)
 
-    Note:  This module is used by the processes and network back-end, which are
+    Note:  This module is used by the processes and network adapters, which are
            provided in separate packages.
  -}
 module Visitor.Parallel.Common.Process

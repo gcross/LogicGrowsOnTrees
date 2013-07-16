@@ -83,7 +83,7 @@ import Visitor
 import Visitor.Checkpoint
 import Visitor.Location
 import Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
-import qualified Visitor.Parallel.BackEnd.Threads as Threads
+import qualified Visitor.Parallel.Adapter.Threads as Threads
 import Visitor.Parallel.Common.ExplorationMode
 import qualified Visitor.Parallel.Common.Workgroup as Workgroup
 import Visitor.Path
@@ -848,7 +848,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Parallel.BackEnd.Threads" $ -- {{{
+    ,testGroup "Visitor.Parallel.Adapter.Threads" $ -- {{{
         [testGroup "FirstMode" -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←

@@ -9,16 +9,16 @@
 {-| To understand the purpose of this module, it helps to know that during the
     global visiting process there will be two main loops running in the
     supervisor. The first loop runs inside the 'SupervisorMonad' and is usually
-    taken over by the back-end, which handles the communication between the
+    taken over by the adapter, which handles the communication between the
     supervisors and the workers. The second loop (usually referred to as the
-    /controller/) is intended for the user of the back-end to be able to submit
+    /controller/) is intended for the user of the adapter to be able to submit
     requests such as a global progress update to the supervisor, or possibly
-    back-end-specific requests (such as changing the number of workers).
+    adapter-specific requests (such as changing the number of workers).
 
     With this in mind, the purpose of this module is to create infrastructure
     for the second loop (the controller) to submit requests to the first loop.
-    It provides this functionality through a class so that specific back-ends
-    can extend this to provide requests specific to that back-end (such as
+    It provides this functionality through a class so that specific adapters
+    can extend this to provide requests specific to that adapter (such as
     changing the number of workers).
  -}
 module Visitor.Parallel.Common.Supervisor.RequestQueue
@@ -73,7 +73,7 @@ import Visitor.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMo
 --------------------------------- Type-classes ---------------------------------
 --------------------------------------------------------------------------------
 
-{-| This class provides a set of supervisor requests common to all back-ends. -}
+{-| This class provides a set of supervisor requests common to all adapters. -}
 class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()

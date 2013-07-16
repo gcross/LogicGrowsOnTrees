@@ -6,7 +6,7 @@
 {-| This module contains infrastructure for communicating with workers over an
     inter-process channel.
 
-    Note:  This module is used by the processes and network back-end, which are
+    Note:  This module is used by the processes and network adapter, which are
            provided in separate packages.
  -}
 module Visitor.Parallel.Common.Message

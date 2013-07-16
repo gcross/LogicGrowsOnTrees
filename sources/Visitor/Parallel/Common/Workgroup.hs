@@ -8,7 +8,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| This module provides most of the common functionality needed to implement a
-    back-end where the number of workers can be adjusted during the run.
+    adapter where the number of workers can be adjusted during the run.
  -}
 module Visitor.Parallel.Common.Workgroup
     (
@@ -91,7 +91,7 @@ type WorkerId = Int
 
 type RemovalPriority = Word64
 
-{-| This is the monad in which the back-end specific code is run. -}
+{-| This is the monad in which the adapter specific code is run. -}
 type InnerMonad inner_state = StateT inner_state IO
 
 {-| A set of callbacks invoked by the supervisor code in this module. -}
@@ -160,16 +160,16 @@ changeNumberOfWorkers ::
 changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 
 {-| Visits a tree using a workgroup;  this function is only intended to be uesd
-    by back-ends where the number of workers can be changed on demand.
+    by adapters where the number of workers can be changed on demand.
  -}
 runWorkgroup ::
     ExplorationMode exploration_mode {-^ the mode in which we are visiting the tree -} →
-    inner_state {-^ the initial back-end specific state of the inner monad -} →
+    inner_state {-^ the initial adapter specific state of the inner monad -} →
     (MessageForSupervisorReceivers exploration_mode WorkerId → WorkgroupCallbacks inner_state)
         {-^ This function constructs a set of callbacks to be used by the
             supervisor loop in this function to do things like creating and
             destroying workers;  it is given a set of callbacks that allows the
-            back-end specific code to signal conditions to the supervisor.
+            adapter specific code to signal conditions to the supervisor.
          -} →
     ProgressFor exploration_mode {-^ the initial progress of the visit -} →
     WorkgroupControllerMonad inner_state exploration_mode () {-^ the controller, which is at the very least responsible for deciding how many workers should be initially created -} →

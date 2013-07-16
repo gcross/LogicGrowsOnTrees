@@ -3,7 +3,7 @@
 import System.Console.CmdTheLine
 
 import Visitor.Parallel.Main
-import Visitor.Parallel.BackEnd.Threads
+import Visitor.Parallel.Adapter.Threads
 import Visitor.Utils.WordSum
 
 import Visitor.Examples.Queens
