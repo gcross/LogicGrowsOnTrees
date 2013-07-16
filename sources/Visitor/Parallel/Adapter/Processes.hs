@@ -65,7 +65,7 @@ import System.Log.Logger (Priority(DEBUG,INFO,ERROR))
 import System.Log.Logger.TH
 import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),ProcessHandle,createProcess,interruptProcessGroupOf)
 
-import Visitor (TreeGenerator,TreeGeneratorIO,TreeGeneratorT)
+import Visitor (Tree,TreeIO,TreeT)
 import Visitor.Checkpoint
 import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Parallel.Common.Message
@@ -108,7 +108,7 @@ driver = Driver $ \DriverParameters{..} → do
         purity
         (mainParser (liftA2 (,) shared_configuration_term (liftA2 (,) number_of_processes_term supervisor_configuration_term)) program_info)
         initializeGlobalState
-        constructTreeGenerator
+        constructTree
         (curry $ uncurry getStartingProgress . second snd)
         (\shared_configuration (number_of_processes,supervisor_configuration) → do
             changeNumberOfWorkers (const $ return number_of_processes)
@@ -281,10 +281,10 @@ runVisitor ::
     , Serialize (WorkerFinalProgressFor exploration_mode)
     ) ⇒
     (shared_configuration → ExplorationMode exploration_mode) {-^ construct the exploration mode given the shared configuration -} →
-    Purity m n {-^ the purity of the tree generator -} →
+    Purity m n {-^ the purity of the tree -} →
     IO (shared_configuration,supervisor_configuration) {-^ get the shared and supervisor-specific configuration information (run only on the supervisor) -} →
     (shared_configuration → IO ()) {-^ initialize the global state of the process given the shared configuration (run on both supervisor and worker processes) -} →
-    (shared_configuration → TreeGeneratorT m (ResultFor exploration_mode)) {-^ construct the tree generator from the shared configuration (run only on the worker) -} →
+    (shared_configuration → TreeT m (ResultFor exploration_mode)) {-^ construct the tree from the shared configuration (run only on the worker) -} →
     (shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)) {-^ get the starting progress given the full configuration information (run only on the supervisor) -} →
     (shared_configuration → supervisor_configuration → ProcessesControllerMonad exploration_mode ()) {-^ construct the controller for the supervisor, which must at least set the number of workers to be non-zero (run only on the supervisor) -} →
     IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor exploration_mode))
@@ -297,7 +297,7 @@ runVisitor
     purity
     getConfiguration
     initializeGlobalState
-    constructTreeGenerator
+    constructTree
     getStartingProgress
     constructManager
   = getArgs >>= \args →
@@ -308,7 +308,7 @@ runVisitor
             runWorkerUsingHandles
                 (constructExplorationMode shared_configuration)
                 purity
-                (constructTreeGenerator shared_configuration)
+                (constructTree shared_configuration)
                 stdin
                 stdout
             return Nothing
