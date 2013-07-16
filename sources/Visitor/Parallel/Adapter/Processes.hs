@@ -30,7 +30,7 @@ module Visitor.Parallel.Adapter.Processes
     -- * Generic runner functions
     -- $runners
     , runSupervisor
-    , runVisitor
+    , runExplorer
     -- * Utility functions
     , getProgFilepath
     ) where
@@ -72,7 +72,7 @@ import Visitor.Parallel.Common.Message
 import qualified Visitor.Parallel.Common.Process as Process
 import Visitor.Parallel.Common.Process
 import Visitor.Parallel.Common.Supervisor.RequestQueue
-import Visitor.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,visitTree,visitTreeIO,visitTreeT)
+import Visitor.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,exploreTree,exploreTreeIO,exploreTreeT)
 import Visitor.Parallel.Common.Workgroup hiding (C,unwrapC)
 import Visitor.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
 import Visitor.Utils.Handle
@@ -103,7 +103,7 @@ driver ::
     ) ⇒
     Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
-    runVisitor
+    runExplorer
         constructExplorationMode
         purity
         (mainParser (liftA2 (,) shared_configuration_term (liftA2 (,) number_of_processes_term supervisor_configuration_term)) program_info)
@@ -150,7 +150,7 @@ solve this problem in order to give yourself more control (such as by having
 separate supervisor and worker executables) at the price of more work.
 
 If you want to use a single executable with automated handling of the
-supervisor and worker roles, then use 'runVisitor'.  Otherwise, use
+supervisor and worker roles, then use 'runExplorer'.  Otherwise, use
 'runSupervisor' to run the supervisor loop and on each worker use
 'runWorkerUsingHandles', passing 'stdin' and 'stdout' as the process handles.
  -}
@@ -275,7 +275,7 @@ runSupervisor
     configuration information, and most of the arguments are functions that are
     given all or part of this information.
  -}
-runVisitor ::
+runExplorer ::
     ( Serialize shared_configuration
     , Serialize (ProgressFor exploration_mode)
     , Serialize (WorkerFinalProgressFor exploration_mode)
@@ -292,7 +292,7 @@ runVisitor ::
             run as well as the configuration information wrapped in 'Just';
             otherwise, if this process is a worker, it returns 'Nothing'
          -}
-runVisitor
+runExplorer
     constructExplorationMode
     purity
     getConfiguration
@@ -327,7 +327,7 @@ runVisitor
                     (constructManager shared_configuration supervisor_configuration)
             return $ Just (configuration,termination_result)
   where
-    sentinel = ["visitor","worker","bee"]
+    sentinel = ["explorer","worker","bee"]
 
 --------------------------------------------------------------------------------
 ------------------------------- Utility funtions -------------------------------

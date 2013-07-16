@@ -88,7 +88,7 @@ tests = -- {{{
   where
     runTest generateNoise = do
         let n = 15
-            visitor = nqueensCount n
+            tree = nqueensCount n
         progresses_ref ← newIORef []
         filepath ← getProgFilepath
         RunOutcome _ termination_reason ←
@@ -103,11 +103,11 @@ tests = -- {{{
             Aborted _ → error "prematurely aborted"
             Completed result → return result
             Failure message → error message
-        let correct_result = V.visitTree visitor
+        let correct_result = V.exploreTree tree
         result @?= correct_result
         progresses ← remdups <$> readIORef progresses_ref
         replicateM_ 4 $ randomRIO (0,length progresses-1) >>= \i → do
             let Progress checkpoint result = progresses !! i
-            result @=? visitTreeStartingFromCheckpoint (invertCheckpoint checkpoint) visitor
-            correct_result @=? result <> (visitTreeStartingFromCheckpoint checkpoint visitor)
+            result @=? exploreTreeStartingFromCheckpoint (invertCheckpoint checkpoint) tree
+            correct_result @=? result <> (exploreTreeStartingFromCheckpoint checkpoint tree)
 -- }}}
