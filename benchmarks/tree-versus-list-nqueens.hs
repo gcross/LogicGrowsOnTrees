@@ -16,8 +16,8 @@ import Visitor.Parallel.Common.Worker (Purity(Pure),visitTreeGeneric)
 
 main = defaultMain
     [bench "list of Sum" $ nf (getWordSum . mconcat . nqueensCount) n
-    ,bench "tree generator" $ nf (getWordSum . visitTree . nqueensCount) n
-    ,bench "tree generator w/ checkpointing" $ nf (getWordSum . visitTreeStartingFromCheckpoint Unexplored . nqueensCount) n
-    ,bench "tree generator using worker" $ visitTreeGeneric AllMode Pure (nqueensCount n)
+    ,bench "tree" $ nf (getWordSum . visitTree . nqueensCount) n
+    ,bench "tree w/ checkpointing" $ nf (getWordSum . visitTreeStartingFromCheckpoint Unexplored . nqueensCount) n
+    ,bench "tree using worker" $ visitTreeGeneric AllMode Pure (nqueensCount n)
     ]
   where n = 13

@@ -14,9 +14,9 @@ module Visitor.Location
     , Location(..)
     , Solution(..)
     , LocatableT(..)
-    , LocatableTreeGenerator(..)
-    , LocatableTreeGeneratorIO(..)
-    , LocatableTreeGeneratorT(..)
+    , LocatableTree(..)
+    , LocatableTreeIO(..)
+    , LocatableTreeT(..)
     -- * Utility functions
     , applyCheckpointCursorToLocation
     , applyContextToLocation
@@ -27,13 +27,13 @@ module Visitor.Location
     , labelFromPath
     , leftBranchOf
     , locationTransformerForBranchChoice
-    , normalizeLocatableTreeGenerator
-    , normalizeLocatableTreeGeneratorT
+    , normalizeLocatableTree
+    , normalizeLocatableTreeT
     , rightBranchOf
     , rootLocation
     , runLocatableT
-    , sendTreeGeneratorDownLocation
-    , sendTreeGeneratorTDownLocation
+    , sendTreeDownLocation
+    , sendTreeTDownLocation
     , solutionsToMap
     -- * Visitor functions
     , visitLocatableTree
@@ -160,24 +160,24 @@ instance MonadPlus m ⇒ Monoid (LocatableT m α) where
     mempty = mzero
     mappend = mplus
 
-{-| A 'TreeGenerator' augmented with the ability to get the current location -}
-type LocatableTreeGenerator = LocatableTreeGeneratorT Identity
+{-| A 'Tree' augmented with the ability to get the current location -}
+type LocatableTree = LocatableTreeT Identity
 
-{-| Like 'LocatableTreeGenerator', but running in the IO monad. -}
-type LocatableTreeGeneratorIO = LocatableTreeGeneratorT IO
+{-| Like 'LocatableTree', but running in the IO monad. -}
+type LocatableTreeIO = LocatableTreeT IO
 
-{-| Like 'LocatableTreeGenerator', but running in an arbitrary monad. -}
-newtype LocatableTreeGeneratorT m α = LocatableTreeGeneratorT { unwrapLocatableTreeGeneratorT :: LocatableT (TreeGeneratorT m) α }
+{-| Like 'LocatableTree', but running in an arbitrary monad. -}
+newtype LocatableTreeT m α = LocatableTreeT { unwrapLocatableTreeT :: LocatableT (TreeT m) α }
     deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLocatable,MonadPlus,Monoid)
 
-instance MonadTrans LocatableTreeGeneratorT where
-    lift = LocatableTreeGeneratorT . lift . lift
+instance MonadTrans LocatableTreeT where
+    lift = LocatableTreeT . lift . lift
 
-instance Monad m ⇒ MonadVisitableTrans (LocatableTreeGeneratorT m) where
-    type NestedMonadInVisitor (LocatableTreeGeneratorT m) = m
-    runAndCache = LocatableTreeGeneratorT . runAndCache
-    runAndCacheGuard = LocatableTreeGeneratorT . runAndCacheGuard
-    runAndCacheMaybe = LocatableTreeGeneratorT . runAndCacheMaybe
+instance Monad m ⇒ MonadVisitableTrans (LocatableTreeT m) where
+    type NestedMonadInVisitor (LocatableTreeT m) = m
+    runAndCache = LocatableTreeT . runAndCache
+    runAndCacheGuard = LocatableTreeT . runAndCacheGuard
+    runAndCacheMaybe = LocatableTreeT . runAndCacheMaybe
 
 --------------------------------------------------------------------------------
 ---------------------------------- Functions -----------------------------------
@@ -268,13 +268,13 @@ locationTransformerForBranchChoice :: BranchChoice → (Location → Location)
 locationTransformerForBranchChoice LeftBranch = leftBranchOf
 locationTransformerForBranchChoice RightBranch = rightBranchOf
 
-{-| Converts a 'LocatableTreeGenerator' to a 'TreeGenerator'. -}
-normalizeLocatableTreeGenerator :: LocatableTreeGenerator α → TreeGenerator α
-normalizeLocatableTreeGenerator = runLocatableT . unwrapLocatableTreeGeneratorT
+{-| Converts a 'LocatableTree' to a 'Tree'. -}
+normalizeLocatableTree :: LocatableTree α → Tree α
+normalizeLocatableTree = runLocatableT . unwrapLocatableTreeT
 
-{-| Converts a 'LocatableTreeGeneratorT' to a 'TreeGeneratorT'. -}
-normalizeLocatableTreeGeneratorT :: LocatableTreeGeneratorT m α → TreeGeneratorT m α
-normalizeLocatableTreeGeneratorT = runLocatableT . unwrapLocatableTreeGeneratorT
+{-| Converts a 'LocatableTreeT' to a 'TreeT'. -}
+normalizeLocatableTreeT :: LocatableTreeT m α → TreeT m α
+normalizeLocatableTreeT = runLocatableT . unwrapLocatableTreeT
 
 {-| Returns the 'Location' at the right branch of the given location. -}
 rightBranchOf :: Location → Location
@@ -288,34 +288,34 @@ rootLocation = Location root
 runLocatableT :: LocatableT m α → m α
 runLocatableT = flip runReaderT rootLocation . unwrapLocatableT
 
-{-| Guides a 'TreeGenerator' guiding it to the subtree at the given 'Location'.
-    This function is analagous to 'Visitor.Path.sendTreeGeneratorDownPath', and
+{-| Guides a 'Tree' guiding it to the subtree at the given 'Location'.
+    This function is analagous to 'Visitor.Path.sendTreeDownPath', and
     shares the same caveats.
  -}
-sendTreeGeneratorDownLocation :: Location → TreeGenerator α → TreeGenerator α
-sendTreeGeneratorDownLocation label = runIdentity . sendTreeGeneratorTDownLocation label
+sendTreeDownLocation :: Location → Tree α → Tree α
+sendTreeDownLocation label = runIdentity . sendTreeTDownLocation label
 
-{-| Like 'sendTreeGeneratorDownLocation', but for impure tree generators. -}
-sendTreeGeneratorTDownLocation :: Monad m ⇒ Location → TreeGeneratorT m α → m (TreeGeneratorT m α)
-sendTreeGeneratorTDownLocation (Location label) = go root
+{-| Like 'sendTreeDownLocation', but for impure trees. -}
+sendTreeTDownLocation :: Monad m ⇒ Location → TreeT m α → m (TreeT m α)
+sendTreeTDownLocation (Location label) = go root
   where
     go parent visitor
       | parent == label = return visitor
       | otherwise =
-          (viewT . unwrapTreeGeneratorT) visitor >>= \view → case view of
+          (viewT . unwrapTreeT) visitor >>= \view → case view of
             Return _ → throw VisitorTerminatedBeforeEndOfWalk
             Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
-            Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . TreeGeneratorT . k)
+            Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . TreeT . k)
             Choice left right :>>= k →
                 if parent > label
                 then
                     go
                         (fromJust . leftChild $ parent)
-                        (left >>= TreeGeneratorT . k)
+                        (left >>= TreeT . k)
                 else
                     go
                         (fromJust . rightChild $ parent)
-                        (right >>= TreeGeneratorT . k)
+                        (right >>= TreeT . k)
 
 {-| Converts a list (or other 'Foldable') of solutions to a 'Map' from
     'Location's to results.
@@ -325,30 +325,30 @@ solutionsToMap = Fold.foldl' (flip $ \(Solution label solution) → Map.insert l
 
 ------------------------------ Visitor functions -------------------------------
 
-{-| Visit all the nodes in a tree generated by a LocatableTreeGenerator and sum
-    over all the results in the leaves.
+{-| Visit all the nodes in a LocatableTree and sum over all the results in the
+    leaves.
  -}
-visitLocatableTree :: Monoid α ⇒ LocatableTreeGenerator α → α
-visitLocatableTree = visitTree . runLocatableT . unwrapLocatableTreeGeneratorT
+visitLocatableTree :: Monoid α ⇒ LocatableTree α → α
+visitLocatableTree = visitTree . runLocatableT . unwrapLocatableTreeT
 
-{-| Same as 'visitLocatableTree', but for an impurely generated tree. -}
-visitLocatableTreeT :: (Monoid α,Monad m) ⇒ LocatableTreeGeneratorT m α → m α
-visitLocatableTreeT = visitTreeT . runLocatableT . unwrapLocatableTreeGeneratorT
+{-| Same as 'visitLocatableTree', but for an impure tree. -}
+visitLocatableTreeT :: (Monoid α,Monad m) ⇒ LocatableTreeT m α → m α
+visitLocatableTreeT = visitTreeT . runLocatableT . unwrapLocatableTreeT
 
 {-| Same as 'visitLocatableTree', but the results are discarded so the tree is
-    only visited for the side-effects of the generator.
+    only visited for its side-effects.
  -}
-visitLocatableTreeTAndIgnoreResults :: Monad m ⇒ LocatableTreeGeneratorT m α → m ()
-visitLocatableTreeTAndIgnoreResults = visitTreeTAndIgnoreResults . runLocatableT . unwrapLocatableTreeGeneratorT
+visitLocatableTreeTAndIgnoreResults :: Monad m ⇒ LocatableTreeT m α → m ()
+visitLocatableTreeTAndIgnoreResults = visitTreeTAndIgnoreResults . runLocatableT . unwrapLocatableTreeT
 
 {-| Visits all of the nodes of a tree, returning a list of solutions each
     tagged with the location at which it was found.
  -}
-visitTreeWithLocations :: TreeGenerator α → [Solution α]
+visitTreeWithLocations :: Tree α → [Solution α]
 visitTreeWithLocations = runIdentity . visitTreeTWithLocations
 
-{-| Like 'visitTreeWithLocations' but for an impurely generated tree. -}
-visitTreeTWithLocations :: Monad m ⇒ TreeGeneratorT m α → m [Solution α]
+{-| Like 'visitTreeWithLocations' but for an impure tree. -}
+visitTreeTWithLocations :: Monad m ⇒ TreeT m α → m [Solution α]
 visitTreeTWithLocations = visitTreeTWithLocationsStartingAt rootLocation
 
 {-| Like 'visitTreeWithLocations', but for a subtree whose location is given by
@@ -356,42 +356,42 @@ visitTreeTWithLocations = visitTreeTWithLocationsStartingAt rootLocation
     within the full tree (as opposed to their relative location within the
     subtree).
  -}
-visitTreeWithLocationsStartingAt :: Location → TreeGenerator α → [Solution α]
+visitTreeWithLocationsStartingAt :: Location → Tree α → [Solution α]
 visitTreeWithLocationsStartingAt = runIdentity .* visitTreeTWithLocationsStartingAt
 
-{-| Like 'visitTreeWithLocationsStartingAt' but for an impurely generated trees. -}
-visitTreeTWithLocationsStartingAt :: Monad m ⇒ Location → TreeGeneratorT m α → m [Solution α]
+{-| Like 'visitTreeWithLocationsStartingAt' but for an impure trees. -}
+visitTreeTWithLocationsStartingAt :: Monad m ⇒ Location → TreeT m α → m [Solution α]
 visitTreeTWithLocationsStartingAt label =
-    viewT . unwrapTreeGeneratorT >=> \view →
+    viewT . unwrapTreeT >=> \view →
     case view of
         Return x → return [Solution label x]
-        (Cache mx :>>= k) → mx >>= maybe (return []) (visitTreeTWithLocationsStartingAt label . TreeGeneratorT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return []) (visitTreeTWithLocationsStartingAt label . TreeT . k)
         (Choice left right :>>= k) →
             liftM2 (++)
-                (visitTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeGeneratorT . k)
-                (visitTreeTWithLocationsStartingAt (rightBranchOf label) $ right >>= TreeGeneratorT . k)
+                (visitTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeT . k)
+                (visitTreeTWithLocationsStartingAt (rightBranchOf label) $ right >>= TreeT . k)
         (Null :>>= _) → return []
 
 {-| Visits all the nodes in a locatable tree until a result (i.e., a leaf) has
     been found; if a result has been found then it is returned wrapped in
     'Just', otherwise 'Nothing' is returned.
  -}
-visitLocatableTreeUntilFirst :: LocatableTreeGenerator α → Maybe α
-visitLocatableTreeUntilFirst = visitTreeUntilFirst . runLocatableT . unwrapLocatableTreeGeneratorT
+visitLocatableTreeUntilFirst :: LocatableTree α → Maybe α
+visitLocatableTreeUntilFirst = visitTreeUntilFirst . runLocatableT . unwrapLocatableTreeT
 
-{-| Like 'visitLocatableTreeUntilFirst' but for an impurely generated tree. -}
-visitLocatableTreeUntilFirstT :: Monad m ⇒ LocatableTreeGeneratorT m α → m (Maybe α)
-visitLocatableTreeUntilFirstT = visitTreeTUntilFirst . runLocatableT . unwrapLocatableTreeGeneratorT
+{-| Like 'visitLocatableTreeUntilFirst' but for an impure tree. -}
+visitLocatableTreeUntilFirstT :: Monad m ⇒ LocatableTreeT m α → m (Maybe α)
+visitLocatableTreeUntilFirstT = visitTreeTUntilFirst . runLocatableT . unwrapLocatableTreeT
 
 {-| Visits all the nodes in a tree until a result (i.e., a leaf) has been found;
     if a result has been found then it is returned tagged with the location at
     which it was found and wrapped in 'Just', otherwise'Nothing' is returned.
  -}
-visitTreeUntilFirstWithLocation :: TreeGenerator α → Maybe (Solution α)
+visitTreeUntilFirstWithLocation :: Tree α → Maybe (Solution α)
 visitTreeUntilFirstWithLocation = runIdentity . visitTreeTUntilFirstWithLocation
 
-{-| Like 'visitTreeUntilFirstWithLocation' but for an impurely generated tree. -}
-visitTreeTUntilFirstWithLocation :: Monad m ⇒ TreeGeneratorT m α → m (Maybe (Solution α))
+{-| Like 'visitTreeUntilFirstWithLocation' but for an impure tree. -}
+visitTreeTUntilFirstWithLocation :: Monad m ⇒ TreeT m α → m (Maybe (Solution α))
 visitTreeTUntilFirstWithLocation = visitTreeTUntilFirstWithLocationStartingAt rootLocation
 
 {-| Like 'visitTreeUntilFirstWithLocation', but for a subtree whose location is
@@ -399,11 +399,11 @@ visitTreeTUntilFirstWithLocation = visitTreeTUntilFirstWithLocationStartingAt ro
     /absolute/ location within the full tree (as opposed to its relative
     location within the subtree).
  -}
-visitTreeUntilFirstWithLocationStartingAt :: Location → TreeGenerator α → Maybe (Solution α)
+visitTreeUntilFirstWithLocationStartingAt :: Location → Tree α → Maybe (Solution α)
 visitTreeUntilFirstWithLocationStartingAt = runIdentity .* visitTreeTUntilFirstWithLocationStartingAt
 
-{-| Like 'visitTreeUntilFirstWithLocationStartingAt' but for an impurely generated tree. -}
-visitTreeTUntilFirstWithLocationStartingAt :: Monad m ⇒ Location → TreeGeneratorT m α → m (Maybe (Solution α))
+{-| Like 'visitTreeUntilFirstWithLocationStartingAt' but for an impure tree. -}
+visitTreeTUntilFirstWithLocationStartingAt :: Monad m ⇒ Location → TreeT m α → m (Maybe (Solution α))
 visitTreeTUntilFirstWithLocationStartingAt = go .* visitTreeTWithLocationsStartingAt
   where
     go = liftM $ \solutions →

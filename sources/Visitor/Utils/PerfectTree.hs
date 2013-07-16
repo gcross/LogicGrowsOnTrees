@@ -28,7 +28,7 @@ import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import Visitor (TreeGenerator)
+import Visitor (Tree)
 import Visitor.Utils.Word_
 import Visitor.Utils.WordSum
 
@@ -108,23 +108,23 @@ perfectTree ::
     α {-^ the value to place at the leaves -} →
     Word {-^ the arity of the tree (i.e., number of branches) -} →
     Word {-^ the depth of the tree -} →
-    m α {-^ the tree generator -}
+    m α {-^ the tree -}
 perfectTree leaf arity depth
   | depth == 0 = return leaf
   | arity > 0  = msum . genericReplicate arity $ perfectTree leaf arity (depth-1)
   | otherwise  = error "arity must be a positive integer"
 {-# SPECIALIZE perfectTree :: α → Word → Word → [α] #-}
-{-# SPECIALIZE perfectTree :: α → Word → Word → TreeGenerator α #-}
+{-# SPECIALIZE perfectTree :: α → Word → Word → Tree α #-}
 
 {-| 'tree' with @WordSum 1@ at the leaves. -}
 trivialPerfectTree ::
     MonadPlus m ⇒
     Word {-^ the arity of the tree (i.e., number of branches) -} →
     Word {-^ the depth of the tree -} →
-    m WordSum {-^ the tree generator -}
+    m WordSum {-^ the tree -}
 trivialPerfectTree = perfectTree (WordSum 1)
 {-# SPECIALIZE trivialPerfectTree :: Word → Word → [WordSum] #-}
-{-# SPECIALIZE trivialPerfectTree :: Word → Word → TreeGenerator WordSum #-}
+{-# SPECIALIZE trivialPerfectTree :: Word → Word → Tree WordSum #-}
 
 {-| Computes the number of leaves in a tree.  It returns a value of type 'Word'
     so that it can be easily compared to the 'WordSum' value returned by the

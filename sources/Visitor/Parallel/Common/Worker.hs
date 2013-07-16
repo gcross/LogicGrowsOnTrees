@@ -32,7 +32,7 @@ module Visitor.Parallel.Common.Worker
     , WorkerTerminationReason(..)
     , WorkerTerminationReasonFor
     , WorkerPushActionFor
-    -- ** Tree generator purity
+    -- ** Tree purity
     , Purity(..)
     , io_purity
     -- * Functions
@@ -196,24 +196,24 @@ type instance WorkerPushActionFor (FirstMode result) = Void → ()
 type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = Void → ()
 type instance WorkerPushActionFor (FoundModeUsingPush result final_result) = ProgressUpdate (Progress result) → IO ()
 
--------------------------- Tree generator properties ---------------------------
+------------------------------- Tree properties --------------------------------
 
-{-| The purity of a tree generator;  the options are 'Pure' for pure generators
-    and 'ImpureAtopIO' for impure generators where the base monad is required
-    to be IO (or at least, it must be possible to translate the monad into an
-    IO action).
+{-| The purity of a tree;  the options are 'Pure' for pure trees
+    and 'ImpureAtopIO' for impure trees, where the latter case is restricted to
+    monads that are instances of 'MonadIO' and provide a way to convert the
+    monad into an IO action.
  -} 
 data Purity (m :: * → *) (n :: * → *) where -- {{{
     Pure :: Purity Identity IO
     ImpureAtopIO :: MonadIO m ⇒ (∀ β. m β → IO β) → Purity m m
 
-{-| The purity of tree generators in the IO monad. -}
+{-| The purity of trees in the IO monad. -}
 io_purity = ImpureAtopIO id
 
-{-| Functions for working with a tree generator of a particular purity. -}
-data TreeGeneratorFunctionsForPurity (m :: * → *) (n :: * → *) (α :: *) =
-    MonadIO n ⇒ TreeGeneratorFunctionsForPurity
-    {   walk :: Path → TreeGeneratorT m α → n (TreeGeneratorT m α)
+{-| Functions for working with a tree of a particular purity. -}
+data TreeFunctionsForPurity (m :: * → *) (n :: * → *) (α :: *) =
+    MonadIO n ⇒ TreeFunctionsForPurity
+    {   walk :: Path → TreeT m α → n (TreeT m α)
     ,   step :: VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))
     ,   run ::  (∀ β. n β → IO β)
     }
@@ -262,9 +262,9 @@ deriveLoggers "Logger" [DEBUG]
  -}
 forkWorkerThread ::
     ExplorationMode exploration_mode {-^ the mode in to visit the tree -} →
-    Purity m n {-^ the purity of the tree generator -} →
+    Purity m n {-^ the purity of the tree -} →
     (WorkerTerminationReasonFor exploration_mode → IO ()) {-^ the action to run when the worker has terminated -} →
-    TreeGeneratorT m (ResultFor exploration_mode) {-^ the tree generator -} →
+    TreeT m (ResultFor exploration_mode) {-^ the tree -} →
     Workload {-^ the workload for the worker -} →
     WorkerPushActionFor exploration_mode
         {-^ the action to push a result to the supervisor;  this should be equal
@@ -280,9 +280,9 @@ forkWorkerThread
     push
   = do
     -- Note:  the following line of code needs to be this way --- that is, using
-    --        do notation to extract the value of TreeGeneratorFunctionsForPurity --- or else
+    --        do notation to extract the value of TreeFunctionsForPurity --- or else
     --        GHC's head will explode!
-    TreeGeneratorFunctionsForPurity{..} ← case getTreeGeneratorFunctionsForPurity purity of x → return x
+    TreeFunctionsForPurity{..} ← case getTreeFunctionsForPurity purity of x → return x
     pending_requests_ref ← newIORef []
 
     ------------------------------- LOOP PHASES --------------------------------
@@ -463,7 +463,7 @@ visitTreeGeneric ::
     ) ⇒
     ExplorationMode exploration_mode →
     Purity m n →
-    TreeGeneratorT m α →
+    TreeT m α →
     IO (WorkerTerminationReason (FinalResultFor exploration_mode))
 visitTreeGeneric exploration_mode purity visitor = do
     final_progress_mvar ← newEmptyMVar
@@ -527,17 +527,17 @@ computeProgressUpdate exploration_mode result initial_path cursor context checkp
   where
     full_checkpoint = checkpointFromSetting initial_path cursor context checkpoint
 
-getTreeGeneratorFunctionsForPurity :: Purity m n → TreeGeneratorFunctionsForPurity m n α
-getTreeGeneratorFunctionsForPurity Pure = TreeGeneratorFunctionsForPurity{..}
+getTreeFunctionsForPurity :: Purity m n → TreeFunctionsForPurity m n α
+getTreeFunctionsForPurity Pure = TreeFunctionsForPurity{..}
   where
-    walk = return .* sendTreeGeneratorDownPath
+    walk = return .* sendTreeDownPath
     step = return . stepThroughTreeStartingFromCheckpoint
     run = id
-getTreeGeneratorFunctionsForPurity (ImpureAtopIO run) = TreeGeneratorFunctionsForPurity{..}
+getTreeFunctionsForPurity (ImpureAtopIO run) = TreeFunctionsForPurity{..}
   where
-    walk = sendTreeGeneratorTDownPath
+    walk = sendTreeTDownPath
     step = stepThroughTreeTStartingFromCheckpoint
-{-# INLINE getTreeGeneratorFunctionsForPurity #-}
+{-# INLINE getTreeFunctionsForPurity #-}
 
 tryStealWorkload ::
     Path →

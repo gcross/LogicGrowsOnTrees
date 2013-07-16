@@ -94,7 +94,7 @@ import Foreign.Ptr (FunPtr,freeHaskellFunPtr,nullFunPtr)
 
 import System.IO.Unsafe (unsafePerformIO)
 
-import Visitor (TreeGenerator,between)
+import Visitor (Tree,between)
 import Visitor.Utils.MonadPlusForest (addToForest,emptyForest,consolidateForest)
 import Visitor.Utils.WordSum
 
@@ -1018,13 +1018,13 @@ nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSear
 nqueensBruteForceSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensBruteForceSolutions = nqueensBruteForceGeneric (++) return []
 {-# SPECIALIZE nqueensBruteForceSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensBruteForceSolutions :: Word → TreeGenerator NQueensSolution #-}
+{-# SPECIALIZE nqueensBruteForceSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Generates the solution count to the n-queens problem with the given board size. -}
 nqueensBruteForceCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ WordSum 1) ()
 {-# SPECIALIZE nqueensBruteForceCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensBruteForceCount :: Word → TreeGenerator WordSum #-}
+{-# SPECIALIZE nqueensBruteForceCount :: Word → Tree WordSum #-}
 
 --------------------------------------------------------------------------------
 --------------------------------- C inner-loop ---------------------------------
@@ -1146,13 +1146,13 @@ nqueensCGeneric updateValue finalizeValue initial_value n =
 nqueensCSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensCSolutions = nqueensCGeneric (++) return []
 {-# SPECIALIZE nqueensCSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensCSolutions :: Word → TreeGenerator NQueensSolution #-}
+{-# SPECIALIZE nqueensCSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Generates the solution count to the n-queens problem with the given board size. -}
 nqueensCCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensCCount = nqueensCGeneric (const id) (const . return $ WordSum 1) ()
 {-# SPECIALIZE nqueensCCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensCCount :: Word → TreeGenerator WordSum #-}
+{-# SPECIALIZE nqueensCCount :: Word → Tree WordSum #-}
 
 --------------------------------------------------------------------------------
 ------------------------------ Utility functions -------------------------------

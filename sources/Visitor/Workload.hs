@@ -79,56 +79,56 @@ The functions in this section visit the part of a tree that is given by a
 'Workload'.
 -}
 
-{-| Visits the nodes in a purely generated tree given by a 'Workload', and sums
+{-| Visits the nodes in a pure tree given by a 'Workload', and sums
     over and sums over all the results in the leaves.
  -}
 visitTreeWithinWorkload ::
     Monoid α ⇒
     Workload →
-    TreeGenerator α →
+    Tree α →
     α
 visitTreeWithinWorkload Workload{..} =
     visitTreeStartingFromCheckpoint workloadCheckpoint
     .
-    sendTreeGeneratorDownPath workloadPath
+    sendTreeDownPath workloadPath
 
-{-| Same as 'visitTreeWithinWorkload' but for an impurely generated tree. -}
+{-| Same as 'visitTreeWithinWorkload' but for an impure tree. -}
 visitTreeTWithinWorkload ::
     (Monad m, Monoid α) ⇒
     Workload →
-    TreeGeneratorT m α →
+    TreeT m α →
     m α
 visitTreeTWithinWorkload Workload{..} =
-    sendTreeGeneratorTDownPath workloadPath
+    sendTreeTDownPath workloadPath
     >=>
     visitTreeTStartingFromCheckpoint workloadCheckpoint
 
-{-| Visits the nodes in a purely generated tree given by a 'Workload' until
+{-| Visits the nodes in a pure tree given by a 'Workload' until
     a result (i.e. a leaf) has been found; if a result has been found then it is
     returned wrapped in 'Just', otherwise 'Nothing' is returned.
  -}
    
 visitTreeUntilFirstWithinWorkload ::
     Workload →
-    TreeGenerator α →
+    Tree α →
     Maybe α
 visitTreeUntilFirstWithinWorkload Workload{..} =
     visitTreeUntilFirstStartingFromCheckpoint workloadCheckpoint
     .
-    sendTreeGeneratorDownPath workloadPath
+    sendTreeDownPath workloadPath
 
-{-| Same as 'visitTreeUntilFirstWithinWorkload' but for an impurely generated tree. -}
+{-| Same as 'visitTreeUntilFirstWithinWorkload' but for an impure tree. -}
 visitTreeTUntilFirstWithinWorkload ::
     Monad m ⇒
     Workload →
-    TreeGeneratorT m α →
+    TreeT m α →
     m (Maybe α)
 visitTreeTUntilFirstWithinWorkload Workload{..} =
-    sendTreeGeneratorTDownPath workloadPath
+    sendTreeTDownPath workloadPath
     >=>
     visitTreeTUntilFirstStartingFromCheckpoint workloadCheckpoint
 
-{-| Visits the nodes in a purely generated tree given by a 'Workload', summing
+{-| Visits the nodes in a pure tree given by a 'Workload', summing
     all results encountered (i.e., in the leaves) until the current partial sum
     satisfies the condition provided by the first function; if this condition is
     ever satisfied then its result is returned in 'Right', otherwise the final
@@ -138,21 +138,21 @@ visitTreeUntilFoundWithinWorkload ::
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
-    TreeGenerator α →
+    Tree α →
     Either α β
 visitTreeUntilFoundWithinWorkload condition Workload{..} =
     visitTreeUntilFoundStartingFromCheckpoint condition workloadCheckpoint
     .
-    sendTreeGeneratorDownPath workloadPath
+    sendTreeDownPath workloadPath
 
-{-| Same as 'visitTreeUntilFoundWithinWorkload' but for an impurely generated tree. -}
+{-| Same as 'visitTreeUntilFoundWithinWorkload' but for an impure tree. -}
 visitTreeTUntilFoundWithinWorkload ::
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
-    TreeGeneratorT m α →
+    TreeT m α →
     m (Either α β)
 visitTreeTUntilFoundWithinWorkload condition Workload{..} =
-    sendTreeGeneratorTDownPath workloadPath
+    sendTreeTDownPath workloadPath
     >=>
     visitTreeTUntilFoundStartingFromCheckpoint condition workloadCheckpoint

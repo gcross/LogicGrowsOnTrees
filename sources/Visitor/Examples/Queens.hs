@@ -2,29 +2,29 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This module contains examples of 'TreeGenerator's that generate solutions to
+{-| This module contains examples of 'Tree's that represent the solutions to
     the n-queens problem, which is the problem of finding ways to put n queens
-    on an n-by-n chessboard in such a way that they do not conflict;  recall
+    on an n-by-n chessboard in such a way that they do not conflict; recall
     that, in chess, a queen attacks the row it is on, the column it is one, and
-    both diagonals that it is one.  Thus, solutions of the n-queens problem take
+    both diagonals that it is one. Thus, solutions of the n-queens problem take
     the form of a list of coordinates such that no coordinates have overlapping
     rows, columns, or diagonals.
 
-    The 'TreeGenerator's in this module are written in such a way that the same
-    code can generate either the full solutions or just the number of solutions.
+    The 'Tree's in this module are written in such a way that the same code can
+    return either the solutions themselves or just the number of solutions.
     Specifically, the generic form of the functions takes an initial value, a
     way to update this value when a queen has been placed, and a way to finalize
-    this value when all queens have been placed. For the simple generators in
-    this module, if one is interested in solutions then the initial value is
-    '[]', the updater prepends the column of the new queen to the list (as the
-    queens are in consecutive rows), and the finalizer reverses and adds
-    row-numbers to the column coordinates. If one is only interested in the
-    count then the value is (), the updater returns (), and the finalizer
-    returns `WordSum 1`. (The advanced generators use a more complicated
-    arrangement but are basically the same idea.)  The reason for this design is
-    that it allows one to use one code path to obtain both kinds of results,
-    which means that once the solution generator has been fully tested the count
-    generator should work as well as it uses the same tested code path.
+    this value when all queens have been placed. For the simple examples in this
+    module, if one is interested in solutions then the initial value is '[]',
+    the updater prepends the column of the new queen to the list (as the queens
+    are in consecutive rows), and the finalizer reverses and adds row-numbers to
+    the column coordinates. If one is only interested in the count then the
+    value is (), the updater returns (), and the finalizer returns `WordSum 1`.
+    (The advanced example uses a more complicated arrangement but are basically
+    the same idea.) The reason for this design is that it allows one to use one
+    code path to obtain both kinds of results, which means that once the
+    solution mode has been fully tested the count mode should work as well as it
+    uses the same tested code path.
  -}
 module Visitor.Examples.Queens
     (
@@ -32,7 +32,7 @@ module Visitor.Examples.Queens
       nqueens_correct_counts
     , nqueens_maximum_size
     , nqueensCorrectCount
-    -- * Basic generators
+    -- * Basic examples
     -- $basic
 
     -- ** Using sets
@@ -44,7 +44,7 @@ module Visitor.Examples.Queens
     , nqueensUsingBitsGeneric
     , nqueensUsingBitsSolutions
     , nqueensUsingBitsCount
-    -- * Advancd generators
+    -- * Advanced example
     -- $basic
     , nqueensGeneric
     , nqueensSolutions
@@ -68,7 +68,7 @@ import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import Visitor (TreeGenerator,allFromBalancedBottomUp)
+import Visitor (Tree,allFromBalancedBottomUp)
 import qualified Visitor.Examples.Queens.Advanced as Advanced
 import Visitor.Examples.Queens.Advanced (NQueensSolution,NQueensSolutions,multiplySolution,nqueensGeneric)
 import Visitor.Utils.Word_
@@ -184,16 +184,16 @@ nqueensCorrectCount =
     fromIntegral
 
 --------------------------------------------------------------------------------
-------------------------------- Basic generators -------------------------------
+-------------------------------- Basic examples --------------------------------
 --------------------------------------------------------------------------------
 
 {- $basic
-The generators in this section are pretty basic in that they do not make use of
+The examples in this section are pretty basic in that they do not make use of
 the many optimizations that are available but which increase code complexity.
-They are provided in order to demonstrate how one can construct generators that
-generate the solutions to a problem, namely the n-queens problem.  Note that
-because they are defined using 'MonadPlus', the generators can be implemented
-using list and also using the 'TreeGenerator' type.
+They are provided in order to demonstrate how one can construct trees that
+generate the solutions to a problem, namely the n-queens problem. Note that
+because they are defined in terms of the methods in 'MonadPlus', the result can
+be a type other than 'Tree', such as the List type.
 
 Two basic solutions are included here.  The first uses set operations, and the
 second uses bitwise operations.
@@ -250,7 +250,7 @@ nqueensUsingSetsGeneric initial_value updateValue finalizeValue n =
 nqueensUsingSetsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensUsingSetsSolutions = nqueensUsingSetsGeneric [] ((:) . fromIntegral) (zip [0..] . reverse)
 {-# SPECIALIZE nqueensUsingSetsSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensUsingSetsSolutions :: Word → TreeGenerator NQueensSolution #-}
+{-# SPECIALIZE nqueensUsingSetsSolutions :: Word → Tree NQueensSolution #-}
 {-# INLINEABLE nqueensUsingSetsSolutions #-}
 
 {-| Generates the solution count to the n-queens problem with the given board
@@ -260,7 +260,7 @@ nqueensUsingSetsSolutions = nqueensUsingSetsGeneric [] ((:) . fromIntegral) (zip
 nqueensUsingSetsCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensUsingSetsCount = nqueensUsingSetsGeneric () (const id) (const $ WordSum 1)
 {-# SPECIALIZE nqueensUsingSetsCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensUsingSetsCount :: Word → TreeGenerator WordSum #-}
+{-# SPECIALIZE nqueensUsingSetsCount :: Word → Tree WordSum #-}
 {-# INLINEABLE nqueensUsingSetsCount #-}
 
 ---------------------------------- Using bits ----------------------------------
@@ -323,7 +323,7 @@ nqueensUsingBitsGeneric initial_value updateValue finalizeValue n =
 nqueensUsingBitsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensUsingBitsSolutions = nqueensUsingBitsGeneric [] ((:) . fromIntegral) (zip [0..] . reverse)
 {-# SPECIALIZE nqueensUsingBitsSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensUsingBitsSolutions :: Word → TreeGenerator NQueensSolution #-}
+{-# SPECIALIZE nqueensUsingBitsSolutions :: Word → Tree NQueensSolution #-}
 {-# INLINEABLE nqueensUsingBitsSolutions #-}
 
 {-| Generates the solution count to the n-queens problem with the given board
@@ -333,26 +333,25 @@ nqueensUsingBitsSolutions = nqueensUsingBitsGeneric [] ((:) . fromIntegral) (zip
 nqueensUsingBitsCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensUsingBitsCount = nqueensUsingBitsGeneric () (const id) (const $ WordSum 1)
 {-# SPECIALIZE nqueensUsingBitsCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensUsingBitsCount :: Word → TreeGenerator WordSum #-}
+{-# SPECIALIZE nqueensUsingBitsCount :: Word → Tree WordSum #-}
 {-# INLINEABLE nqueensUsingBitsCount #-}
 
 --------------------------------------------------------------------------------
------------------------------ Advanced generators ------------------------------
+------------------------------- Advanced example -------------------------------
 --------------------------------------------------------------------------------
 
 {- $advanced
-These generators use a number of advanced techniques to try and squeeze out as
-much performance as possible using the functionality of this package.
-
-For the implementation driving these functions, see the
-"Visitor.Examples.Queens.Advanced" module.
+The advanced example use a number of advanced techniques to try and squeeze out
+as much performance as possible using the functionality of this package.  The
+functions listed here are just the interface to it;  for the implementation
+driving these functions, see the "Visitor.Examples.Queens.Advanced" module.
  -}
 
 {-| Generates the solutions to the n-queens problem with the given board size. -}
 nqueensSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
 {-# SPECIALIZE nqueensSolutions :: Word → NQueensSolutions #-}
-{-# SPECIALIZE nqueensSolutions :: Word → TreeGenerator NQueensSolution #-}
+{-# SPECIALIZE nqueensSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Generates the solution count to the n-queens problem with the given board
     size;  you need to sum over all these counts to obtain the total, which is
@@ -361,5 +360,5 @@ nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
 nqueensCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
-{-# SPECIALIZE nqueensCount :: Word → TreeGenerator WordSum #-}
+{-# SPECIALIZE nqueensCount :: Word → Tree WordSum #-}
 

@@ -105,7 +105,7 @@ The type families in this section allow the types to be used at various places
 to be specialized based on the current exploration mode.
 -}
 
-{-| The result type of the tree generator. -}
+{-| The result type of the tree. -}
 type family ResultFor exploration_mode :: *
 type instance ResultFor (AllMode result) = result
 type instance ResultFor (FirstMode result) = result

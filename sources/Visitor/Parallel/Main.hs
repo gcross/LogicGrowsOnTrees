@@ -13,13 +13,13 @@
 
 {-| This module provides a framework for creating a program that visits a tree
     in parallel. The way that you use it is that you pick the mainFor...
-    function that corresponds to the kind of tree generator, and then provide
+    function that corresponds to the kind of tree, and then provide
     the following:
 
     1. a driver provided by the adapter you want to use;
 
     2. optional command line arguments that the user can use to specify the tree
-       being generated;
+       to generate;
 
     3. a 'TermInfo' value that specifies the description of what this program
        does, a typical example being:
@@ -29,7 +29,7 @@
     4. an action to run when the visit has terminated (a function of the command
        line arguments); and
 
-    5. the tree generator, as a function of the command line arguments.
+    5. the tree, as a function of the command line arguments.
 
     Specifically, a program created using this module will automatically take
     care of running the supervisor and the workers (which includes figuring out
@@ -120,7 +120,7 @@ import System.Log.Logger.TH
 
 import Text.Printf (printf)
 
-import Visitor (TreeGenerator,TreeGeneratorIO,TreeGeneratorT)
+import Visitor (Tree,TreeIO,TreeT)
 import Visitor.Checkpoint
 import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Parallel.Common.Supervisor
@@ -178,9 +178,9 @@ data SupervisorConfiguration = SupervisorConfiguration
     ,   statistics_configuration :: StatisticsConfiguration
     } deriving (Eq,Show)
 
-data SharedConfiguration tree_generator_configuration = SharedConfiguration
+data SharedConfiguration tree_configuration = SharedConfiguration
     {   logging_configuration :: LoggingConfiguration
-    ,   tree_generator_configuration :: tree_generator_configuration
+    ,   tree_configuration :: tree_configuration
     } deriving (Eq,Show)
 $( derive makeSerialize ''SharedConfiguration )
 
@@ -229,7 +229,7 @@ data DriverParameters
     DriverParameters
     {   {-| the mode in which the visitor is being run -}
         constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
-        {-| the purity of the tree generator -}
+        {-| the purity of the tree -}
     ,   purity :: Purity m n
         {-| configuration options that are shared between the supervisor and the worker -}
     ,   shared_configuration_term :: Term shared_configuration
@@ -239,8 +239,8 @@ data DriverParameters
     ,   program_info :: TermInfo
         {-| action that initializes the global state of all processes, both worker and supervisor -}
     ,   initializeGlobalState :: shared_configuration → IO ()
-        {-| constructs the tree generator given the shared configuration -}
-    ,   constructTreeGenerator :: shared_configuration → TreeGeneratorT m (ResultFor exploration_mode)
+        {-| constructs the tree given the shared configuration -}
+    ,   constructTree :: shared_configuration → TreeT m (ResultFor exploration_mode)
         {-| in the supervisor process, gets the starting progress for the visit;  this is where a checkpoint is loaded, if one exists -}
     ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
         {-| in the supervisor process, respond to the termination of the run -}
@@ -292,25 +292,26 @@ instance ArgVal Priority where
 
 {- $main
 The functions in this section all provide a main function that starts up the
-system that visits a tree in parallel using the given tree generator
+system that visits a tree in parallel using the given tree
 (constructed possibly using information supplied on the command line) and the
 given adapter provided via the driver argument.
 
 All of the functionaliy of this module can be accessed through 'genericMain',
 but we nonethless also provide specialized versions of these functions for all
-of the supported tree generator purities and exploration modes. This is done for two
+of the supported tree purities and exploration modes. This is done for two
 reasons: first, in order to make the types more concrete to hopefully improve
-usability, and second, because often the type of the tree generator is generic
-and so using a specialized function automatically specializes the type rather
-than requiring type annotation. The convention is @mainForVisitTreeXY@ where @X@
-is empty for pure generators, @IO@ for generators running in the IO monad, and
-@Impure@ for generators running in some general monad, and @Y@ specifies the
-exploration mode, which is empty for 'AllMode' (sum over all results), @UntilFirst@
-for 'FirstMode' (stop when first result found), @UntilFoundUsingPull@ for
-'FoundModeUsingPull' (sum all results until a condition has been met, only
-sending results to the supervisor upon request) and @UntilFoundUsingPush@ for
-'FoundModeUsingPush' (sum all results until a condition has been met, pushing
-all found results immediately to the supervisor).
+usability, and second, because often the type of the tree is generic and so
+using a specialized function automatically specializes the type rather than
+requiring a type annotation. The convention is @mainForVisitTreeXY@ where @X@ is
+empty for pure trees, @IO@ for trees with side-effects in the IO monad, and
+@Impure@ for trees with side-effects in some general monad, and @Y@ specifies
+the exploration mode, which is empty for 'AllMode' (sum over all results),
+@UntilFirst@ for 'FirstMode' (stop when first result found),
+@UntilFoundUsingPull@ for 'FoundModeUsingPull' (sum all results until a
+condition has been met, only sending results to the supervisor upon request) and
+@UntilFoundUsingPush@ for 'FoundModeUsingPush' (sum all results until a
+condition has been met, pushing all found results immediately to the
+supervisor).
  -}
  
 ---------------------------- Sum over all results ------------------------------
@@ -320,70 +321,70 @@ The functions in this section are for when you want to sum over all the results
 in (the leaves of) the tree.
  -}
 
-{-| Visit the given tree in parallel using the given pure generator; the results
+{-| Visit the given pure tree in parallel; the results
     in the leaves will be summed up using the 'Monoid' instance.
  -}
 mainForVisitTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) result → IO ())
+    (tree_configuration → RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGenerator result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTree = genericMain (const AllMode) Pure
 
-{-| Visit the given tree in parallel using the given generator in the IO monad;
+{-| Visit the given IO tree in parellel;
     the results in the leaves will be summed up using the 'Monoid' instance.
  -}
 mainForVisitTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) result → IO ())
+    (tree_configuration → RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorIO result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeIO = genericMain (const AllMode) io_purity
 
-{-| Visit the given tree in parallel using the given impure generator; the
+{-| Visit the given impure tree in parallel; the
     results in all of the leaves will be summed up using the 'Monoid' instance.
  -}
 mainForVisitTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) result → IO ())
+    (tree_configuration → RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeImpure = genericMain (const AllMode) . ImpureAtopIO
 
@@ -404,70 +405,70 @@ There are two ways in which a system running in this mode can terminate normally
 
  -}
 
-{-| Visit the given tree in parallel using the given pure generator, stopping if
+{-| Visit the given pure tree in parallel, stopping if
     a solution is found.
  -}
 mainForVisitTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+    (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGenerator result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeUntilFirst = genericMain (const FirstMode) Pure
 
-{-| Visit the given tree in parallel using the given generator in the IO monad,
+{-| Visit the given IO tree in parellel,
     stopping if a solution is found.
  -}
 mainForVisitTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+    (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorIO result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeIOUntilFirst = genericMain (const FirstMode) io_purity
 
-{-| Visit the given tree in parallel using the given impure generator, stopping
+{-| Visit the given impure tree in parallel, stopping
     if a solution is found.
  -}
 mainForVisitTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+    (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeImpureUntilFirst = genericMain (const FirstMode) . ImpureAtopIO
 
@@ -517,73 +518,73 @@ WARNING:  If you use this mode then you need to enable checkpointing when the
           are scattered around.
  -}
 
-{-| Visit the given tree in parallel using the given pure generator until the
+{-| Visit the given pure tree in parallel until the
     sum of results meets the given condition.
  -}
 mainForVisitTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGenerator result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
 
-{-| Visit the given tree in parallel using the given generator in the IO monad
+{-| Visit the given IO tree in parellel
     until the sum of results meets the given condition.
  -}
 mainForVisitTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorIO result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) io_purity
 
-{-| Visit the given tree in parallel using the given impure generator until the
+{-| Visit the given impure tree in parallel until the
     sum of results meets the given condition.
  -}
 mainForVisitTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeImpureUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) . ImpureAtopIO
 
@@ -614,125 +615,125 @@ success as the Supervisor has access to all results and so it will never be in
 the position of only having a partial result upon success.)
  -}
 
-{-| Visit the given tree in parallel using the given pure generator until the
+{-| Visit the given pure tree in parallel until the
     sum of results meets the given condition.
  -}
 mainForVisitTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGenerator result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
 
-{-| Visit the given tree in parallel using the given generator in the IO monad
+{-| Visit the given IO tree in parellel
     until the sum of results meets the given condition.
  -}
 mainForVisitTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorIO result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition)io_purity
 
-{-| Visit the given tree in parallel using the given impure generator until the
+{-| Visit the given impure tree in parallel until the
     sum of results meets the given condition.
  -}
 mainForVisitTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (tree_generator_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_generator_configuration) SupervisorConfiguration m m (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForVisitTreeImpureUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) . ImpureAtopIO
 
 ---------------------------- Generic main function -----------------------------
 
 {-| This function is just like those in the previous functions except that it is
-    generalized over all tree generator purities and exploration modes.
+    generalized over all tree purities and exploration modes.
  -}
 genericMain ::
     ( MonadIO result_monad
     , ResultFor exploration_mode ~ result
     , Serialize (ProgressFor exploration_mode)
     ) ⇒
-    (tree_generator_configuration → ExplorationMode exploration_mode)
-        {-^ constructs the exploration mode given the tree generator configuration;
+    (tree_configuration → ExplorationMode exploration_mode)
+        {-^ constructs the exploration mode given the tree configuration;
             note that the constructor that this function returns is restricted
             by the value of the exploration_mode type variable
          -} →
-    Purity m n {-^ the purity of the tree generator -} →
+    Purity m n {-^ the purity of the tree -} →
     Driver
         result_monad
-        (SharedConfiguration tree_generator_configuration)
+        (SharedConfiguration tree_configuration)
         SupervisorConfiguration
         m n
         exploration_mode
         {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_generator_configuration {-^ a term with any configuration information needed to construct the tree generator -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_generator_configuration → RunOutcomeFor exploration_mode → IO ())
+    (tree_configuration → RunOutcomeFor exploration_mode → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree generator configuration information);  note that if the
+            as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
             function finishes successfully
          -} →
-    (tree_generator_configuration → TreeGeneratorT m result) {-^ constructs the tree generator given the tree generator configuration information -} →
+    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-genericMain constructExplorationMode_ purity (Driver run) tree_generator_configuration_term program_info notifyTerminated_ constructTreeGenerator_ =
+genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info notifyTerminated_ constructTree_ =
     run DriverParameters{..}
   where
-    constructExplorationMode = constructExplorationMode_ . tree_generator_configuration
-    shared_configuration_term = makeSharedConfigurationTerm tree_generator_configuration_term
+    constructExplorationMode = constructExplorationMode_ . tree_configuration
+    shared_configuration_term = makeSharedConfigurationTerm tree_configuration_term
     supervisor_configuration_term =
         SupervisorConfiguration
             <$> checkpoint_configuration_term
             <*> statistics_configuration_term
     initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} =
         updateGlobalLogger rootLoggerName (setLevel log_level)
-    constructTreeGenerator = constructTreeGenerator_ . tree_generator_configuration
+    constructTree = constructTree_ . tree_configuration
     getStartingProgress shared_configuration SupervisorConfiguration{..} =
         case maybe_checkpoint_configuration of
             Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
@@ -747,7 +748,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_generator_configu
         initial_progress = initialProgress . constructExplorationMode $ shared_configuration
     notifyTerminated SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} =
         do showStatistics statistics_configuration runStatistics
-           notifyTerminated_ tree_generator_configuration run_outcome
+           notifyTerminated_ tree_configuration run_outcome
         `finally`
         case maybe_checkpoint_configuration of
             Nothing → return ()
@@ -838,11 +839,11 @@ statistics_configuration_term =
         <*> value (flag ((optInfo ["show-buffer-size"]) { optDoc ="This option will cause statistics about the buffer size to be printed to standard error after the program terminates." }))
         )
 
-makeSharedConfigurationTerm :: Term tree_generator_configuration → Term (SharedConfiguration tree_generator_configuration)
-makeSharedConfigurationTerm tree_generator_configuration_term =
+makeSharedConfigurationTerm :: Term tree_configuration → Term (SharedConfiguration tree_configuration)
+makeSharedConfigurationTerm tree_configuration_term =
     SharedConfiguration
         <$> logging_configuration_term
-        <*> tree_generator_configuration_term
+        <*> tree_configuration_term
 
 checkpointLoop ::
     ( RequestQueueMonad m

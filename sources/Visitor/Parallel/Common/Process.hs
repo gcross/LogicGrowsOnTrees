@@ -36,7 +36,7 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,INFO))
 import System.Log.Logger.TH
 
-import Visitor (TreeGeneratorT)
+import Visitor (TreeT)
 import Visitor.Parallel.Common.ExplorationMode (ProgressFor(..),ResultFor(..),ExplorationMode(..),WorkerFinalProgressFor(..))
 import Visitor.Parallel.Common.Message (MessageForSupervisor(..),MessageForSupervisorFor(..),MessageForWorker(..))
 import Visitor.Parallel.Common.Worker hiding (ProgressUpdate,StolenWorkload)
@@ -59,12 +59,12 @@ deriveLoggers "Logger" [DEBUG,INFO]
 runWorker ::
     ∀ exploration_mode m n.
     ExplorationMode exploration_mode {-^ the mode in to visit the tree -} →
-    Purity m n {-^ the purity of the tree generator -} →
-    TreeGeneratorT m (ResultFor exploration_mode) {-^ the tree generator -} →
+    Purity m n {-^ the purity of the tree -} →
+    TreeT m (ResultFor exploration_mode) {-^ the tree -} →
     IO MessageForWorker {-^ the action used to fetch the next message -} →
     (MessageForSupervisorFor exploration_mode → IO ()) {-^ the action to send a message to the supervisor;  note that this might occur in a different thread from the worker loop -} →
     IO () {-^ an IO action that loops processing messages until it is quit, at which point it returns -}
-runWorker exploration_mode purity tree_generator receiveMessage sendMessage =
+runWorker exploration_mode purity tree receiveMessage sendMessage =
     -- Note:  This an MVar rather than an IORef because it is used by two
     --        threads --- this one and the worker thread --- and I wanted to use
     --        a mechanism that ensured that the new value would be observed by
@@ -109,7 +109,7 @@ runWorker exploration_mode purity tree_generator receiveMessage sendMessage =
                                         WorkerAborted →
                                             return ()
                                 )
-                                tree_generator
+                                tree
                                 workload
                                 (case exploration_mode of
                                     AllMode → absurd
@@ -144,16 +144,16 @@ runWorkerUsingHandles ::
     , Serialize (WorkerFinalProgressFor exploration_mode)
     ) ⇒
     ExplorationMode exploration_mode {-^ the mode in to visit the tree -} →
-    Purity m n {-^ the purity of the tree generator -} →
-    TreeGeneratorT m (ResultFor exploration_mode) {-^ the tree generator -} →
+    Purity m n {-^ the purity of the tree -} →
+    TreeT m (ResultFor exploration_mode) {-^ the tree -} →
     Handle {-^ handle from which messages from the supervisor are read -} →
     Handle {-^ handle to which messages to the supervisor are written -} →
     IO () {-^ an IO action that loops processing messages until it is quit, at which point it returns -}
-runWorkerUsingHandles exploration_mode purity tree_generator receive_handle send_handle =
+runWorkerUsingHandles exploration_mode purity tree receive_handle send_handle =
     newMVar () >>= \send_lock →
     runWorker
         exploration_mode
         purity
-        tree_generator
+        tree
         (receive receive_handle)
         (withMVar send_lock . const . send send_handle)

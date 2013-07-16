@@ -11,8 +11,8 @@ module Visitor.Path
     , Path
     -- * Functions
     , oppositeBranchChoiceOf
-    , sendTreeGeneratorDownPath
-    , sendTreeGeneratorTDownPath
+    , sendTreeDownPath
+    , sendTreeTDownPath
     -- * Exceptions
     , WalkError(..)
     ) where
@@ -35,16 +35,16 @@ import Visitor
 ---------------------------------- Exceptions ----------------------------------
 --------------------------------------------------------------------------------
 
-{-| This exception is thrown whenever a 'TreeGenerator' is sent down a path which
+{-| This exception is thrown whenever a 'Tree' is sent down a path which
     is incompatible with it.
  -}
 data WalkError =
-    {-| Indicates that a path is too long for a given tree generator --- i.e., the
-        generator hits a leaf before the path finishes.
+    {-| Indicates that a path is too long for a given tree --- i.e., the
+        walk has hit a leaf (or a null) before the path finishes.
      -}
     VisitorTerminatedBeforeEndOfWalk
     {-| Indicates that a choice step in a path coincided with a cache point in
-        a tree generator, or vice versa.
+        a tree, or vice versa.
      -}
   | PastVisitorIsInconsistentWithPresentVisitor
   deriving (Eq,Show,Typeable)
@@ -86,54 +86,54 @@ oppositeBranchChoiceOf :: BranchChoice → BranchChoice
 oppositeBranchChoiceOf LeftBranch = RightBranch
 oppositeBranchChoiceOf RightBranch = LeftBranch
 
-{-| Has a 'TreeGenerator' follow a 'Path' guiding it to a particular subtree;  the
+{-| Has a 'Tree' follow a 'Path' guiding it to a particular subtree;  the
     main use case of this function is for a processor which has been given a
-    particular subtree as its workload to get the tree generator to zoom in on
+    particular subtree as its workload to get the tree to zoom in on
     that subtree.
 
     The way this function works is as follows: as long as the remaining path is
-    non-empty, it runs the 'TreeGenerator' until it encounters either a cache
+    non-empty, it runs the 'Tree' until it encounters either a cache
     point or a choice point; in the former case the path supplies the cached
     value in the 'CacheStep' constructor, and in the latter case the path
     supplies the branch to take in the 'ChoiceStep' constructor; when the
-    remaining path is empty then the resulting 'TreeGenerator' is returned.
+    remaining path is empty then the resulting 'Tree' is returned.
 
     WARNING: This function is /not/ valid for all inputs; it makes the
     assumption that the given 'Path' has been derived from the given
-    'TreeGenerator' so that the path will always encounted choice points exactly
-    when the tree generator does and likewise for cache points. Furthermore, the
-    path must not run out before the tree generator hits a leaf. If any of these
+    'Tree' so that the path will always encounted choice points exactly
+    when the tree does and likewise for cache points. Furthermore, the
+    path must not run out before the tree hits a leaf. If any of these
     conditions is violated, a 'WalkError' exception will be thrown; in fact, you
     should hope than exception is thrown because it will let you know that there
     is a bug your code as the alternative is that you accidently give it a path
-    that is not derived from the given tree generator but which coincidentally
+    that is not derived from the given tree but which coincidentally
     matches it which means that it will silently return a nonsense result.
 
     Having said all that, you should almost never need to worry about this
-    possibility in practice because there is usually only one tree generator in
-    use at a time and all paths in use have come from that tree generator.
+    possibility in practice because there is usually only one tree in
+    use at a time and all paths in use have come from that tree.
  -}
-sendTreeGeneratorDownPath :: Path → TreeGenerator α → TreeGenerator α
-sendTreeGeneratorDownPath path = runIdentity . sendTreeGeneratorTDownPath path
+sendTreeDownPath :: Path → Tree α → Tree α
+sendTreeDownPath path = runIdentity . sendTreeTDownPath path
 
-{-| See 'sendTreeGeneratorDownPath';  the only difference is that this function
-    works for impure tree generators.
+{-| See 'sendTreeDownPath';  the only difference is that this function
+    works for impure trees.
  -}
-sendTreeGeneratorTDownPath :: Monad m ⇒ Path → TreeGeneratorT m α → m (TreeGeneratorT m α)
-sendTreeGeneratorTDownPath path visitor =
+sendTreeTDownPath :: Monad m ⇒ Path → TreeT m α → m (TreeT m α)
+sendTreeTDownPath path visitor =
     case viewl path of
         EmptyL → return visitor
         step :< tail → do
-            view ← viewT . unwrapTreeGeneratorT $ visitor
+            view ← viewT . unwrapTreeT $ visitor
             case (view,step) of
                 (Return _,_) →
                     throw VisitorTerminatedBeforeEndOfWalk
                 (Null :>>= _,_) →
                     throw VisitorTerminatedBeforeEndOfWalk
                 (Cache _ :>>= k,CacheStep cache) →
-                    sendTreeGeneratorTDownPath tail $ either error (TreeGeneratorT . k) (decode cache)
+                    sendTreeTDownPath tail $ either error (TreeT . k) (decode cache)
                 (Choice left _ :>>= k,ChoiceStep LeftBranch) →
-                    sendTreeGeneratorTDownPath tail (left >>= TreeGeneratorT . k)
+                    sendTreeTDownPath tail (left >>= TreeT . k)
                 (Choice _ right :>>= k,ChoiceStep RightBranch) →
-                    sendTreeGeneratorTDownPath tail (right >>= TreeGeneratorT . k)
+                    sendTreeTDownPath tail (right >>= TreeT . k)
                 _ → throw PastVisitorIsInconsistentWithPresentVisitor

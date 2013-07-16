@@ -87,7 +87,7 @@ import Visitor.Path
 
 {-| This exception is thrown when one attempts to merge checkpoints that
     disagree with each other; this will never happen as long as you only merge
-    checkpoints that came from the same tree generator, so if you get this
+    checkpoints that came from the same tree, so if you get this
     exception then there is almost certainly a bug in your code.
  -}
 data InconsistentCheckpoints = InconsistentCheckpoints Checkpoint Checkpoint deriving (Eq,Show,Typeable)
@@ -125,7 +125,7 @@ simplifyCheckpointRoot (CachePoint _ Explored) = Explored
 simplifyCheckpointRoot checkpoint = checkpoint
 
 {-| The 'Monoid' instance is designed to take checkpoints from two different
-    explorations of a given tree generator and merge them together to obtain a
+    explorations of a given tree and merge them together to obtain a
     checkpoint that indicates *all* of the areas that have been explored by
     anyone so far. For example, if the two checkpoints are @ChoicePoint Explored
     Unexplored@ and @ChoicePoint Unexplored (ChoicePoint Explored Unexplored)@
@@ -133,14 +133,13 @@ simplifyCheckpointRoot checkpoint = checkpoint
     Unexplored)@.
 
     WARNING: This 'Monoid' instance is a /partial/ function that expects
-    checkpoints that have come from the /same/ tree generator; if this
+    checkpoints that have come from the /same/ tree; if this
     precondition is not met then if you are lucky it will notice the
     inconsistency and throw an exception to let you know that something is wrong
     and if you are not then it will silently give you a nonsense result. You are
     /very/ unlikely to run into this problem unless for some reason you are
-    juggling multiple tree generators and have mixed up which checkpoint goes
-    with which generator, which is something that is neither done nor encouraged
-    in this package.
+    juggling multiple trees and have mixed up which checkpoint goes with which,
+    which is something that is neither done nor encouraged in this package.
  -}
 instance Monoid Checkpoint where
     mempty = Unexplored
@@ -175,12 +174,12 @@ The types in this subsection are essentially two kinds of zippers for the
 we are and how how to backtrack and explore other branches in tree.
 
 The difference between the two types that do this is that, at each branch,
-'Context' keeps around the generator needed to generate the tree for that branch
-whereas 'CheckpointCursor' does not. The reason for there being two different
-types is workload stealing; specifically, when a branch has been stolen from us
-we want to forget about the generator for it because we are no longer going to
-explore that branch ourselves; thus, workload stealing converts 'ContextStep's
-to 'CheckpointDifferential's. Put another way, as a worker (implemented in
+'Context' keeps around the subtree for the other branch whereas
+'CheckpointCursor' does not. The reason for there being two different types is
+workload stealing; specifically, when a branch has been stolen from us we want
+to forget about its subtree because we are no longer going to explore
+that branch ourselves; thus, workload stealing converts 'ContextStep's to
+'CheckpointDifferential's. Put another way, as a worker (implemented in
 "Visitor.Worker") explores the tree at all times it has a 'CheckpointCursor'
 which tells us about the decisions that it made which are /frozen/ as we will
 never backtrack into them to explore the other branch and a 'Context' which
@@ -197,18 +196,18 @@ data CheckpointDifferential =
   | ChoicePointD BranchChoice Checkpoint
   deriving (Eq,Read,Show)
 
-{-| Like 'CheckpointCursor', but each step keeps track of the generator for the
+{-| Like 'CheckpointCursor', but each step keeps track of the subtree for the
     alternative branch in case we backtrack to it.
  -}
 type Context m α = Seq (ContextStep m α)
 
-{-| Like 'CheckpointDifferential', but left branches include the generator
-    needed to generate the right branch;  the right branches do not need this
-    information because we always explore the left branch first.
+{-| Like 'CheckpointDifferential', but left branches include the subtree for the
+    right branch; the right branches do not need this information because we
+    always explore the left branch first.
  -}
 data ContextStep m α =
     CacheContextStep ByteString
-  | LeftBranchContextStep Checkpoint (TreeGeneratorT m α)
+  | LeftBranchContextStep Checkpoint (TreeT m α)
   | RightBranchContextStep
 
 instance Show (ContextStep m α) where
@@ -226,14 +225,14 @@ These types contain information about the state of an exploration in progress.
 data VisitorTState m α = VisitorTState
     {   visitorStateContext :: !(Context m α)
     ,   visitorStateCheckpoint :: !Checkpoint
-    ,   visitorStateVisitor :: !(TreeGeneratorT m α)
+    ,   visitorStateVisitor :: !(TreeT m α)
     }
 
 {-| An alias for 'VisitorTState' in a pure setting. -}
 type VisitorState = VisitorTState Identity
 
-{-| Constructs the initial 'VisitorTState' for the given tree generator. -}
-initialVisitorState :: Checkpoint → TreeGeneratorT m α → VisitorTState m α
+{-| Constructs the initial 'VisitorTState' for the given tree. -}
+initialVisitorState :: Checkpoint → TreeT m α → VisitorTState m α
 initialVisitorState = VisitorTState Seq.empty
 
 --------------------------------------------------------------------------------
@@ -380,9 +379,9 @@ pathStepFromCursorDifferential (ChoicePointD active_branch _) = ChoiceStep activ
     is to say,
 
     @
-    visitTreeStartingFromCheckpoint checkpoint generator <>
-        visitTreeStartingFromCheckpoint (invertCheckpoint checkpoint) generator
-            == visitTree generator
+    visitTreeStartingFromCheckpoint checkpoint tree <>
+        visitTreeStartingFromCheckpoint (invertCheckpoint checkpoint) tree
+            == visitTree tree
     @
  -}
 invertCheckpoint :: Checkpoint → Checkpoint
@@ -414,7 +413,7 @@ stepThroughTreeStartingFromCheckpoint ::
     (Maybe α,Maybe (VisitorState α))
 stepThroughTreeStartingFromCheckpoint = runIdentity . stepThroughTreeTStartingFromCheckpoint
 
-{-| Like 'stepThroughTreeStartingFromCheckpoint', but for an impurely generated tree. -}
+{-| Like 'stepThroughTreeStartingFromCheckpoint', but for an impure tree. -}
 stepThroughTreeTStartingFromCheckpoint ::
     Monad m ⇒
     VisitorTState m α →
@@ -431,14 +430,14 @@ stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor
                     VisitorTState
                         (context |> CacheContextStep (encode x))
                         Unexplored
-                        (TreeGeneratorT . k $ x)
+                        (TreeT . k $ x)
                 ))
         Choice left right :>>= k → return
             (Nothing, Just $
                 VisitorTState
-                    (context |> LeftBranchContextStep Unexplored (right >>= TreeGeneratorT . k))
+                    (context |> LeftBranchContextStep Unexplored (right >>= TreeT . k))
                     Unexplored
-                    (left >>= TreeGeneratorT . k)
+                    (left >>= TreeT . k)
             )
     CachePoint cache rest_checkpoint → getView >>= \view → case view of
         Cache _ :>>= k → return
@@ -446,20 +445,20 @@ stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor
                 VisitorTState
                     (context |> CacheContextStep cache)
                     rest_checkpoint
-                    (either error (TreeGeneratorT . k) . decode $ cache)
+                    (either error (TreeT . k) . decode $ cache)
             )
         _ → throw PastVisitorIsInconsistentWithPresentVisitor
     ChoicePoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
         Choice left right :>>= k → return
             (Nothing, Just $
                 VisitorTState
-                    (context |> LeftBranchContextStep right_checkpoint (right >>= TreeGeneratorT . k))
+                    (context |> LeftBranchContextStep right_checkpoint (right >>= TreeT . k))
                     left_checkpoint
-                    (left >>= TreeGeneratorT . k)
+                    (left >>= TreeT . k)
             )
         _ → throw PastVisitorIsInconsistentWithPresentVisitor
   where
-    getView = viewT . unwrapTreeGeneratorT $ visitor
+    getView = viewT . unwrapTreeT $ visitor
     moveUpContext = go context
       where
         go context = case viewr context of
@@ -482,23 +481,23 @@ The functions in this section visit the remainder of a tree, starting from the
 given checkpoint.
 -}
 
-{-| Visits the remaining nodes in a purely generated tree, starting from the
+{-| Visits the remaining nodes in a pure tree, starting from the
     given checkpoint, and sums over all the results in the leaves.
  -}
 visitTreeStartingFromCheckpoint ::
     Monoid α ⇒
     Checkpoint →
-    TreeGenerator α →
+    Tree α →
     α
 visitTreeStartingFromCheckpoint = runIdentity .* visitTreeTStartingFromCheckpoint
 
-{-| Visits the remaining nodes in an impurely generated tree, starting from the
+{-| Visits the remaining nodes in an impure tree, starting from the
     given checkpoint, and sums over all the results in the leaves.
  -}
 visitTreeTStartingFromCheckpoint ::
     (Monad m, Monoid α) ⇒
     Checkpoint →
-    TreeGeneratorT m α →
+    TreeT m α →
     m α
 visitTreeTStartingFromCheckpoint = go mempty .* initialVisitorState
   where
@@ -510,22 +509,22 @@ visitTreeTStartingFromCheckpoint = go mempty .* initialVisitorState
             in maybe (return new_accum) (go new_accum) maybe_new_visitor_state
 {-# INLINE visitTreeTStartingFromCheckpoint #-}
 
-{-| Visits all the remaining nodes in a purely generated tree, starting from the
+{-| Visits all the remaining nodes in a pure tree, starting from the
     given checkpoint, until a result (i.e., a leaf) has been found; if a result
     has been found then it is returned wrapped in 'Just', otherwise 'Nothing' is
     returned.
  -}
 visitTreeUntilFirstStartingFromCheckpoint ::
     Checkpoint →
-    TreeGenerator α →
+    Tree α →
     Maybe α
 visitTreeUntilFirstStartingFromCheckpoint = runIdentity .* visitTreeTUntilFirstStartingFromCheckpoint
 
-{-| Same as 'visitTreeUntilFirstStartingFromCheckpoint', but for an impurely generated tree. -}
+{-| Same as 'visitTreeUntilFirstStartingFromCheckpoint', but for an impure tree. -}
 visitTreeTUntilFirstStartingFromCheckpoint ::
     Monad m ⇒
     Checkpoint →
-    TreeGeneratorT m α →
+    TreeT m α →
     m (Maybe α)
 visitTreeTUntilFirstStartingFromCheckpoint = go .* initialVisitorState
   where
@@ -547,16 +546,16 @@ visitTreeUntilFoundStartingFromCheckpoint ::
     Monoid α ⇒
     (α → Maybe β) →
     Checkpoint →
-    TreeGenerator α →
+    Tree α →
     Either α β
 visitTreeUntilFoundStartingFromCheckpoint = runIdentity .** visitTreeTUntilFoundStartingFromCheckpoint
 
-{-| Same as 'visitTreeUntilFoundStartingFromCheckpoint', but for an impurely generated tree. -}
+{-| Same as 'visitTreeUntilFoundStartingFromCheckpoint', but for an impure tree. -}
 visitTreeTUntilFoundStartingFromCheckpoint ::
     (Monad m, Monoid α) ⇒
     (α → Maybe β) →
     Checkpoint →
-    TreeGeneratorT m α →
+    TreeT m α →
     m (Either α β)
 visitTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialVisitorState
   where

@@ -16,8 +16,8 @@ import Visitor.Parallel.Common.Worker (Purity(Pure),visitTreeGeneric)
 
 main = defaultMain
     [bench "list" $ nf (getWordSum . mconcat . trivialPerfectTree 2) depth
-    ,bench "tree generator" $ nf (getWordSum . visitTree . trivialPerfectTree 2) depth
-    ,bench "tree generator w/ checkpointing" $ nf (getWordSum . visitTreeStartingFromCheckpoint Unexplored . trivialPerfectTree 2) depth
-    ,bench "tree generator using worker" $ visitTreeGeneric AllMode Pure (trivialPerfectTree 2 depth)
+    ,bench "tree" $ nf (getWordSum . visitTree . trivialPerfectTree 2) depth
+    ,bench "tree w/ checkpointing" $ nf (getWordSum . visitTreeStartingFromCheckpoint Unexplored . trivialPerfectTree 2) depth
+    ,bench "tree using worker" $ visitTreeGeneric AllMode Pure (trivialPerfectTree 2 depth)
     ]
   where depth = 15

@@ -36,51 +36,49 @@ Description:         You can think of this package in two equvalent ways. First,
                      performed again if this path is re-explored later), or you
                      may have it directly return a 'TreeGenerator' (or one of
                      its impure friends) directly. You can then test your tree
-                     generator using the visting functions in the "Visitor"
-                     module.
+                     using the visting functions in the "Visitor" module.
                      .
-                     WARNING: If you need something like state in your
-                     generator, then you should stack the state monad (or
-                     whatever else you want) /on top/ of 'TreeGenerator' rather
-                     than below it. The reason for this is that if you stack the
-                     monad below 'TreeGeneratorT' then your monad will be
-                     affected by the order in which the tree is visited, which
-                     is almost never what you want, in part because if you are
-                     not careful then you will break the assumption made by the
-                     checkpointing and parallelization infrastructure that it
-                     does not matter in what order the tree is explored or even
-                     whether some parts are explored twice or not at all in a
-                     given run.  If side-effects that are not undone by
-                     backtracking is indeed what you want, then you need to make
-                     sure that your side-effects do not break this assumption;
-                     for example, a monad which memoizes a pure function is
-                     perfectly fine. By contrast if you are working within IO
-                     monad and writing results to a database rather than
-                     returning them (and assuming that duplicate results would
-                     cause problems) then you need to check to make sure you
-                     aren't writing the same result twice, such as by using the
-                     "Visitor.Location" functionality to identify where you are
-                     in the tree so you can query to see if your current
-                     location is already listed in the database.
+                     WARNING: If you need something like state in your tree,
+                     then you should stack the state monad (or whatever else you
+                     want) /on top/ of 'TreeGenerator' rather than below it. The
+                     reason for this is that if you stack the monad below
+                     'TreeGeneratorT' then your monad will be affected by the
+                     order in which the tree is visited, which is almost never
+                     what you want, in part because if you are not careful then
+                     you will break the assumption made by the checkpointing and
+                     parallelization infrastructure that it does not matter in
+                     what order the tree is explored or even whether some parts
+                     are explored twice or not at all in a given run. If
+                     side-effects that are not undone by backtracking is indeed
+                     what you want, then you need to make sure that your
+                     side-effects do not break this assumption; for example, a
+                     monad which memoizes a pure function is perfectly fine. By
+                     contrast if you are working within IO monad and writing
+                     results to a database rather than returning them (and
+                     assuming that duplicate results would cause problems) then
+                     you need to check to make sure you aren't writing the same
+                     result twice, such as by using the "Visitor.Location"
+                     functionality to identify where you are in the tree so you
+                     can query to see if your current location is already listed
+                     in the database.
                      .
-                     If you want to see examples of writing a tree generator,
-                     see the "Visitor.Examples.Queens" module which has some
-                     basic examples of using logic programming to find and/or
-                     count the number of solutions to the n-queens problem for
-                     a given board size.  The "Visitor.Examples.Queens.Advanced"
-                     module has my own solution to the module where I used
-                     symmetry breaking to prune the search tree,  cutting the
-                     runtime by about a third;  the resulting code is very
-                     complex, though.
+                     If you want to see examples of generating a tree to solve a
+                     problem, see the "Visitor.Examples.Queens" module which has
+                     some basic examples of using logic programming to find
+                     and/or count the number of solutions to the n-queens
+                     problem for a given board size. The
+                     "Visitor.Examples.Queens.Advanced" module has my own
+                     solution to the module where I used symmetry breaking to
+                     prune the search tree, cutting the runtime by about a
+                     third; the resulting code is very complex, though.
                      .
-                     Once your tree generator is finished, you can start
-                     taking advantage of the major features of this package.
-                     If you are interested in checkpointing but not
-                     parallelization, then you can use the step functions in
-                     the "Visitor.Checkpoint" module to sequentially visit a
-                     tree one node at a time, saving the current checkpoint as
-                     often as you desire;  at any time the visiting can be
-                     aborted and resumed later.
+                     Once your tree has been debugged, you can start taking
+                     advantage of the major features of this package. If you are
+                     interested in checkpointing but not parallelization, then
+                     you can use the step functions in the "Visitor.Checkpoint"
+                     module to sequentially visit a tree one node at a time,
+                     saving the current checkpoint as often as you desire; at
+                     any time the visiting can be aborted and resumed later.
                      .
                      Most likely, though, you will be interested in using the
                      parallelization infrastructure rather than just the
@@ -153,7 +151,7 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                      The modules are organized as follows:
                      .
-                        ["Visitor"] basic infrastructure for generating and visiting search trees
+                        ["Visitor"] basic infrastructure for building and exploring search trees
                      .
                         ["Visitor.Checkpoint"] infrastructure for creating and stepping through checkpoints
                      .
@@ -161,7 +159,7 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["Visitor.Examples.Queens.Advanced"] a very complicated example of solving the n-queens problem using symmetry breaking
                      .
-                        ["Visitor.Location"] infrastructure for when you want your tree generator to have knowledge of its current location within the tree
+                        ["Visitor.Location"] infrastructure for when you want to have knowledge of your current location within a tree
                      .
                         ["Visitor.Parallel.Adapter.Threads"] the threads adapter
                      .
@@ -398,9 +396,9 @@ Benchmark balancers
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing
 
-Benchmark tree-generator-versus-list-trivial-tree
+Benchmark tree-versus-list-trivial-tree
     Type: exitcode-stdio-1.0
-    Main-is: tree-generator-versus-list-trivial-tree.hs
+    Main-is: tree-versus-list-trivial-tree.hs
     Hs-source-dirs: benchmarks
     Build-depends:
         Visitor,
@@ -409,9 +407,9 @@ Benchmark tree-generator-versus-list-trivial-tree
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing
 
-Benchmark tree-generator-versus-list-nqueens
+Benchmark tree-versus-list-nqueens
     Type: exitcode-stdio-1.0
-    Main-is: tree-generator-versus-list-nqueens.hs
+    Main-is: tree-versus-list-nqueens.hs
     Hs-source-dirs: benchmarks
     Build-depends:
         Visitor,
