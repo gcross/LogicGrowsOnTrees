@@ -11,14 +11,14 @@ module Visitor.Workload
       Workload(..)
     , entire_workload
     , workloadDepth
-    -- * Visitor functions
-    -- $visitor
-    , visitTreeWithinWorkload
-    , visitTreeTWithinWorkload
-    , visitTreeUntilFirstWithinWorkload
-    , visitTreeTUntilFirstWithinWorkload
-    , visitTreeUntilFoundWithinWorkload
-    , visitTreeTUntilFoundWithinWorkload
+    -- * Exploration functions
+    -- $exploration
+    , exploreTreeWithinWorkload
+    , exploreTreeTWithinWorkload
+    , exploreTreeUntilFirstWithinWorkload
+    , exploreTreeTUntilFirstWithinWorkload
+    , exploreTreeUntilFoundWithinWorkload
+    , exploreTreeTUntilFoundWithinWorkload
     ) where
 
 import Control.Monad ((>=>),join,liftM)
@@ -71,88 +71,88 @@ workloadDepth :: Workload → Int
 workloadDepth = Seq.length . workloadPath
 
 --------------------------------------------------------------------------------
------------------------------ Visitor functions --------------------------------
+----------------------------- Exploration functions --------------------------------
 --------------------------------------------------------------------------------
 
-{- $visitor
-The functions in this section visit the part of a tree that is given by a
+{- $exploration
+The functions in this section explore the part of a tree that is given by a
 'Workload'.
 -}
 
-{-| Visits the nodes in a pure tree given by a 'Workload', and sums
+{-| Explores the nodes in a pure tree given by a 'Workload', and sums
     over and sums over all the results in the leaves.
  -}
-visitTreeWithinWorkload ::
+exploreTreeWithinWorkload ::
     Monoid α ⇒
     Workload →
     Tree α →
     α
-visitTreeWithinWorkload Workload{..} =
-    visitTreeStartingFromCheckpoint workloadCheckpoint
+exploreTreeWithinWorkload Workload{..} =
+    exploreTreeStartingFromCheckpoint workloadCheckpoint
     .
     sendTreeDownPath workloadPath
 
-{-| Same as 'visitTreeWithinWorkload' but for an impure tree. -}
-visitTreeTWithinWorkload ::
+{-| Same as 'exploreTreeWithinWorkload' but for an impure tree. -}
+exploreTreeTWithinWorkload ::
     (Monad m, Monoid α) ⇒
     Workload →
     TreeT m α →
     m α
-visitTreeTWithinWorkload Workload{..} =
+exploreTreeTWithinWorkload Workload{..} =
     sendTreeTDownPath workloadPath
     >=>
-    visitTreeTStartingFromCheckpoint workloadCheckpoint
+    exploreTreeTStartingFromCheckpoint workloadCheckpoint
 
-{-| Visits the nodes in a pure tree given by a 'Workload' until
+{-| Explores the nodes in a pure tree given by a 'Workload' until
     a result (i.e. a leaf) has been found; if a result has been found then it is
     returned wrapped in 'Just', otherwise 'Nothing' is returned.
  -}
    
-visitTreeUntilFirstWithinWorkload ::
+exploreTreeUntilFirstWithinWorkload ::
     Workload →
     Tree α →
     Maybe α
-visitTreeUntilFirstWithinWorkload Workload{..} =
-    visitTreeUntilFirstStartingFromCheckpoint workloadCheckpoint
+exploreTreeUntilFirstWithinWorkload Workload{..} =
+    exploreTreeUntilFirstStartingFromCheckpoint workloadCheckpoint
     .
     sendTreeDownPath workloadPath
 
-{-| Same as 'visitTreeUntilFirstWithinWorkload' but for an impure tree. -}
-visitTreeTUntilFirstWithinWorkload ::
+{-| Same as 'exploreTreeUntilFirstWithinWorkload' but for an impure tree. -}
+exploreTreeTUntilFirstWithinWorkload ::
     Monad m ⇒
     Workload →
     TreeT m α →
     m (Maybe α)
-visitTreeTUntilFirstWithinWorkload Workload{..} =
+exploreTreeTUntilFirstWithinWorkload Workload{..} =
     sendTreeTDownPath workloadPath
     >=>
-    visitTreeTUntilFirstStartingFromCheckpoint workloadCheckpoint
+    exploreTreeTUntilFirstStartingFromCheckpoint workloadCheckpoint
 
-{-| Visits the nodes in a pure tree given by a 'Workload', summing
+{-| Explores the nodes in a pure tree given by a 'Workload', summing
     all results encountered (i.e., in the leaves) until the current partial sum
     satisfies the condition provided by the first function; if this condition is
     ever satisfied then its result is returned in 'Right', otherwise the final
     sum is returned in 'Left'.
  -}
-visitTreeUntilFoundWithinWorkload ::
+exploreTreeUntilFoundWithinWorkload ::
     Monoid α ⇒
     (α → Maybe β) →
     Workload →
     Tree α →
     Either α β
-visitTreeUntilFoundWithinWorkload condition Workload{..} =
-    visitTreeUntilFoundStartingFromCheckpoint condition workloadCheckpoint
+exploreTreeUntilFoundWithinWorkload condition Workload{..} =
+    exploreTreeUntilFoundStartingFromCheckpoint condition workloadCheckpoint
     .
     sendTreeDownPath workloadPath
 
-{-| Same as 'visitTreeUntilFoundWithinWorkload' but for an impure tree. -}
-visitTreeTUntilFoundWithinWorkload ::
+{-| Same as 'exploreTreeUntilFoundWithinWorkload' but for an impure tree. -}
+exploreTreeTUntilFoundWithinWorkload ::
     (Monoid α, Monad m) ⇒
     (α → Maybe β) →
     Workload →
     TreeT m α →
     m (Either α β)
-visitTreeTUntilFoundWithinWorkload condition Workload{..} =
+exploreTreeTUntilFoundWithinWorkload condition Workload{..} =
     sendTreeTDownPath workloadPath
     >=>
-    visitTreeTUntilFoundStartingFromCheckpoint condition workloadCheckpoint
+    exploreTreeTUntilFoundStartingFromCheckpoint condition workloadCheckpoint

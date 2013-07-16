@@ -14,7 +14,7 @@
 
 {-| The 'Worker' module contains the workhorses code of the parallelization
     infrastructure in the form of the 'forkWorkerThread' function, which
-    visits a tree step by step while continuously polling for requests;  more
+    explores a tree step by step while continuously polling for requests;  more
     details for how this function works are available at 'forkWorkerThread'.
  -}
 module Visitor.Parallel.Common.Worker
@@ -40,7 +40,7 @@ module Visitor.Parallel.Common.Worker
     , sendAbortRequest
     , sendProgressUpdateRequest
     , sendWorkloadStealRequest
-    , visitTreeGeneric
+    , exploreTreeGeneric
     ) where
 
 import Prelude hiding (catch)
@@ -72,7 +72,7 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
-import Visitor hiding (visitTree,visitTreeT,visitTreeUntilFirst,visitTreeTUntilFirst)
+import Visitor hiding (exploreTree,exploreTreeT,exploreTreeUntilFirst,exploreTreeTUntilFirst)
 import Visitor.Checkpoint
 import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Path
@@ -214,7 +214,7 @@ io_purity = ImpureAtopIO id
 data TreeFunctionsForPurity (m :: * → *) (n :: * → *) (α :: *) =
     MonadIO n ⇒ TreeFunctionsForPurity
     {   walk :: Path → TreeT m α → n (TreeT m α)
-    ,   step :: VisitorTState m α → n (Maybe α,Maybe (VisitorTState m α))
+    ,   step :: ExplorationTState m α → n (Maybe α,Maybe (ExplorationTState m α))
     ,   run ::  (∀ β. n β → IO β)
     }
 
@@ -229,7 +229,7 @@ deriveLoggers "Logger" [DEBUG]
 --------------------------------------------------------------------------------
 
 {-| The 'forkWorkerThread' function is the workhorse of the parallization
-    infrastructure; it visits a tree in a separate thread while polling for
+    infrastructure; it explores a tree in a separate thread while polling for
     requests. Specifically, the worker alternates between stepping through the
     tree and checking to see if there are any new requests in the queue
     
@@ -245,23 +245,23 @@ deriveLoggers "Logger" [DEBUG]
     list is non-empty it will be short enough that 'reverse'ing it will not pose
     a significant cost.
 
-    At any given point in the visiting, there is an initial path which locates
-    the subtree that was given as the original workload, a cursor which
+    At any given point in the exploration, there is an initial path which
+    locates the subtree that was given as the original workload, a cursor which
     indicates the subtree /within/ this subtree that makes up the /current/
     workload, and the context which indicates the current location in the tree
-    that is being visited. All workers start with an empty cursor; when a
+    that is being explored. All workers start with an empty cursor; when a
     workload is stolen, decisions made early on in the the context are frozen
     and moved into the cursor because if they were not then when the worker
     backtracked it would explore a workload that it just gave away, resulting in
     some results being observed twice.
 
-    The worker terminates either if it finishes visiting all the nodes in its
+    The worker terminates either if it finishes exploring all the nodes in its
     (current) workload, if an error occurs, or if it is aborted either via.
     the 'ThreadKilled' and 'UserInterrupt' exceptions or by an abort request
     placed in the request queue.
  -}
 forkWorkerThread ::
-    ExplorationMode exploration_mode {-^ the mode in to visit the tree -} →
+    ExplorationMode exploration_mode {-^ the mode in to explore the tree -} →
     Purity m n {-^ the purity of the tree -} →
     (WorkerTerminationReasonFor exploration_mode → IO ()) {-^ the action to run when the worker has terminated -} →
     TreeT m (ResultFor exploration_mode) {-^ the tree -} →
@@ -275,7 +275,7 @@ forkWorkerThread
     exploration_mode
     purity
     finishedCallback
-    visitor
+    tree
     (Workload initial_path initial_checkpoint)
     push
   = do
@@ -290,45 +290,45 @@ forkWorkerThread
     -- LOOP PHASE 1:  Check if there are any pending requests;  if so, proceed
     --                to phase 2;  otherwise (the most common case), skip to
     --                phase 3.
-        loop1 (!result) cursor visitor_state =
+        loop1 (!result) cursor exploration_state =
             liftIO (readIORef pending_requests_ref) >>= \pending_requests →
             case pending_requests of
-                [] → loop3 result cursor visitor_state
+                [] → loop3 result cursor exploration_state
                 _ → debugM "Worker thread's request queue is non-empty."
                     >> (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
-                    >>= loop2 result cursor visitor_state
+                    >>= loop2 result cursor exploration_state
 
     -- LOOP PHASE 2:  Process all pending requests.
-        loop2 result cursor visitor_state@(VisitorTState context checkpoint visitor) requests =
+        loop2 result cursor exploration_state@(ExplorationTState context checkpoint tree) requests =
             case requests of
-                [] → liftIO yield >> loop3 result cursor visitor_state
+                [] → liftIO yield >> loop3 result cursor exploration_state
                 AbortRequested:_ → do
                     debugM "Worker theread received abort request."
                     return WorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     debugM "Worker thread received progress update request."
                     liftIO . submitProgress $ computeProgressUpdate exploration_mode result initial_path cursor context checkpoint
-                    loop2 initial_intermediate_value cursor visitor_state rest_requests
+                    loop2 initial_intermediate_value cursor exploration_state rest_requests
                 WorkloadStealRequested submitMaybeWorkload:rest_requests → do
                     debugM "Worker thread received workload steal."
                     case tryStealWorkload initial_path cursor context of
                         Nothing → do
                             liftIO $ submitMaybeWorkload Nothing
-                            loop2 result cursor visitor_state rest_requests
+                            loop2 result cursor exploration_state rest_requests
                         Just (new_cursor,new_context,workload) → do
                             liftIO . submitMaybeWorkload . Just $
                                 StolenWorkload
                                     (computeProgressUpdate exploration_mode result initial_path new_cursor new_context checkpoint)
                                     workload
-                            loop2 initial_intermediate_value new_cursor (VisitorTState new_context checkpoint visitor) rest_requests
+                            loop2 initial_intermediate_value new_cursor (ExplorationTState new_context checkpoint tree) rest_requests
 
     -- LOOP PHASE 3:  Take a step through the tree, and then (if not finished)
     --                return to phase 1.
-        loop3 result cursor visitor_state
+        loop3 result cursor exploration_state
           = do
-            (maybe_solution,maybe_new_visitor_state) ← step visitor_state 
-            case maybe_new_visitor_state of
-                Nothing → -- We have completed visiting the tree.
+            (maybe_solution,maybe_new_exploration_state) ← step exploration_state 
+            case maybe_new_exploration_state of
+                Nothing → -- We have completed exploring the tree.
                     let explored_checkpoint =
                             checkpointFromInitialPath initial_path
                             .
@@ -362,18 +362,18 @@ forkWorkerThread
                                 Progress
                                     explored_checkpoint
                                     (fromMaybe mempty maybe_solution)
-                Just new_visitor_state@(VisitorTState context checkpoint _) →
+                Just new_exploration_state@(ExplorationTState context checkpoint _) →
                     let new_checkpoint = checkpointFromSetting initial_path cursor context checkpoint
                     in case maybe_solution of
-                        Nothing → loop1 result cursor new_visitor_state
+                        Nothing → loop1 result cursor new_exploration_state
                         Just (!solution) →
                             case exploration_mode of
-                                AllMode → loop1 (result <> solution) cursor new_visitor_state
+                                AllMode → loop1 (result <> solution) cursor new_exploration_state
                                 FirstMode → return . WorkerFinished $ Progress new_checkpoint (Just solution)
                                 FoundModeUsingPull f →
                                     let new_result = result <> solution
                                     in case f new_result of
-                                        Nothing → loop1 new_result cursor new_visitor_state
+                                        Nothing → loop1 new_result cursor new_exploration_state
                                         Just final_result → return . WorkerFinished $ Progress new_checkpoint (Right final_result)
 
                                 FoundModeUsingPush _ → do
@@ -381,7 +381,7 @@ forkWorkerThread
                                         ProgressUpdate
                                             (Progress new_checkpoint solution)
                                             (workloadFromSetting initial_path cursor context checkpoint)
-                                    loop1 () cursor new_visitor_state
+                                    loop1 () cursor new_exploration_state
 
     ----------------------------- LAUNCH THE WORKER ----------------------------
     finished_flag ← IVar.new
@@ -389,11 +389,11 @@ forkWorkerThread
         termination_reason ←
             debugM "Worker thread has been forked." >>
             (run $
-                walk initial_path visitor
+                walk initial_path tree
                 >>=
                 loop1 initial_intermediate_value Seq.empty
                 .
-                initialVisitorState initial_checkpoint
+                initialExplorationState initial_checkpoint
             )
             `catch`
             (\e → case fromException e of
@@ -452,12 +452,12 @@ sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
 ------------------------------ Utility functions -------------------------------
 --------------------------------------------------------------------------------
 
-{-| This function visits a tree with the specified purity using the given mode
+{-| This function explores a tree with the specified purity using the given mode
     by forking a worker thread and waiting for it to finish;  it exists to
     facilitate testing and benchmarking and is not a function that you are
     likely to ever have a need for yourself.
  -}
-visitTreeGeneric ::
+exploreTreeGeneric ::
     ( WorkerPushActionFor exploration_mode ~ (Void → ())
     , ResultFor exploration_mode ~ α
     ) ⇒
@@ -465,13 +465,13 @@ visitTreeGeneric ::
     Purity m n →
     TreeT m α →
     IO (WorkerTerminationReason (FinalResultFor exploration_mode))
-visitTreeGeneric exploration_mode purity visitor = do
+exploreTreeGeneric exploration_mode purity tree = do
     final_progress_mvar ← newEmptyMVar
     _ ← forkWorkerThread
             exploration_mode
             purity
             (putMVar final_progress_mvar)
-            visitor
+            tree
             entire_workload
             absurd
     final_progress ← takeMVar final_progress_mvar

@@ -12,7 +12,7 @@ import Visitor.Parallel.Adapter.Threads
 import Visitor.Examples.Queens
 
 main =
-    mainForVisitTree
+    mainForExploreTree
         driver
         (makeBoardSizeTermAtPosition 0)
         (defTI { termDoc = "print all the n-queens solutions for a given board size" })

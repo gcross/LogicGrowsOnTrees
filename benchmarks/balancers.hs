@@ -16,6 +16,6 @@ main = defaultMain
     ]
   where
     benchUsing f =
-        [ bench (show bound) $ nf (getWordSum . visitTree . f) (map WordSum [1..bound])
+        [ bench (show bound) $ nf (getWordSum . exploreTree . f) (map WordSum [1..bound])
         | bound ← [1,10,100,1000]
         ]

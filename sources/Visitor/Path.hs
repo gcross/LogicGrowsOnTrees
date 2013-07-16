@@ -42,11 +42,11 @@ data WalkError =
     {-| Indicates that a path is too long for a given tree --- i.e., the
         walk has hit a leaf (or a null) before the path finishes.
      -}
-    VisitorTerminatedBeforeEndOfWalk
+    TreeEndedBeforeEndOfWalk
     {-| Indicates that a choice step in a path coincided with a cache point in
         a tree, or vice versa.
      -}
-  | PastVisitorIsInconsistentWithPresentVisitor
+  | PastTreeIsInconsistentWithPresentTree
   deriving (Eq,Show,Typeable)
 
 instance Exception WalkError
@@ -120,20 +120,20 @@ sendTreeDownPath path = runIdentity . sendTreeTDownPath path
     works for impure trees.
  -}
 sendTreeTDownPath :: Monad m ⇒ Path → TreeT m α → m (TreeT m α)
-sendTreeTDownPath path visitor =
+sendTreeTDownPath path tree =
     case viewl path of
-        EmptyL → return visitor
+        EmptyL → return tree
         step :< tail → do
-            view ← viewT . unwrapTreeT $ visitor
+            view ← viewT . unwrapTreeT $ tree
             case (view,step) of
                 (Return _,_) →
-                    throw VisitorTerminatedBeforeEndOfWalk
+                    throw TreeEndedBeforeEndOfWalk
                 (Null :>>= _,_) →
-                    throw VisitorTerminatedBeforeEndOfWalk
+                    throw TreeEndedBeforeEndOfWalk
                 (Cache _ :>>= k,CacheStep cache) →
                     sendTreeTDownPath tail $ either error (TreeT . k) (decode cache)
                 (Choice left _ :>>= k,ChoiceStep LeftBranch) →
                     sendTreeTDownPath tail (left >>= TreeT . k)
                 (Choice _ right :>>= k,ChoiceStep RightBranch) →
                     sendTreeTDownPath tail (right >>= TreeT . k)
-                _ → throw PastVisitorIsInconsistentWithPresentVisitor
+                _ → throw PastTreeIsInconsistentWithPresentTree

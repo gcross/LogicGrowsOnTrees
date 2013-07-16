@@ -40,7 +40,7 @@ import System.IO (Handle)
     known based on from where the message was received.
  -}
 data MessageForSupervisor progress worker_final_progress =
-    {-| The worker encountered a failure with the given message while visiting the tree. -}
+    {-| The worker encountered a failure with the given message while exploring the tree. -}
     Failed String
     {-| The worker has finished with the given final progress. -}
   | Finished worker_final_progress
@@ -82,7 +82,7 @@ data MessageForSupervisorReceivers exploration_mode worker_id = MessageForSuperv
 data MessageForWorker =
     RequestProgressUpdate {-^ request a progress update -}
   | RequestWorkloadSteal {-^ request a stolen workload -}
-  | StartWorkload Workload {-^ start visiting the given workload -}
+  | StartWorkload Workload {-^ start exploring the given workload -}
   | QuitWorker {-^ stop what you are doing and quit the system -}
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForWorker)

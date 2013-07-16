@@ -375,9 +375,9 @@ $( makeLenses ''SupervisorState )
 data SupervisorTerminationReason final_result progress worker_id = -- {{{
     {-| the supervisor aborted before finishing;  included is the current progress at the time it aborted -}
     SupervisorAborted progress
-    {-| the supervisor completed visiting the tree;  included is the final result -}
+    {-| the supervisor completed exploring the tree;  included is the final result -}
   | SupervisorCompleted final_result
-    {-| the supervisor failed to visit the tree;  included is the worker where the failure occured as well as the message -}
+    {-| the supervisor failed to explore the tree;  included is the worker where the failure occured as well as the message -}
   | SupervisorFailure worker_id String
   deriving (Eq,Show)
 -- }}}

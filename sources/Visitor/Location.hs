@@ -35,20 +35,20 @@ module Visitor.Location
     , sendTreeDownLocation
     , sendTreeTDownLocation
     , solutionsToMap
-    -- * Visitor functions
-    , visitLocatableTree
-    , visitLocatableTreeT
-    , visitLocatableTreeTAndIgnoreResults
-    , visitTreeWithLocations
-    , visitTreeTWithLocations
-    , visitTreeWithLocationsStartingAt
-    , visitTreeTWithLocationsStartingAt
-    , visitLocatableTreeUntilFirst
-    , visitLocatableTreeUntilFirstT
-    , visitTreeUntilFirstWithLocation
-    , visitTreeTUntilFirstWithLocation
-    , visitTreeUntilFirstWithLocationStartingAt
-    , visitTreeTUntilFirstWithLocationStartingAt
+    -- * Exploration functions
+    , exploreLocatableTree
+    , exploreLocatableTreeT
+    , exploreLocatableTreeTAndIgnoreResults
+    , exploreTreeWithLocations
+    , exploreTreeTWithLocations
+    , exploreTreeWithLocationsStartingAt
+    , exploreTreeTWithLocationsStartingAt
+    , exploreLocatableTreeUntilFirst
+    , exploreLocatableTreeUntilFirstT
+    , exploreTreeUntilFirstWithLocation
+    , exploreTreeTUntilFirstWithLocation
+    , exploreTreeUntilFirstWithLocationStartingAt
+    , exploreTreeTUntilFirstWithLocationStartingAt
     ) where
 
 
@@ -150,8 +150,8 @@ instance MonadPlus m ⇒ MonadPlus (LocatableT m) where
     LocatableT left `mplus` LocatableT right = LocatableT . ReaderT $
         \branch → (runReaderT left (leftBranchOf branch)) `mplus` (runReaderT right (rightBranchOf branch))
 
-instance MonadVisitableTrans m ⇒ MonadVisitableTrans (LocatableT m) where
-    type NestedMonadInVisitor (LocatableT m) = NestedMonadInVisitor m
+instance MonadExplorableTrans m ⇒ MonadExplorableTrans (LocatableT m) where
+    type NestedMonad (LocatableT m) = NestedMonad m
     runAndCache = LocatableT . lift . runAndCache
     runAndCacheGuard = LocatableT . lift . runAndCacheGuard
     runAndCacheMaybe = LocatableT . lift . runAndCacheMaybe
@@ -173,8 +173,8 @@ newtype LocatableTreeT m α = LocatableTreeT { unwrapLocatableTreeT :: Locatable
 instance MonadTrans LocatableTreeT where
     lift = LocatableTreeT . lift . lift
 
-instance Monad m ⇒ MonadVisitableTrans (LocatableTreeT m) where
-    type NestedMonadInVisitor (LocatableTreeT m) = m
+instance Monad m ⇒ MonadExplorableTrans (LocatableTreeT m) where
+    type NestedMonad (LocatableTreeT m) = m
     runAndCache = LocatableTreeT . runAndCache
     runAndCacheGuard = LocatableTreeT . runAndCacheGuard
     runAndCacheMaybe = LocatableTreeT . runAndCacheMaybe
@@ -299,13 +299,13 @@ sendTreeDownLocation label = runIdentity . sendTreeTDownLocation label
 sendTreeTDownLocation :: Monad m ⇒ Location → TreeT m α → m (TreeT m α)
 sendTreeTDownLocation (Location label) = go root
   where
-    go parent visitor
-      | parent == label = return visitor
+    go parent tree
+      | parent == label = return tree
       | otherwise =
-          (viewT . unwrapTreeT) visitor >>= \view → case view of
-            Return _ → throw VisitorTerminatedBeforeEndOfWalk
-            Null :>>= _ → throw VisitorTerminatedBeforeEndOfWalk
-            Cache mx :>>= k → mx >>= maybe (throw VisitorTerminatedBeforeEndOfWalk) (go parent . TreeT . k)
+          (viewT . unwrapTreeT) tree >>= \view → case view of
+            Return _ → throw TreeEndedBeforeEndOfWalk
+            Null :>>= _ → throw TreeEndedBeforeEndOfWalk
+            Cache mx :>>= k → mx >>= maybe (throw TreeEndedBeforeEndOfWalk) (go parent . TreeT . k)
             Choice left right :>>= k →
                 if parent > label
                 then
@@ -323,88 +323,88 @@ sendTreeTDownLocation (Location label) = go root
 solutionsToMap :: Foldable t ⇒ t (Solution α) → Map Location α
 solutionsToMap = Fold.foldl' (flip $ \(Solution label solution) → Map.insert label solution) Map.empty
 
------------------------------- Visitor functions -------------------------------
+------------------------------ Exploration functions -------------------------------
 
-{-| Visit all the nodes in a LocatableTree and sum over all the results in the
+{-| Explore all the nodes in a LocatableTree and sum over all the results in the
     leaves.
  -}
-visitLocatableTree :: Monoid α ⇒ LocatableTree α → α
-visitLocatableTree = visitTree . runLocatableT . unwrapLocatableTreeT
+exploreLocatableTree :: Monoid α ⇒ LocatableTree α → α
+exploreLocatableTree = exploreTree . runLocatableT . unwrapLocatableTreeT
 
-{-| Same as 'visitLocatableTree', but for an impure tree. -}
-visitLocatableTreeT :: (Monoid α,Monad m) ⇒ LocatableTreeT m α → m α
-visitLocatableTreeT = visitTreeT . runLocatableT . unwrapLocatableTreeT
+{-| Same as 'exploreLocatableTree', but for an impure tree. -}
+exploreLocatableTreeT :: (Monoid α,Monad m) ⇒ LocatableTreeT m α → m α
+exploreLocatableTreeT = exploreTreeT . runLocatableT . unwrapLocatableTreeT
 
-{-| Same as 'visitLocatableTree', but the results are discarded so the tree is
-    only visited for its side-effects.
+{-| Same as 'exploreLocatableTree', but the results are discarded so the tree is
+    only explored for its side-effects.
  -}
-visitLocatableTreeTAndIgnoreResults :: Monad m ⇒ LocatableTreeT m α → m ()
-visitLocatableTreeTAndIgnoreResults = visitTreeTAndIgnoreResults . runLocatableT . unwrapLocatableTreeT
+exploreLocatableTreeTAndIgnoreResults :: Monad m ⇒ LocatableTreeT m α → m ()
+exploreLocatableTreeTAndIgnoreResults = exploreTreeTAndIgnoreResults . runLocatableT . unwrapLocatableTreeT
 
-{-| Visits all of the nodes of a tree, returning a list of solutions each
+{-| Explores all of the nodes of a tree, returning a list of solutions each
     tagged with the location at which it was found.
  -}
-visitTreeWithLocations :: Tree α → [Solution α]
-visitTreeWithLocations = runIdentity . visitTreeTWithLocations
+exploreTreeWithLocations :: Tree α → [Solution α]
+exploreTreeWithLocations = runIdentity . exploreTreeTWithLocations
 
-{-| Like 'visitTreeWithLocations' but for an impure tree. -}
-visitTreeTWithLocations :: Monad m ⇒ TreeT m α → m [Solution α]
-visitTreeTWithLocations = visitTreeTWithLocationsStartingAt rootLocation
+{-| Like 'exploreTreeWithLocations' but for an impure tree. -}
+exploreTreeTWithLocations :: Monad m ⇒ TreeT m α → m [Solution α]
+exploreTreeTWithLocations = exploreTreeTWithLocationsStartingAt rootLocation
 
-{-| Like 'visitTreeWithLocations', but for a subtree whose location is given by
+{-| Like 'exploreTreeWithLocations', but for a subtree whose location is given by
     the first argument;  the solutions are labeled by the /absolute/ location
     within the full tree (as opposed to their relative location within the
     subtree).
  -}
-visitTreeWithLocationsStartingAt :: Location → Tree α → [Solution α]
-visitTreeWithLocationsStartingAt = runIdentity .* visitTreeTWithLocationsStartingAt
+exploreTreeWithLocationsStartingAt :: Location → Tree α → [Solution α]
+exploreTreeWithLocationsStartingAt = runIdentity .* exploreTreeTWithLocationsStartingAt
 
-{-| Like 'visitTreeWithLocationsStartingAt' but for an impure trees. -}
-visitTreeTWithLocationsStartingAt :: Monad m ⇒ Location → TreeT m α → m [Solution α]
-visitTreeTWithLocationsStartingAt label =
+{-| Like 'exploreTreeWithLocationsStartingAt' but for an impure trees. -}
+exploreTreeTWithLocationsStartingAt :: Monad m ⇒ Location → TreeT m α → m [Solution α]
+exploreTreeTWithLocationsStartingAt label =
     viewT . unwrapTreeT >=> \view →
     case view of
         Return x → return [Solution label x]
-        (Cache mx :>>= k) → mx >>= maybe (return []) (visitTreeTWithLocationsStartingAt label . TreeT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return []) (exploreTreeTWithLocationsStartingAt label . TreeT . k)
         (Choice left right :>>= k) →
             liftM2 (++)
-                (visitTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeT . k)
-                (visitTreeTWithLocationsStartingAt (rightBranchOf label) $ right >>= TreeT . k)
+                (exploreTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeT . k)
+                (exploreTreeTWithLocationsStartingAt (rightBranchOf label) $ right >>= TreeT . k)
         (Null :>>= _) → return []
 
-{-| Visits all the nodes in a locatable tree until a result (i.e., a leaf) has
+{-| Explores all the nodes in a locatable tree until a result (i.e., a leaf) has
     been found; if a result has been found then it is returned wrapped in
     'Just', otherwise 'Nothing' is returned.
  -}
-visitLocatableTreeUntilFirst :: LocatableTree α → Maybe α
-visitLocatableTreeUntilFirst = visitTreeUntilFirst . runLocatableT . unwrapLocatableTreeT
+exploreLocatableTreeUntilFirst :: LocatableTree α → Maybe α
+exploreLocatableTreeUntilFirst = exploreTreeUntilFirst . runLocatableT . unwrapLocatableTreeT
 
-{-| Like 'visitLocatableTreeUntilFirst' but for an impure tree. -}
-visitLocatableTreeUntilFirstT :: Monad m ⇒ LocatableTreeT m α → m (Maybe α)
-visitLocatableTreeUntilFirstT = visitTreeTUntilFirst . runLocatableT . unwrapLocatableTreeT
+{-| Like 'exploreLocatableTreeUntilFirst' but for an impure tree. -}
+exploreLocatableTreeUntilFirstT :: Monad m ⇒ LocatableTreeT m α → m (Maybe α)
+exploreLocatableTreeUntilFirstT = exploreTreeTUntilFirst . runLocatableT . unwrapLocatableTreeT
 
-{-| Visits all the nodes in a tree until a result (i.e., a leaf) has been found;
+{-| Explores all the nodes in a tree until a result (i.e., a leaf) has been found;
     if a result has been found then it is returned tagged with the location at
     which it was found and wrapped in 'Just', otherwise'Nothing' is returned.
  -}
-visitTreeUntilFirstWithLocation :: Tree α → Maybe (Solution α)
-visitTreeUntilFirstWithLocation = runIdentity . visitTreeTUntilFirstWithLocation
+exploreTreeUntilFirstWithLocation :: Tree α → Maybe (Solution α)
+exploreTreeUntilFirstWithLocation = runIdentity . exploreTreeTUntilFirstWithLocation
 
-{-| Like 'visitTreeUntilFirstWithLocation' but for an impure tree. -}
-visitTreeTUntilFirstWithLocation :: Monad m ⇒ TreeT m α → m (Maybe (Solution α))
-visitTreeTUntilFirstWithLocation = visitTreeTUntilFirstWithLocationStartingAt rootLocation
+{-| Like 'exploreTreeUntilFirstWithLocation' but for an impure tree. -}
+exploreTreeTUntilFirstWithLocation :: Monad m ⇒ TreeT m α → m (Maybe (Solution α))
+exploreTreeTUntilFirstWithLocation = exploreTreeTUntilFirstWithLocationStartingAt rootLocation
 
-{-| Like 'visitTreeUntilFirstWithLocation', but for a subtree whose location is
+{-| Like 'exploreTreeUntilFirstWithLocation', but for a subtree whose location is
     given by the first argument; the solution (if present) is labeled by the
     /absolute/ location within the full tree (as opposed to its relative
     location within the subtree).
  -}
-visitTreeUntilFirstWithLocationStartingAt :: Location → Tree α → Maybe (Solution α)
-visitTreeUntilFirstWithLocationStartingAt = runIdentity .* visitTreeTUntilFirstWithLocationStartingAt
+exploreTreeUntilFirstWithLocationStartingAt :: Location → Tree α → Maybe (Solution α)
+exploreTreeUntilFirstWithLocationStartingAt = runIdentity .* exploreTreeTUntilFirstWithLocationStartingAt
 
-{-| Like 'visitTreeUntilFirstWithLocationStartingAt' but for an impure tree. -}
-visitTreeTUntilFirstWithLocationStartingAt :: Monad m ⇒ Location → TreeT m α → m (Maybe (Solution α))
-visitTreeTUntilFirstWithLocationStartingAt = go .* visitTreeTWithLocationsStartingAt
+{-| Like 'exploreTreeUntilFirstWithLocationStartingAt' but for an impure tree. -}
+exploreTreeTUntilFirstWithLocationStartingAt :: Monad m ⇒ Location → TreeT m α → m (Maybe (Solution α))
+exploreTreeTUntilFirstWithLocationStartingAt = go .* exploreTreeTWithLocationsStartingAt
   where
     go = liftM $ \solutions →
         case solutions of

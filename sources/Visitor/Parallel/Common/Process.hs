@@ -58,7 +58,7 @@ deriveLoggers "Logger" [DEBUG,INFO]
  -}
 runWorker ::
     ∀ exploration_mode m n.
-    ExplorationMode exploration_mode {-^ the mode in to visit the tree -} →
+    ExplorationMode exploration_mode {-^ the mode in to explore the tree -} →
     Purity m n {-^ the purity of the tree -} →
     TreeT m (ResultFor exploration_mode) {-^ the tree -} →
     IO MessageForWorker {-^ the action used to fetch the next message -} →
@@ -143,7 +143,7 @@ runWorkerUsingHandles ::
     ( Serialize (ProgressFor exploration_mode)
     , Serialize (WorkerFinalProgressFor exploration_mode)
     ) ⇒
-    ExplorationMode exploration_mode {-^ the mode in to visit the tree -} →
+    ExplorationMode exploration_mode {-^ the mode in to explore the tree -} →
     Purity m n {-^ the purity of the tree -} →
     TreeT m (ResultFor exploration_mode) {-^ the tree -} →
     Handle {-^ handle from which messages from the supervisor are read -} →

@@ -7,7 +7,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| To understand the purpose of this module, it helps to know that during the
-    global visiting process there will be two main loops running in the
+    global exploration process there will be two main loops running in the
     supervisor. The first loop runs inside the 'SupervisorMonad' and is usually
     taken over by the adapter, which handles the communication between the
     supervisors and the workers. The second loop (usually referred to as the

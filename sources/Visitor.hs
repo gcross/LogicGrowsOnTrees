@@ -16,22 +16,22 @@ module Visitor
       Tree
     , TreeIO
     , TreeT(..)
-    -- * Visitable class features
+    -- * Explorable class features
     -- $type-classes
-    , MonadVisitable(..)
-    , MonadVisitableTrans(..)
+    , MonadExplorable(..)
+    , MonadExplorableTrans(..)
     -- * Functions
     -- $functions
 
-    -- ** ...that visit trees
+    -- ** ...that explore trees
     -- $runners
-    , visitTree
-    , visitTreeT
-    , visitTreeTAndIgnoreResults
-    , visitTreeUntilFirst
-    , visitTreeTUntilFirst
-    , visitTreeUntilFound
-    , visitTreeTUntilFound
+    , exploreTree
+    , exploreTreeT
+    , exploreTreeTAndIgnoreResults
+    , exploreTreeUntilFirst
+    , exploreTreeTUntilFirst
+    , exploreTreeUntilFound
+    , exploreTreeTUntilFound
     -- ** ...that help building trees
     -- $builders
     , allFrom
@@ -79,8 +79,8 @@ of this page in the Implementation section.
 
 There is one type of pure tree and two types of impure trees.
 In general, your tree should nearly always be pure if you are planning
-to make use of checkpointing or parallel visiting, because in general parts of
-the tree may be visited multiple times, some parts may not be run at all on a
+to make use of checkpointing or parallel exploring, because in general parts of
+the tree may be explored multiple times, some parts may not be run at all on a
 given processor, and whenever a leaf is hit there will be a jump to a higher
 node, so if your tree is impure the effects need to be meaningful no
 matter how the tree is run on a given processor.
@@ -88,15 +88,15 @@ matter how the tree is run on a given processor.
 Having said that, there are a few times when an impure tree can make sense:
 first, if the inner monad is something like the `Reader` monad, which has no
 side-effects; second, for testing purposes (e.g., many of my tests of the
-various tree visitors use `MVar`s and the like to ensure that trees are explored
-in a certain way to test certain code paths); finally, if there is some
+various tree explorers use `MVar`s and the like to ensure that trees are
+explored in a certain way to test certain code paths); finally, if there is some
 side-effectful action that you want to run on each result (such as storing a
 result into a database), though in this case you will need to make sure that
 your code is robust against being run multiple times as there is no guarantee in
 an environment where the system might be shut down and resumed from a checkpoint
 that your action will only have been run once on a given result (i.e., if the
 system goes down after your action was run but before a checkpoint was made
-marking that its node was visited).
+marking that its node was explored).
 
 If you need something like state in your tree, then you should consider
 nesting the tree monad in the state monad rather than vice-versa,
@@ -126,10 +126,10 @@ newtype TreeT m α = TreeT { unwrapTreeT :: ProgramT (TreeTInstruction m) m α }
 
 {- $type-classes
 
-'Tree's are instances of 'MonadVisitable' and/or 'MonadVisitableTrans',
+'Tree's are instances of 'MonadExplorable' and/or 'MonadExplorableTrans',
 which are both subclasses of 'MonadPlus'. The additional functionality offered
 by these type-classes is the ability to cache results so that a computation does
-not need to be repeated when a node is visited a second time, which can happen
+not need to be repeated when a node is explored a second time, which can happen
 either when resuming from a checkpoint or when a workload has been stolen by
 another processor as the first step is to retrace the path through the tree
 that leads to the stolen workload.
@@ -150,11 +150,11 @@ NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
        caching the result.
  -}
 
-{-| The 'MonadVisitable' class provides caching functionality when visiting a
+{-| The 'MonadExplorable' class provides caching functionality when exploring a
     tree;  at minimum 'cacheMaybe' needs to be defined.
  -}
-class MonadPlus m ⇒ MonadVisitable m where
-    {-| Cache a value in case we visit this node again. -}
+class MonadPlus m ⇒ MonadExplorable m where
+    {-| Cache a value in case we explore this node again. -}
     cache :: Serialize x ⇒ x → m x
     cache = cacheMaybe . Just
 
@@ -172,28 +172,28 @@ class MonadPlus m ⇒ MonadVisitable m where
      -}
     cacheMaybe :: Serialize x ⇒ Maybe x → m x
 
-{-| This class is like 'MonadVisitable', but it is designed to work with monad
+{-| This class is like 'MonadExplorable', but it is designed to work with monad
     stacks;  at minimum 'runAndCacheMaybe' needs to be defined.
  -}
-class (MonadPlus m, Monad (NestedMonadInVisitor m)) ⇒ MonadVisitableTrans m where
+class (MonadPlus m, Monad (NestedMonad m)) ⇒ MonadExplorableTrans m where
     {-| The next layer down in the monad transformer stack. -}
-    type NestedMonadInVisitor m :: * → *
+    type NestedMonad m :: * → *
 
     {-| Runs the given action in the nested monad and caches the result. -}
-    runAndCache :: Serialize x ⇒ (NestedMonadInVisitor m) x → m x
+    runAndCache :: Serialize x ⇒ (NestedMonad m) x → m x
     runAndCache = runAndCacheMaybe . liftM Just
 
     {-| Runs the given action in the nested monad and then does the equivalent
         of feeding it into 'guard', caching the result.
      -}
-    runAndCacheGuard :: (NestedMonadInVisitor m) Bool → m ()
+    runAndCacheGuard :: (NestedMonad m) Bool → m ()
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
 
     {-| Runs the given action in the nested monad;  if it returns 'Nothing',
         then it acts like 'mzero',  if it returns 'Just x', then it caches the
         result.
      -}
-    runAndCacheMaybe :: Serialize x ⇒ (NestedMonadInVisitor m) (Maybe x) → m x
+    runAndCacheMaybe :: Serialize x ⇒ (NestedMonad m) (Maybe x) → m x
 
 --------------------------------------------------------------------------------
 ---------------------------------- Instances -----------------------------------
@@ -230,56 +230,56 @@ instance Monad m ⇒ MonadPlus (TreeT m) where
 {-| This instance performs no caching but is provided to make it easier to test
     running a tree using the List monad.
  -}
-instance MonadVisitable [] where
+instance MonadExplorable [] where
     cacheMaybe = maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a tree using the 'ListT' monad.
  -}
-instance Monad m ⇒ MonadVisitable (ListT m) where
+instance Monad m ⇒ MonadExplorable (ListT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadVisitable' isntance, this instance does no caching. -}
-instance Monad m ⇒ MonadVisitableTrans (ListT m) where
-    type NestedMonadInVisitor (ListT m) = m
+{-| Like the 'MonadExplorable' isntance, this instance does no caching. -}
+instance Monad m ⇒ MonadExplorableTrans (ListT m) where
+    type NestedMonad (ListT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a tree using the 'Maybe' monad.
  -}
-instance MonadVisitable Maybe where
+instance MonadExplorable Maybe where
     cacheMaybe = maybe mzero return
 
 {-| This instance performs no caching but is provided to make it easier to test
     running a tree using the 'MaybeT' monad.
  -}
-instance Monad m ⇒ MonadVisitable (MaybeT m) where
+instance Monad m ⇒ MonadExplorable (MaybeT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadVisitable' isntance, this instance does no caching. -}
-instance Monad m ⇒ MonadVisitableTrans (MaybeT m) where
-    type NestedMonadInVisitor (MaybeT m) = m
+{-| Like the 'MonadExplorable' isntance, this instance does no caching. -}
+instance Monad m ⇒ MonadExplorableTrans (MaybeT m) where
+    type NestedMonad (MaybeT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
 
-instance Monad m ⇒ MonadVisitable (TreeT m) where
+instance Monad m ⇒ MonadExplorable (TreeT m) where
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
     cacheMaybe = runAndCacheMaybe . return
 
-instance Monad m ⇒ MonadVisitableTrans (TreeT m) where
-    type NestedMonadInVisitor (TreeT m) = m
+instance Monad m ⇒ MonadExplorableTrans (TreeT m) where
+    type NestedMonad (TreeT m) = m
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
     runAndCacheMaybe = TreeT . singleton . Cache
 
-{-| This instance allows you to automatically get a MonadVisitable instance for
+{-| This instance allows you to automatically get a MonadExplorable instance for
     any monad transformer that has `MonadPlus` defined.  (Unfortunately its
     presence requires OverlappingInstances because it overlaps with the instance
-    for `VisitorT`, even though the constraints are such that it is impossible
+    for `TreeT`, even though the constraints are such that it is impossible
     in practice for there to ever be a case where a given type is satisfied by
     both instances.)
  -}
-instance (MonadTrans t, MonadVisitable m, MonadPlus (t m)) ⇒ MonadVisitable (t m) where
+instance (MonadTrans t, MonadExplorable m, MonadPlus (t m)) ⇒ MonadExplorable (t m) where
     cache = lift . cache
     cacheGuard = lift . cacheGuard
     cacheMaybe = lift . cacheMaybe
@@ -316,141 +316,141 @@ in various ways, functions to make it easier to build trees, and a function
 which changes the base monad of a pure tree.
  -}
 
----------------------------------- Visitors ------------------------------------
+---------------------------------- Explorers -----------------------------------
 
 {- $runners
 The following functions all take a tree as input and produce the result
-of visiting it as output. There are seven functions because there are two kinds
-of trees -- pure and impure -- and three ways of visiting a tree --
-visiting everything and summing all results (i.e., in the leaves), visiting
+of exploring it as output. There are seven functions because there are two kinds
+of trees -- pure and impure -- and three ways of exploring a tree --
+exploring everything and summing all results (i.e., in the leaves), exploring
 until the first result (i.e., in a leaf) is encountered and immediately
 returning, and gathering results (i.e., from the leaves) until they satisfy a
-condition and then return -- plus a seventh function that visits a tree only for
-the side-effects in the tree.
+condition and then return -- plus a seventh function that explores a tree only
+for the side-effects.
  -}
 
-{-| Visits all the nodes in a pure tree and sums over all the
+{-| Explores all the nodes in a pure tree and sums over all the
     results in the leaves.
  -}
-visitTree ::
+exploreTree ::
     Monoid α ⇒
-    Tree α {-^ the (pure) tree to be visited -} →
+    Tree α {-^ the (pure) tree to be explored -} →
     α {-^ the sum over all results -}
-visitTree v =
+exploreTree v =
     case view (unwrapTreeT v) of
         Return !x → x
-        (Cache mx :>>= k) → maybe mempty (visitTree . TreeT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe mempty (exploreTree . TreeT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let !x = visitTree $ left >>= TreeT . k
-                !y = visitTree $ right >>= TreeT . k
+            let !x = exploreTree $ left >>= TreeT . k
+                !y = exploreTree $ right >>= TreeT . k
                 !xy = mappend x y
             in xy
         (Null :>>= _) → mempty
-{-# INLINEABLE visitTree #-}
+{-# INLINEABLE exploreTree #-}
 
-{-| Visits all the nodes in an impure tree and sums over all the
+{-| Explores all the nodes in an impure tree and sums over all the
     results in the leaves.
  -}
-visitTreeT ::
+exploreTreeT ::
     (Monad m, Monoid α) ⇒
-    TreeT m α {-^ the (impure) tree to be visited -} →
+    TreeT m α {-^ the (impure) tree to be explored -} →
     m α {-^ the sum over all results -}
-visitTreeT = viewT . unwrapTreeT >=> \view →
+exploreTreeT = viewT . unwrapTreeT >=> \view →
     case view of
         Return !x → return x
-        (Cache mx :>>= k) → mx >>= maybe (return mempty) (visitTreeT . TreeT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return mempty) (exploreTreeT . TreeT . k)
         (Choice left right :>>= k) →
             liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
-                (visitTreeT $ left >>= TreeT . k)
-                (visitTreeT $ right >>= TreeT . k)
+                (exploreTreeT $ left >>= TreeT . k)
+                (exploreTreeT $ right >>= TreeT . k)
         (Null :>>= _) → return mempty
-{-# SPECIALIZE visitTreeT :: Monoid α ⇒ Tree α → Identity α #-}
-{-# SPECIALIZE visitTreeT :: Monoid α ⇒ TreeIO α → IO α #-}
-{-# INLINEABLE visitTreeT #-}
+{-# SPECIALIZE exploreTreeT :: Monoid α ⇒ Tree α → Identity α #-}
+{-# SPECIALIZE exploreTreeT :: Monoid α ⇒ TreeIO α → IO α #-}
+{-# INLINEABLE exploreTreeT #-}
 
-{-| Visits a tree for its side-effects, ignoring all results. -}
-visitTreeTAndIgnoreResults ::
+{-| Explores a tree for its side-effects, ignoring all results. -}
+exploreTreeTAndIgnoreResults ::
     Monad m ⇒
-    TreeT m α {-^ the (impure) tree to be visited -} →
+    TreeT m α {-^ the (impure) tree to be explored -} →
     m ()
-visitTreeTAndIgnoreResults = viewT . unwrapTreeT >=> \view →
+exploreTreeTAndIgnoreResults = viewT . unwrapTreeT >=> \view →
     case view of
         Return _ → return ()
-        (Cache mx :>>= k) → mx >>= maybe (return ()) (visitTreeTAndIgnoreResults . TreeT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return ()) (exploreTreeTAndIgnoreResults . TreeT . k)
         (Choice left right :>>= k) → do
-            visitTreeTAndIgnoreResults $ left >>= TreeT . k
-            visitTreeTAndIgnoreResults $ right >>= TreeT . k
+            exploreTreeTAndIgnoreResults $ left >>= TreeT . k
+            exploreTreeTAndIgnoreResults $ right >>= TreeT . k
         (Null :>>= _) → return ()
-{-# SPECIALIZE visitTreeTAndIgnoreResults :: Tree α → Identity () #-}
-{-# SPECIALIZE visitTreeTAndIgnoreResults :: TreeIO α → IO () #-}
-{-# INLINEABLE visitTreeTAndIgnoreResults #-}
+{-# SPECIALIZE exploreTreeTAndIgnoreResults :: Tree α → Identity () #-}
+{-# SPECIALIZE exploreTreeTAndIgnoreResults :: TreeIO α → IO () #-}
+{-# INLINEABLE exploreTreeTAndIgnoreResults #-}
 
-{-| Visits all the nodes in a tree until a result (i.e., a leaf) has been found;
-    if a result has been found then it is returned wrapped in 'Just', otherwise
-    'Nothing' is returned.
+{-| Explores all the nodes in a tree until a result (i.e., a leaf) has been
+    found; if a result has been found then it is returned wrapped in 'Just',
+    otherwise 'Nothing' is returned.
  -}
-visitTreeUntilFirst ::
-    Tree α {-^ the (pure) tree to be visited -} →
+exploreTreeUntilFirst ::
+    Tree α {-^ the (pure) tree to be explored -} →
     Maybe α {-^ the first result found, if any -}
-visitTreeUntilFirst v =
+exploreTreeUntilFirst v =
     case view (unwrapTreeT v) of
         Return x → Just x
-        (Cache mx :>>= k) → maybe Nothing (visitTreeUntilFirst . TreeT . k) (runIdentity mx)
+        (Cache mx :>>= k) → maybe Nothing (exploreTreeUntilFirst . TreeT . k) (runIdentity mx)
         (Choice left right :>>= k) →
-            let x = visitTreeUntilFirst $ left >>= TreeT . k
-                y = visitTreeUntilFirst $ right >>= TreeT . k
+            let x = exploreTreeUntilFirst $ left >>= TreeT . k
+                y = exploreTreeUntilFirst $ right >>= TreeT . k
             in if isJust x then x else y
         (Null :>>= _) → Nothing
-{-# INLINEABLE visitTreeUntilFirst #-}
+{-# INLINEABLE exploreTreeUntilFirst #-}
 
-{-| Same as 'visitTreeUntilFirst', but taking an impure tree instead
+{-| Same as 'exploreTreeUntilFirst', but taking an impure tree instead
     of pure one.
  -}
-visitTreeTUntilFirst ::
+exploreTreeTUntilFirst ::
     Monad m ⇒
-    TreeT m α {-^ the (impure) tree to be visited -} →
+    TreeT m α {-^ the (impure) tree to be explored -} →
     m (Maybe α) {-^ the first result found, if any -}
-visitTreeTUntilFirst = viewT . unwrapTreeT >=> \view →
+exploreTreeTUntilFirst = viewT . unwrapTreeT >=> \view →
     case view of
         Return !x → return (Just x)
-        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (visitTreeTUntilFirst . TreeT . k)
+        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (exploreTreeTUntilFirst . TreeT . k)
         (Choice left right :>>= k) → do
-            x ← visitTreeTUntilFirst $ left >>= TreeT . k
+            x ← exploreTreeTUntilFirst $ left >>= TreeT . k
             if isJust x
                 then return x
-                else visitTreeTUntilFirst $ right >>= TreeT . k
+                else exploreTreeTUntilFirst $ right >>= TreeT . k
         (Null :>>= _) → return Nothing
-{-# SPECIALIZE visitTreeTUntilFirst :: Tree α → Identity (Maybe α) #-}
-{-# SPECIALIZE visitTreeTUntilFirst :: TreeIO α → IO (Maybe α) #-}
-{-# INLINEABLE visitTreeTUntilFirst #-}
+{-# SPECIALIZE exploreTreeTUntilFirst :: Tree α → Identity (Maybe α) #-}
+{-# SPECIALIZE exploreTreeTUntilFirst :: TreeIO α → IO (Maybe α) #-}
+{-# INLINEABLE exploreTreeTUntilFirst #-}
 
-{-| Visits all the nodes in a tree, summing all encountered results (i.e., in
+{-| Explores all the nodes in a tree, summing all encountered results (i.e., in
     the leaves) until the current partial sum satisfies the condition provided
     by the first function; if this condition is ever satisfied then its result
     is returned in 'Right', otherwise the final sum is returned in 'Left'.
  -}
-visitTreeUntilFound ::
+exploreTreeUntilFound ::
     Monoid α ⇒
     (α → Maybe β) {-^ a function that determines when the desired results have
                       been found;  'Nothing' will cause the search to continue
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    Tree α {-^ the (pure) tree to be visited -} →
+    Tree α {-^ the (pure) tree to be explored -} →
     Either α β {-^ if no acceptable results were found, then 'Left' with the sum
                    over all results;  otherwise 'Right' with the value returned
                    by the function in the first argument
                 -}
-visitTreeUntilFound f v =
+exploreTreeUntilFound f v =
     case view (unwrapTreeT v) of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
-            maybe (Left mempty) (visitTreeUntilFound f . TreeT . k)
+            maybe (Left mempty) (exploreTreeUntilFound f . TreeT . k)
             $
             runIdentity mx
         (Choice left right :>>= k) →
-            let x = visitTreeUntilFound f $ left >>= TreeT . k
-                y = visitTreeUntilFound f $ right >>= TreeT . k
+            let x = exploreTreeUntilFound f $ left >>= TreeT . k
+                y = exploreTreeUntilFound f $ right >>= TreeT . k
             in case (x,y) of
                 (result@(Right _),_) → result
                 (_,result@(Right _)) → result
@@ -459,34 +459,34 @@ visitTreeUntilFound f v =
   where
     runThroughFilter x = maybe (Left x) Right . f $ x
 
-{-| Same as 'visitTreeUntilFound', but taking an impure tree instead of
+{-| Same as 'exploreTreeUntilFound', but taking an impure tree instead of
     a pure tree.
  -}
-visitTreeTUntilFound ::
+exploreTreeTUntilFound ::
     (Monad m, Monoid α) ⇒
     (α → Maybe β) {-^ a function that determines when the desired results have
                       been found;  'Nothing' will cause the search to continue
                       whereas returning 'Just' will cause the search to stop and
                       the value in the 'Just' to be returned wrappedi n 'Right'
                    -} →
-    TreeT m α {-^ the (impure) tree to be visited -} →
+    TreeT m α {-^ the (impure) tree to be explored -} →
     m (Either α β) {-^ if no acceptable results were found, then 'Left' with the
                        sum over all results;  otherwise 'Right' with the value
                        returned by the function in the first argument
                     -}
-visitTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
+exploreTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
     case view of
         Return x → runThroughFilter x
         (Cache mx :>>= k) →
             mx
             >>=
-            maybe (return (Left mempty)) (visitTreeTUntilFound f . TreeT . k)
+            maybe (return (Left mempty)) (exploreTreeTUntilFound f . TreeT . k)
         (Choice left right :>>= k) → do
-            x ← visitTreeTUntilFound f $ left >>= TreeT . k
+            x ← exploreTreeTUntilFound f $ left >>= TreeT . k
             case x of
                 result@(Right _) → return result
                 Left a → do
-                    y ← visitTreeTUntilFound f $ right >>= TreeT . k
+                    y ← exploreTreeTUntilFound f $ right >>= TreeT . k
                     case y of
                         result@(Right _) → return result
                         Left b → runThroughFilter (a <> b)

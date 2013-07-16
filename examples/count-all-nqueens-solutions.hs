@@ -9,7 +9,7 @@ import Visitor.Utils.WordSum
 import Visitor.Examples.Queens
 
 main =
-    mainForVisitTree
+    mainForExploreTree
         driver
         (makeBoardSizeTermAtPosition 0)
         (defTI { termDoc = "count the number of n-queens solutions for a given board size" })

@@ -15,7 +15,7 @@ import Visitor.Parallel.Adapter.Threads
 import Visitor.Examples.Queens
 
 main =
-    mainForVisitTreeUntilFoundUsingPush
+    mainForExploreTreeUntilFoundUsingPush
         (\(_,number_of_solutions) solutions →
             if Seq.length solutions >= number_of_solutions
                 then Just solutions

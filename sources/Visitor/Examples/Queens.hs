@@ -255,7 +255,7 @@ nqueensUsingSetsSolutions = nqueensUsingSetsGeneric [] ((:) . fromIntegral) (zip
 
 {-| Generates the solution count to the n-queens problem with the given board
     size;  you need to sum over all these counts to obtain the total, which is
-    done by the 'visitTree' (and related) functions.
+    done by the 'exploreTree' (and related) functions.
  -}
 nqueensUsingSetsCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensUsingSetsCount = nqueensUsingSetsGeneric () (const id) (const $ WordSum 1)
@@ -328,7 +328,7 @@ nqueensUsingBitsSolutions = nqueensUsingBitsGeneric [] ((:) . fromIntegral) (zip
 
 {-| Generates the solution count to the n-queens problem with the given board
     size;  you need to sum over all these counts to obtain the total, which is
-    done by the 'visitTree' (and related) functions.
+    done by the 'exploreTree' (and related) functions.
  -}
 nqueensUsingBitsCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensUsingBitsCount = nqueensUsingBitsGeneric () (const id) (const $ WordSum 1)
@@ -355,7 +355,7 @@ nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
 
 {-| Generates the solution count to the n-queens problem with the given board
     size;  you need to sum over all these counts to obtain the total, which is
-    done by the 'visitTree' (and related) functions.
+    done by the 'exploreTree' (and related) functions.
  -}
 nqueensCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()

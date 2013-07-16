@@ -277,8 +277,8 @@ receiveWorkerFailure worker_id message =
     .
     SupervisorFailure worker_id
     $
-    if message == show VisitorTerminatedBeforeEndOfWalk ||
-       message == show PastVisitorIsInconsistentWithPresentVisitor
+    if message == show TreeEndedBeforeEndOfWalk ||
+       message == show PastTreeIsInconsistentWithPresentTree
         then "The given checkpoint is not consistent with the given tree."
         else message
 

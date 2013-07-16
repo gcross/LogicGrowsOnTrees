@@ -11,7 +11,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 
-{-| This module provides a framework for creating a program that visits a tree
+{-| This module provides a framework for creating a program that explores a tree
     in parallel. The way that you use it is that you pick the mainFor...
     function that corresponds to the kind of tree, and then provide
     the following:
@@ -26,8 +26,8 @@
 
         > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
 
-    4. an action to run when the visit has terminated (a function of the command
-       line arguments); and
+    4. an action to run when the exploration has terminated (a function of the
+       command line arguments); and
 
     5. the tree, as a function of the command line arguments.
 
@@ -61,27 +61,27 @@ module Visitor.Parallel.Main
 
     -- ** Sum over all results
     -- $all
-    , mainForVisitTree
-    , mainForVisitTreeIO
-    , mainForVisitTreeImpure
+    , mainForExploreTree
+    , mainForExploreTreeIO
+    , mainForExploreTreeImpure
     -- ** Stop at first result
     -- $first
-    , mainForVisitTreeUntilFirst
-    , mainForVisitTreeIOUntilFirst
-    , mainForVisitTreeImpureUntilFirst
+    , mainForExploreTreeUntilFirst
+    , mainForExploreTreeIOUntilFirst
+    , mainForExploreTreeImpureUntilFirst
     -- ** Stop when sum of results found
     -- $found
 
     -- *** Pull
     -- $pull
-    , mainForVisitTreeUntilFoundUsingPull
-    , mainForVisitTreeIOUntilFoundUsingPull
-    , mainForVisitTreeImpureUntilFoundUsingPull
+    , mainForExploreTreeUntilFoundUsingPull
+    , mainForExploreTreeIOUntilFoundUsingPull
+    , mainForExploreTreeImpureUntilFoundUsingPull
     -- *** Push
     -- $push
-    , mainForVisitTreeUntilFoundUsingPush
-    , mainForVisitTreeIOUntilFoundUsingPush
-    , mainForVisitTreeImpureUntilFoundUsingPush
+    , mainForExploreTreeUntilFoundUsingPush
+    , mainForExploreTreeIOUntilFoundUsingPush
+    , mainForExploreTreeImpureUntilFoundUsingPush
     -- ** Generic main function
     , genericMain
     -- * Utility functions
@@ -227,7 +227,7 @@ data DriverParameters
     exploration_mode
     manager_monad =
     DriverParameters
-    {   {-| the mode in which the visitor is being run -}
+    {   {-| the mode of the exploration -}
         constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
         {-| the purity of the tree -}
     ,   purity :: Purity m n
@@ -241,7 +241,7 @@ data DriverParameters
     ,   initializeGlobalState :: shared_configuration → IO ()
         {-| constructs the tree given the shared configuration -}
     ,   constructTree :: shared_configuration → TreeT m (ResultFor exploration_mode)
-        {-| in the supervisor process, gets the starting progress for the visit;  this is where a checkpoint is loaded, if one exists -}
+        {-| in the supervisor process, gets the starting progress for the exploration;  this is where a checkpoint is loaded, if one exists -}
     ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
         {-| in the supervisor process, respond to the termination of the run -}
     ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
@@ -292,9 +292,9 @@ instance ArgVal Priority where
 
 {- $main
 The functions in this section all provide a main function that starts up the
-system that visits a tree in parallel using the given tree
-(constructed possibly using information supplied on the command line) and the
-given adapter provided via the driver argument.
+system that explores a tree in parallel using the given tree (constructed
+possibly using information supplied on the command line) and the given adapter
+provided via the driver argument.
 
 All of the functionaliy of this module can be accessed through 'genericMain',
 but we nonethless also provide specialized versions of these functions for all
@@ -302,7 +302,7 @@ of the supported tree purities and exploration modes. This is done for two
 reasons: first, in order to make the types more concrete to hopefully improve
 usability, and second, because often the type of the tree is generic and so
 using a specialized function automatically specializes the type rather than
-requiring a type annotation. The convention is @mainForVisitTreeXY@ where @X@ is
+requiring a type annotation. The convention is @mainForExploreTreeXY@ where @X@ is
 empty for pure trees, @IO@ for trees with side-effects in the IO monad, and
 @Impure@ for trees with side-effects in some general monad, and @Y@ specifies
 the exploration mode, which is empty for 'AllMode' (sum over all results),
@@ -321,10 +321,10 @@ The functions in this section are for when you want to sum over all the results
 in (the leaves of) the tree.
  -}
 
-{-| Visit the given pure tree in parallel; the results
+{-| Explore the given pure tree in parallel; the results
     in the leaves will be summed up using the 'Monoid' instance.
  -}
-mainForVisitTree ::
+mainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
@@ -341,12 +341,12 @@ mainForVisitTree ::
          -} →
     (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTree = genericMain (const AllMode) Pure
+mainForExploreTree = genericMain (const AllMode) Pure
 
-{-| Visit the given IO tree in parellel;
+{-| Explore the given IO tree in parellel;
     the results in the leaves will be summed up using the 'Monoid' instance.
  -}
-mainForVisitTreeIO ::
+mainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
@@ -363,12 +363,12 @@ mainForVisitTreeIO ::
          -} →
     (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeIO = genericMain (const AllMode) io_purity
+mainForExploreTreeIO = genericMain (const AllMode) io_purity
 
-{-| Visit the given impure tree in parallel; the
+{-| Explore the given impure tree in parallel; the
     results in all of the leaves will be summed up using the 'Monoid' instance.
  -}
-mainForVisitTreeImpure ::
+mainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -386,7 +386,7 @@ mainForVisitTreeImpure ::
          -} →
     (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeImpure = genericMain (const AllMode) . ImpureAtopIO
+mainForExploreTreeImpure = genericMain (const AllMode) . ImpureAtopIO
 
 ---------------------------- Stop at first result ------------------------------
 
@@ -401,14 +401,14 @@ There are two ways in which a system running in this mode can terminate normally
        latter allowing one to resume the search to look for more solutions
        later.
 
-    2. When the whole tree has been visited, in which case 'Nothing' is returned.
+    2. When the whole tree has been explored, in which case 'Nothing' is returned.
 
  -}
 
-{-| Visit the given pure tree in parallel, stopping if
+{-| Explore the given pure tree in parallel, stopping if
     a solution is found.
  -}
-mainForVisitTreeUntilFirst ::
+mainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
@@ -425,12 +425,12 @@ mainForVisitTreeUntilFirst ::
          -} →
     (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeUntilFirst = genericMain (const FirstMode) Pure
+mainForExploreTreeUntilFirst = genericMain (const FirstMode) Pure
 
-{-| Visit the given IO tree in parellel,
+{-| Explore the given IO tree in parellel,
     stopping if a solution is found.
  -}
-mainForVisitTreeIOUntilFirst ::
+mainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
@@ -447,12 +447,12 @@ mainForVisitTreeIOUntilFirst ::
          -} →
     (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeIOUntilFirst = genericMain (const FirstMode) io_purity
+mainForExploreTreeIOUntilFirst = genericMain (const FirstMode) io_purity
 
-{-| Visit the given impure tree in parallel, stopping
+{-| Explore the given impure tree in parallel, stopping
     if a solution is found.
  -}
-mainForVisitTreeImpureUntilFirst ::
+mainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -470,7 +470,7 @@ mainForVisitTreeImpureUntilFirst ::
          -} →
     (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeImpureUntilFirst = genericMain (const FirstMode) . ImpureAtopIO
+mainForExploreTreeImpureUntilFirst = genericMain (const FirstMode) . ImpureAtopIO
 
 ------------------- Stop when sum of results meets condition -------------------
 
@@ -506,7 +506,7 @@ There are three ways in which a system running in this mode can terminate:
     2. The supervisor can have its local sum meet the condition;  this is the
        same as 1 but the partial result is 'mempty'.
 
-    3. The tree can be fully visited, in which case the partial sum is returned
+    3. The tree can be fully explored, in which case the partial sum is returned
        in a 'Left'.
 
 WARNING:  If you use this mode then you need to enable checkpointing when the
@@ -518,10 +518,10 @@ WARNING:  If you use this mode then you need to enable checkpointing when the
           are scattered around.
  -}
 
-{-| Visit the given pure tree in parallel until the
+{-| Explore the given pure tree in parallel until the
     sum of results meets the given condition.
  -}
-mainForVisitTreeUntilFoundUsingPull ::
+mainForExploreTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -539,12 +539,12 @@ mainForVisitTreeUntilFoundUsingPull ::
          -} →
     (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
+mainForExploreTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
 
-{-| Visit the given IO tree in parellel
+{-| Explore the given IO tree in parellel
     until the sum of results meets the given condition.
  -}
-mainForVisitTreeIOUntilFoundUsingPull ::
+mainForExploreTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -562,12 +562,12 @@ mainForVisitTreeIOUntilFoundUsingPull ::
          -} →
     (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) io_purity
+mainForExploreTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) io_purity
 
-{-| Visit the given impure tree in parallel until the
+{-| Explore the given impure tree in parallel until the
     sum of results meets the given condition.
  -}
-mainForVisitTreeImpureUntilFoundUsingPull ::
+mainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
@@ -586,7 +586,7 @@ mainForVisitTreeImpureUntilFoundUsingPull ::
          -} →
     (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeImpureUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) . ImpureAtopIO
+mainForExploreTreeImpureUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) . ImpureAtopIO
 
 {- $push #push#
 In this mode, whenever a result is found it is immediately sent to the
@@ -607,7 +607,7 @@ There are three ways in which a system running in this mode can terminate:
        allow the search to be resumed later to find more results) wrapped in a
        'Right'.
 
-    2. The tree can be fully visited, in which case the partial sum is returned
+    2. The tree can be fully explored, in which case the partial sum is returned
        in a 'Left'.
 
 (Note that, unlike the pull version, a partial result will not be returned upon
@@ -615,10 +615,10 @@ success as the Supervisor has access to all results and so it will never be in
 the position of only having a partial result upon success.)
  -}
 
-{-| Visit the given pure tree in parallel until the
+{-| Explore the given pure tree in parallel until the
     sum of results meets the given condition.
  -}
-mainForVisitTreeUntilFoundUsingPush ::
+mainForExploreTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -636,12 +636,12 @@ mainForVisitTreeUntilFoundUsingPush ::
          -} →
     (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
+mainForExploreTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
 
-{-| Visit the given IO tree in parellel
+{-| Explore the given IO tree in parellel
     until the sum of results meets the given condition.
  -}
-mainForVisitTreeIOUntilFoundUsingPush ::
+mainForExploreTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -659,12 +659,12 @@ mainForVisitTreeIOUntilFoundUsingPush ::
          -} →
     (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition)io_purity
+mainForExploreTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition)io_purity
 
-{-| Visit the given impure tree in parallel until the
+{-| Explore the given impure tree in parallel until the
     sum of results meets the given condition.
  -}
-mainForVisitTreeImpureUntilFoundUsingPush ::
+mainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
@@ -683,7 +683,7 @@ mainForVisitTreeImpureUntilFoundUsingPush ::
          -} →
     (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForVisitTreeImpureUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) . ImpureAtopIO
+mainForExploreTreeImpureUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) . ImpureAtopIO
 
 ---------------------------- Generic main function -----------------------------
 

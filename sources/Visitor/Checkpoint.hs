@@ -25,16 +25,16 @@ module Visitor.Checkpoint
     , Context(..)
     , ContextStep(..)
     -- ** Exploration state
-    , VisitorTState(..)
-    , VisitorState(..)
-    , initialVisitorState
+    , ExplorationTState(..)
+    , ExplorationState(..)
+    , initialExplorationState
     -- * Exceptions
     , InconsistentCheckpoints(..)
     -- * Utility functions
     -- ** Checkpoint construction
     , checkpointFromContext
     , checkpointFromCursor
-    , checkpointFromVisitorState
+    , checkpointFromExplorationState
     , checkpointFromSequence
     , checkpointFromInitialPath
     , checkpointFromUnexploredPath
@@ -51,14 +51,14 @@ module Visitor.Checkpoint
     -- $stepper
     , stepThroughTreeStartingFromCheckpoint
     , stepThroughTreeTStartingFromCheckpoint
-    -- * Visitor functions
-    -- $visitor
-    , visitTreeStartingFromCheckpoint
-    , visitTreeTStartingFromCheckpoint
-    , visitTreeUntilFirstStartingFromCheckpoint
-    , visitTreeTUntilFirstStartingFromCheckpoint
-    , visitTreeUntilFoundStartingFromCheckpoint
-    , visitTreeTUntilFoundStartingFromCheckpoint
+    -- * Exploration functions
+    -- $exploration
+    , exploreTreeStartingFromCheckpoint
+    , exploreTreeTStartingFromCheckpoint
+    , exploreTreeUntilFirstStartingFromCheckpoint
+    , exploreTreeTUntilFirstStartingFromCheckpoint
+    , exploreTreeUntilFoundStartingFromCheckpoint
+    , exploreTreeTUntilFoundStartingFromCheckpoint
     ) where
 
 import Control.Exception (Exception(),throw)
@@ -222,18 +222,18 @@ These types contain information about the state of an exploration in progress.
  -}
 
 {-| The current state of the exploration of a tree starting from a checkpoint. -}
-data VisitorTState m α = VisitorTState
-    {   visitorStateContext :: !(Context m α)
-    ,   visitorStateCheckpoint :: !Checkpoint
-    ,   visitorStateVisitor :: !(TreeT m α)
+data ExplorationTState m α = ExplorationTState
+    {   explorationStateContext :: !(Context m α)
+    ,   explorationStateCheckpoint :: !Checkpoint
+    ,   explorationStateTree :: !(TreeT m α)
     }
 
-{-| An alias for 'VisitorTState' in a pure setting. -}
-type VisitorState = VisitorTState Identity
+{-| An alias for 'ExplorationTState' in a pure setting. -}
+type ExplorationState = ExplorationTState Identity
 
-{-| Constructs the initial 'VisitorTState' for the given tree. -}
-initialVisitorState :: Checkpoint → TreeT m α → VisitorTState m α
-initialVisitorState = VisitorTState Seq.empty
+{-| Constructs the initial 'ExplorationTState' for the given tree. -}
+initialExplorationState :: Checkpoint → TreeT m α → ExplorationTState m α
+initialExplorationState = ExplorationTState Seq.empty
 
 --------------------------------------------------------------------------------
 ----------------------------- Utility functions --------------------------------
@@ -267,10 +267,10 @@ checkpointFromCursor = checkpointFromSequence $
         ChoicePointD LeftBranch right_checkpoint → flip ChoicePoint right_checkpoint
         ChoicePointD RightBranch left_checkpoint → ChoicePoint left_checkpoint
 
-{-| Computes the current checkpoint given the state of a visitor. -}
-checkpointFromVisitorState :: VisitorTState m α → Checkpoint
-checkpointFromVisitorState VisitorTState{..} =
-    checkpointFromContext visitorStateContext visitorStateCheckpoint
+{-| Computes the current checkpoint given the state of an exploration. -}
+checkpointFromExplorationState :: ExplorationTState m α → Checkpoint
+checkpointFromExplorationState ExplorationTState{..} =
+    checkpointFromContext explorationStateContext explorationStateCheckpoint
 
 {-| This function incrementally builds up a full checkpoint given a sequence
     corresponding to some cursor at a particular location of the full checkpoint
@@ -379,9 +379,9 @@ pathStepFromCursorDifferential (ChoicePointD active_branch _) = ChoiceStep activ
     is to say,
 
     @
-    visitTreeStartingFromCheckpoint checkpoint tree <>
-        visitTreeStartingFromCheckpoint (invertCheckpoint checkpoint) tree
-            == visitTree tree
+    exploreTreeStartingFromCheckpoint checkpoint tree <>
+        exploreTreeStartingFromCheckpoint (invertCheckpoint checkpoint) tree
+            == exploreTree tree
     @
  -}
 invertCheckpoint :: Checkpoint → Checkpoint
@@ -400,7 +400,7 @@ invertCheckpoint (ChoicePoint left right) =
 The two functions in the in this section are some of the most important
 functions in the Visitor package, as they provide a means of incrementally
 exploring a tree starting from a given checkpoint.  The functionality provided
-is sufficiently generic that is used by all the various modes of visiting the
+is sufficiently generic that is used by all the various modes of exploring the
 tree.
 -}
 
@@ -409,16 +409,16 @@ tree.
     exploration -- which will be 'Nothing' if the entire tree has been explored.
  -}
 stepThroughTreeStartingFromCheckpoint ::
-    VisitorState α →
-    (Maybe α,Maybe (VisitorState α))
+    ExplorationState α →
+    (Maybe α,Maybe (ExplorationState α))
 stepThroughTreeStartingFromCheckpoint = runIdentity . stepThroughTreeTStartingFromCheckpoint
 
 {-| Like 'stepThroughTreeStartingFromCheckpoint', but for an impure tree. -}
 stepThroughTreeTStartingFromCheckpoint ::
     Monad m ⇒
-    VisitorTState m α →
-    m (Maybe α,Maybe (VisitorTState m α))
-stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor) = case checkpoint of
+    ExplorationTState m α →
+    m (Maybe α,Maybe (ExplorationTState m α))
+stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tree) = case checkpoint of
     Explored → return (Nothing, moveUpContext)
     Unexplored → getView >>= \view → case view of
         Return x → return (Just x, moveUpContext)
@@ -427,14 +427,14 @@ stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor
             mx >>= return . maybe
                 (Nothing, moveUpContext)
                 (\x → (Nothing, Just $
-                    VisitorTState
+                    ExplorationTState
                         (context |> CacheContextStep (encode x))
                         Unexplored
                         (TreeT . k $ x)
                 ))
         Choice left right :>>= k → return
             (Nothing, Just $
-                VisitorTState
+                ExplorationTState
                     (context |> LeftBranchContextStep Unexplored (right >>= TreeT . k))
                     Unexplored
                     (left >>= TreeT . k)
@@ -442,133 +442,133 @@ stepThroughTreeTStartingFromCheckpoint (VisitorTState context checkpoint visitor
     CachePoint cache rest_checkpoint → getView >>= \view → case view of
         Cache _ :>>= k → return
             (Nothing, Just $
-                VisitorTState
+                ExplorationTState
                     (context |> CacheContextStep cache)
                     rest_checkpoint
                     (either error (TreeT . k) . decode $ cache)
             )
-        _ → throw PastVisitorIsInconsistentWithPresentVisitor
+        _ → throw PastTreeIsInconsistentWithPresentTree
     ChoicePoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
         Choice left right :>>= k → return
             (Nothing, Just $
-                VisitorTState
+                ExplorationTState
                     (context |> LeftBranchContextStep right_checkpoint (right >>= TreeT . k))
                     left_checkpoint
                     (left >>= TreeT . k)
             )
-        _ → throw PastVisitorIsInconsistentWithPresentVisitor
+        _ → throw PastTreeIsInconsistentWithPresentTree
   where
-    getView = viewT . unwrapTreeT $ visitor
+    getView = viewT . unwrapTreeT $ tree
     moveUpContext = go context
       where
         go context = case viewr context of
             EmptyR → Nothing
-            rest_context :> LeftBranchContextStep right_checkpoint right_visitor →
-                Just (VisitorTState
+            rest_context :> LeftBranchContextStep right_checkpoint right_tree →
+                Just (ExplorationTState
                         (rest_context |> RightBranchContextStep)
                         right_checkpoint
-                        right_visitor
+                        right_tree
                      )
             rest_context :> _ → go rest_context
 {-# INLINE stepThroughTreeTStartingFromCheckpoint #-}
 
 --------------------------------------------------------------------------------
------------------------------ Visitor functions --------------------------------
+----------------------------- Exploration functions --------------------------------
 --------------------------------------------------------------------------------
 
-{- $visitor
-The functions in this section visit the remainder of a tree, starting from the
+{- $exploration
+The functions in this section explore the remainder of a tree, starting from the
 given checkpoint.
 -}
 
-{-| Visits the remaining nodes in a pure tree, starting from the
+{-| Explores the remaining nodes in a pure tree, starting from the
     given checkpoint, and sums over all the results in the leaves.
  -}
-visitTreeStartingFromCheckpoint ::
+exploreTreeStartingFromCheckpoint ::
     Monoid α ⇒
     Checkpoint →
     Tree α →
     α
-visitTreeStartingFromCheckpoint = runIdentity .* visitTreeTStartingFromCheckpoint
+exploreTreeStartingFromCheckpoint = runIdentity .* exploreTreeTStartingFromCheckpoint
 
-{-| Visits the remaining nodes in an impure tree, starting from the
+{-| Explores the remaining nodes in an impure tree, starting from the
     given checkpoint, and sums over all the results in the leaves.
  -}
-visitTreeTStartingFromCheckpoint ::
+exploreTreeTStartingFromCheckpoint ::
     (Monad m, Monoid α) ⇒
     Checkpoint →
     TreeT m α →
     m α
-visitTreeTStartingFromCheckpoint = go mempty .* initialVisitorState
+exploreTreeTStartingFromCheckpoint = go mempty .* initialExplorationState
   where
     go !accum =
         stepThroughTreeTStartingFromCheckpoint
         >=>
-        \(maybe_solution,maybe_new_visitor_state) →
+        \(maybe_solution,maybe_new_exploration_state) →
             let new_accum = maybe id (flip mappend) maybe_solution accum
-            in maybe (return new_accum) (go new_accum) maybe_new_visitor_state
-{-# INLINE visitTreeTStartingFromCheckpoint #-}
+            in maybe (return new_accum) (go new_accum) maybe_new_exploration_state
+{-# INLINE exploreTreeTStartingFromCheckpoint #-}
 
-{-| Visits all the remaining nodes in a pure tree, starting from the
+{-| Explores all the remaining nodes in a pure tree, starting from the
     given checkpoint, until a result (i.e., a leaf) has been found; if a result
     has been found then it is returned wrapped in 'Just', otherwise 'Nothing' is
     returned.
  -}
-visitTreeUntilFirstStartingFromCheckpoint ::
+exploreTreeUntilFirstStartingFromCheckpoint ::
     Checkpoint →
     Tree α →
     Maybe α
-visitTreeUntilFirstStartingFromCheckpoint = runIdentity .* visitTreeTUntilFirstStartingFromCheckpoint
+exploreTreeUntilFirstStartingFromCheckpoint = runIdentity .* exploreTreeTUntilFirstStartingFromCheckpoint
 
-{-| Same as 'visitTreeUntilFirstStartingFromCheckpoint', but for an impure tree. -}
-visitTreeTUntilFirstStartingFromCheckpoint ::
+{-| Same as 'exploreTreeUntilFirstStartingFromCheckpoint', but for an impure tree. -}
+exploreTreeTUntilFirstStartingFromCheckpoint ::
     Monad m ⇒
     Checkpoint →
     TreeT m α →
     m (Maybe α)
-visitTreeTUntilFirstStartingFromCheckpoint = go .* initialVisitorState
+exploreTreeTUntilFirstStartingFromCheckpoint = go .* initialExplorationState
   where
     go = stepThroughTreeTStartingFromCheckpoint
          >=>
-         \(maybe_solution,maybe_new_visitor_state) →
+         \(maybe_solution,maybe_new_exploration_state) →
             case maybe_solution of
                 Just _ → return maybe_solution
-                Nothing → maybe (return Nothing) go maybe_new_visitor_state
-{-# INLINE visitTreeTUntilFirstStartingFromCheckpoint #-}
+                Nothing → maybe (return Nothing) go maybe_new_exploration_state
+{-# INLINE exploreTreeTUntilFirstStartingFromCheckpoint #-}
 
-{-| Visits all the remaining nodes in a tree, starting from the given checkpoint
+{-| Explores all the remaining nodes in a tree, starting from the given checkpoint
     and summing all results encountered (i.e., in the leaves) until the current
     partial sum satisfies the condition provided by the first function; if this
     condition is ever satisfied then its result is returned in 'Right',
     otherwise the final sum is returned in 'Left'.
  -}
-visitTreeUntilFoundStartingFromCheckpoint ::
+exploreTreeUntilFoundStartingFromCheckpoint ::
     Monoid α ⇒
     (α → Maybe β) →
     Checkpoint →
     Tree α →
     Either α β
-visitTreeUntilFoundStartingFromCheckpoint = runIdentity .** visitTreeTUntilFoundStartingFromCheckpoint
+exploreTreeUntilFoundStartingFromCheckpoint = runIdentity .** exploreTreeTUntilFoundStartingFromCheckpoint
 
-{-| Same as 'visitTreeUntilFoundStartingFromCheckpoint', but for an impure tree. -}
-visitTreeTUntilFoundStartingFromCheckpoint ::
+{-| Same as 'exploreTreeUntilFoundStartingFromCheckpoint', but for an impure tree. -}
+exploreTreeTUntilFoundStartingFromCheckpoint ::
     (Monad m, Monoid α) ⇒
     (α → Maybe β) →
     Checkpoint →
     TreeT m α →
     m (Either α β)
-visitTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialVisitorState
+exploreTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialExplorationState
   where
     go accum =
         stepThroughTreeTStartingFromCheckpoint
         >=>
-        \(maybe_solution,maybe_new_visitor_state) →
+        \(maybe_solution,maybe_new_exploration_state) →
             case maybe_solution of
-                Nothing → maybe (return (Left accum)) (go accum) maybe_new_visitor_state
+                Nothing → maybe (return (Left accum)) (go accum) maybe_new_exploration_state
                 Just solution →
                     let new_accum = accum <> solution
                     in case f new_accum of
-                        Nothing → maybe (return (Left new_accum)) (go new_accum) maybe_new_visitor_state
+                        Nothing → maybe (return (Left new_accum)) (go new_accum) maybe_new_exploration_state
                         Just result → return (Right result)
-{-# INLINE visitTreeTUntilFoundStartingFromCheckpoint #-}
+{-# INLINE exploreTreeTUntilFoundStartingFromCheckpoint #-}
 

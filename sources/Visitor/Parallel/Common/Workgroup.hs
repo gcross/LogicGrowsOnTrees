@@ -163,7 +163,7 @@ changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
     by adapters where the number of workers can be changed on demand.
  -}
 runWorkgroup ::
-    ExplorationMode exploration_mode {-^ the mode in which we are visiting the tree -} →
+    ExplorationMode exploration_mode {-^ the mode in which we are exploring the tree -} →
     inner_state {-^ the initial adapter specific state of the inner monad -} →
     (MessageForSupervisorReceivers exploration_mode WorkerId → WorkgroupCallbacks inner_state)
         {-^ This function constructs a set of callbacks to be used by the
@@ -171,7 +171,7 @@ runWorkgroup ::
             destroying workers;  it is given a set of callbacks that allows the
             adapter specific code to signal conditions to the supervisor.
          -} →
-    ProgressFor exploration_mode {-^ the initial progress of the visit -} →
+    ProgressFor exploration_mode {-^ the initial progress of the exploration -} →
     WorkgroupControllerMonad inner_state exploration_mode () {-^ the controller, which is at the very least responsible for deciding how many workers should be initially created -} →
     IO (RunOutcomeFor exploration_mode)
 runWorkgroup exploration_mode initial_inner_state constructCallbacks starting_progress (C controller) = do

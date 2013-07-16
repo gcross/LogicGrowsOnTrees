@@ -50,9 +50,9 @@ import Visitor.Checkpoint
 ------------------------------------ Types -------------------------------------
 --------------------------------------------------------------------------------
 
-{-| A type indicating the mode in which the visiting is being run.  Note that
-    this is a GADT for which the type parameter is unique to each constructor
-    in order to allow types to be specialized.
+{-| A type indicating the mode of the exploration.  Note that this is a GADT for
+    which the type parameter is unique to each constructor in order to allow
+    associated types to be specialized based on the value.
 
     Unfortunately Haddock does not seem to support documenting the constructors
     of a GADT, so for the documentation for each constructor refer to the types
@@ -64,11 +64,11 @@ data ExplorationMode exploration_mode where
     FoundModeUsingPull :: Monoid result ⇒ (result → Maybe final_result) → ExplorationMode (FoundModeUsingPull result final_result)
     FoundModeUsingPush :: Monoid result ⇒ (result → Maybe final_result) → ExplorationMode (FoundModeUsingPush result final_result)
 
-{-| Visit all nodes and sum the results in all of the leaves. -}
+{-| Explore all nodes and sum the results in all of the leaves. -}
 data AllMode result
-{-| Visit nodes until a result is found, and if so then stop. -}
+{-| Explore nodes until a result is found, and if so then stop. -}
 data FirstMode result
-{-| Visit nodes, summing their results, until a condition has been met, and if
+{-| Explore nodes, summing their results, until a condition has been met, and if
     so stop and return the condition's result; `Pull` means that each worker's
     results will be kept and summed locally until a request for them has been
     received from the supervisor, which means that there might be a period of
@@ -113,7 +113,7 @@ type instance ResultFor (FoundModeUsingPull result final_result) = result
 type instance ResultFor (FoundModeUsingPush result final_result) = result
 
 {-| The type of progress, which keeps track of how much of the tree has already
-    been visited.
+    been explored.
  -}
 type family ProgressFor exploration_mode :: *
 type instance ProgressFor (AllMode result) = Progress result
@@ -121,7 +121,7 @@ type instance ProgressFor (FirstMode result) = Checkpoint
 type instance ProgressFor (FoundModeUsingPull result final_result) = Progress result
 type instance ProgressFor (FoundModeUsingPush result final_result) = Progress result
 
-{-| The final result of visiting the tree. -}
+{-| The final result of exploring the tree. -}
 type family FinalResultFor exploration_mode :: *
 type instance FinalResultFor (AllMode result) = result
 type instance FinalResultFor (FirstMode result) = Maybe (Progress result)
@@ -156,7 +156,7 @@ checkpointFromIntermediateProgress FirstMode = id
 checkpointFromIntermediateProgress (FoundModeUsingPull _) = progressCheckpoint
 checkpointFromIntermediateProgress (FoundModeUsingPush _) = progressCheckpoint
 
-{-| The initial progress at the start of the visiting. -}
+{-| The initial progress at the start of the exploration. -}
 initialProgress :: ExplorationMode exploration_mode → ProgressFor exploration_mode
 initialProgress AllMode = mempty
 initialProgress FirstMode = mempty
