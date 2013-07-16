@@ -33,8 +33,8 @@ import qualified Visitor as V
 import Visitor.Checkpoint
 import Visitor.Examples.Queens
 import Visitor.Parallel.BackEnd.Processes
+import Visitor.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
 import Visitor.Parallel.Common.Process (runWorkerUsingHandles)
-import Visitor.Parallel.Common.VisitorMode (VisitorMode(AllMode))
 import Visitor.Parallel.Common.Worker(Purity(Pure))
 import Visitor.Parallel.Main
 -- }}}

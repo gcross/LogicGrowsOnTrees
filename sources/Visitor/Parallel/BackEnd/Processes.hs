@@ -67,14 +67,14 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 
 import Visitor (TreeGenerator,TreeGeneratorIO,TreeGeneratorT)
 import Visitor.Checkpoint
-import Visitor.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
+import Visitor.Parallel.Common.ExplorationMode
 import Visitor.Parallel.Common.Message
 import qualified Visitor.Parallel.Common.Process as Process
 import Visitor.Parallel.Common.Process
 import Visitor.Parallel.Common.Supervisor.RequestQueue
 import Visitor.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,visitTree,visitTreeIO,visitTreeT)
-import Visitor.Parallel.Common.VisitorMode
 import Visitor.Parallel.Common.Workgroup hiding (C,unwrapC)
+import Visitor.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
 import Visitor.Utils.Handle
 import Visitor.Workload
 
@@ -98,13 +98,13 @@ deriveLoggers "Logger" [DEBUG,INFO,ERROR]
  -}
 driver ::
     ( Serialize shared_configuration
-    , Serialize (ProgressFor visitor_mode)
-    , Serialize (WorkerFinalProgressFor visitor_mode)
+    , Serialize (ProgressFor exploration_mode)
+    , Serialize (WorkerFinalProgressFor exploration_mode)
     ) ⇒
-    Driver IO shared_configuration supervisor_configuration m n visitor_mode
+    Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
     runVisitor
-        constructVisitorMode
+        constructExplorationMode
         purity
         (mainParser (liftA2 (,) shared_configuration_term (liftA2 (,) number_of_processes_term supervisor_configuration_term)) program_info)
         initializeGlobalState
@@ -129,12 +129,12 @@ driver = Driver $ \DriverParameters{..} → do
 --------------------------------------------------------------------------------
 
 {-| This is the monad in which the processes controller will run. -}
-newtype ProcessesControllerMonad visitor_mode α =
-    C { unwrapC :: WorkgroupControllerMonad (IntMap Worker) visitor_mode α
+newtype ProcessesControllerMonad exploration_mode α =
+    C { unwrapC :: WorkgroupControllerMonad (IntMap Worker) exploration_mode α
     } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
 
-instance HasVisitorMode (ProcessesControllerMonad visitor_mode) where
-    type VisitorModeFor (ProcessesControllerMonad visitor_mode) = visitor_mode
+instance HasExplorationMode (ProcessesControllerMonad exploration_mode) where
+    type ExplorationModeFor (ProcessesControllerMonad exploration_mode) = exploration_mode
 
 --------------------------------------------------------------------------------
 ------------------------------- Generic runners --------------------------------
@@ -160,18 +160,18 @@ supervisor and worker roles, then use 'runVisitor'.  Otherwise, use
     controller.
  -}
 runSupervisor ::
-    ( Serialize (ProgressFor visitor_mode)
-    , Serialize (WorkerFinalProgressFor visitor_mode)
+    ( Serialize (ProgressFor exploration_mode)
+    , Serialize (WorkerFinalProgressFor exploration_mode)
     ) ⇒
-    VisitorMode visitor_mode {-^ the visitor mode -} →
+    ExplorationMode exploration_mode {-^ the exploration mode -} →
     String {-^ the path to the worker executable -} →
     [String] {-^ the arguments to pass to the worker executable -} →
     (Handle → IO ()) {-^ an action that writes any information needed by the worker to the given handle -} →
-    ProgressFor visitor_mode {-^ the initial progress of the run -} →
-    ProcessesControllerMonad visitor_mode () {-^ the controller of the supervisor, which must at least set the number of workers to be positive for anything to take place -} →
-    IO (RunOutcomeFor visitor_mode) {-^ the result of the run -}
+    ProgressFor exploration_mode {-^ the initial progress of the run -} →
+    ProcessesControllerMonad exploration_mode () {-^ the controller of the supervisor, which must at least set the number of workers to be positive for anything to take place -} →
+    IO (RunOutcomeFor exploration_mode) {-^ the result of the run -}
 runSupervisor
-    visitor_mode
+    exploration_mode
     worker_filepath
     worker_arguments
     sendConfigurationTo
@@ -180,7 +180,7 @@ runSupervisor
  = do
     request_queue ← newRequestQueue
     runWorkgroup
-        visitor_mode
+        exploration_mode
         mempty
         (\message_receivers@MessageForSupervisorReceivers{..} →
             let createWorker worker_id = do
@@ -277,23 +277,23 @@ runSupervisor
  -}
 runVisitor ::
     ( Serialize shared_configuration
-    , Serialize (ProgressFor visitor_mode)
-    , Serialize (WorkerFinalProgressFor visitor_mode)
+    , Serialize (ProgressFor exploration_mode)
+    , Serialize (WorkerFinalProgressFor exploration_mode)
     ) ⇒
-    (shared_configuration → VisitorMode visitor_mode) {-^ construct the visitor mode given the shared configuration -} →
+    (shared_configuration → ExplorationMode exploration_mode) {-^ construct the exploration mode given the shared configuration -} →
     Purity m n {-^ the purity of the tree generator -} →
     IO (shared_configuration,supervisor_configuration) {-^ get the shared and supervisor-specific configuration information (run only on the supervisor) -} →
     (shared_configuration → IO ()) {-^ initialize the global state of the process given the shared configuration (run on both supervisor and worker processes) -} →
-    (shared_configuration → TreeGeneratorT m (ResultFor visitor_mode)) {-^ construct the tree generator from the shared configuration (run only on the worker) -} →
-    (shared_configuration → supervisor_configuration → IO (ProgressFor visitor_mode)) {-^ get the starting progress given the full configuration information (run only on the supervisor) -} →
-    (shared_configuration → supervisor_configuration → ProcessesControllerMonad visitor_mode ()) {-^ construct the controller for the supervisor, which must at least set the number of workers to be non-zero (run only on the supervisor) -} →
-    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor visitor_mode))
+    (shared_configuration → TreeGeneratorT m (ResultFor exploration_mode)) {-^ construct the tree generator from the shared configuration (run only on the worker) -} →
+    (shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)) {-^ get the starting progress given the full configuration information (run only on the supervisor) -} →
+    (shared_configuration → supervisor_configuration → ProcessesControllerMonad exploration_mode ()) {-^ construct the controller for the supervisor, which must at least set the number of workers to be non-zero (run only on the supervisor) -} →
+    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor exploration_mode))
         {-^ if this process is the supervisor, then returns the outcome of the
             run as well as the configuration information wrapped in 'Just';
             otherwise, if this process is a worker, it returns 'Nothing'
          -}
 runVisitor
-    constructVisitorMode
+    constructExplorationMode
     purity
     getConfiguration
     initializeGlobalState
@@ -306,7 +306,7 @@ runVisitor
             shared_configuration ← receive stdin
             initializeGlobalState shared_configuration
             runWorkerUsingHandles
-                (constructVisitorMode shared_configuration)
+                (constructExplorationMode shared_configuration)
                 purity
                 (constructTreeGenerator shared_configuration)
                 stdin
@@ -319,7 +319,7 @@ runVisitor
             starting_progress ← getStartingProgress shared_configuration supervisor_configuration
             termination_result ←
                 runSupervisor
-                    (constructVisitorMode shared_configuration)
+                    (constructExplorationMode shared_configuration)
                     program_filepath
                     sentinel
                     (flip send shared_configuration)
