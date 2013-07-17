@@ -8,11 +8,11 @@ import Data.Serialize (Serialize(..))
 import System.Console.CmdTheLine
 import System.Environment
 
-import Visitor.Parallel.Adapter.Processes
-import Visitor.Parallel.Main
-import Visitor.Utils.WordSum
+import LogicGrowsOnTrees.Parallel.Adapter.Processes
+import LogicGrowsOnTrees.Parallel.Main
+import LogicGrowsOnTrees.Utils.WordSum
 
-import Visitor.Examples.Queens
+import LogicGrowsOnTrees.Examples.Queens
 
 main =
     mainForExploreTree

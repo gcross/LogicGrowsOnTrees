@@ -1,12 +1,12 @@
-Name:                Visitor-processes
+Name:                LogicGrowsOnTrees-processes
 Version:             1.0
 License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
 Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
 Stability:           Provisional
-Synopsis:            a back-end for the Visitor package that uses multiple processes for parallelism
-Description:         This package provides a back-end for the Visitor package
+Synopsis:            a adapter for the LogicGrowsOnTrees package that uses multiple processes for parallelism
+Description:         This package provides a adapter for the LogicGrowsOnTrees package
                      that uses multiple processes for parallelism. See the
                      module documentation for more details.
 Cabal-version:       >=1.8
@@ -15,17 +15,17 @@ Category:
 
 Source-Repository head
   Type:                git
-  Location:            git://github.com/gcross/Visitor-processes.git
+  Location:            git://github.com/gcross/LogicGrowsOnTrees-processes.git
 
 Source-Repository this
     Type:                git
-    Location:            git://github.com/gcross/Visitor-processes.git
+    Location:            git://github.com/gcross/LogicGrowsOnTrees-processes.git
 --    Tag:                 
 
 
 Library
     Build-depends:
-        Visitor == 1.0.*,
+        LogicGrowsOnTrees == 1.0.*,
         base > 4 && < 5,
         bytestring >= 0.9 && < 0.11,
         cereal == 0.3.*,
@@ -39,7 +39,7 @@ Library
         process == 1.1.*,
         transformers >= 0.2 && < 0.4
     Exposed-modules:
-        Visitor.Parallel.Adapter.Processes
+        LogicGrowsOnTrees.Parallel.Adapter.Processes
     Hs-source-dirs: sources
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing
@@ -62,8 +62,8 @@ Executable count-all-nqueens-solutions
     Main-is: count-all-nqueens-solutions.hs
     Hs-source-dirs: examples
     Build-depends:
-        Visitor-processes,
-        Visitor == 1.0.*,
+        LogicGrowsOnTrees-processes,
+        LogicGrowsOnTrees == 1.0.*,
         base > 4 && < 5,
         cereal == 0.3.*,
         cmdtheline == 0.2.*
@@ -81,8 +81,8 @@ Test-Suite tests
     Main-is: tests.hs
     Hs-source-dirs: tests
     Build-depends:
-        Visitor-processes,
-        Visitor == 1.0.*,
+        LogicGrowsOnTrees-processes,
+        LogicGrowsOnTrees == 1.0.*,
         base > 4 && < 5,
         cereal == 0.3.*,
         hslogger == 1.2.*,

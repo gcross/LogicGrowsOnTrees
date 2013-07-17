@@ -11,7 +11,7 @@
 {-| This adapter implements parallelism by spawning multiple processes.  The
     number of processes can be changed during the run and even be set to zero.
  -}
-module Visitor.Parallel.Adapter.Processes
+module LogicGrowsOnTrees.Parallel.Adapter.Processes
     (
     -- * Driver
       driver
@@ -65,18 +65,18 @@ import System.Log.Logger (Priority(DEBUG,INFO,ERROR))
 import System.Log.Logger.TH
 import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),ProcessHandle,createProcess,interruptProcessGroupOf)
 
-import Visitor (Tree,TreeIO,TreeT)
-import Visitor.Checkpoint
-import Visitor.Parallel.Common.ExplorationMode
-import Visitor.Parallel.Common.Message
-import qualified Visitor.Parallel.Common.Process as Process
-import Visitor.Parallel.Common.Process
-import Visitor.Parallel.Common.Supervisor.RequestQueue
-import Visitor.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,exploreTree,exploreTreeIO,exploreTreeT)
-import Visitor.Parallel.Common.Workgroup hiding (C,unwrapC)
-import Visitor.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
-import Visitor.Utils.Handle
-import Visitor.Workload
+import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
+import LogicGrowsOnTrees.Checkpoint
+import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
+import LogicGrowsOnTrees.Parallel.Common.Message
+import qualified LogicGrowsOnTrees.Parallel.Common.Process as Process
+import LogicGrowsOnTrees.Parallel.Common.Process
+import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
+import LogicGrowsOnTrees.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,exploreTree,exploreTreeIO,exploreTreeT)
+import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
+import LogicGrowsOnTrees.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
+import LogicGrowsOnTrees.Utils.Handle
+import LogicGrowsOnTrees.Workload
 
 --------------------------------------------------------------------------------
 ----------------------------------- Loggers ------------------------------------
@@ -259,7 +259,7 @@ runSupervisor
         starting_progress
         controller
 
-{-| Visits the given tree using multiple processes to achieve parallelism.
+{-| Explores the given tree using multiple processes to achieve parallelism.
 
     This function grants access to all of the functionality of this adapter,
     rather than having to go through the more restricted driver interface. The

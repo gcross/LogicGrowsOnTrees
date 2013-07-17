@@ -29,14 +29,14 @@ import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.HUnit
 
-import qualified Visitor as V
-import Visitor.Checkpoint
-import Visitor.Examples.Queens
-import Visitor.Parallel.Adapter.Processes
-import Visitor.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
-import Visitor.Parallel.Common.Process (runWorkerUsingHandles)
-import Visitor.Parallel.Common.Worker(Purity(Pure))
-import Visitor.Parallel.Main
+import qualified LogicGrowsOnTrees as V
+import LogicGrowsOnTrees.Checkpoint
+import LogicGrowsOnTrees.Examples.Queens
+import LogicGrowsOnTrees.Parallel.Adapter.Processes
+import LogicGrowsOnTrees.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
+import LogicGrowsOnTrees.Parallel.Common.Process (runWorkerUsingHandles)
+import LogicGrowsOnTrees.Parallel.Common.Worker(Purity(Pure))
+import LogicGrowsOnTrees.Parallel.Main
 -- }}}
 
 -- Logging Functions {{{
