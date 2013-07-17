@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-unsigned int Visitor_Queens_count_solutions(
+unsigned int LogicGrowsOnTrees_Queens_count_solutions(
     unsigned int size,
     unsigned int number_of_queens_remaining,
     unsigned int row,
@@ -15,7 +15,7 @@ unsigned int Visitor_Queens_count_solutions(
 ) {
     if(occupied_rows & 1 != 0) {
         return
-            Visitor_Queens_count_solutions(
+            LogicGrowsOnTrees_Queens_count_solutions(
                 size,
                 number_of_queens_remaining,
                 row+1,
@@ -53,7 +53,7 @@ unsigned int Visitor_Queens_count_solutions(
                 number_of_solutions += 1;
             } else {
                 number_of_solutions +=
-                    Visitor_Queens_count_solutions(
+                    LogicGrowsOnTrees_Queens_count_solutions(
                         size,
                         number_of_queens_remaining-1,
                         row+1,

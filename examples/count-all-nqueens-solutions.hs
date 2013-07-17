@@ -2,11 +2,11 @@
 
 import System.Console.CmdTheLine
 
-import Visitor.Parallel.Main
-import Visitor.Parallel.Adapter.Threads
-import Visitor.Utils.WordSum
+import LogicGrowsOnTrees.Parallel.Main
+import LogicGrowsOnTrees.Parallel.Adapter.Threads
+import LogicGrowsOnTrees.Utils.WordSum
 
-import Visitor.Examples.Queens
+import LogicGrowsOnTrees.Examples.Queens
 
 main =
     mainForExploreTree

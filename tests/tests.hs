@@ -79,21 +79,21 @@ import Test.SmallCheck ((==>))
 import Test.SmallCheck.Series (Serial(..))
 import Test.SmallCheck.Drivers as Small (test)
 
-import Visitor
-import Visitor.Checkpoint
-import Visitor.Location
-import Visitor.Parallel.Main (RunOutcome(..),TerminationReason(..))
-import qualified Visitor.Parallel.Adapter.Threads as Threads
-import Visitor.Parallel.Common.ExplorationMode
-import qualified Visitor.Parallel.Common.Workgroup as Workgroup
-import Visitor.Path
-import Visitor.Parallel.Common.Supervisor
-import Visitor.Parallel.Common.Supervisor.RequestQueue
-import Visitor.Utils.PerfectTree
-import Visitor.Utils.WordSum
-import Visitor.Workload
-import qualified Visitor.Parallel.Common.Worker as Worker
-import Visitor.Parallel.Common.Worker hiding (exploreTree,exploreTreeIO,exploreTreeT,exploreTreeUntilFirst,exploreTreeIOUntilFirst,exploreTreeTUntilFirst)
+import LogicGrowsOnTrees
+import LogicGrowsOnTrees.Checkpoint
+import LogicGrowsOnTrees.Location
+import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..))
+import qualified LogicGrowsOnTrees.Parallel.Adapter.Threads as Threads
+import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
+import qualified LogicGrowsOnTrees.Parallel.Common.Workgroup as Workgroup
+import LogicGrowsOnTrees.Path
+import LogicGrowsOnTrees.Parallel.Common.Supervisor
+import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
+import LogicGrowsOnTrees.Utils.PerfectTree
+import LogicGrowsOnTrees.Utils.WordSum
+import LogicGrowsOnTrees.Workload
+import qualified LogicGrowsOnTrees.Parallel.Common.Worker as Worker
+import LogicGrowsOnTrees.Parallel.Common.Worker hiding (exploreTree,exploreTreeIO,exploreTreeT,exploreTreeUntilFirst,exploreTreeIOUntilFirst,exploreTreeTUntilFirst)
 -- }}}
 
 -- Helpers {{{
@@ -579,7 +579,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor" -- {{{
+    ,testGroup "LogicGrowsOnTrees" -- {{{
         [testGroup "Eq instance" -- {{{
             [testProperty "self" $ \(v :: Tree [()]) → v == v
             ]
@@ -680,7 +680,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Checkpoint" -- {{{
+    ,testGroup "LogicGrowsOnTrees.Checkpoint" -- {{{
         [testGroup "contextFromCheckpoint" -- {{{
             [testProperty "cache" $ \(checkpoint :: Checkpoint) (i :: Int) → -- {{{
                 checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
@@ -791,7 +791,7 @@ tests = -- {{{
           -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Location" -- {{{
+    ,testGroup "LogicGrowsOnTrees.Location" -- {{{
         [testProperty "branchingFromLocation . labelFromBranching = id" $ -- {{{
             liftA2 (==)
                 (branchingFromLocation . labelFromBranching)
@@ -848,7 +848,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Parallel.Adapter.Threads" $ -- {{{
+    ,testGroup "LogicGrowsOnTrees.Parallel.Adapter.Threads" $ -- {{{
         [testGroup "FirstMode" -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←
@@ -1082,7 +1082,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Parallel.Common.Supervisor" -- {{{
+    ,testGroup "LogicGrowsOnTrees.Parallel.Common.Supervisor" -- {{{
         [testCase "immediately abort" $ do -- {{{
             SupervisorOutcome{..} ← runSupervisor AllMode bad_test_supervisor_actions (UnrestrictedProgram abortSupervisor)
             supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
@@ -1402,7 +1402,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Parallel.Common.Worker" -- {{{
+    ,testGroup "LogicGrowsOnTrees.Parallel.Common.Worker" -- {{{
         [testGroup "forkWorkerThread" -- {{{
             [testCase "abort" $ do -- {{{
                 termination_result_ivar ← IVar.new
@@ -1699,7 +1699,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Path" -- {{{
+    ,testGroup "LogicGrowsOnTrees.Path" -- {{{
         [testGroup "sendTreeDownPath" -- {{{
             [testCase "null path" $ (exploreTree . sendTreeDownPath Seq.empty) (return [42]) @?= [42]
             ,testCase "cache" $ do (exploreTree . sendTreeDownPath (Seq.singleton (CacheStep (encode ([42 :: Int]))))) (cache (undefined :: [Int])) @?= [42]
@@ -1777,7 +1777,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testGroup "Visitor.Utils.PerfectTree" -- {{{
+    ,testGroup "LogicGrowsOnTrees.Utils.PerfectTree" -- {{{
         [Small.testProperty "trivialPerfectTree" . Small.test $ -- {{{
             (liftA2 . liftA2) (==>)
                 (\arity _ → arity >= 2)

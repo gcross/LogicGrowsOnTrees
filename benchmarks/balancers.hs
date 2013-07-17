@@ -5,8 +5,8 @@
 -- Imports {{{
 import Criterion.Main
 
-import Visitor
-import Visitor.Utils.WordSum
+import LogicGrowsOnTrees
+import LogicGrowsOnTrees.Utils.WordSum
 -- }}}
 
 main = defaultMain

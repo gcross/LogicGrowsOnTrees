@@ -1,4 +1,4 @@
-unsigned int Visitor_Queens_count_solutions(
+unsigned int LogicGrowsOnTrees_Queens_count_solutions(
     unsigned int size,
     unsigned int number_of_queens_remaining,
     unsigned int row,

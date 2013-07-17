@@ -8,10 +8,10 @@ import Control.Applicative
 
 import System.Console.CmdTheLine
 
-import Visitor.Parallel.Main
-import Visitor.Parallel.Adapter.Threads
-import Visitor.Utils.PerfectTree
-import Visitor.Utils.WordSum
+import LogicGrowsOnTrees.Parallel.Main
+import LogicGrowsOnTrees.Parallel.Adapter.Threads
+import LogicGrowsOnTrees.Utils.PerfectTree
+import LogicGrowsOnTrees.Utils.WordSum
 
 -- }}}
 

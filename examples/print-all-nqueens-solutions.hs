@@ -6,10 +6,10 @@ import qualified Data.Foldable as Fold
 import Data.List (sort)
 import qualified Data.Sequence as Seq
 
-import Visitor.Parallel.Main
-import Visitor.Parallel.Adapter.Threads
+import LogicGrowsOnTrees.Parallel.Main
+import LogicGrowsOnTrees.Parallel.Adapter.Threads
 
-import Visitor.Examples.Queens
+import LogicGrowsOnTrees.Examples.Queens
 
 main =
     mainForExploreTree

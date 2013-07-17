@@ -6,12 +6,12 @@
 import Criterion.Main
 import Data.Monoid
 
-import Visitor
-import Visitor.Checkpoint
-import Visitor.Examples.Queens
-import Visitor.Utils.WordSum
-import Visitor.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
-import Visitor.Parallel.Common.Worker (Purity(Pure),exploreTreeGeneric)
+import LogicGrowsOnTrees
+import LogicGrowsOnTrees.Checkpoint
+import LogicGrowsOnTrees.Examples.Queens
+import LogicGrowsOnTrees.Utils.WordSum
+import LogicGrowsOnTrees.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
+import LogicGrowsOnTrees.Parallel.Common.Worker (Purity(Pure),exploreTreeGeneric)
 -- }}}
 
 main = defaultMain

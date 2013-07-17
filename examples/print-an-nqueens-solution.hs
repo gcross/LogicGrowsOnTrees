@@ -4,11 +4,11 @@ import Data.List (sort)
 
 import System.Console.CmdTheLine
 
-import Visitor.Checkpoint (Progress(..))
-import Visitor.Parallel.Main
-import Visitor.Parallel.Adapter.Threads
+import LogicGrowsOnTrees.Checkpoint (Progress(..))
+import LogicGrowsOnTrees.Parallel.Main
+import LogicGrowsOnTrees.Parallel.Adapter.Threads
 
-import Visitor.Examples.Queens
+import LogicGrowsOnTrees.Examples.Queens
 
 main =
     mainForExploreTreeUntilFirst
