@@ -81,6 +81,7 @@ import Test.SmallCheck.Drivers as Small (test)
 
 import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Checkpoint
+import LogicGrowsOnTrees.Examples.MapColoring
 import LogicGrowsOnTrees.Location
 import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import qualified LogicGrowsOnTrees.Parallel.Adapter.Threads as Threads
@@ -790,6 +791,39 @@ tests = -- {{{
                 exploreTreeTUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint tree
           -- }}}
         ]
+     -- }}}
+    ,testProperty "LogicGrowsOnTrees.Examples" $ do -- {{{
+        number_of_colors ← choose (2,5::Int)
+        number_of_countries ← choose (3,7::Int)
+        neighbor_probability ← choose (0,1::Float)
+        neighbors :: [(Int,Int)] ← fmap (concat . concat) $
+            forM [1..number_of_countries] $ \x →
+                forM [x+1..number_of_countries] $ \y → do
+                    outcome ← choose (0,1)
+                    return $
+                        if outcome > neighbor_probability
+                            then [(x,y),(y,x)]
+                            else []
+        let solutions =
+                coloringSolutions
+                    [1..number_of_colors]
+                    [1..number_of_countries]
+                    (\x y → (x,y) `elem` neighbors)
+        morallyDubiousIOProperty $ do
+            forM_ solutions $ \solution →
+                forM_ solution $ \(country_1,color_1) →
+                    forM_ solution $ \(country_2,color_2) →
+                        when ((country_1,country_2) `elem` neighbors) $
+                            assertBool "neighbors have different colors" $ color_1 /= color_2
+            let correct_count = sum $ do
+                    solution ← zip [1..] <$> replicateM number_of_countries [1..number_of_colors]
+                    forM_ solution $ \(country_1,color_1) →
+                        forM_ solution $ \(country_2,color_2) →
+                            when ((country_1,country_2) `elem` neighbors) $
+                                guard $ color_1 /= color_2
+                    return 1
+            length solutions @?= correct_count
+            return True
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Location" -- {{{
         [testProperty "branchingFromLocation . labelFromBranching = id" $ -- {{{

@@ -158,6 +158,8 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["LogicGrowsOnTrees.Checkpoint"] infrastructure for creating and stepping through checkpoints
                      .
+                        ["LogicGrowsOnTrees.Examples.MapColoring"] simple examples of computing all possible colorings of a map
+                     .
                         ["LogicGrowsOnTrees.Examples.Queens"] simple examples of solving the n-quees problem
                      .
                         ["LogicGrowsOnTrees.Examples.Queens.Advanced"] a very complicated example of solving the n-queens problem using symmetry breaking
@@ -245,6 +247,7 @@ Library
     Exposed-modules:
         LogicGrowsOnTrees
         LogicGrowsOnTrees.Checkpoint
+        LogicGrowsOnTrees.Examples.MapColoring
         LogicGrowsOnTrees.Examples.Queens
         LogicGrowsOnTrees.Examples.Queens.Advanced
         LogicGrowsOnTrees.Location
