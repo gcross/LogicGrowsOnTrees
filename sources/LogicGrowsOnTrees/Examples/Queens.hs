@@ -37,11 +37,9 @@ module LogicGrowsOnTrees.Examples.Queens
 
     -- ** Using sets
     -- $sets
-    , nqueensUsingSetsGeneric
     , nqueensUsingSetsSolutions
     , nqueensUsingSetsCount
     -- ** Using bits
-    , nqueensUsingBitsGeneric
     , nqueensUsingBitsSolutions
     , nqueensUsingBitsCount
     -- * Advanced example
@@ -54,7 +52,7 @@ module LogicGrowsOnTrees.Examples.Queens
     , makeBoardSizeTermAtPosition
     ) where
 
-import Control.Monad (MonadPlus,guard)
+import Control.Monad (MonadPlus,guard,liftM)
 
 import Data.Bits ((.|.),(.&.),bit,bitSize,shiftL,shiftR)
 import Data.Functor ((<$>))
@@ -209,23 +207,16 @@ occupied rows because the rows are filled consecutively.)
  -}
 
 {-| Generate solutions to the n-queens problem using 'IntSet's. -}
-nqueensUsingSetsGeneric ::
-    MonadPlus m ⇒
-    α {-^ the value used to represent a partially built solution -} →
-    (Int → α → α) {-^ a function that adds a newly occupied column to a
-                      partially built solutiona -} →
-    (α → β) {-^ a fucntion that finalizes a now fully built solution -} →
-    Word {-^ the board size -} →
-    m β {-^ the final result -}
-nqueensUsingSetsGeneric initial_value updateValue finalizeValue n =
-    go n
+nqueensUsingSetsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
+nqueensUsingSetsSolutions n =
+    go (fromIntegral n)
        0
        (IntSet.fromDistinctAscList [0..fromIntegral n-1])
        IntSet.empty
        IntSet.empty
-       initial_value
+       []
   where
-    go 0 _ _ _ _ !value = return . finalizeValue $ value
+    go 0 _ _ _ _ !value = return . reverse $ value
     go !n
        !row
        !available_columns
@@ -243,12 +234,7 @@ nqueensUsingSetsGeneric initial_value updateValue finalizeValue n =
            (IntSet.delete column available_columns)
            (IntSet.insert negative_diagonal occupied_negative_diagonals)
            (IntSet.insert positive_diagonal occupied_positive_diagonals)
-           (column `updateValue` value)
-{-# INLINE nqueensUsingSetsGeneric #-}
-
-{-| Generates the solutions to the n-queens problem with the given board size. -}
-nqueensUsingSetsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensUsingSetsSolutions = nqueensUsingSetsGeneric [] ((:) . fromIntegral) (zip [0..] . reverse)
+           ((fromIntegral row,fromIntegral column):value)
 {-# SPECIALIZE nqueensUsingSetsSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensUsingSetsSolutions :: Word → Tree NQueensSolution #-}
 {-# INLINEABLE nqueensUsingSetsSolutions #-}
@@ -258,7 +244,7 @@ nqueensUsingSetsSolutions = nqueensUsingSetsGeneric [] ((:) . fromIntegral) (zip
     done by the 'exploreTree' (and related) functions.
  -}
 nqueensUsingSetsCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensUsingSetsCount = nqueensUsingSetsGeneric () (const id) (const $ WordSum 1)
+nqueensUsingSetsCount = liftM (const $ WordSum 1) . nqueensUsingSetsSolutions
 {-# SPECIALIZE nqueensUsingSetsCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensUsingSetsCount :: Word → Tree WordSum #-}
 {-# INLINEABLE nqueensUsingSetsCount #-}
@@ -279,18 +265,11 @@ succeeding row.
  -}
 
 {-| Generate solutions to the n-queens problem using bitwise-operations. -}
-nqueensUsingBitsGeneric ::
-    MonadPlus m ⇒
-    α {-^ the value used to represent a partially built solution -} →
-    (Int → α → α) {-^ a function that adds a newly occupied column to a
-                      partially built solutiona -} →
-    (α → β) {-^ a fucntion that finalizes a now fully built solution -} →
-    Word {-^ the board size -} →
-    m β {-^ the final result -}
-nqueensUsingBitsGeneric initial_value updateValue finalizeValue n =
-    go n 0 (0::Word64) (0::Word64) (0::Word64) initial_value
+nqueensUsingBitsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
+nqueensUsingBitsSolutions n =
+    go n 0 (0::Word64) (0::Word64) (0::Word64) []
   where
-    go 0 _ _ _ _ !value = return . finalizeValue $ value
+    go 0 _ _ _ _ !value = return . reverse $ value
     go !n
        !row
        !occupied_columns
@@ -302,26 +281,20 @@ nqueensUsingBitsGeneric initial_value updateValue finalizeValue n =
             occupied_columns .|. 
             occupied_negative_diagonals .|.
             occupied_positive_diagonals
-        let column_bit = bit column
+        let column_bit = bit (fromIntegral column)
         go (n-1)
            (row+1)
            (occupied_columns .|. column_bit)
            ((occupied_negative_diagonals .|. column_bit) `shiftR` 1)
            ((occupied_positive_diagonals .|. column_bit) `shiftL` 1)
-           (column `updateValue` value)
+           ((row,column):value)
 
-    n_as_word = fromIntegral n
     goGetOpenings column bits
-      | column >= n_as_word = []
-      | bits .&. 1 == 0     = column:next
-      | otherwise           = next
+      | column >= n     = []
+      | bits .&. 1 == 0 = column:next
+      | otherwise       = next
       where
         next = goGetOpenings (column + 1) (bits `shiftR` 1)
-{-# INLINE nqueensUsingBitsGeneric #-}
-
-{-| Generates the solutions to the n-queens problem with the given board size. -}
-nqueensUsingBitsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensUsingBitsSolutions = nqueensUsingBitsGeneric [] ((:) . fromIntegral) (zip [0..] . reverse)
 {-# SPECIALIZE nqueensUsingBitsSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensUsingBitsSolutions :: Word → Tree NQueensSolution #-}
 {-# INLINEABLE nqueensUsingBitsSolutions #-}
@@ -331,7 +304,7 @@ nqueensUsingBitsSolutions = nqueensUsingBitsGeneric [] ((:) . fromIntegral) (zip
     done by the 'exploreTree' (and related) functions.
  -}
 nqueensUsingBitsCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensUsingBitsCount = nqueensUsingBitsGeneric () (const id) (const $ WordSum 1)
+nqueensUsingBitsCount = liftM (const $ WordSum 1) . nqueensUsingBitsSolutions
 {-# SPECIALIZE nqueensUsingBitsCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensUsingBitsCount :: Word → Tree WordSum #-}
 {-# INLINEABLE nqueensUsingBitsCount #-}
