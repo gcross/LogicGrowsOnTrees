@@ -2,16 +2,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This module contains examples of 'Tree's that represent the solutions to
-    the n-queens problem, which is the problem of finding ways to put n queens
-    on an n-by-n chessboard in such a way that they do not conflict; recall
-    that, in chess, a queen attacks the row it is on, the column it is one, and
-    both diagonals that it is one. Thus, solutions of the n-queens problem take
-    the form of a list of coordinates such that no coordinates have overlapping
-    rows, columns, or diagonals.
+{-| This module contains examples of 'MonadPlus's that represent the solutions
+    to the n-queens problem, which is the problem of finding ways to put n
+    queens on an n-by-n chessboard in such a way that they do not conflict;
+    recall that, in chess, a queen attacks the row it is on, the column it is
+    one, and both diagonals that it is one. Thus, solutions of the n-queens
+    problem take the form of a list of coordinates such that no coordinates have
+    overlapping rows, columns, or diagonals.
 
-    The 'Tree's in this module are written in such a way that the same code can
-    return either the solutions themselves or just the number of solutions.
+    The 'MonadPlus's in this module are written in such a way that the same code
+    can return either the solutions themselves or just the number of solutions.
     Specifically, the generic form of the functions takes an initial value, a
     way to update this value when a queen has been placed, and a way to finalize
     this value when all queens have been placed. For the simple examples in this
