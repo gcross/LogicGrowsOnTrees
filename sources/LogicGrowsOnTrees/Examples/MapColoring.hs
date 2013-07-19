@@ -7,38 +7,35 @@ module LogicGrowsOnTrees.Examples.MapColoring where
 
 import Control.Monad (MonadPlus,forM_,guard,liftM,when)
 
-import LogicGrowsOnTrees (allFrom)
+import LogicGrowsOnTrees (between)
 import LogicGrowsOnTrees.Utils.WordSum
 
-{-| Generate all valid colorings for the given colors, countries, and neighbor relation. -}
+{-| Generate all valid map colorings. -}
 coloringSolutions ::
-    ( Eq color
-    , Eq country
-    , MonadPlus m
-    ) ⇒
-    [color] {-^ the available colors -} →
-    [country] {-^ the countries to color -} →
-    (country → country → Bool) {-^ a (symmetric) function that returns 'True' if two countries are neighbors and 'False' otherwise -} →
-    m [(country,color)] {-^ a valid coloring -}
-coloringSolutions colors countries isNeighborOf = go countries []
+    MonadPlus m ⇒
+    Int {-^ the number of colors -} →
+    Int {-^ the number of countries -} →
+    (Int → Int → Bool) {-^ whether two countries are adjacent -} →
+    m [(Int,Int)] {-^ a valid coloring -}
+coloringSolutions number_of_colors number_of_countries isAdjacentTo =
+    go number_of_countries []
   where
-    go [] coloring = return . reverse $ coloring
-    go (country:rest_countries) coloring = do
-        color ← allFrom colors
+    go 0 coloring = return coloring
+    go country coloring = do
+        color ← between 1 number_of_colors
         forM_ coloring $ \(other_country, other_color) →
-            when (country `isNeighborOf` other_country) $
+            when (country `isAdjacentTo` other_country) $
                 guard (color /= other_color)
-        go rest_countries ((country,color):coloring)
+        go (country-1) ((country,color):coloring)
 
-{-^ Generates the number of possible colorings for the given colors, countries, and neighbor relation. -}
+{-^ Generates the number of possible colorings. -}
 coloringCount ::
-    ( Eq color
-    , Eq country
-    , MonadPlus m
-    ) ⇒
-    [color] {-^ the available colors -} →
-    [country] {-^ the countries to color -} →
-    (country → country → Bool) {-^ a (symmetric) function that returns 'True' if two countries are neighbors and 'False' otherwise -} →
+    MonadPlus m ⇒
+    Int {-^ the number of colors -} →
+    Int {-^ the number of countries -} →
+    (Int → Int → Bool) {-^ whether two countries are adjacent -} →
     m WordSum
-coloringCount colors countries isNeighborOf =
-    liftM (const $ WordSum 1) (coloringSolutions colors countries isNeighborOf)
+coloringCount number_of_colors number_of_countries isAdjacentTo =
+    liftM (const $ WordSum 1)
+    $
+    coloringSolutions number_of_colors number_of_countries isAdjacentTo

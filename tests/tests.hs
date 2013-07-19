@@ -806,8 +806,8 @@ tests = -- {{{
                             else []
         let solutions =
                 coloringSolutions
-                    [1..number_of_colors]
-                    [1..number_of_countries]
+                    number_of_colors
+                    number_of_countries
                     (\x y → (x,y) `elem` neighbors)
         morallyDubiousIOProperty $ do
             forM_ solutions $ \solution →
