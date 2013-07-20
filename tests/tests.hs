@@ -792,38 +792,52 @@ tests = -- {{{
           -- }}}
         ]
      -- }}}
-    ,testProperty "LogicGrowsOnTrees.Examples" $ do -- {{{
-        number_of_colors ← choose (2,5::Int)
-        number_of_countries ← choose (3,7::Int)
-        neighbor_probability ← choose (0,1::Float)
-        neighbors :: [(Int,Int)] ← fmap (concat . concat) $
-            forM [1..number_of_countries] $ \x →
-                forM [x+1..number_of_countries] $ \y → do
-                    outcome ← choose (0,1)
-                    return $
-                        if outcome > neighbor_probability
-                            then [(x,y),(y,x)]
-                            else []
-        let solutions =
-                coloringSolutions
-                    number_of_colors
-                    number_of_countries
-                    (\x y → (x,y) `elem` neighbors)
-        morallyDubiousIOProperty $ do
-            forM_ solutions $ \solution →
-                forM_ solution $ \(country_1,color_1) →
-                    forM_ solution $ \(country_2,color_2) →
-                        when ((country_1,country_2) `elem` neighbors) $
-                            assertBool "neighbors have different colors" $ color_1 /= color_2
-            let correct_count = sum $ do
-                    solution ← zip [1..] <$> replicateM number_of_countries [1..number_of_colors]
+    ,testGroup "LogicGrowsOnTrees.Examples" -- {{{
+        [testProperty name $ do
+            number_of_colors ← choose (2,5::Int)
+            number_of_countries ← choose (3,7::Int)
+            neighbor_probability ← choose (0,1::Float)
+            neighbors :: [(Int,Int)] ← fmap (concat . concat) $
+                forM [1..number_of_countries] $ \x →
+                    forM [x+1..number_of_countries] $ \y → do
+                        outcome ← choose (0,1)
+                        return $
+                            if outcome > neighbor_probability
+                                then [(x,y),(y,x)]
+                                else []
+            let solutions =
+                    computeSolutions
+                        number_of_colors
+                        number_of_countries
+                        (\x y → (x,y) `elem` neighbors)
+            morallyDubiousIOProperty $ do
+                forM_ solutions $ \solution →
                     forM_ solution $ \(country_1,color_1) →
                         forM_ solution $ \(country_2,color_2) →
                             when ((country_1,country_2) `elem` neighbors) $
-                                guard $ color_1 /= color_2
-                    return 1
-            length solutions @?= correct_count
-            return True
+                                assertBool "neighbors have different colors" $ color_1 /= color_2
+                let correct_count = sum $ do
+                        solution ← zip [1..] <$> replicateM number_of_countries [1..number_of_colors]
+                        forM_ solution $ \(country_1,color_1) →
+                            forM_ solution $ \(country_2,color_2) →
+                                when ((country_1,country_2) `elem` neighbors) $
+                                    guard $ color_1 /= color_2
+                        return 1
+                computeCount number_of_colors solutions @?= correct_count
+                return True
+        | (name,computeSolutions,computeCount) ←
+            [("coloringSolutions",coloringSolutions,curry (length . snd))
+            ,("coloringUniqueSolutions",coloringUniqueSolutions,
+                \number_of_colors →
+                    sum
+                    .
+                    map (\solution →
+                        let number_of_colors_used = maximum . fmap snd $ solution
+                        in product [number_of_colors-number_of_colors_used+1..number_of_colors]
+                    )
+             )
+            ]
+        ]
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Location" -- {{{
         [testProperty "branchingFromLocation . labelFromBranching = id" $ -- {{{

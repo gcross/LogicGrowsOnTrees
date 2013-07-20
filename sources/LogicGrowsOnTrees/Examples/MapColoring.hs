@@ -28,14 +28,20 @@ coloringSolutions number_of_colors number_of_countries isAdjacentTo =
                 guard (color /= other_color)
         go (country-1) ((country,color):coloring)
 
-{-^ Generates the number of possible colorings. -}
-coloringCount ::
+{-| Generate all valid map colorings. -}
+coloringUniqueSolutions ::
     MonadPlus m ⇒
     Int {-^ the number of colors -} →
     Int {-^ the number of countries -} →
     (Int → Int → Bool) {-^ whether two countries are adjacent -} →
-    m WordSum
-coloringCount number_of_colors number_of_countries isAdjacentTo =
-    liftM (const $ WordSum 1)
-    $
-    coloringSolutions number_of_colors number_of_countries isAdjacentTo
+    m [(Int,Int)] {-^ a valid coloring -}
+coloringUniqueSolutions number_of_colors number_of_countries isAdjacentTo =
+    go 0 number_of_countries []
+  where
+    go _ 0 coloring = return coloring
+    go number_of_colors_used country coloring = do
+        color ← between 1 ((number_of_colors_used + 1) `min` number_of_colors)
+        forM_ coloring $ \(other_country, other_color) →
+            when (country `isAdjacentTo` other_country) $
+                guard (color /= other_color)
+        go (number_of_colors_used `max` color) (country-1) ((country,color):coloring)
