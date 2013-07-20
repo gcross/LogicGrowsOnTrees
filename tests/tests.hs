@@ -794,10 +794,10 @@ tests = -- {{{
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Examples" -- {{{
         [testProperty name $ do
-            number_of_colors ← choose (2,5::Int)
-            number_of_countries ← choose (3,7::Int)
+            number_of_colors ← choose (2,5)
+            number_of_countries ← choose (3,7)
             neighbor_probability ← choose (0,1::Float)
-            neighbors :: [(Int,Int)] ← fmap (concat . concat) $
+            neighbors ← fmap (concat . concat) $
                 forM [1..number_of_countries] $ \x →
                     forM [x+1..number_of_countries] $ \y → do
                         outcome ← choose (0,1)
@@ -817,7 +817,7 @@ tests = -- {{{
                             when ((country_1,country_2) `elem` neighbors) $
                                 assertBool "neighbors have different colors" $ color_1 /= color_2
                 let correct_count = sum $ do
-                        solution ← zip [1..] <$> replicateM number_of_countries [1..number_of_colors]
+                        solution ← zip [1..] <$> replicateM (fromIntegral number_of_countries) [1..number_of_colors]
                         forM_ solution $ \(country_1,color_1) →
                             forM_ solution $ \(country_2,color_2) →
                                 when ((country_1,country_2) `elem` neighbors) $
@@ -826,7 +826,7 @@ tests = -- {{{
                 computeCount number_of_colors solutions @?= correct_count
                 return True
         | (name,computeSolutions,computeCount) ←
-            [("coloringSolutions",coloringSolutions,curry (length . snd))
+            [("coloringSolutions",coloringSolutions,curry (fromIntegral . length . snd))
             ,("coloringUniqueSolutions",coloringUniqueSolutions,
                 \number_of_colors →
                     sum
