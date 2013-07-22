@@ -538,25 +538,25 @@ exploreTreeTUntilFirstStartingFromCheckpoint = go .* initialExplorationState
 
 {-| Explores all the remaining nodes in a tree, starting from the given checkpoint
     and summing all results encountered (i.e., in the leaves) until the current
-    partial sum satisfies the condition provided by the first function; if this
-    condition is ever satisfied then its result is returned in 'Right',
-    otherwise the final sum is returned in 'Left'.
+    partial sum satisfies the condition provided by the first parameter.
+
+    See 'LogicGrowsOnTrees.exploreTreeUntilFound' for more details.
  -}
 exploreTreeUntilFoundStartingFromCheckpoint ::
     Monoid α ⇒
-    (α → Maybe β) →
+    (α → Bool) →
     Checkpoint →
     Tree α →
-    Either α β
+    (α,Bool)
 exploreTreeUntilFoundStartingFromCheckpoint = runIdentity .** exploreTreeTUntilFoundStartingFromCheckpoint
 
 {-| Same as 'exploreTreeUntilFoundStartingFromCheckpoint', but for an impure tree. -}
 exploreTreeTUntilFoundStartingFromCheckpoint ::
     (Monad m, Monoid α) ⇒
-    (α → Maybe β) →
+    (α → Bool) →
     Checkpoint →
     TreeT m α →
-    m (Either α β)
+    m (α,Bool)
 exploreTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialExplorationState
   where
     go accum =
@@ -564,11 +564,11 @@ exploreTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialExploration
         >=>
         \(maybe_solution,maybe_new_exploration_state) →
             case maybe_solution of
-                Nothing → maybe (return (Left accum)) (go accum) maybe_new_exploration_state
+                Nothing → maybe (return (accum,False)) (go accum) maybe_new_exploration_state
                 Just solution →
                     let new_accum = accum <> solution
-                    in case f new_accum of
-                        Nothing → maybe (return (Left new_accum)) (go new_accum) maybe_new_exploration_state
-                        Just result → return (Right result)
+                    in if f new_accum
+                        then return (new_accum,True)
+                        else maybe (return (new_accum,False)) (go new_accum) maybe_new_exploration_state
 {-# INLINE exploreTreeTUntilFoundStartingFromCheckpoint #-}
 

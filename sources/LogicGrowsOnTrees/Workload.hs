@@ -130,16 +130,16 @@ exploreTreeTUntilFirstWithinWorkload Workload{..} =
 
 {-| Explores the nodes in a pure tree given by a 'Workload', summing
     all results encountered (i.e., in the leaves) until the current partial sum
-    satisfies the condition provided by the first function; if this condition is
-    ever satisfied then its result is returned in 'Right', otherwise the final
-    sum is returned in 'Left'.
+    satisfies the condition provided by the first parameter.
+
+    See 'LogicGrowsOnTrees.exploreTreeUntilFound' for more details.
  -}
 exploreTreeUntilFoundWithinWorkload ::
     Monoid α ⇒
-    (α → Maybe β) →
+    (α → Bool) →
     Workload →
     Tree α →
-    Either α β
+    (α,Bool)
 exploreTreeUntilFoundWithinWorkload condition Workload{..} =
     exploreTreeUntilFoundStartingFromCheckpoint condition workloadCheckpoint
     .
@@ -148,10 +148,10 @@ exploreTreeUntilFoundWithinWorkload condition Workload{..} =
 {-| Same as 'exploreTreeUntilFoundWithinWorkload' but for an impure tree. -}
 exploreTreeTUntilFoundWithinWorkload ::
     (Monoid α, Monad m) ⇒
-    (α → Maybe β) →
+    (α → Bool) →
     Workload →
     TreeT m α →
-    m (Either α β)
+    m (α,Bool)
 exploreTreeTUntilFoundWithinWorkload condition Workload{..} =
     sendTreeTDownPath workloadPath
     >=>

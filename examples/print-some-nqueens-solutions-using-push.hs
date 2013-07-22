@@ -16,11 +16,7 @@ import LogicGrowsOnTrees.Examples.Queens
 
 main =
     mainForExploreTreeUntilFoundUsingPush
-        (\(_,number_of_solutions) solutions →
-            if Seq.length solutions >= number_of_solutions
-                then Just solutions
-                else Nothing
-        )
+        (\(_,number_of_solutions) → (>= number_of_solutions) . Seq.length)
         driver
         ((,) <$> makeBoardSizeTermAtPosition 0
              <*> required (pos 1 Nothing (posInfo { posName = "SOLUTIONS", posDoc = "number of solutions" }))

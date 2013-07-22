@@ -61,21 +61,21 @@ import LogicGrowsOnTrees.Checkpoint
 data ExplorationMode exploration_mode where
     AllMode :: Monoid result ⇒ ExplorationMode (AllMode result)
     FirstMode :: ExplorationMode (FirstMode result)
-    FoundModeUsingPull :: Monoid result ⇒ (result → Maybe final_result) → ExplorationMode (FoundModeUsingPull result final_result)
-    FoundModeUsingPush :: Monoid result ⇒ (result → Maybe final_result) → ExplorationMode (FoundModeUsingPush result final_result)
+    FoundModeUsingPull :: Monoid result ⇒ (result → Bool) → ExplorationMode (FoundModeUsingPull result)
+    FoundModeUsingPush :: Monoid result ⇒ (result → Bool) → ExplorationMode (FoundModeUsingPush result)
 
 {-| Explore all nodes and sum the results in all of the leaves. -}
 data AllMode result
 {-| Explore nodes until a result is found, and if so then stop. -}
 data FirstMode result
-{-| Explore nodes, summing their results, until a condition has been met, and if
-    so stop and return the condition's result; `Pull` means that each worker's
-    results will be kept and summed locally until a request for them has been
-    received from the supervisor, which means that there might be a period of
-    time where the collectively found results meet the condition but the system
-    is unaware of this as they are scattered amongst the workerss.
+{-| Explore nodes, summing the results, until a condition has been met; `Pull`
+    means that each worker's results will be kept and summed locally until a
+    request for them has been received from the supervisor, which means that
+    there might be a period of time where the collectively found results meet
+    the condition but the system is unaware of this as they are scattered
+    amongst the workers.
  -}
-data FoundModeUsingPull result final_result
+data FoundModeUsingPull result
 {-| Same as 'FoundModeUsingPull', but pushes each result to the supervisor as it
     is found rather than summing them in the worker until they are requested by
     the supervisor, which guarantees that the system will recognize when the
@@ -84,7 +84,7 @@ data FoundModeUsingPull result final_result
     each one could be much more costly then summing them locally and sending the
     current total on a regular basis to the supervisor.
  -}
-data FoundModeUsingPush result final_result
+data FoundModeUsingPush result
 
 --------------------------------------------------------------------------------
 --------------------------------- Type-classes ---------------------------------
@@ -109,8 +109,8 @@ to be specialized based on the current exploration mode.
 type family ResultFor exploration_mode :: *
 type instance ResultFor (AllMode result) = result
 type instance ResultFor (FirstMode result) = result
-type instance ResultFor (FoundModeUsingPull result final_result) = result
-type instance ResultFor (FoundModeUsingPush result final_result) = result
+type instance ResultFor (FoundModeUsingPull result) = result
+type instance ResultFor (FoundModeUsingPush result) = result
 
 {-| The type of progress, which keeps track of how much of the tree has already
     been explored.
@@ -118,29 +118,29 @@ type instance ResultFor (FoundModeUsingPush result final_result) = result
 type family ProgressFor exploration_mode :: *
 type instance ProgressFor (AllMode result) = Progress result
 type instance ProgressFor (FirstMode result) = Checkpoint
-type instance ProgressFor (FoundModeUsingPull result final_result) = Progress result
-type instance ProgressFor (FoundModeUsingPush result final_result) = Progress result
+type instance ProgressFor (FoundModeUsingPull result) = Progress result
+type instance ProgressFor (FoundModeUsingPush result) = Progress result
 
 {-| The final result of exploring the tree. -}
 type family FinalResultFor exploration_mode :: *
 type instance FinalResultFor (AllMode result) = result
 type instance FinalResultFor (FirstMode result) = Maybe (Progress result)
-type instance FinalResultFor (FoundModeUsingPull result final_result) = Either result (Progress (final_result,result))
-type instance FinalResultFor (FoundModeUsingPush result final_result) = Either result (Progress final_result)
+type instance FinalResultFor (FoundModeUsingPull result) = Either result (Progress result)
+type instance FinalResultFor (FoundModeUsingPush result) = Either result (Progress result)
 
 {-| The intermediate value being maintained internally by the worker. -}
 type family WorkerIntermediateValueFor exploration_mode :: *
 type instance WorkerIntermediateValueFor (AllMode result) = result
 type instance WorkerIntermediateValueFor (FirstMode result) = ()
-type instance WorkerIntermediateValueFor (FoundModeUsingPull result final_result) = result
-type instance WorkerIntermediateValueFor (FoundModeUsingPush result final_result) = ()
+type instance WorkerIntermediateValueFor (FoundModeUsingPull result) = result
+type instance WorkerIntermediateValueFor (FoundModeUsingPush result) = ()
 
 {-| The final progress returned by a worker that has finished. -}
 type family WorkerFinalProgressFor exploration_mode :: *
 type instance WorkerFinalProgressFor (AllMode result) = Progress result
 type instance WorkerFinalProgressFor (FirstMode result) = Progress (Maybe result)
-type instance WorkerFinalProgressFor (FoundModeUsingPull result final_result) = Progress (Either result final_result)
-type instance WorkerFinalProgressFor (FoundModeUsingPush result final_result) = Progress result
+type instance WorkerFinalProgressFor (FoundModeUsingPull result) = Progress result
+type instance WorkerFinalProgressFor (FoundModeUsingPush result) = Progress result
 
 --------------------------------------------------------------------------------
 ---------------------------------- Functions -----------------------------------

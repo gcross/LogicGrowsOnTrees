@@ -518,20 +518,20 @@ WARNING:  If you use this mode then you need to enable checkpointing when the
           are scattered around.
  -}
 
-{-| Explore the given pure tree in parallel until the
-    sum of results meets the given condition.
+{-| Explore the given pure tree in parallel until the sum of results meets the
+    given condition.
  -}
 mainForExploreTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
             as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
@@ -541,20 +541,20 @@ mainForExploreTreeUntilFoundUsingPull ::
     result_monad ()
 mainForExploreTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
 
-{-| Explore the given IO tree in parellel
-    until the sum of results meets the given condition.
+{-| Explore the given IO tree in parellel until the sum of results meets the
+    given condition.
  -}
 mainForExploreTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
             as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
@@ -564,21 +564,21 @@ mainForExploreTreeIOUntilFoundUsingPull ::
     result_monad ()
 mainForExploreTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) io_purity
 
-{-| Explore the given impure tree in parallel until the
-    sum of results meets the given condition.
+{-| Explore the given impure tree in parallel until the sum of results meets the
+    given condition.
  -}
 mainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPull result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_configuration → RunOutcome (Progress result) (Either result (Progress (final_result,result))) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
             as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
@@ -615,20 +615,20 @@ success as the Supervisor has access to all results and so it will never be in
 the position of only having a partial result upon success.)
  -}
 
-{-| Explore the given pure tree in parallel until the
-    sum of results meets the given condition.
+{-| Explore the given pure tree in parallel until the sum of results meets the
+    given condition.
  -}
 mainForExploreTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
             as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
@@ -638,20 +638,20 @@ mainForExploreTreeUntilFoundUsingPush ::
     result_monad ()
 mainForExploreTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
 
-{-| Explore the given IO tree in parellel
-    until the sum of results meets the given condition.
+{-| Explore the given IO tree in parellel until the sum of results meets the
+    given condition.
  -}
 mainForExploreTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
             as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this
@@ -659,23 +659,23 @@ mainForExploreTreeIOUntilFoundUsingPush ::
          -} →
     (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition)io_purity
+mainForExploreTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) io_purity
 
-{-| Explore the given impure tree in parallel until the
-    sum of results meets the given condition.
+{-| Explore the given impure tree in parallel until the sum of results meets the
+    given condition.
  -}
 mainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (tree_configuration → result → Maybe final_result) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPush result final_result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
-    (tree_configuration → RunOutcome (Progress result) (Either result (Progress final_result)) → IO ())
+    (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run (as well
             as the tree configuration information);  note that if the
             run was 'Completed' then the checkpoint file will be deleted if this

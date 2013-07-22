@@ -426,73 +426,72 @@ exploreTreeTUntilFirst = viewT . unwrapTreeT >=> \view →
 
 {-| Explores all the nodes in a tree, summing all encountered results (i.e., in
     the leaves) until the current partial sum satisfies the condition provided
-    by the first function; if this condition is ever satisfied then its result
-    is returned in 'Right', otherwise the final sum is returned in 'Left'.
+    by the first function. The returned value is a pair where the first
+    component is all of the results that were found during the exploration and
+    the second component is 'True' if the exploration terminated early due to
+    the condition being met and 'False' otherwise.
+
+    NOTE:  The condition function is assumed to have two properties: first, it
+           is assumed to return 'False' for 'mempty', and second, it is assumed
+           that if it returns 'True' for @x@ then it also returns 'True' for
+           @mappend x y@ and @mappend y x@ for all values @y@.  The reason for
+           this is that the condition function is used to indicate when enough
+           results have been found, and so it should not be 'True' for 'mempty'
+           as nothing has been found and if it is 'True' for @x@ then it should
+           not be 'False' for the sum of @y@ with @x@ as this would mean that
+           having *more* than enough results is no longer having enough results.
  -}
 exploreTreeUntilFound ::
     Monoid α ⇒
-    (α → Maybe β) {-^ a function that determines when the desired results have
-                      been found;  'Nothing' will cause the search to continue
-                      whereas returning 'Just' will cause the search to stop and
-                      the value in the 'Just' to be returned wrappedi n 'Right'
-                   -} →
+    (α → Bool) {-^ a function that determines when the desired results have been found -} →
     Tree α {-^ the (pure) tree to be explored -} →
-    Either α β {-^ if no acceptable results were found, then 'Left' with the sum
-                   over all results;  otherwise 'Right' with the value returned
-                   by the function in the first argument
-                -}
+    (α,Bool) {-^ the result of the exploration, which includes the results that
+                 were found and a flag indicating if they matched the condition
+                 function
+              -}
 exploreTreeUntilFound f v =
     case view (unwrapTreeT v) of
-        Return x → runThroughFilter x
+        Return x → (x,f x)
         (Cache mx :>>= k) →
-            maybe (Left mempty) (exploreTreeUntilFound f . TreeT . k)
+            maybe (mempty,False) (exploreTreeUntilFound f . TreeT . k)
             $
             runIdentity mx
         (Choice left right :>>= k) →
-            let x = exploreTreeUntilFound f $ left >>= TreeT . k
-                y = exploreTreeUntilFound f $ right >>= TreeT . k
-            in case (x,y) of
-                (result@(Right _),_) → result
-                (_,result@(Right _)) → result
-                (Left a,Left b) → runThroughFilter (a <> b)
-        (Null :>>= _) → Left mempty
-  where
-    runThroughFilter x = maybe (Left x) Right . f $ x
+            let x@(xr,xf) = exploreTreeUntilFound f $ left >>= TreeT . k
+                (yr,yf) = exploreTreeUntilFound f $ right >>= TreeT . k
+                zr = xr <> yr
+            in if xf then x else (zr,yf || f zr)
+        (Null :>>= _) → (mempty,False)
 
 {-| Same as 'exploreTreeUntilFound', but taking an impure tree instead of
     a pure tree.
  -}
 exploreTreeTUntilFound ::
     (Monad m, Monoid α) ⇒
-    (α → Maybe β) {-^ a function that determines when the desired results have
-                      been found;  'Nothing' will cause the search to continue
-                      whereas returning 'Just' will cause the search to stop and
-                      the value in the 'Just' to be returned wrappedi n 'Right'
-                   -} →
+    (α → Bool) {-^ a function that determines when the desired results have been
+                   found; it is assumed that this function is 'False' for 'mempty'
+                -} →
     TreeT m α {-^ the (impure) tree to be explored -} →
-    m (Either α β) {-^ if no acceptable results were found, then 'Left' with the
-                       sum over all results;  otherwise 'Right' with the value
-                       returned by the function in the first argument
-                    -}
+    m (α,Bool) {-^ the result of the exploration, which includes the results
+                   that were found and a flag indicating if they matched the
+                   condition function
+                -}
 exploreTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
     case view of
-        Return x → runThroughFilter x
+        Return x → return (x,f x)
         (Cache mx :>>= k) →
             mx
             >>=
-            maybe (return (Left mempty)) (exploreTreeTUntilFound f . TreeT . k)
+            maybe (return (mempty,False)) (exploreTreeTUntilFound f . TreeT . k)
         (Choice left right :>>= k) → do
-            x ← exploreTreeTUntilFound f $ left >>= TreeT . k
-            case x of
-                result@(Right _) → return result
-                Left a → do
-                    y ← exploreTreeTUntilFound f $ right >>= TreeT . k
-                    case y of
-                        result@(Right _) → return result
-                        Left b → runThroughFilter (a <> b)
-        (Null :>>= _) → return (Left mempty)
-  where
-    runThroughFilter x = return . maybe (Left x) Right . f $ x
+            x@(xr,xf) ← exploreTreeTUntilFound f $ left >>= TreeT . k
+            if xf
+                then return x
+                else do
+                    (yr,yf) ← exploreTreeTUntilFound f $ right >>= TreeT . k
+                    let zr = xr <> yr
+                    return (zr,yf || f zr)
+        (Null :>>= _) → return (mempty,False)
 
 ---------------------------------- Builders ------------------------------------
 

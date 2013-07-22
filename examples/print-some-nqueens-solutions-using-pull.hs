@@ -17,11 +17,7 @@ import LogicGrowsOnTrees.Examples.Queens
 
 main =
     mainForExploreTreeUntilFoundUsingPull
-        (\(_,number_of_solutions) solutions →
-            if Seq.length solutions >= number_of_solutions
-                then Just solutions
-                else Nothing
-        )
+        (\(_,number_of_solutions) → (>= number_of_solutions) . Seq.length)
         driver
         ((,) <$> makeBoardSizeTermAtPosition 0
              <*> required (pos 1 Nothing (posInfo { posName = "SOLUTIONS", posDoc = "number of solutions" }))
@@ -37,12 +33,8 @@ main =
                                Fold.mapM_ print $ solutions
                         n → do putStrLn $ "Only " ++ show n ++ " solutions were found:"
                                Fold.mapM_ print $ solutions
-                Completed (Right (Progress _ (solutions,leftover_solutions))) → do
+                Completed (Right (Progress _ solutions)) → do
                     Fold.mapM_ print . Seq.unstableSort $ solutions
-                    case Seq.length leftover_solutions of
-                        0 → return ()
-                        1 → putStrLn "(1 additional solution was found but not shown.)"
-                        n → putStrLn $ "(" ++ show n ++ " additional solutions were found but not shown.)"
                 Failure message → error $ "error: " ++ message
         )
         (fmap (Seq.singleton . sort) . nqueensSolutions . fst)

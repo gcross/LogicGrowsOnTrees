@@ -193,8 +193,8 @@ type family WorkerPushActionFor exploration_mode :: *
 --        fact that using types with constructors result in a weird compiler bug.
 type instance WorkerPushActionFor (AllMode result) = Void → ()
 type instance WorkerPushActionFor (FirstMode result) = Void → ()
-type instance WorkerPushActionFor (FoundModeUsingPull result final_result) = Void → ()
-type instance WorkerPushActionFor (FoundModeUsingPush result final_result) = ProgressUpdate (Progress result) → IO ()
+type instance WorkerPushActionFor (FoundModeUsingPull result) = Void → ()
+type instance WorkerPushActionFor (FoundModeUsingPush result) = ProgressUpdate (Progress result) → IO ()
 
 ------------------------------- Tree properties --------------------------------
 
@@ -348,16 +348,9 @@ forkWorkerThread
                                     explored_checkpoint
                                     maybe_solution
                             FoundModeUsingPull f →
-                                case maybe_solution of
-                                    Nothing →
-                                        Progress
-                                            explored_checkpoint
-                                            (Left result)
-                                    Just solution →
-                                        let new_result = result <> solution
-                                        in Progress
-                                            explored_checkpoint
-                                            (maybe (Left new_result) Right . f $ new_result)
+                                Progress
+                                    explored_checkpoint
+                                    (maybe result (result <>) maybe_solution)
                             FoundModeUsingPush _ →
                                 Progress
                                     explored_checkpoint
@@ -372,10 +365,9 @@ forkWorkerThread
                                 FirstMode → return . WorkerFinished $ Progress new_checkpoint (Just solution)
                                 FoundModeUsingPull f →
                                     let new_result = result <> solution
-                                    in case f new_result of
-                                        Nothing → loop1 new_result cursor new_exploration_state
-                                        Just final_result → return . WorkerFinished $ Progress new_checkpoint (Right final_result)
-
+                                    in if f new_result
+                                        then return . WorkerFinished $ Progress new_checkpoint new_result
+                                        else loop1 new_result cursor new_exploration_state
                                 FoundModeUsingPush _ → do
                                     liftIO . push $
                                         ProgressUpdate
@@ -479,14 +471,10 @@ exploreTreeGeneric exploration_mode purity tree = do
         case exploration_mode of
             AllMode → progressResult progress
             FirstMode → Progress (progressCheckpoint progress) <$> progressResult progress
-            FoundModeUsingPull _ →
-                mapRight (
-                    Progress (progressCheckpoint progress)
-                    .
-                    (,mempty)
-                )
-                $
-                progressResult progress
+            FoundModeUsingPull f →
+                if f (progressResult progress)
+                    then Right progress
+                    else Left (progressResult progress)
             _ → error "should never reach here due to incompatible types"
 
 --------------------------------------------------------------------------------

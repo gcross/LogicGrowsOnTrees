@@ -326,15 +326,16 @@ addSetWorkloadStealBroadcastIdsAction actions = do
     })
 -- }}}
 
-checkFoundAgainstThreshold :: Int → IntSet → Either IntSet [Int] → IO Bool -- {{{
-checkFoundAgainstThreshold threshold _ (Left x) = do
-    assertBool (printf "check that the unsuccessful result is small enough (%i < %i)" (IntSet.size x) threshold) $ IntSet.size x < threshold
-    return True
-checkFoundAgainstThreshold threshold solutions (Right x) = do
-    let result = IntSet.fromList x
-    assertBool "check that the result set is big enough" $ IntSet.size result >= threshold
-    assertBool "check that the results are all in the full set of solutions" $ result `IntSet.isSubsetOf` solutions
-    return True
+checkFoundAgainstThreshold :: Int → IntSet → (IntSet,Bool) → IO Bool -- {{{
+checkFoundAgainstThreshold threshold solutions (result,found)
+  | found = do
+        assertBool "check that the result set is big enough" $ IntSet.size result >= threshold
+        assertBool "check that the results are all in the full set of solutions" $ result `IntSet.isSubsetOf` solutions
+        return True
+  | otherwise = do
+        assertBool (printf "check that the unsuccessful result is small enough (%i < %i)" (IntSet.size result) threshold) $ IntSet.size result < threshold
+        assertEqual "check that the result equals the solutions" solutions result
+        return True
 -- }}}
 
 echo :: Show α ⇒ α → α -- {{{
@@ -355,12 +356,6 @@ ignoreWorkloadStealAction :: -- {{{
     SupervisorCallbacks exploration_mode worker_id IO →
     SupervisorCallbacks exploration_mode worker_id IO
 ignoreWorkloadStealAction actions = actions { broadcastWorkloadStealToWorkers = \_ → return () }
--- }}}
-
-intSetSizeFilter :: Int → IntSet → Maybe [Int] -- {{{
-intSetSizeFilter threshold x
-  | IntSet.size x < threshold = Nothing
-  | otherwise = Just (IntSet.toList x)
 -- }}}
 
 frequencyT :: (MonadTrans t, Monad (t Gen)) ⇒ [(Int, t Gen a)] → t Gen a -- {{{
@@ -660,7 +655,7 @@ tests = -- {{{
                 let solutions = exploreTree tree
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
                 return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
-                    exploreTreeUntilFound (intSetSizeFilter threshold) tree
+                    exploreTreeUntilFound ((>= threshold) . IntSet.size) tree
             ]
          -- }}}
         ,testGroup "exploreTreeTUntilFound" -- {{{
@@ -668,15 +663,8 @@ tests = -- {{{
                 UniqueTree tree ← arbitrary
                 let solutions = runIdentity (exploreTreeT tree)
                 threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
-                let f x | IntSet.size x < threshold = Nothing
-                        | otherwise = Just (IntSet.toList x)
-                    found_solutions = runIdentity (exploreTreeTUntilFound f tree)
-                return $ case found_solutions of
-                    Left x → IntSet.size x < threshold
-                    Right x →
-                        let result = IntSet.fromList x
-                        in IntSet.size result >= threshold &&
-                            result `IntSet.isSubsetOf` solutions
+                return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions . runIdentity $
+                    exploreTreeTUntilFound ((>= threshold) . IntSet.size) tree
             ]
          -- }}}
         ]
@@ -780,7 +768,7 @@ tests = -- {{{
             let solutions = exploreTreeStartingFromCheckpoint checkpoint tree
             threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
             return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions $
-                exploreTreeUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint tree
+                exploreTreeUntilFoundStartingFromCheckpoint ((>= threshold) . IntSet.size) checkpoint tree
          -- }}}
         ,testProperty "exploreTreeTUntilFoundStartingFromCheckpoint" $ do -- {{{
             UniqueTree tree ← arbitrary
@@ -788,7 +776,7 @@ tests = -- {{{
             let solutions = exploreTreeStartingFromCheckpoint checkpoint tree
             threshold ← (+1) <$> choose (0,2*IntSet.size solutions)
             return . unsafePerformIO . checkFoundAgainstThreshold threshold solutions . runIdentity $
-                exploreTreeTUntilFoundStartingFromCheckpoint (intSetSizeFilter threshold) checkpoint tree
+                exploreTreeTUntilFoundStartingFromCheckpoint ((>= threshold) . IntSet.size) checkpoint tree
           -- }}}
         ]
      -- }}}
@@ -914,11 +902,11 @@ tests = -- {{{
             [testCase "many threads with combined final result but none finish" $ do -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFoundUsingPull
-                        (\xs → if length xs == 2 then Just (sum xs) else Nothing)
+                        ((== 2) . length)
                         ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 4)
                 case termination_reason of
-                    Completed (Right (Progress _ result)) → result @?= (3,[])
+                    Completed (Right (Progress _ result)) → sort result @?= [1,2]
                     _ → fail $ "got incorrect result: " ++ show termination_reason
              -- }}}
             ]
@@ -927,11 +915,11 @@ tests = -- {{{
             [testCase "two threads with combined final result but none finish" $ do -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFoundUsingPush
-                        (\xs → if length xs == 2 then Just (sum xs) else Nothing)
+                        ((== 2) . length)
                         ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
                 case termination_reason of
-                    Completed (Right (Progress _ result)) → result @?= 3
+                    Completed (Right (Progress _ result)) → sort result @?= [1,2]
                     _ → fail $ "got incorrect result: " ++ show termination_reason
              -- }}}
             ]
@@ -1040,38 +1028,31 @@ tests = -- {{{
             ,testGroup "FoundModeUsingPull" $ -- {{{
                 let runTest generator generateNoise = generator >>= \constructTree → morallyDubiousIOProperty $ do
                         let tree = constructTree (const $ return ())
-                        correct_results ← exploreTreeT tree
-                        number_of_results_to_find ← randomRIO (1,2*IntSet.size correct_results)
+                        all_results ← exploreTreeT tree
+                        number_of_results_to_find ← randomRIO (1,2*IntSet.size all_results)
                         cleared_flags_mvar ← newMVar mempty
                         request_queue ← newChan
                         progresses_ref ← newIORef []
                         result ←
                             (Threads.exploreTreeIOUntilFoundUsingPull
-                                (\result → if IntSet.size result >= number_of_results_to_find
-                                    then Just $ IntSet.toList result
-                                    else Nothing
-                                )
+                                ((>= number_of_results_to_find) . IntSet.size)
                                 (insertHooks cleared_flags_mvar request_queue constructTree)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         case result of
                             Left incomplete_result → do
                                 assertBool "result is not smaller than desired" $ IntSet.size incomplete_result < number_of_results_to_find
-                                assertEqual "incomplete result matches correct result" incomplete_result correct_results
-                            Right (Progress checkpoint (final_result_as_list,leftover_result)) → do
-                                let final_result = IntSet.fromList final_result_as_list
-                                assertBool "result is at least as large as desired" $ IntSet.size final_result >= number_of_results_to_find
-                                assertBool "final result was not valid" $ final_result `IntSet.isSubsetOf` correct_results
-                                assertBool "leftover result was not valid" $ leftover_result `IntSet.isSubsetOf` correct_results
-                                assertBool "final and leftover results overlap" . IntSet.null $ IntSet.intersection final_result leftover_result
-                                let all_results = final_result `mappend` leftover_result
+                                assertEqual "incomplete result matches all results" incomplete_result all_results
+                            Right (Progress checkpoint final_result) → do
+                                assertBool "final result is at least as large as desired" $ IntSet.size final_result >= number_of_results_to_find
+                                assertBool "final result was not valid" $ final_result `IntSet.isSubsetOf` all_results
                                 exploreTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) tree
-                                    >>= assertEqual "both returned results together do not match all results covered by the checkpoint" all_results
+                                    >>= assertEqual "final results together do not match all results covered by the checkpoint" final_result
                                 exploreTreeTStartingFromCheckpoint checkpoint tree
-                                    >>= assertEqual "all results minus return results do not match remaining results" (IntSet.difference correct_results all_results)
+                                    >>= assertEqual "all results minus final results do not match remaining results" (IntSet.difference all_results final_result)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
                             exploreTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) tree >>= (@?= result)
-                            exploreTreeTStartingFromCheckpoint checkpoint tree >>= (@?= correct_results) . mappend result
+                            exploreTreeTStartingFromCheckpoint checkpoint tree >>= (@?= all_results) . mappend result
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
@@ -1086,35 +1067,31 @@ tests = -- {{{
             ,testGroup "FoundModeUsingPush" $ -- {{{
                 let runTest generator generateNoise = generator >>= \constructTree → morallyDubiousIOProperty $ do
                         let tree = constructTree (const $ return ())
-                        correct_results ← exploreTreeT tree
-                        number_of_results_to_find ← randomRIO (1,2*IntSet.size correct_results)
+                        all_results ← exploreTreeT tree
+                        number_of_results_to_find ← randomRIO (1,2*IntSet.size all_results)
                         cleared_flags_mvar ← newMVar mempty
                         request_queue ← newChan
                         progresses_ref ← newIORef []
                         result ←
                             (Threads.exploreTreeIOUntilFoundUsingPush
-                                (\result → if IntSet.size result >= number_of_results_to_find
-                                    then Just $ IntSet.toList result
-                                    else Nothing
-                                )
+                                ((>= number_of_results_to_find) . IntSet.size)
                                 (insertHooks cleared_flags_mvar request_queue constructTree)
                                 (respondToRequests request_queue generateNoise progresses_ref)
                             ) >>= extractResult
                         case result of
                             Left incomplete_result → do
                                 assertBool "result is not smaller than desired" $ IntSet.size incomplete_result < number_of_results_to_find
-                                assertEqual "incomplete result matches correct result" incomplete_result correct_results
-                            Right (Progress checkpoint final_result_as_list) → do
-                                let final_result = IntSet.fromList final_result_as_list
+                                assertEqual "incomplete result matches all results" incomplete_result all_results
+                            Right (Progress checkpoint final_result) → do
                                 assertBool "result is at least as large as desired" $ IntSet.size final_result >= number_of_results_to_find
-                                assertBool "final result was not valid" $ final_result `IntSet.isSubsetOf` correct_results
+                                assertBool "final result was not valid" $ final_result `IntSet.isSubsetOf` all_results
                                 exploreTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) tree
                                     >>= assertEqual "both returned results together do not match all results covered by the checkpoint" final_result
                                 exploreTreeTStartingFromCheckpoint checkpoint tree
-                                    >>= assertEqual "all results minus return results do not match remaining results" (IntSet.difference correct_results final_result)
+                                    >>= assertEqual "all results minus return results do not match remaining results" (IntSet.difference all_results final_result)
                         (remdups <$> readIORef progresses_ref) >>= mapM_ (\(Progress checkpoint result) → do
                             exploreTreeTStartingFromCheckpoint (invertCheckpoint checkpoint) tree >>= (@?= result)
-                            exploreTreeTStartingFromCheckpoint checkpoint tree >>= (@?= correct_results) . mappend result
+                            exploreTreeTStartingFromCheckpoint checkpoint tree >>= (@?= all_results) . mappend result
                          )
                         return True
                     testGroupUsingGenerator name generator = testGroup name $
