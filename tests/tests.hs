@@ -35,7 +35,7 @@ import LogicGrowsOnTrees.Examples.Queens
 import LogicGrowsOnTrees.Parallel.Adapter.Processes
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
 import LogicGrowsOnTrees.Parallel.Common.Process (runWorkerUsingHandles)
-import LogicGrowsOnTrees.Parallel.Common.Worker(Purity(Pure))
+import LogicGrowsOnTrees.Parallel.Common.Purity (Purity(Pure))
 import LogicGrowsOnTrees.Parallel.Main
 -- }}}
 

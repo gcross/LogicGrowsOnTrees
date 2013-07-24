@@ -71,6 +71,7 @@ import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Message
 import qualified LogicGrowsOnTrees.Parallel.Common.Process as Process
 import LogicGrowsOnTrees.Parallel.Common.Process
+import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,exploreTree,exploreTreeIO,exploreTreeT)
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
