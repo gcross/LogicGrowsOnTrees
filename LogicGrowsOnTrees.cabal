@@ -168,6 +168,8 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["LogicGrowsOnTrees.Parallel.Adapter.Threads"] the threads adapter
                      .
+                        ["LogicGrowsOnTrees.Parallel.Common.ExplorationMode"] specifies the various modes in which the exploration can be done
+                     .
                         ["LogicGrowsOnTrees.Parallel.Common.Message"] common infrastructure for exchanging messages between worker and supervisor
                      .
                         ["LogicGrowsOnTrees.Parallel.Common.Process"] common infrastricture for the case where a worker has specific communications channels for sending and recieving messages; it might seem like this should always be the case, but it is not true for threads as the supervisor has direct access to the worker thread, nor for MPI which has its own idiosyncratic communication model
@@ -177,8 +179,6 @@ Description:         You can think of this package in two equvalent ways. First,
                         ["LogicGrowsOnTrees.Parallel.Common.Supervisor"] common infrastructure for keeping track of the state of workers and of the system of a whole, including determining when the run is over
                      .
                         ["LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue"] infrastructure for sending requests to the 'SupervisorMonad' from another thread
-                     .
-                        ["LogicGrowsOnTrees.Parallel.Common.LogicGrowsOnTreesMode"] specifies the various modes in which the exploration can be done
                      .
                         ["LogicGrowsOnTrees.Parallel.Common.Worker"] contains the workhorse of the parallel infrastructure:  a thread that steps through a given workload while continuously polling for requests
                      .
