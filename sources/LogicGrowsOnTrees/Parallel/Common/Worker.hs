@@ -32,9 +32,6 @@ module LogicGrowsOnTrees.Parallel.Common.Worker
     , WorkerTerminationReason(..)
     , WorkerTerminationReasonFor
     , WorkerPushActionFor
-    -- ** Tree purity
-    , Purity(..)
-    , io_purity
     -- * Functions
     , forkWorkerThread
     , sendAbortRequest
@@ -57,7 +54,6 @@ import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Either.Unwrap (mapRight)
 import Data.Functor ((<$>))
-import Data.Functor.Identity (Identity)
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef)
 import qualified Data.IVar as IVar
 import Data.IVar (IVar)
@@ -75,6 +71,7 @@ import System.Log.Logger.TH
 import LogicGrowsOnTrees hiding (exploreTree,exploreTreeT,exploreTreeUntilFirst,exploreTreeTUntilFirst)
 import LogicGrowsOnTrees.Checkpoint
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
+import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Path
 import LogicGrowsOnTrees.Workload
 
@@ -197,18 +194,6 @@ type instance WorkerPushActionFor (FoundModeUsingPull result) = Void → ()
 type instance WorkerPushActionFor (FoundModeUsingPush result) = ProgressUpdate (Progress result) → IO ()
 
 ------------------------------- Tree properties --------------------------------
-
-{-| The purity of a tree;  the options are 'Pure' for pure trees
-    and 'ImpureAtopIO' for impure trees, where the latter case is restricted to
-    monads that are instances of 'MonadIO' and provide a way to convert the
-    monad into an IO action.
- -} 
-data Purity (m :: * → *) (n :: * → *) where -- {{{
-    Pure :: Purity Identity IO
-    ImpureAtopIO :: MonadIO m ⇒ (∀ β. m β → IO β) → Purity m m
-
-{-| The purity of trees in the IO monad. -}
-io_purity = ImpureAtopIO id
 
 {-| Functions for working with a tree of a particular purity. -}
 data TreeFunctionsForPurity (m :: * → *) (n :: * → *) (α :: *) =

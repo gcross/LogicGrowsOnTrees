@@ -38,6 +38,7 @@ import System.Log.Logger.TH
 
 import LogicGrowsOnTrees (TreeT)
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode (ProgressFor(..),ResultFor(..),ExplorationMode(..),WorkerFinalProgressFor(..))
+import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.Message (MessageForSupervisor(..),MessageForSupervisorFor(..),MessageForWorker(..))
 import LogicGrowsOnTrees.Parallel.Common.Worker hiding (ProgressUpdate,StolenWorkload)
 import LogicGrowsOnTrees.Utils.Handle

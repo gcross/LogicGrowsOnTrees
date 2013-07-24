@@ -94,6 +94,7 @@ import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
 import LogicGrowsOnTrees.Checkpoint
 import LogicGrowsOnTrees.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
+import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Worker as Worker
     hiding

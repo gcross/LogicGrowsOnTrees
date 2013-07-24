@@ -172,6 +172,8 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["LogicGrowsOnTrees.Parallel.Common.Process"] common infrastricture for the case where a worker has specific communications channels for sending and recieving messages; it might seem like this should always be the case, but it is not true for threads as the supervisor has direct access to the worker thread, nor for MPI which has its own idiosyncratic communication model
                      .
+                        ["LogicGrowsOnTrees.Parallel.Common.Purity"] ] specifies the purity of the tree being explored
+                     .
                         ["LogicGrowsOnTrees.Parallel.Common.Supervisor"] common infrastructure for keeping track of the state of workers and of the system of a whole, including determining when the run is over
                      .
                         ["LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue"] infrastructure for sending requests to the 'SupervisorMonad' from another thread
@@ -255,6 +257,7 @@ Library
         LogicGrowsOnTrees.Parallel.Common.ExplorationMode
         LogicGrowsOnTrees.Parallel.Common.Message
         LogicGrowsOnTrees.Parallel.Common.Process
+        LogicGrowsOnTrees.Parallel.Common.Purity
         LogicGrowsOnTrees.Parallel.Common.Supervisor
         LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
         LogicGrowsOnTrees.Parallel.Common.Workgroup
