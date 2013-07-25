@@ -133,8 +133,8 @@ driver = Driver $ \DriverParameters{..} → do
         (constructExplorationMode shared_configuration)
          purity
          starting_progress
-        (constructTree shared_configuration)
         (changeNumberOfWorkersToMatchCapabilities >> constructManager shared_configuration supervisor_configuration)
+        (constructTree shared_configuration)
      >>= notifyTerminated shared_configuration supervisor_configuration
 
 --------------------------------------------------------------------------------
@@ -189,8 +189,8 @@ in (the leaves of) the tree.
 {-| Explore the pure tree and sum over all results. -}
 exploreTree ::
     Monoid result ⇒
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 exploreTree = exploreTreeStartingFrom mempty
 
@@ -198,16 +198,16 @@ exploreTree = exploreTreeStartingFrom mempty
 exploreTreeStartingFrom ::
     Monoid result ⇒
     Progress result {-^ the starting progress -} →
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 exploreTreeStartingFrom = runExplorer AllMode Pure
 
 {-| Like 'exploreTree' but with the tree running in IO. -}
 exploreTreeIO ::
     Monoid result ⇒
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 exploreTreeIO = exploreTreeIOStartingFrom mempty
 
@@ -215,8 +215,8 @@ exploreTreeIO = exploreTreeIOStartingFrom mempty
 exploreTreeIOStartingFrom ::
     Monoid result ⇒
     Progress result {-^ the starting progress -} →
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 exploreTreeIOStartingFrom = runExplorer AllMode io_purity
 
@@ -224,8 +224,8 @@ exploreTreeIOStartingFrom = runExplorer AllMode io_purity
 exploreTreeT ::
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 exploreTreeT = flip exploreTreeTStartingFrom mempty
 
@@ -234,8 +234,8 @@ exploreTreeTStartingFrom ::
     (Monoid result, MonadIO m) ⇒
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
     Progress result {-^ the starting progress -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) result)
 exploreTreeTStartingFrom = runExplorer AllMode  . ImpureAtopIO
 
@@ -247,31 +247,31 @@ See "LogicGrowsOnTrees.Parallel.Main#first" for more details on this mode.
 
 {-| Explore the pure tree until a result has been found. -}
 exploreTreeUntilFirst ::
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 exploreTreeUntilFirst = exploreTreeUntilFirstStartingFrom mempty
 
 {-| Like 'exploreTreeUntilFirst' but with a starting progress. -}
 exploreTreeUntilFirstStartingFrom ::
     Checkpoint {-^ the starting progress -} →
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 exploreTreeUntilFirstStartingFrom = runExplorer FirstMode Pure
 
 {-| Like 'exploreTreeUntilFirst' but with the tree running in IO. -}
 exploreTreeIOUntilFirst ::
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 exploreTreeIOUntilFirst = exploreTreeIOUntilFirstStartingFrom mempty
 
 {-| Like 'exploreTreeIOUntilFirst' but with a starting progress. -}
 exploreTreeIOUntilFirstStartingFrom ::
     Checkpoint {-^ the starting progress -} →
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 exploreTreeIOUntilFirstStartingFrom = runExplorer FirstMode io_purity
 
@@ -279,8 +279,8 @@ exploreTreeIOUntilFirstStartingFrom = runExplorer FirstMode io_purity
 exploreTreeTUntilFirst ::
     MonadIO m ⇒
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 exploreTreeTUntilFirst = flip exploreTreeTUntilFirstStartingFrom mempty
 
@@ -289,8 +289,8 @@ exploreTreeTUntilFirstStartingFrom ::
     MonadIO m ⇒
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
     Checkpoint {-^ the starting progress -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
 exploreTreeTUntilFirstStartingFrom = runExplorer FirstMode . ImpureAtopIO
 
@@ -313,8 +313,8 @@ at the supervisor.
 exploreTreeUntilFoundUsingPull ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeUntilFoundUsingPull = flip exploreTreeUntilFoundUsingPullStartingFrom mempty
 
@@ -323,8 +323,8 @@ exploreTreeUntilFoundUsingPullStartingFrom ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Progress result {-^ the starting progress -} →
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeUntilFoundUsingPullStartingFrom f = runExplorer (FoundModeUsingPull f) Pure
 
@@ -332,8 +332,8 @@ exploreTreeUntilFoundUsingPullStartingFrom f = runExplorer (FoundModeUsingPull f
 exploreTreeIOUntilFoundUsingPull ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeIOUntilFoundUsingPull = flip exploreTreeIOUntilFoundUsingPullStartingFrom mempty
 
@@ -342,8 +342,8 @@ exploreTreeIOUntilFoundUsingPullStartingFrom ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Progress result {-^ the starting progress -} →
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeIOUntilFoundUsingPullStartingFrom f = runExplorer (FoundModeUsingPull f) io_purity
 
@@ -352,8 +352,8 @@ exploreTreeTUntilFoundUsingPull ::
     (Monoid result, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeTUntilFoundUsingPull f run = exploreTreeTUntilFoundUsingPullStartingFrom f run mempty
 
@@ -363,8 +363,8 @@ exploreTreeTUntilFoundUsingPullStartingFrom ::
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
     Progress result {-^ the starting progress -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeTUntilFoundUsingPullStartingFrom f = runExplorer (FoundModeUsingPull f) . ImpureAtopIO
 
@@ -377,8 +377,8 @@ See "LogicGrowsOnTrees.Parallel.Main#push" (a direct hyper-link to the relevant 
 exploreTreeUntilFoundUsingPush ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeUntilFoundUsingPush = flip exploreTreeUntilFoundUsingPushStartingFrom mempty
 
@@ -387,8 +387,8 @@ exploreTreeUntilFoundUsingPushStartingFrom ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Progress result {-^ the starting progress -} →
-    Tree result {-^ the (pure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeUntilFoundUsingPushStartingFrom f = runExplorer (FoundModeUsingPush f) Pure
 
@@ -396,8 +396,8 @@ exploreTreeUntilFoundUsingPushStartingFrom f = runExplorer (FoundModeUsingPush f
 exploreTreeIOUntilFoundUsingPush ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeIOUntilFoundUsingPush = flip exploreTreeIOUntilFoundUsingPushStartingFrom mempty
 
@@ -406,8 +406,8 @@ exploreTreeIOUntilFoundUsingPushStartingFrom ::
     Monoid result ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Progress result {-^ the starting progress -} →
-    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeIO result {-^ the tree (which runs in the IO monad) -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeIOUntilFoundUsingPushStartingFrom f = runExplorer (FoundModeUsingPush f) io_purity
 
@@ -416,8 +416,8 @@ exploreTreeTUntilFoundUsingPush ::
     (Monoid result, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeTUntilFoundUsingPush f run = exploreTreeTUntilFoundUsingPushStartingFrom f run mempty
 
@@ -427,8 +427,8 @@ exploreTreeTUntilFoundUsingPushStartingFrom ::
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
     Progress result {-^ the starting progress -} →
-    TreeT m result {-^ the (impure) tree -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
 exploreTreeTUntilFoundUsingPushStartingFrom f = runExplorer (FoundModeUsingPush f) . ImpureAtopIO
 
@@ -447,10 +447,10 @@ runExplorer ::
     ExplorationMode exploration_mode {-^ the exploration mode -} →
     Purity m n {-^ the purity of the tree -} →
     (ProgressFor exploration_mode) {-^ the starting progress -} →
-    TreeT m (ResultFor exploration_mode) {-^ the tree -} →
     ThreadsControllerMonad exploration_mode () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
+    TreeT m (ResultFor exploration_mode) {-^ the tree -} →
     IO (RunOutcomeFor exploration_mode) {-^ the outcome of the run -}
-runExplorer exploration_mode purity starting_progress tree (C controller) =
+runExplorer exploration_mode purity starting_progress (C controller) tree =
     runWorkgroup
         exploration_mode
         mempty

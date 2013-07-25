@@ -890,11 +890,11 @@ tests = -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFirst
+                        (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
                         (liftIO (threadDelay 1) >> endless_tree
                          `mplus`
                          return ()
                         )
-                        (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
                 termination_reason @?= Completed (Just (Progress (ChoicePoint Unexplored Explored) ()))
              -- }}}
             ]
@@ -904,8 +904,8 @@ tests = -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFoundUsingPull
                         ((== 2) . length)
-                        ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 4)
+                        ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                 case termination_reason of
                     Completed (Right (Progress _ result)) → sort result @?= [1,2]
                     _ → fail $ "got incorrect result: " ++ show termination_reason
@@ -917,8 +917,8 @@ tests = -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFoundUsingPush
                         ((== 2) . length)
-                        ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                         (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
+                        ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                 case termination_reason of
                     Completed (Right (Progress _ result)) → sort result @?= [1,2]
                     _ → fail $ "got incorrect result: " ++ show termination_reason
@@ -977,8 +977,8 @@ tests = -- {{{
                         progresses_ref ← newIORef []
                         result ←
                             (Threads.exploreTreeIO
-                                (insertHooks cleared_flags_mvar request_queue constructTree)
                                 (respondToRequests request_queue generateNoise progresses_ref)
+                                (insertHooks cleared_flags_mvar request_queue constructTree)
                             ) >>= extractResult
                         let tree = constructTree (const $ return ())
                         correct_result ← exploreTreeT tree
@@ -1001,8 +1001,8 @@ tests = -- {{{
                         progresses_ref ← newIORef []
                         maybe_result ←
                             (Threads.exploreTreeIOUntilFirst
-                                (insertHooks cleared_flags_mvar request_queue constructTree)
                                 (respondToRequests request_queue generateNoise progresses_ref)
+                                (insertHooks cleared_flags_mvar request_queue constructTree)
                             ) >>= extractResult
                         let tree = constructTree (const $ return ())
                         correct_results ← exploreTreeT tree
@@ -1037,8 +1037,8 @@ tests = -- {{{
                         result ←
                             (Threads.exploreTreeIOUntilFoundUsingPull
                                 ((>= number_of_results_to_find) . IntSet.size)
-                                (insertHooks cleared_flags_mvar request_queue constructTree)
                                 (respondToRequests request_queue generateNoise progresses_ref)
+                                (insertHooks cleared_flags_mvar request_queue constructTree)
                             ) >>= extractResult
                         case result of
                             Left incomplete_result → do
@@ -1076,8 +1076,8 @@ tests = -- {{{
                         result ←
                             (Threads.exploreTreeIOUntilFoundUsingPush
                                 ((>= number_of_results_to_find) . IntSet.size)
-                                (insertHooks cleared_flags_mvar request_queue constructTree)
                                 (respondToRequests request_queue generateNoise progresses_ref)
+                                (insertHooks cleared_flags_mvar request_queue constructTree)
                             ) >>= extractResult
                         case result of
                             Left incomplete_result → do
