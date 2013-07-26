@@ -89,6 +89,7 @@ import LogicGrowsOnTrees.Parallel.Main
     ,mainParser
     )
 import LogicGrowsOnTrees.Utils.Handle
+import LogicGrowsOnTrees.Utils.Word_
 import LogicGrowsOnTrees.Workload
 
 --------------------------------------------------------------------------------
@@ -123,7 +124,7 @@ driver = Driver $ \DriverParameters{..} → do
         initializeGlobalState
         constructTree
         (curry $ uncurry getStartingProgress . second snd)
-        (\shared_configuration (number_of_processes,supervisor_configuration) → do
+        (\shared_configuration (Word_ number_of_processes,supervisor_configuration) → do
             changeNumberOfWorkers (const $ return number_of_processes)
             constructManager shared_configuration supervisor_configuration
         )
