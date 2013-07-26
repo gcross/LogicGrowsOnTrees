@@ -46,7 +46,7 @@ import qualified Data.IntSet as IntSet
 import Data.Monoid (Monoid(mempty))
 import Data.PSQueue (Binding((:->)),PSQ)
 import qualified Data.PSQueue as PSQ
-import Data.Word (Word64)
+import Data.Word (Word,Word64)
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(INFO))
@@ -80,7 +80,7 @@ class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where
 
         See 'changeNumberOfWorkers' for the syncronous version of this request.
      -}
-    changeNumberOfWorkersAsync :: (Int → IO Int) → (Int → IO ()) → m ()
+    changeNumberOfWorkersAsync :: (Word → IO Word) → (Word → IO ()) → m ()
 
 --------------------------------------------------------------------------------
 ------------------------------------ Types -------------------------------------
@@ -140,8 +140,8 @@ instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state explor
         old_number_of_workers ← numberOfWorkers
         new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
         case new_number_of_workers `compare` old_number_of_workers of
-            GT → replicateM_ (new_number_of_workers - old_number_of_workers) hireAWorker
-            LT → replicateM_ (old_number_of_workers - new_number_of_workers) fireAWorker
+            GT → replicateM_ (fromIntegral $ new_number_of_workers - old_number_of_workers) hireAWorker
+            LT → replicateM_ (fromIntegral $ old_number_of_workers - new_number_of_workers) fireAWorker
             EQ → return ()
         liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
      )
@@ -155,8 +155,8 @@ instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state explor
  -}
 changeNumberOfWorkers ::
     WorkgroupRequestQueueMonad m ⇒
-    (Int → IO Int) →
-    m Int
+    (Word → IO Word) →
+    m Word
 changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 
 {-| Explores a tree using a workgroup;  this function is only intended to be uesd
@@ -274,8 +274,8 @@ liftInner = lift . lift
 liftInnerToSupervisor :: InnerMonad inner_state α → WorkgroupMonad inner_state exploration_mode α
 liftInnerToSupervisor = lift . liftInner
 
-numberOfWorkers :: WorkgroupMonad inner_state exploration_mode Int
-numberOfWorkers = PSQ.size <$> use removal_queue
+numberOfWorkers :: WorkgroupMonad inner_state exploration_mode Word
+numberOfWorkers = fromIntegral . PSQ.size <$> use removal_queue
 
 removeWorkerFromRemovalQueue :: WorkerId → WorkgroupMonad inner_state exploration_mode ()
 removeWorkerFromRemovalQueue = (removal_queue %=) . PSQ.delete

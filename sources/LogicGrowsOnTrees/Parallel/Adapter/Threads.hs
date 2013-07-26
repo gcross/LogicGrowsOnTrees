@@ -166,7 +166,7 @@ instance HasExplorationMode (ThreadsControllerMonad exploration_mode) where
  -}
 changeNumberOfWorkersToMatchCapabilities :: ThreadsControllerMonad exploration_mode ()
 changeNumberOfWorkersToMatchCapabilities =
-    liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const (return n)) (void . return)
+    liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const . return . fromIntegral $ n) (void . return)
 
 --------------------------------------------------------------------------------
 ---------------------------- Exploration functions -----------------------------
