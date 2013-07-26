@@ -94,8 +94,7 @@ import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
 import LogicGrowsOnTrees.Utils.PerfectTree
 import LogicGrowsOnTrees.Utils.WordSum
 import LogicGrowsOnTrees.Workload
-import qualified LogicGrowsOnTrees.Parallel.Common.Worker as Worker
-import LogicGrowsOnTrees.Parallel.Common.Worker hiding (exploreTree,exploreTreeIO,exploreTreeT,exploreTreeUntilFirst,exploreTreeIOUntilFirst,exploreTreeTUntilFirst)
+import LogicGrowsOnTrees.Parallel.Common.Worker
 -- }}}
 
 -- Helpers {{{
@@ -1718,7 +1717,7 @@ tests = -- {{{
             ]
          -- }}}
         ,testProperty "exploreTreeUntilFirst" $ \(tree :: Tree String) → morallyDubiousIOProperty $ do -- {{{
-            termination_reason ← Worker.exploreTreeGeneric FirstMode Pure tree
+            termination_reason ← exploreTreeGeneric FirstMode Pure tree
             case termination_reason of
                 WorkerFinished maybe_final_progress → return $ (progressResult <$> maybe_final_progress) == exploreTreeUntilFirst tree
                 _ → fail $ "returned " ++ show termination_reason ++ " instead of WorkerFinished"

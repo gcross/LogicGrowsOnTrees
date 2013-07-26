@@ -108,15 +108,7 @@ import LogicGrowsOnTrees.Parallel.Main
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
-import LogicGrowsOnTrees.Parallel.Common.Worker as Worker
-    hiding
-    (exploreTree
-    ,exploreTreeIO
-    ,exploreTreeT
-    ,exploreTreeUntilFirst
-    ,exploreTreeIOUntilFirst
-    ,exploreTreeTUntilFirst
-    )
+import LogicGrowsOnTrees.Parallel.Common.Worker
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
 
 --------------------------------------------------------------------------------
@@ -502,8 +494,8 @@ runExplorer exploration_mode purity starting_progress (C controller) tree =
                         .
                         IntMap.lookup worker_id
 
-                sendProgressUpdateRequestTo = sendRequestToWorker Worker.sendProgressUpdateRequest receiveProgressUpdateFromWorker
-                sendWorkloadStealRequestTo = sendRequestToWorker Worker.sendWorkloadStealRequest receiveStolenWorkloadFromWorker
+                sendProgressUpdateRequestTo = sendRequestToWorker sendProgressUpdateRequest receiveProgressUpdateFromWorker
+                sendWorkloadStealRequestTo = sendRequestToWorker sendWorkloadStealRequest receiveStolenWorkloadFromWorker
                 sendWorkloadTo worker_id workload =
                     (debugM $ "Sending " ++ show workload ++ " to worker " ++ show worker_id)
                     >>
