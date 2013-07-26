@@ -268,11 +268,11 @@ Library
         LogicGrowsOnTrees.Utils.IntSum
         LogicGrowsOnTrees.Utils.MonadPlusForest
         LogicGrowsOnTrees.Utils.PerfectTree
+        LogicGrowsOnTrees.Utils.Word_
         LogicGrowsOnTrees.Utils.WordSum
         LogicGrowsOnTrees.Workload
     Other-modules:
         LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
-        LogicGrowsOnTrees.Utils.Word_
     HS-source-dirs: sources
     C-sources: c-sources/queens.c
     if flag(warnings)
