@@ -31,6 +31,10 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , getNumberOfWorkersAsync
     , requestProgressUpdate
     , requestProgressUpdateAsync
+    -- * Outcome types
+    , RunOutcome(..)
+    , RunStatistics(..)
+    , TerminationReason(..)
     -- * Exploration functions
     -- $exploration
 
@@ -92,7 +96,15 @@ import System.Log.Logger.TH
 
 import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
 import LogicGrowsOnTrees.Checkpoint
-import LogicGrowsOnTrees.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
+import LogicGrowsOnTrees.Parallel.Main
+    (Driver(..)
+    ,DriverParameters(..)
+    ,RunOutcome(..)
+    ,RunOutcomeFor
+    ,RunStatistics(..)
+    ,TerminationReason(..)
+    ,mainParser
+    )
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
