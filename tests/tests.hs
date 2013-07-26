@@ -102,7 +102,7 @@ tests = -- {{{
         result ← case termination_reason of
             Aborted _ → error "prematurely aborted"
             Completed result → return result
-            Failure message → error message
+            Failure _ message → error message
         let correct_result = V.exploreTree tree
         result @?= correct_result
         progresses ← remdups <$> readIORef progresses_ref

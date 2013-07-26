@@ -27,6 +27,6 @@ main =
             case termination_reason of
                 Aborted _ → error "search aborted"
                 Completed (WordSum count) → print count
-                Failure message → error $ "error: " ++ message
+                Failure _ message → error $ "error: " ++ message
         )
         nqueensCount
