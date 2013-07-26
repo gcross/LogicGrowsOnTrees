@@ -27,6 +27,10 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     , getNumberOfWorkersAsync
     , requestProgressUpdate
     , requestProgressUpdateAsync
+    -- * Outcome types
+    , RunOutcome(..)
+    , RunStatistics(..)
+    , TerminationReason(..)
     -- * Generic runner functions
     -- $runners
     , runSupervisor
@@ -75,7 +79,15 @@ import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Worker as Worker hiding (ProgressUpdate,StolenWorkload,exploreTree,exploreTreeIO,exploreTreeT)
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
-import LogicGrowsOnTrees.Parallel.Main (Driver(..),DriverParameters(..),RunOutcome,RunOutcomeFor,mainParser)
+import LogicGrowsOnTrees.Parallel.Main
+    (Driver(..)
+    ,DriverParameters(..)
+    ,RunOutcome
+    ,RunOutcomeFor
+    ,RunStatistics(..)
+    ,TerminationReason(..)
+    ,mainParser
+    )
 import LogicGrowsOnTrees.Utils.Handle
 import LogicGrowsOnTrees.Workload
 
