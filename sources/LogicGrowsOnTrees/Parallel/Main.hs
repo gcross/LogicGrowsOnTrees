@@ -54,6 +54,7 @@ module LogicGrowsOnTrees.Parallel.Main
     -- ** Outcome types
     , RunOutcome(..)
     , RunOutcomeFor
+    , RunStatistics(..)
     , TerminationReason(..)
     , TerminationReasonFor
     -- * Main functions
