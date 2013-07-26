@@ -20,7 +20,7 @@ main =
             case termination_reason of
                 Aborted _ → error "search aborted"
                 Completed solutions → Fold.mapM_ print . Seq.unstableSort $ solutions
-                Failure message → error $ "error: " ++ message
+                Failure _ message → error $ "error: " ++ message
         )
         (fmap (Seq.singleton . sort) . nqueensSolutions)
 

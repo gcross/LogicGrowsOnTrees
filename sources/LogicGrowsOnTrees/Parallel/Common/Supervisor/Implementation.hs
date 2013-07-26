@@ -377,8 +377,8 @@ data SupervisorTerminationReason final_result progress worker_id = -- {{{
     SupervisorAborted progress
     {-| the supervisor completed exploring the tree;  included is the final result -}
   | SupervisorCompleted final_result
-    {-| the supervisor failed to explore the tree;  included is the worker where the failure occured as well as the message -}
-  | SupervisorFailure worker_id String
+    {-| the supervisor failed to explore the tree;  included is the worker where the failure occured as well as the message and the current progress at the time of failure -}
+  | SupervisorFailure progress worker_id String
   deriving (Eq,Show)
 -- }}}
 {-| A convenient type alias for the 'SupervisorTerminationReason' associated with a given exploration mode. -} 

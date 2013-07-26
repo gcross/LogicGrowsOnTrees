@@ -20,7 +20,7 @@ main =
                 Aborted _ → error "search aborted"
                 Completed Nothing → putStrLn "No solution found."
                 Completed (Just (Progress _ result)) → print (sort result)
-                Failure message → error $ "error: " ++ message
+                Failure _ message → error $ "error: " ++ message
         )
         nqueensSolutions
 

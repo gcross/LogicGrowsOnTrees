@@ -930,7 +930,7 @@ tests = -- {{{
                     case termination_reason of
                         Aborted _ → error "prematurely aborted"
                         Completed result → return result
-                        Failure message → error message
+                        Failure _ message → error message
                 -- }}}
                 insertHooks cleared_flags_mvar request_queue = ($ \id → liftIO $ do -- {{{
                     threadDelay 10
@@ -1116,7 +1116,7 @@ tests = -- {{{
          -- }}}
         ,testCase "failure" $ do -- {{{
             SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode bad_test_supervisor_actions (receiveWorkerFailure () "FAIL" :: ∀ α. SupervisorMonad (AllMode ()) () IO α)
-            supervisorTerminationReason @?= SupervisorFailure () "FAIL"
+            supervisorTerminationReason @?= SupervisorFailure mempty () "FAIL"
             supervisorRemainingWorkers @?= []
          -- }}}
         ,testGroup "adding and removing workers" -- {{{

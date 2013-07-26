@@ -270,8 +270,8 @@ data TerminationReason progress final_result =
     Aborted progress
     {-| the run completed with the given final result -}
   | Completed final_result
-    {-| the run failed for the given reason -}
-  | Failure String
+    {-| the run failed with the given progress for the given reason -}
+  | Failure progress String
   deriving (Eq,Show)
 
 {-| A convenient type alias that obtains the 'TerminationReason' type for the given exploration mode. -}
@@ -761,7 +761,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                 in case runTerminationReason of
                     Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
                     Completed _ → deleteCheckpointFile
-                    Failure _ → deleteCheckpointFile
+                    Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint
     constructManager = const managerLoop
 
 ------------------------------ Utility functions -------------------------------
@@ -777,8 +777,8 @@ extractRunOutcomeFromSupervisorOutcome SupervisorOutcome{..} = RunOutcome{..}
         case supervisorTerminationReason of
             SupervisorAborted remaining_progress → Aborted remaining_progress
             SupervisorCompleted result → Completed result
-            SupervisorFailure worker_id message →
-                Failure $ "Worker " ++ show worker_id ++ " failed with message: " ++ message
+            SupervisorFailure remainig_progress worker_id message →
+                Failure remainig_progress $ "Worker " ++ show worker_id ++ " failed with message: " ++ message
     runStatistics = supervisorRunStatistics
 
 {-| Parse the command line options using the given term and term info (the

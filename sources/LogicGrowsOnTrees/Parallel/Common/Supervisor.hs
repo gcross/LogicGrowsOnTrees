@@ -270,17 +270,18 @@ receiveStolenWorkload = wrapIntoSupervisorMonad .* Implementation.receiveStolenW
     terminated and the given message returned as the failure message.
  -}
 receiveWorkerFailure :: SupervisorFullConstraint worker_id m ⇒ worker_id → String → SupervisorMonad exploration_mode worker_id m α
-receiveWorkerFailure worker_id message =
+receiveWorkerFailure worker_id message = do
+    current_progress ← getCurrentProgress
     wrapIntoSupervisorMonad
-    .
-    Implementation.abortSupervisorWithReason
-    .
-    SupervisorFailure worker_id
-    $
-    if message == show TreeEndedBeforeEndOfWalk ||
-       message == show PastTreeIsInconsistentWithPresentTree
-        then "The given checkpoint is not consistent with the given tree."
-        else message
+        .
+        Implementation.abortSupervisorWithReason
+        .
+        SupervisorFailure current_progress worker_id
+        $
+        if message == show TreeEndedBeforeEndOfWalk ||
+           message == show PastTreeIsInconsistentWithPresentTree
+            then "The given checkpoint is not consistent with the given tree."
+            else message
 
 {-| Informs the supervisor that a worker has finished its current workload and
     returned the given final progress.

@@ -34,7 +34,7 @@ main =
                                Fold.mapM_ print $ solutions
                 Completed (Right (Progress _ solutions)) →
                     Fold.mapM_ print . Seq.unstableSort $ solutions
-                Failure message → error $ "error: " ++ message
+                Failure _ message → error $ "error: " ++ message
         )
         (fmap (Seq.singleton . sort) . nqueensSolutions . fst)
 
