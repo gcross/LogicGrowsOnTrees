@@ -342,7 +342,7 @@ Executable print-an-nqueens-solution
     else
         Buildable: False
     if flag(warnings)
-        GHC-Options: -Wan -fno-warn-name-shadowing -threaded
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
     else
         GHC-Options: -threaded
 
@@ -359,7 +359,7 @@ Executable print-some-nqueens-solutions-using-pull
     else
         Buildable: False
     if flag(warnings)
-        GHC-Options: -Wsome -fno-warn-name-shadowing -threaded
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
     else
         GHC-Options: -threaded
 
@@ -376,7 +376,7 @@ Executable print-some-nqueens-solutions-using-push
     else
         Buildable: False
     if flag(warnings)
-        GHC-Options: -Wsome -fno-warn-name-shadowing -threaded
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
     else
         GHC-Options: -threaded
 
