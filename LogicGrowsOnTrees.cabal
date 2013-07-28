@@ -289,7 +289,11 @@ Flag pattern-warnings
     Default:     False
 
 Flag examples
-    Description: Enable building the executables.
+    Description: Enable building the examples.
+    Default:     False
+
+Flag tutorial
+    Description: Enable building the tutorial examples.
     Default:     False
 
 Executable count-all-nqueens-solutions
@@ -386,6 +390,119 @@ Executable count-all-trivial-tree-leaves
         cmdtheline == 0.2.*,
         composition >= 0.2 && < 1.1
     if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable tutorial-1
+    Main-is: tutorial-1.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
+Executable tutorial-2
+    Main-is: tutorial-2.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        containers >= 0.4 && < 0.6
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
+Executable tutorial-3
+    Main-is: tutorial-3.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
+Executable tutorial-4
+    Main-is: tutorial-4.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
+Executable tutorial-5
+    Main-is: tutorial-5.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
+Executable tutorial-6
+    Main-is: tutorial-6.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable tutorial-7
+    Main-is: tutorial-7.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        transformers >= 0.3 && < 0.4
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable tutorial-8
+    Main-is: tutorial-8.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        transformers >= 0.3 && < 0.4
+    if flag(tutorial)
         Buildable: True
     else
         Buildable: False
