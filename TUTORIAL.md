@@ -8,6 +8,10 @@ in parallel.
 Logic programming
 =================
 
+In this part we shall show how to write logic programs through the use of three
+example problems:  generating ordered pairs of integers, finding valid map
+colorings, and finding ways to place n queens on an n x n chess board.
+
 
 Ordered Pairs of Integers
 -------------------------
