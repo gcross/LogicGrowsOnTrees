@@ -5,11 +5,10 @@
  -}
 module LogicGrowsOnTrees.Examples.MapColoring where
 
-import Control.Monad (MonadPlus,forM_,guard,liftM,when)
+import Control.Monad (MonadPlus,forM_,guard,when)
 import Data.Word (Word)
 
 import LogicGrowsOnTrees (between)
-import LogicGrowsOnTrees.Utils.WordSum
 
 {-| Generate all valid map colorings. -}
 coloringSolutions ::

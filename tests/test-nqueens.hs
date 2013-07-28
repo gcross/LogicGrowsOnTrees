@@ -161,7 +161,8 @@ remdups (x : xx : xs)
  | otherwise = x : remdups (xx : xs)
 -- }}}
 
-testSolutionsUsing nqueensSolutions nqueensCount = -- {{{
+testSolutionsUsing :: (Word → NQueensSolutions) → (Word → Tree WordSum) → [Test.Framework.Test] -- {{{
+testSolutionsUsing nqueensSolutions nqueensCount =
     [testGroup "are valid" $ -- {{{
         map (\n → testCase ("n = " ++ show n) $ checkSolutionsAreValid n (nqueensSolutions n))
             [1..10]

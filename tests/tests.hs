@@ -17,15 +17,11 @@ import Prelude hiding (catch)
 import Control.Applicative
 import Control.Arrow ((&&&),second)
 import Control.Concurrent
-import Control.Concurrent.STM.TChan
-import Control.Concurrent.STM.TMVar
-import Control.Concurrent.STM.TVar
 import Control.Exception
 import Control.Lens (_1,_2,(%=),(<+=),use)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Operational (ProgramViewT(..),view)
-import Control.Monad.STM
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.State (StateT,evalStateT)
 import Control.Monad.Trans.Writer

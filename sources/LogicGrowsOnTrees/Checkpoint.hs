@@ -20,13 +20,13 @@ module LogicGrowsOnTrees.Checkpoint
     , Progress(..)
     -- ** Cursors and contexts
     -- $cursors
-    , CheckpointCursor(..)
+    , CheckpointCursor
     , CheckpointDifferential(..)
-    , Context(..)
+    , Context
     , ContextStep(..)
     -- ** Exploration state
     , ExplorationTState(..)
-    , ExplorationState(..)
+    , ExplorationState
     , initialExplorationState
     -- * Exceptions
     , InconsistentCheckpoints(..)
@@ -71,7 +71,6 @@ import Data.Derive.Monoid
 import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Functor.Identity (Identity,runIdentity)
-import Data.Maybe (isJust)
 import Data.Monoid ((<>),Monoid(..))
 import Data.Sequence ((|>),Seq,viewr,ViewR(..))
 import qualified Data.Sequence as Seq

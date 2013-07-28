@@ -209,7 +209,7 @@ occupied rows because the rows are filled consecutively.)
 {-| Generate solutions to the n-queens problem using 'IntSet's. -}
 nqueensUsingSetsSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensUsingSetsSolutions n =
-    go (fromIntegral n)
+    go n
        0
        (IntSet.fromDistinctAscList [0..fromIntegral n-1])
        IntSet.empty

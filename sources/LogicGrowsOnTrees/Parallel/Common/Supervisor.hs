@@ -40,17 +40,17 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , IndependentMeasurementsStatistics(..)
     , RunStatistics(..)
     -- ** Constraints
-    , SupervisorFullConstraint(..)
-    , SupervisorMonadConstraint(..)
-    , SupervisorWorkerIdConstraint(..)
+    , SupervisorFullConstraint
+    , SupervisorMonadConstraint
+    , SupervisorWorkerIdConstraint
     -- ** Supervisor types
     , SupervisorCallbacks(..)
     , SupervisorMonad
     , SupervisorOutcome(..)
-    , SupervisorOutcomeFor(..)
+    , SupervisorOutcomeFor
     , SupervisorProgram(..)
     , SupervisorTerminationReason(..)
-    , SupervisorTerminationReasonFor(..)
+    , SupervisorTerminationReasonFor
     -- * Functions
     -- ** Worker interaction
     , addWorker
@@ -91,7 +91,6 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
 
-import Data.Monoid (Monoid)
 import Data.Time.Clock (diffUTCTime,getCurrentTime)
 import Data.Composition ((.*),(.**))
 
@@ -99,7 +98,6 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
-import LogicGrowsOnTrees.Checkpoint (Progress)
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Worker (ProgressUpdateFor,StolenWorkloadFor)
 import LogicGrowsOnTrees.Path (WalkError(..))
@@ -115,9 +113,9 @@ import LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
-    , SupervisorOutcomeFor(..)
+    , SupervisorOutcomeFor
     , SupervisorTerminationReason(..)
-    , SupervisorTerminationReasonFor(..)
+    , SupervisorTerminationReasonFor
     , SupervisorWorkerIdConstraint
     , current_time
     , liftContextToAbort

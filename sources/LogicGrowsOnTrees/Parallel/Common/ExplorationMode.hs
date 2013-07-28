@@ -23,10 +23,10 @@ module LogicGrowsOnTrees.Parallel.Common.ExplorationMode
     (
     -- * Types
       ExplorationMode(..)
-    , AllMode(..)
-    , FirstMode(..)
-    , FoundModeUsingPull(..)
-    , FoundModeUsingPush(..)
+    , AllMode
+    , FirstMode
+    , FoundModeUsingPull
+    , FoundModeUsingPush
     -- * Type-classes
     , HasExplorationMode(..)
     -- * Type families

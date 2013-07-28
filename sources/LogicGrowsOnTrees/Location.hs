@@ -14,8 +14,8 @@ module LogicGrowsOnTrees.Location
     , Location(..)
     , Solution(..)
     , LocatableT(..)
-    , LocatableTree(..)
-    , LocatableTreeIO(..)
+    , LocatableTree
+    , LocatableTreeIO
     , LocatableTreeT(..)
     -- * Utility functions
     , applyCheckpointCursorToLocation

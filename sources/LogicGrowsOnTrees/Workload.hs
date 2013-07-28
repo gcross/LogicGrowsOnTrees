@@ -21,7 +21,7 @@ module LogicGrowsOnTrees.Workload
     , exploreTreeTUntilFoundWithinWorkload
     ) where
 
-import Control.Monad ((>=>),join,liftM)
+import Control.Monad ((>=>))
 import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Function (on)

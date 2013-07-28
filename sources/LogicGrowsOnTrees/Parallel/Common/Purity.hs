@@ -30,4 +30,5 @@ data Purity (m :: * → *) (n :: * → *) where -- {{{
     ImpureAtopIO :: MonadIO m ⇒ (∀ β. m β → IO β) → Purity m m
 
 {-| The purity of trees in the IO monad. -}
+io_purity :: Purity IO IO
 io_purity = ImpureAtopIO id

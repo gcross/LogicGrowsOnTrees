@@ -147,8 +147,8 @@ driver = Driver $ \DriverParameters{..} → do
 
 {-| This is the monad in which the thread controller will run. -}
 newtype ThreadsControllerMonad exploration_mode α =
-    C { unwrapC :: WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor exploration_mode))) exploration_mode α
-      } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
+    C (WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor exploration_mode))) exploration_mode α)
+  deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
 
 instance HasExplorationMode (ThreadsControllerMonad exploration_mode) where
     type ExplorationModeFor (ThreadsControllerMonad exploration_mode) = exploration_mode

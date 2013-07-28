@@ -1,7 +1,6 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 import Control.Applicative ((<$>),(<*>))
-import Control.Monad (when)
 
 import qualified Data.Foldable as Fold
 import Data.List (sort)

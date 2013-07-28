@@ -134,7 +134,6 @@ import LogicGrowsOnTrees.Parallel.Common.Supervisor
     )
 
 import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
-import LogicGrowsOnTrees.Parallel.Common.Worker
 
 --------------------------------------------------------------------------------
 ----------------------------------- Loggers ------------------------------------

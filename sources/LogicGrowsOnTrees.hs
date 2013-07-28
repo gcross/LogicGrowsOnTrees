@@ -48,7 +48,7 @@ module LogicGrowsOnTrees
     ) where
 
 import Control.Applicative (Alternative(..),Applicative(..))
-import Control.Monad (MonadPlus(..),(>=>),guard,liftM,liftM2,msum)
+import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Operational (ProgramT,ProgramViewT(..),singleton,view,viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))

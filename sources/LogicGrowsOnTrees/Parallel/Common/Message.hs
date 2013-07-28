@@ -13,7 +13,7 @@ module LogicGrowsOnTrees.Parallel.Common.Message
     (
     -- * Types
       MessageForSupervisor(..)
-    , MessageForSupervisorFor(..)
+    , MessageForSupervisorFor
     , MessageForSupervisorReceivers(..)
     , MessageForWorker(..)
     -- * Functions

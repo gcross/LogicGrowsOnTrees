@@ -15,9 +15,9 @@ module LogicGrowsOnTrees.Parallel.Common.Workgroup
     -- * Type-classes
       WorkgroupRequestQueueMonad(..)
     -- * Types
-    , InnerMonad(..)
+    , InnerMonad
     , MessageForSupervisorReceivers(..)
-    , WorkerId(..)
+    , WorkerId
     , WorkgroupCallbacks(..)
     , WorkgroupControllerMonad(..)
     -- * Functions

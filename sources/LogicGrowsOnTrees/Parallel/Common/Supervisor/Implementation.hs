@@ -26,9 +26,9 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
     , SupervisorFullConstraint
     , SupervisorMonadConstraint
     , SupervisorOutcome(..)
-    , SupervisorOutcomeFor(..)
+    , SupervisorOutcomeFor
     , SupervisorTerminationReason(..)
-    , SupervisorTerminationReasonFor(..)
+    , SupervisorTerminationReasonFor
     , SupervisorWorkerIdConstraint
     , IndependentMeasurementsStatistics(..)
     , abortSupervisor
@@ -1120,7 +1120,7 @@ receiveProgressUpdate :: -- {{{
 receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = AbortMonad . postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") $ do
     infoM $ "Received progress update from " ++ show worker_id
     lift $ validateWorkerKnownAndActive "receiving progress update" worker_id
-    updateCurrentProgress progress_update
+    _ ← updateCurrentProgress progress_update
     lift $ do
         is_pending_workload_steal ← Set.member worker_id <$> use workers_pending_workload_steal
         unless is_pending_workload_steal $ dequeueWorkerForSteal worker_id
@@ -1146,7 +1146,7 @@ receiveStolenWorkload worker_id maybe_stolen_workload = AbortMonad . postValidat
             lift $
                 (steal_request_matcher_queue %%= fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView)
                   >>= (timePassedSince >=> liftA2 (>>) ((workload_steal_time_statistics %=) . pappend) updateInstataneousWorkloadStealTime)
-            updateCurrentProgress progress_update
+            _ ← updateCurrentProgress progress_update
             lift $ do
                 active_workers %= Map.insert worker_id remaining_workload
                 enqueueWorkload workload
@@ -1182,7 +1182,7 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
                 case progressResult of
                     Nothing → return (checkpoint,Nothing)
                     Just solution → finishWithResult . Just $ Progress checkpoint solution
-            FoundModeUsingPull f →
+            FoundModeUsingPull _ →
                 (progressCheckpoint &&& Left . progressResult)
                 <$>
                 updateCurrentProgress final_progress
@@ -1473,12 +1473,12 @@ updateCurrentProgress progress = do
         AllMode → current_progress <%= (<> progress)
         FirstMode → current_progress <%= (<> progress)
         FoundModeUsingPull f → do
-            progress@(Progress checkpoint result) ← current_progress <%= (<> progress)
+            progress@(Progress _ result) ← current_progress <%= (<> progress)
             if f result
                 then finishWithResult (Right progress)
                 else return progress
         FoundModeUsingPush f → do
-            progress@(Progress checkpoint result) ← current_progress <%= (<> progress)
+            progress@(Progress _ result) ← current_progress <%= (<> progress)
             if f result
                 then finishWithResult (Right progress)
                 else return progress

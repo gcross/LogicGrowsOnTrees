@@ -26,9 +26,9 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
     -- * Type-classes
       RequestQueueMonad(..)
     -- * Types
-    , Request(..)
+    , Request
     , RequestQueue(..)
-    , RequestQueueReader(..)
+    , RequestQueueReader
     -- * Functions
     -- ** Synchronized requests
     , getCurrentProgress

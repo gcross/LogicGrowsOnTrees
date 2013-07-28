@@ -52,7 +52,6 @@ import Control.Monad.IO.Class
 import Data.Composition
 import Data.Derive.Serialize
 import Data.DeriveTH
-import Data.Either.Unwrap (mapRight)
 import Data.Functor ((<$>))
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef)
 import qualified Data.IVar as IVar
@@ -123,10 +122,6 @@ data WorkerRequest progress =
   | ProgressUpdateRequested (ProgressUpdate progress → IO ())
     {-| Request that the worker respond with a stolen workload (if possible). -}
   | WorkloadStealRequested (Maybe (StolenWorkload progress) → IO ())
-
-{-| A convenient type alias for the type of 'WorkerRequest' corresponding
-    to the given exploration mode. -}
-type WorkerRequestFor exploration_mode = WorkerRequest (ProgressFor exploration_mode)
 
 {-| The type of the queue of worker requests.
 
@@ -332,7 +327,7 @@ forkWorkerThread
                                 Progress
                                     explored_checkpoint
                                     maybe_solution
-                            FoundModeUsingPull f →
+                            FoundModeUsingPull _ →
                                 Progress
                                     explored_checkpoint
                                     (maybe result (result <>) maybe_solution)
