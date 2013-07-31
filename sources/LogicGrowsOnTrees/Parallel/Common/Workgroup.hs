@@ -202,7 +202,7 @@ runWorkgroup exploration_mode initial_inner_state constructCallbacks starting_pr
             infoM $ "Activating worker " ++ show worker_id ++ " with workload " ++ show workload
             asks sendWorkloadTo >>= liftInner . ($ workload) . ($ worker_id)
             bumpWorkerRemovalPriority worker_id
-    manager_thread_id ← forkIO $ runReaderT controller request_queue
+    forkControllerThread request_queue controller
     run_outcome ←
         flip evalStateT initial_inner_state
         .
@@ -218,7 +218,7 @@ runWorkgroup exploration_mode initial_inner_state constructCallbacks starting_pr
                     (requestQueueProgram (return ()) request_queue)
             asks killAllWorkers >>= liftInner . ($ supervisorRemainingWorkers)
             return $ extractRunOutcomeFromSupervisorOutcome supervisor_outcome
-    killThread manager_thread_id
+    killControllerThreads request_queue
     return run_outcome
   where
     initial_state =

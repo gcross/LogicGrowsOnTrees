@@ -1423,6 +1423,33 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
+    ,testGroup "LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue" -- {{{
+        [testCase "kills all controller threads" $ do -- {{{
+            starts@[a,b,c,d] ← replicateM 4 newEmptyMVar
+            vars@[w,x,y,z] ← replicateM 4 newEmptyMVar
+            request_queue ← newRequestQueue
+            forkControllerThread request_queue . liftIO $ do
+                try (putMVar a () >> forever yield) >>= putMVar w
+            forkControllerThread request_queue $ do
+                fork (do
+                    fork . liftIO $ try (putMVar b () >> forever yield) >>= putMVar x
+                    liftIO $ try (putMVar c () >> forever yield) >>= putMVar y
+                  :: RequestQueueReader (AllMode ()) () IO ()
+                 )
+                liftIO $ try (putMVar d () >> forever yield) >>= putMVar z
+            forM_ starts $ takeMVar
+            killControllerThreads request_queue
+            forM_ vars $ \var → do
+                value ← takeMVar var
+                case value of
+                    Right () → assertFailure "Thread did not infinitely loop."
+                    Left e →
+                        case fromException e of
+                            Just ThreadKilled → return ()
+                            _ → assertFailure $ "Unexpected exception: " ++ show e
+         -- }}}
+        ]
+     -- }}}
     ,testGroup "LogicGrowsOnTrees.Parallel.Common.Worker" -- {{{
         [testGroup "forkWorkerThread" -- {{{
             [testCase "abort" $ do -- {{{

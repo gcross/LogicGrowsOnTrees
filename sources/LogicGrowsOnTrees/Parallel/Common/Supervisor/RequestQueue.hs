@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DoRec #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -44,6 +45,9 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
     , processAllRequests
     , receiveProgress
     , requestQueueProgram
+    -- ** Controller threads
+    , forkControllerThread
+    , killControllerThreads
     -- ** Miscellaneous
     , getQuantityAsync
     ) where
@@ -52,18 +56,20 @@ import Prelude hiding (catch)
 
 import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
-import Control.Concurrent (ThreadId,forkIO)
+import Control.Concurrent (ThreadId,forkIO,killThread)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,tryReadTChan,writeTChan)
-import Control.Exception (BlockedIndefinitelyOnMVar(..),catch)
+import Control.Exception (BlockedIndefinitelyOnMVar(..),catch,finally)
 import Control.Monad.CatchIO (MonadCatchIO)
-import Control.Monad (join,liftM,liftM2)
+import Control.Monad ((>=>),join,liftM,liftM3)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition ((.*))
-import Data.IORef (IORef,atomicModifyIORef,newIORef)
+import Data.Functor ((<$>))
+import Data.IORef (IORef,atomicModifyIORef,readIORef,newIORef)
+import Data.List (delete)
 
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import qualified LogicGrowsOnTrees.Parallel.Common.Supervisor as Supervisor
@@ -98,6 +104,8 @@ data RequestQueue exploration_mode worker_id m = RequestQueue
         requests :: !(TChan (Request exploration_mode worker_id m))
         {-| a list of callbacks to invoke when a global progress update has completed -}
     ,   receivers :: !(IORef [ProgressFor exploration_mode → IO ()])
+        {-| a list of the controller threads -}
+    ,   controllerThreads  :: !(IORef [ThreadId])
     }
 {-| A basic supervisor request queue monad, which has an implicit 'RequestQueue'
     object that it uses to communicate with the supervisor loop.
@@ -109,7 +117,7 @@ instance HasExplorationMode (RequestQueueReader exploration_mode worker_id m) wh
 
 instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader exploration_mode worker_id m) where
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
-    fork m = ask >>= liftIO . forkIO . runReaderT m
+    fork m = ask >>= flip forkControllerThread m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
     getNumberOfWorkersAsync = (ask >>=) . getQuantityAsync Supervisor.getNumberOfWorkers
     requestProgressUpdateAsync receiveUpdatedProgress =
@@ -182,7 +190,7 @@ enqueueRequest = flip $
 newRequestQueue ::
     MonadIO m' ⇒
     m' (RequestQueue exploration_mode worker_id m)
-newRequestQueue = liftIO $ liftM2 RequestQueue newTChanIO (newIORef [])
+newRequestQueue = liftIO $ liftM3 RequestQueue newTChanIO (newIORef []) (newIORef [])
 
 {-| Attempt to pop a request from the 'RequestQueue'. -}
 tryDequeueRequest ::
@@ -207,7 +215,7 @@ processAllRequests ::
     MonadIO m ⇒
     RequestQueue exploration_mode worker_id m →
     SupervisorMonad exploration_mode worker_id m ()
-processAllRequests (RequestQueue requests _) = go
+processAllRequests (RequestQueue requests _ _) = go
   where
     go =
         (liftIO . atomically . tryReadTChan) requests
@@ -249,6 +257,40 @@ requestQueueProgram initialize =
     readTChan
     .
     requests
+
+------------------------------ Controller threads ------------------------------
+
+{-| Adds a controller thread id to the request queue. -}
+forkControllerThread ::
+    MonadIO m' ⇒
+    RequestQueue exploration_mode worker_id m {-^ the request queue -} →
+    RequestQueueReader exploration_mode worker_id m () {-^ the controller thread -} →
+    m' ThreadId
+forkControllerThread request_queue controller = liftIO $ do
+    start_signal ← newEmptyMVar
+    rec thread_id ←
+            forkIO
+            $
+            (takeMVar start_signal >> runReaderT controller request_queue)
+            `finally`
+            (atomicModifyIORef (controllerThreads request_queue) (delete thread_id &&& const ()))
+    atomicModifyIORef (controllerThreads request_queue) ((thread_id:) &&& const ())
+    {- NOTE:  The following signal is needed because we don't want the new
+              thread to start until after its thread id has been added to the
+              list, as otherwise it could result in an orphan thread that won't
+              get garbage collected until the supervisor finishes due to a
+              pecularity of the GHC runtime where it doesn't garbage collect a
+              thread as long as a ThreadId referring to it exists.
+     -}
+    putMVar start_signal ()
+    return thread_id
+
+{-| Kill all the remaining worker threads. -}
+killControllerThreads ::
+    MonadIO m' ⇒
+    RequestQueue exploration_mode worker_id m {-^ the request queue -} →
+    m' ()
+killControllerThreads = liftIO . readIORef . controllerThreads >=> liftIO . mapM_ killThread
 
 ---------------------------------- Miscellaneous ----------------------------------
 
