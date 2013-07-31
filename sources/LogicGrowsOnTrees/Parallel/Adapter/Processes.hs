@@ -71,14 +71,13 @@ import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),Proce
 
 import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
 import LogicGrowsOnTrees.Checkpoint
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Message
 import qualified LogicGrowsOnTrees.Parallel.Common.Process as Process
 import LogicGrowsOnTrees.Parallel.Common.Process
-import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Worker
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
+import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Main
     (Driver(..)
     ,DriverParameters(..)
@@ -88,6 +87,7 @@ import LogicGrowsOnTrees.Parallel.Main
     ,TerminationReason(..)
     ,mainParser
     )
+import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Utils.Handle
 import LogicGrowsOnTrees.Utils.Word_
 import LogicGrowsOnTrees.Workload
