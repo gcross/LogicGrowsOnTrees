@@ -52,11 +52,11 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(INFO))
 import System.Log.Logger.TH
 
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Message
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
 import LogicGrowsOnTrees.Parallel.Main (RunOutcomeFor,extractRunOutcomeFromSupervisorOutcome)
+import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Workload
 
 --------------------------------------------------------------------------------

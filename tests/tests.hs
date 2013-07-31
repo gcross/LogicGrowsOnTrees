@@ -79,11 +79,11 @@ import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Checkpoint
 import LogicGrowsOnTrees.Examples.MapColoring
 import LogicGrowsOnTrees.Location
-import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import qualified LogicGrowsOnTrees.Parallel.Adapter.Threads as Threads
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
-import LogicGrowsOnTrees.Parallel.Common.Purity
 import qualified LogicGrowsOnTrees.Parallel.Common.Workgroup as Workgroup
+import LogicGrowsOnTrees.Parallel.ExplorationMode
+import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..))
+import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Path
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Supervisor

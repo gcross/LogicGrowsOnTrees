@@ -123,8 +123,6 @@ import Text.Printf (printf)
 
 import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
 import LogicGrowsOnTrees.Checkpoint
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
-import LogicGrowsOnTrees.Parallel.Common.Purity
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
     ( FunctionOfTimeStatistics(..)
@@ -133,6 +131,8 @@ import LogicGrowsOnTrees.Parallel.Common.Supervisor
     , SupervisorTerminationReason(..)
     , SupervisorOutcome(..)
     )
+import LogicGrowsOnTrees.Parallel.ExplorationMode
+import LogicGrowsOnTrees.Parallel.Purity
 
 --------------------------------------------------------------------------------
 ----------------------------------- Loggers ------------------------------------

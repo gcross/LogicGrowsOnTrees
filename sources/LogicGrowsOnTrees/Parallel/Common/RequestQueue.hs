@@ -71,9 +71,9 @@ import Data.Functor ((<$>))
 import Data.IORef (IORef,atomicModifyIORef,readIORef,newIORef)
 import Data.List (delete)
 
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import qualified LogicGrowsOnTrees.Parallel.Common.Supervisor as Supervisor
 import LogicGrowsOnTrees.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
+import LogicGrowsOnTrees.Parallel.ExplorationMode
 
 --------------------------------------------------------------------------------
 --------------------------------- Type-classes ---------------------------------

@@ -98,8 +98,8 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
 
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Worker (ProgressUpdateFor,StolenWorkloadFor)
+import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Path (WalkError(..))
 
 import qualified LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation as Implementation

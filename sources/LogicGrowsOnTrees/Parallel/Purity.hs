@@ -7,7 +7,7 @@
     either pure or impure running on top of IO, with the value io_purity
     being a special case of the latter.
  -}
-module LogicGrowsOnTrees.Parallel.Common.Purity
+module LogicGrowsOnTrees.Parallel.Purity
     ( Purity(..)
     , io_purity
     ) where

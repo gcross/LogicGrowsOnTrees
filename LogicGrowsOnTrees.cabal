@@ -253,15 +253,15 @@ Library
         LogicGrowsOnTrees.Examples.Queens.Advanced
         LogicGrowsOnTrees.Location
         LogicGrowsOnTrees.Parallel.Adapter.Threads
-        LogicGrowsOnTrees.Parallel.Common.ExplorationMode
         LogicGrowsOnTrees.Parallel.Common.Message
         LogicGrowsOnTrees.Parallel.Common.Process
-        LogicGrowsOnTrees.Parallel.Common.Purity
         LogicGrowsOnTrees.Parallel.Common.RequestQueue
         LogicGrowsOnTrees.Parallel.Common.Supervisor
         LogicGrowsOnTrees.Parallel.Common.Workgroup
         LogicGrowsOnTrees.Parallel.Common.Worker
+        LogicGrowsOnTrees.Parallel.ExplorationMode
         LogicGrowsOnTrees.Parallel.Main
+        LogicGrowsOnTrees.Parallel.Purity
         LogicGrowsOnTrees.Path
         LogicGrowsOnTrees.Utils.Handle
         LogicGrowsOnTrees.Utils.IntSum

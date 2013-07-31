@@ -113,8 +113,8 @@ import Text.Printf
 import LogicGrowsOnTrees.Checkpoint
 import LogicGrowsOnTrees.Path
 
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Worker
+import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Workload
 -- }}}
 

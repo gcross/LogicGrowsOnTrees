@@ -25,8 +25,8 @@ import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Serialize
 
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import qualified LogicGrowsOnTrees.Parallel.Common.Worker as Worker
+import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Utils.Handle
 import LogicGrowsOnTrees.Workload
 

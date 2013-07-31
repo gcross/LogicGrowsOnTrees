@@ -69,8 +69,8 @@ import System.Log.Logger.TH
 
 import LogicGrowsOnTrees hiding (exploreTree,exploreTreeT,exploreTreeUntilFirst,exploreTreeTUntilFirst)
 import LogicGrowsOnTrees.Checkpoint
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
-import LogicGrowsOnTrees.Parallel.Common.Purity
+import LogicGrowsOnTrees.Parallel.ExplorationMode
+import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Path
 import LogicGrowsOnTrees.Workload
 

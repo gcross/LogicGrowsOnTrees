@@ -10,9 +10,9 @@ import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Checkpoint
 import LogicGrowsOnTrees.Examples.Queens
 import LogicGrowsOnTrees.Utils.WordSum
-import LogicGrowsOnTrees.Parallel.Common.ExplorationMode (ExplorationMode(AllMode))
-import LogicGrowsOnTrees.Parallel.Common.Purity (Purity(Pure))
 import LogicGrowsOnTrees.Parallel.Common.Worker (exploreTreeGeneric)
+import LogicGrowsOnTrees.Parallel.ExplorationMode (ExplorationMode(AllMode))
+import LogicGrowsOnTrees.Parallel.Purity (Purity(Pure))
 -- }}}
 
 main = defaultMain

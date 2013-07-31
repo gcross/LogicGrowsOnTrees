@@ -19,7 +19,7 @@
     that pattern matching can be used when the specific mode matters and also
     type families can be used to specialized types depending on the constructor.
  -}
-module LogicGrowsOnTrees.Parallel.Common.ExplorationMode
+module LogicGrowsOnTrees.Parallel.ExplorationMode
     (
     -- * Types
       ExplorationMode(..)
