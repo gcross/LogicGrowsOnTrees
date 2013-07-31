@@ -76,7 +76,7 @@ import LogicGrowsOnTrees.Parallel.Common.Message
 import qualified LogicGrowsOnTrees.Parallel.Common.Process as Process
 import LogicGrowsOnTrees.Parallel.Common.Process
 import LogicGrowsOnTrees.Parallel.Common.Purity
-import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
+import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Worker
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
 import LogicGrowsOnTrees.Parallel.Main
