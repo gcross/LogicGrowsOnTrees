@@ -22,7 +22,7 @@
     can extend this to provide requests specific to that adapter (such as
     changing the number of workers).
  -}
-module LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
+module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     (
     -- * Type-classes
       RequestQueueMonad(..)

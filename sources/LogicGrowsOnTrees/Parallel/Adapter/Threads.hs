@@ -107,7 +107,7 @@ import LogicGrowsOnTrees.Parallel.Main
     )
 import LogicGrowsOnTrees.Parallel.Common.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Common.Purity
-import LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue
+import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Worker
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
 
