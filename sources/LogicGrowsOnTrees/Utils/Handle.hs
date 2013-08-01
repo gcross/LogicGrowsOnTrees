@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| This module contains a couple of utility functions for sending an receiving
@@ -7,15 +8,39 @@
    the other side.
  -}
 module LogicGrowsOnTrees.Utils.Handle
-    ( receive
+    (
+    -- * Exceptions
+      ConnectionLost(..)
+    -- * Functions
+    , filterEOFExceptions
+    , receive
     , send
     ) where
+
+import Prelude hiding (catch)
+
+import Control.Exception (Exception,catch,throwIO)
 
 import qualified Data.ByteString as BS
 import Data.ByteString (hGet,hPut)
 import Data.Serialize (Serialize,encode,decode)
+import Data.Typeable (Typeable)
 
 import System.IO (Handle,hFlush,hGetLine,hPrint)
+import System.IO.Error (isEOFError)
+
+--------------------------------------------------------------------------------
+---------------------------------- Exceptions ----------------------------------
+--------------------------------------------------------------------------------
+
+{-| This connection is thrown when the connection has been lost. -}
+data ConnectionLost = ConnectionLost
+  deriving (Show,Typeable)
+instance Exception ConnectionLost
+
+{-| Replaces EOF IOExceptions with the ConnectionLost exception. -}
+filterEOFExceptions = flip catch $
+    \e → if isEOFError e then throwIO ConnectionLost else throwIO e
 
 {-| Receives a 'Serialize'-able value from a handle.
 
@@ -23,9 +48,12 @@ import System.IO (Handle,hFlush,hGetLine,hPrint)
     receieved in plain text (followed by a newline), reads that much data in
     bytes into a 'ByteString', and then deserializes the 'ByteString' to produce
     the resulting value.
+
+    If the connection has been lost, it throws 'ConnectionLost'.
  -}
 receive :: Serialize α ⇒ Handle → IO α
-receive handle = hGetLine handle >>= fmap (either error id . decode) . hGet handle . read
+receive handle = filterEOFExceptions $
+    hGetLine handle >>= fmap (either error id . decode) . hGet handle . read
 
 {-| Sends a 'Serialize'-able value to a handle.
 
@@ -34,11 +62,8 @@ receive handle = hGetLine handle >>= fmap (either error id . decode) . hGet hand
     followed by a newline and then the raw data itself.
  -}
 send :: Serialize α ⇒ Handle → α → IO ()
-send handle value = do
+send handle value = filterEOFExceptions $ do
     let encoded_value = encode value
     hPrint handle . BS.length $ encoded_value
     hPut handle encoded_value
     hFlush handle
-
-
-

@@ -18,14 +18,17 @@
            provided in separate packages.
  -}
 module LogicGrowsOnTrees.Parallel.Common.Process
-    ( runWorker
+    (
+    -- * Exceptions
+      ConnectionLost(..)
+    -- * Functions
+    , runWorker
     , runWorkerUsingHandles
     ) where
 
 import Control.Concurrent (killThread)
 import Control.Concurrent.MVar (isEmptyMVar,newEmptyMVar,newMVar,putMVar,takeMVar,tryTakeMVar,withMVar)
-import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),SomeException,catchJust,try)
-import Control.Monad (void)
+import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
 import Control.Monad.IO.Class
 
 import Data.Functor ((<$>))
@@ -122,12 +125,10 @@ runWorker exploration_mode purity tree receiveMessage sendMessage =
                              putMVar worker_environment_mvar
                     processNextMessage
                 QuitWorker → do
-                    -- Note:  If the supervisor closes all connections before
-                    --        this process has sent an acknowledgement, then the
-                    --        following will fail but the error will be suppressed
-                    --        because it should never represent an actual problem.
-                    void $ (try (sendMessage WorkerQuit) :: IO (Either SomeException ()))
-                    tryTakeMVar worker_environment_mvar >>=
+                    sendMessage WorkerQuit
+                    liftIO $
+                        tryTakeMVar worker_environment_mvar
+                        >>=
                         maybe (return ()) (killThread . workerThreadId)
     in catchJust
         (\e → case e of
