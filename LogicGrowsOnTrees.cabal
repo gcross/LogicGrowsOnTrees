@@ -510,6 +510,36 @@ Executable tutorial-8
     else
         GHC-Options: -threaded
 
+Executable tutorial-9
+    Main-is: tutorial-9.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable tutorial-10
+    Main-is: tutorial-10.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
 Benchmark balancers
     Type: exitcode-stdio-1.0
     Main-is: balancers.hs

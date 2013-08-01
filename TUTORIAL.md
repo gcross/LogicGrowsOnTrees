@@ -718,3 +718,102 @@ main = do
 
 Now the controller continually polls the user for the desired number of workers
 and then changes the number of workers to be equal to it.
+
+As in the serial case, there are multiple modes in which an exploration can be
+run.  The following code only looks for the first result (see tutorials/tutorial-9.hs):
+
+```haskell
+import Control.Monad (void)
+
+import LogicGrowsOnTrees.Parallel.Adapter.Threads
+    (RunOutcome(..)
+    ,TerminationReason(..)
+    ,changeNumberOfWorkers
+    ,exploreTreeUntilFirst
+    )
+import LogicGrowsOnTrees.Checkpoint (Progress(..))
+import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
+
+main = do
+    RunOutcome statistics termination_reason <-
+        exploreTreeUntilFirst (void . changeNumberOfWorkers . const . return $ 2)
+        .
+        nqueensUsingBitsSolutions
+        $
+        10
+    case termination_reason of
+        Aborted _ -> putStrLn "Search aborted."
+        Completed Nothing -> putStrLn "No result found."
+        Completed (Just (Progress checkpoint result)) -> putStrLn $ "Found " ++ show result
+        Failure _ message -> putStrLn $ "Failed: " ++ message
+```
+
+Note how now `Completed` contains a `Maybe` value:
+
+```haskell
+Completed Nothing -> putStrLn "No solution found."
+Completed (Just (Progress checkpoint result)) -> putStrLn $ "Found " ++ show result
+```
+
+If the run finds no solution, then it returns Nothing.  If it does return a
+solution, then it returns a Progress value, which contains not only the
+solution but also the checkpoint;  the reason for returning the checkpoint is
+that it allows you to resume from it if you decide that you want to find more
+solutions at some point in the future.
+
+As in the serial case, you can also request that only some of the results be
+found, as in the following code which looks for at least five solutions (see
+tutorials/tutorial-10.hs):
+
+```haskell
+import Control.Monad (void)
+
+import LogicGrowsOnTrees.Parallel.Adapter.Threads
+    (RunOutcome(..)
+    ,TerminationReason(..)
+    ,changeNumberOfWorkers
+    ,exploreTreeUntilFoundUsingPush
+    )
+import LogicGrowsOnTrees.Checkpoint (Progress(..))
+import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
+
+main = do
+    RunOutcome statistics termination_reason <-
+        exploreTreeUntilFoundUsingPush
+            ((>= 5) . length)
+            (void . changeNumberOfWorkers . const . return $ 2)
+        .
+        fmap (:[])
+        .
+        nqueensUsingBitsSolutions
+        $
+        10
+    case termination_reason of
+        Aborted _ -> putStrLn "Search aborted."
+        Completed (Left results) -> putStrLn $ "Only found:" ++ show results
+        Completed (Right (Progress checkpoint results)) -> putStrLn $ "Found: " ++ show results
+        Failure _ message -> putStrLn $ "Failed: " ++ message
+```
+
+Now the result in `Completed` is `Left results` if the run ended before the
+condition function was satisfed and `Right (Progress checkpoint results)`
+otherwise, where again the `checkpoint` value allows you to resume the search at
+some point in the future if you wish.
+
+There is also an `exploreTreeUntilFoundUsingPull` function which is similar to
+this function except that it gathers the results in a different way. The
+difference between them is that `exploreTreeUntilFoundUsingPull` sums results
+locally on each worker until either a progress update is requested or the
+condition is satisfied, whereas `exploreTreeUntilFoundUsingPush` pushes each
+result to the supervisor immediately as soon as it is found. If you are only
+looking for a few results then `exploreTreeUntilFoundUsingPush` is preferable
+because the whole system will know right away when the desired results have been
+found. If you are looking for a large number of results then the overhead of
+sending each result to the supervisor may add up to the point where it is better
+to sum locally and only send results to the supervisor periodically; note that
+if you take the latter approach then it is your responsibility to have the
+controller periodically request progress updates. (Note that the
+`LogicGrowsOnTrees.Parallel.Common.RequestQueue` module has a `fork` function
+that you can use to spawn another controller thread if this would make your life
+easier;  like the main controller thread it will be killed when the run is
+over.)
