@@ -28,7 +28,7 @@ module LogicGrowsOnTrees.Parallel.Common.Process
 
 import Control.Concurrent (killThread)
 import Control.Concurrent.MVar (isEmptyMVar,newEmptyMVar,newMVar,putMVar,takeMVar,tryTakeMVar,withMVar)
-import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catchJust)
+import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),Handler(..),catches,throwIO)
 import Control.Monad.IO.Class
 
 import Data.Functor ((<$>))
@@ -130,14 +130,15 @@ runWorker exploration_mode purity tree receiveMessage sendMessage =
                         tryTakeMVar worker_environment_mvar
                         >>=
                         maybe (return ()) (killThread . workerThreadId)
-    in catchJust
-        (\e → case e of
-            ThreadKilled → Just ()
-            UserInterrupt → Just ()
-            _ → Nothing
-        )
-        processNextMessage
-        (const $ return ())
+    in processNextMessage
+        `catches`
+        [Handler $ \e → case e of
+            ThreadKilled → return ()
+            UserInterrupt → return ()
+            _ → throwIO e
+        ,Handler $ \e → case e of
+            ConnectionLost → debugM "Connection to supervisor was lost before this process had finished."
+        ]
 
 {-| This function is the same as 'runWorker', but it lets you provide handles
     through which the messages will be sent and received.  (Note that the
