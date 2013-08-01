@@ -27,7 +27,7 @@ import Data.Serialize (Serialize,encode,decode)
 import Data.Typeable (Typeable)
 
 import System.IO (Handle,hFlush,hGetLine,hPrint)
-import System.IO.Error (isEOFError)
+import System.IO.Error (isEOFError,ioeGetErrorType)
 
 --------------------------------------------------------------------------------
 ---------------------------------- Exceptions ----------------------------------
@@ -40,7 +40,9 @@ instance Exception ConnectionLost
 
 {-| Replaces EOF IOExceptions with the ConnectionLost exception. -}
 filterEOFExceptions = flip catch $
-    \e → if isEOFError e then throwIO ConnectionLost else throwIO e
+    \e → if isEOFError e || (show . ioeGetErrorType $ e) == "resource vanished"
+        then throwIO ConnectionLost
+        else throwIO e
 
 {-| Receives a 'Serialize'-able value from a handle.
 
