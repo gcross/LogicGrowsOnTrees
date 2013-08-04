@@ -66,7 +66,7 @@ import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import LogicGrowsOnTrees (Tree,allFromBalancedBottomUp)
+import LogicGrowsOnTrees (Tree,allFrom)
 import qualified LogicGrowsOnTrees.Examples.Queens.Advanced as Advanced
 import LogicGrowsOnTrees.Examples.Queens.Advanced (NQueensSolution,NQueensSolutions,multiplySolution,nqueensGeneric)
 import LogicGrowsOnTrees.Utils.Word_
@@ -224,7 +224,7 @@ nqueensUsingSetsSolutions n =
        !occupied_positive_diagonals
        !value
      = do
-        column ← allFromBalancedBottomUp $ IntSet.toList available_columns
+        column ← allFrom $ IntSet.toList available_columns
         let negative_diagonal = row + column
         guard $ IntSet.notMember negative_diagonal occupied_negative_diagonals
         let positive_diagonal = row - column
@@ -277,7 +277,7 @@ nqueensUsingBitsSolutions n =
        !occupied_positive_diagonals
        !value
      = do
-        column ← allFromBalancedBottomUp . goGetOpenings 0 $
+        column ← allFrom . goGetOpenings 0 $
             occupied_columns .|. 
             occupied_negative_diagonals .|.
             occupied_positive_diagonals

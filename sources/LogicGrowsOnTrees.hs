@@ -35,11 +35,7 @@ module LogicGrowsOnTrees
     -- ** ...that help building trees
     -- $builders
     , allFrom
-    , allFromBalanced
-    , allFromBalancedBottomUp
     , between
-    , msumBalanced
-    , msumBalancedBottomUp
     -- ** ...that transform trees
     , endowTree
     -- * Implementation
@@ -63,8 +59,6 @@ import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
 import Data.Monoid ((<>),Monoid(..))
 import Data.Serialize (Serialize(),encode)
-
-import LogicGrowsOnTrees.Utils.MonadPlusForest
 
 --------------------------------------------------------------------------------
 ------------------------------------- Types ------------------------------------
@@ -496,52 +490,11 @@ exploreTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
 ---------------------------------- Builders ------------------------------------
 
 {- $builders
-The following functions all create a tree from various inputs. The
-convention for suffixes is as follows: No suffix means that the tree will be
-built in a naive fashion using 'msum', which takes each item in the list and
-'mplus'es it with the resut of the list --- that is
-
->   msum [a,b,c,d]
-
-which is equivalent to
-
->   a `mplus` (b `mplus` (c `mplus` (d `mplus` mzero)))
-
-The downside of this approach is that it produces an incredibly unbalanced tree,
-which will degrade parallization;  this is because if the tree is too
-unbalanced then the work-stealing algorithm will either still only a small
-piece of the remaining workload or nearly all of the remaining workload, and in
-both cases a processor will end up with a small amount of work to do before it
-finishes and immediately needs to steal another workload from someone else.
-
-Given that a balanced tree is desirable, the Balanced functions work by copying
-the input list into an array, starting with a range that covers the whole array,
-and then splitting the range at every choice point until eventually the range
-has length 1, in which case the element of the array is read;  the result is an
-optimally balanced tree.
-
-The downside of the Balanced functions is that they need to process the whole
-list at once rather than one element at a time. The BalancedBottomUp functions
-use a different algorithm that takes 33% less time than the Balanced algorithm
-by processing each element one at a time and building the result tree using a
-bottom-up approach rather than a top-down approach. For details of this
-algoithm, see "LogicGrowsOnTrees.Utils.MonadPlusForest"; note that it is also possible
-to get a slight speed-up by using the data structures in
-"LogicGrowsOnTrees.Utils.MonadPlusForest" directly rather than implicitly through the
-BalancedBottomUp functions.
-
-The odd function out in this section is 'between', which takes the lower and
-upper bound if an input range and returns an optimally balanced tree generating
-all of the results in the range.
+The following functions all create a tree from various inputs.
  -}
 
 {-| Returns a tree (or some other 'MonadPlus') with all of the results in the
     input list.
-
-    WARNING: The returned tree will have the property that every branch has one
-    element in the left branch and the remaining elements in the right branch,
-    which is heavily unbalanced and does not parallelize well. You should
-    consider using 'allFromBalanced' and 'allFromBalancedBottomUp instead.
  -}
 allFrom ::
     (Foldable t, Functor t, MonadPlus m) ⇒
@@ -549,45 +502,6 @@ allFrom ::
     m α {-^ a tree that generates the given list of results -}
 allFrom = Fold.msum . fmap return
 {-# INLINE allFrom #-}
-
-{-| Returns a tree that generates a tree with all of the results in the
-    input list in an optimally balanced search tree.
- -}
-allFromBalanced ::
-    MonadPlus m ⇒
-    [α] {-^ the list of results to generate in the resulting tree -} →
-    m α {-^ an optimally balanced a tree that generates the given list of results -}
-allFromBalanced [] = mzero
-allFromBalanced x = go 0 end
-  where
-    end = length x - 1
-    array = listArray (0,end) x
-
-    go a b
-      | a == b = return $ array ! a
-      | otherwise = go a m `mplus` go (m+1) b
-          where
-            m = (a + b) `div` 2
-{-# INLINE allFromBalanced #-}
-
-{-| Returns a tree (or some other 'MonadPlus') that generates all of
-    the results in the input list (or some other 'Foldable') in an approximately
-    balanced tree with less overhead than 'allFromBalanced'; see the
-    documentation for this section and/or "LogicGrowsOnTrees.Utils.MonadPlusForest" for
-    more information about the exact
-    algorithm used.
- -}
-allFromBalancedBottomUp ::
-    (Foldable t, MonadPlus m) ⇒
-    t α {-^ the list (or some other Foldable) of results to generate -} →
-    m α {-^ an approximately optimally balanced a tree that generates the given list of results -}
-allFromBalancedBottomUp =
-    consolidateForest
-    .
-    Fold.foldl
-        (\(!forest) x → addToForest forest (return x))
-        emptyForest
-{-# INLINE allFromBalancedBottomUp #-}
 
 {-| Returns an optimally balanced tree (or some other 'MonadPlus') that
     generates all of the elements in the given (inclusive) range; if the lower
@@ -611,44 +525,6 @@ between x y =
       where
         d = (b-a) `div` 2
 {-# INLINE between #-}
-
-{-| Returns a tree (or some other 'MonadPlus') that merges all of the trees in
-    the input list using an optimally balanced tree.
- -}
-msumBalanced ::
-    MonadPlus m ⇒
-    [m α] {-^ the list of trees (or other 'MonadPlus's) to merge -} →
-    m α {-^ the merged tree -}
-msumBalanced [] = mzero
-msumBalanced x = go 0 end
-  where
-    end = length x - 1
-    array = listArray (0,end) x
-
-    go a b
-      | a == b = array ! a
-      | otherwise = go a m `mplus` go (m+1) b
-          where
-            m = (a + b) `div` 2
-{-# INLINE msumBalanced #-}
-
-{-| Returns a tree (or some other 'MonadPlus') that merges all of the
-    trees in the input list (or some other 'Foldable') using an
-    approximately balanced tree with less overhead than 'msumBalanced'; see the
-    documentation for this section and/or "LogicGrowsOnTrees.Utils.MonadPlusForest" for
-    more information about the exact algorithm used.
- -}
-msumBalancedBottomUp ::
-    (Foldable t, MonadPlus m) ⇒
-    t (m α) {-^ the list (or other 'Foldable') of trees (or other 'MonadPlus's) to merge -} →
-    m α {-^ the merged tree -}
-msumBalancedBottomUp =
-    consolidateForest
-    .
-    Fold.foldl
-        (\(!forest) x → addToForest forest x)
-        emptyForest
-{-# INLINE msumBalancedBottomUp #-}
 
 -------------------------------- Transformers ----------------------------------
 

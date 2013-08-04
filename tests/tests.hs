@@ -577,15 +577,11 @@ tests = -- {{{
             ]
          -- }}}
         ,testProperty "allFrom" $ \(x :: [Int]) → x == allFrom x
-        ,testProperty "allFromBalanced" $ \(x :: [Int]) → x == allFromBalanced x
-        ,testProperty "allFromBalancedBottomUp" $ \(x :: [Int]) → ((==) `on` sort) x (allFromBalancedBottomUp x)
         ,testProperty "between" $ do -- {{{
             x ← choose ( 0,100) :: Gen Int
             y ← choose (50,100)
             return $ between x y == [x..y]
          -- }}}
-        ,testProperty "msumBalanced" $ \(x :: [Int]) → x == msumBalanced (map return x)
-        ,testProperty "msumBalancedBottomUp" $ \(x :: [UUID]) → ((==) `on` sort) x (msumBalancedBottomUp (map return x))
         ,testGroup "exploreTree" -- {{{
             [testCase "return" $ exploreTree (return [()]) @?= [()]
             ,testCase "mzero" $ exploreTree (mzero :: Tree [()]) @?= []

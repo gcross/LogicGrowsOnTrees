@@ -265,7 +265,6 @@ Library
         LogicGrowsOnTrees.Path
         LogicGrowsOnTrees.Utils.Handle
         LogicGrowsOnTrees.Utils.IntSum
-        LogicGrowsOnTrees.Utils.MonadPlusForest
         LogicGrowsOnTrees.Utils.PerfectTree
         LogicGrowsOnTrees.Utils.Word_
         LogicGrowsOnTrees.Utils.WordSum
@@ -539,17 +538,6 @@ Executable tutorial-10
         GHC-Options: -Wall -fno-warn-name-shadowing -threaded
     else
         GHC-Options: -threaded
-
-Benchmark balancers
-    Type: exitcode-stdio-1.0
-    Main-is: balancers.hs
-    Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
 
 Benchmark tree-versus-list-trivial-tree
     Type: exitcode-stdio-1.0

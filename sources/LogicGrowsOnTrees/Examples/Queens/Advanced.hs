@@ -61,7 +61,6 @@ module LogicGrowsOnTrees.Examples.Queens.Advanced
     , convertSolutionToWord
     , extractExteriorFromSolution
     , getOpenings
-    , getOpeningsAsList
     , getSymmetricOpenings
     , hasReflectionSymmetry
     , hasRotate90Symmetry
@@ -94,8 +93,7 @@ import Foreign.Ptr (FunPtr,freeHaskellFunPtr,nullFunPtr)
 
 import System.IO.Unsafe (unsafePerformIO)
 
-import LogicGrowsOnTrees (Tree,between)
-import LogicGrowsOnTrees.Utils.MonadPlusForest (addToForest,emptyForest,consolidateForest)
+import LogicGrowsOnTrees (Tree,allFrom,between)
 import LogicGrowsOnTrees.Utils.WordSum
 
 --------------------------------------------------------------------------------
@@ -1195,34 +1193,16 @@ getOpenings ::
     m PositionAndBit {-^ open positions and their corresponding bits -}
 getOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = go emptyForest (PositionAndBit 0 1)
-  where
-    mask = bit size - 1
-    go !forest !x@(PositionAndBit i b)
-     | i >= size          = consolidateForest forest
-     | b .&. blocked == 0 = go (addToForest forest (return x)) next_x
-     | otherwise          = go forest next_x
-     where
-       next_x = PositionAndBit (i+1) (b `unsafeShiftL` 1)
-{-# INLINE getOpenings #-}
-
-{-| Get the openings for a queen -}
-getOpeningsAsList ::
-    Int {-^ board size -} →
-    Word64 {-^ occupied positions -} →
-    [PositionAndBit] {-^ open positions and their corresponding bits as a list -}
-getOpeningsAsList size blocked
-    | blocked .&. mask == mask = []
-    | otherwise = go $ PositionAndBit 0 1
+    | otherwise = go (PositionAndBit 0 1)
   where
     mask = bit size - 1
     go !x@(PositionAndBit i b)
-     | i >= size          = []
-     | b .&. blocked == 0 = x:go next_x
+     | i >= size          = mzero
+     | b .&. blocked == 0 = return x `mplus` go next_x
      | otherwise          = go next_x
      where
        next_x = PositionAndBit (i+1) (b `unsafeShiftL` 1)
-{-# INLINE getOpeningsAsList #-}
+{-# INLINE getOpenings #-}
 
 {-| Get the symmetric openings for a queen -}
 getSymmetricOpenings ::
@@ -1232,15 +1212,15 @@ getSymmetricOpenings ::
     m PositionAndBitWithReflection {-^ open positions and their corresponding bits and reflections -}
 getSymmetricOpenings size blocked
     | blocked .&. mask == mask = mzero
-    | otherwise = go emptyForest (PositionAndBitWithReflection 0 1 end end_bit)
+    | otherwise = go (PositionAndBitWithReflection 0 1 end end_bit)
   where
     end = size-1
     end_bit = bit end
     mask = bit size - 1
-    go forest x@(PositionAndBitWithReflection i b ri rb)
-     | i >= ri            = consolidateForest forest
-     | b .&. blocked == 0 = go (addToForest (addToForest forest (return x)) (return $ PositionAndBitWithReflection ri rb i b)) next_bit
-     | otherwise          = go forest next_bit
+    go x@(PositionAndBitWithReflection i b ri rb)
+     | i >= ri            = mzero
+     | b .&. blocked == 0 = return x `mplus` return (PositionAndBitWithReflection ri rb i b) `mplus` go next_bit
+     | otherwise          = go next_bit
      where
        next_bit = PositionAndBitWithReflection (i+1) (b `unsafeShiftL` 1) (ri-1) (rb `unsafeShiftR` 1)
 {-# INLINE getSymmetricOpenings #-}
