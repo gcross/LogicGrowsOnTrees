@@ -68,6 +68,7 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , disableSupervisorDebugMode
     , enableSupervisorDebugMode
     , setSupervisorDebugMode
+    , setWorkloadBufferSize
     -- ** Inquiries
     , getCurrentProgress
     , getCurrentStatistics
@@ -77,7 +78,6 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , runSupervisor
     , runSupervisorStartingFrom
     -- ** Testing the supervisor
-    , killWorkloadBuffer
     , runUnrestrictedSupervisor
     , runUnrestrictedSupervisorStartingFrom
     ) where
@@ -360,6 +360,10 @@ changeSupervisorOccupiedStatus = wrapIntoSupervisorMonad . Implementation.change
 endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
 endSupervisorOccupied = changeSupervisorOccupiedStatus False
 
+{-| Sets the workload buffer size. -}
+setWorkloadBufferSize :: SupervisorMonadConstraint m ⇒ Int → SupervisorMonad exploration_mode worker_id m ()
+setWorkloadBufferSize = wrapIntoSupervisorMonad . Implementation.setWorkloadBufferSize
+
 ---------------------------------- Inquiries -----------------------------------
 
 {-| Gets the current progress of the system. -}
@@ -466,12 +470,6 @@ runSupervisorProgram program =
         UnrestrictedProgram run → run
 
 ---------------------------- Testing the supervisor ----------------------------
-
-{-| Kills the workload buffer;  the supervisor will no longer attempt to
-    steal workloads in advance of when they are needed.
- -}
-killWorkloadBuffer :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
-killWorkloadBuffer = wrapIntoSupervisorMonad Implementation.killWorkloadBuffer
 
 {- $testing
 The functions in this section are intended for testing purposes and normally

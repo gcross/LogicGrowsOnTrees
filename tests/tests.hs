@@ -1143,7 +1143,7 @@ tests = -- {{{
                     (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions $ do
                         enableSupervisorDebugMode
-                        killWorkloadBuffer
+                        setWorkloadBufferSize 0
                         addWorker ()
                         abortSupervisor
                     supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
@@ -1154,7 +1154,7 @@ tests = -- {{{
                     (maybe_workload_ref,actions) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions $ do
                         enableSupervisorDebugMode
-                        killWorkloadBuffer
+                        setWorkloadBufferSize 0
                         addWorker ()
                         removeWorker ()
                         abortSupervisor
@@ -1166,7 +1166,7 @@ tests = -- {{{
                     (maybe_workload_ref,actions) ← addAcceptMultipleWorkloadsAction bad_test_supervisor_actions
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions $ do
                         enableSupervisorDebugMode
-                        killWorkloadBuffer
+                        setWorkloadBufferSize 0
                         addWorker 1
                         removeWorker 1
                         addWorker 2
@@ -1180,7 +1180,7 @@ tests = -- {{{
                     (broadcast_ids_list_ref,actions2) ← addAppendWorkloadStealBroadcastIdsAction actions1
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions2 $ do
                         enableSupervisorDebugMode
-                        killWorkloadBuffer
+                        setWorkloadBufferSize 0
                         addWorker 1
                         addWorker 2
                         removeWorker 1
@@ -1210,7 +1210,7 @@ tests = -- {{{
                         (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
                         SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions_2 $ do
                             enableSupervisorDebugMode
-                            killWorkloadBuffer
+                            setWorkloadBufferSize 0
                             mapM_ addWorker worker_ids_to_add
                             mapM_ removeWorker worker_ids_to_remove
                             abortSupervisor
@@ -1270,7 +1270,7 @@ tests = -- {{{
                 (maybe_progress_ref,actions) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions $ do
                     enableSupervisorDebugMode
-                    killWorkloadBuffer
+                    setWorkloadBufferSize 0
                     performGlobalProgressUpdate
                     abortSupervisor
                 supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
@@ -1289,7 +1289,7 @@ tests = -- {{{
                     let actions4 = ignoreAcceptWorkloadAction $ actions3
                     let progress = Progress Unexplored (Sum 0)
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions4 $ do
-                        killWorkloadBuffer
+                        setWorkloadBufferSize 0
                         addWorker 0
                         forM_ (zip [0..] (tail active_workers)) $ \(prefix_count,worker_id) → do
                             addWorker worker_id
@@ -1313,7 +1313,7 @@ tests = -- {{{
                 let progress = Progress (ChoicePoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions3 $ do
                     enableSupervisorDebugMode
-                    killWorkloadBuffer
+                    setWorkloadBufferSize 0
                     addWorker ()
                     performGlobalProgressUpdate
                     receiveProgressUpdate () $ ProgressUpdate progress entire_workload
@@ -1330,7 +1330,7 @@ tests = -- {{{
                 let progress = Progress (ChoicePoint Unexplored Unexplored) (Sum 1)
                 SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions3 $ do
                     enableSupervisorDebugMode
-                    killWorkloadBuffer
+                    setWorkloadBufferSize 0
                     addWorker (1 :: Int)
                     addWorker (2 :: Int)
                     performGlobalProgressUpdate
@@ -1376,7 +1376,7 @@ tests = -- {{{
                 [testCase "finishes with Explored" $ do -- {{{
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
                         enableSupervisorDebugMode
-                        killWorkloadBuffer
+                        setWorkloadBufferSize 0
                         addWorker ()
                         receiveWorkerFinished () (Progress Explored Nothing)
                         error "Supervisor did not terminate"
@@ -1385,7 +1385,7 @@ tests = -- {{{
                 ,testCase "finishes with result" $ do -- {{{
                     SupervisorOutcome{..} ← runUnrestrictedSupervisor FirstMode ignore_supervisor_actions $ do
                         enableSupervisorDebugMode
-                        killWorkloadBuffer
+                        setWorkloadBufferSize 0
                         addWorker ()
                         receiveWorkerFinished () (Progress Explored (Just ()))
                         error "Supervisor did not terminate"

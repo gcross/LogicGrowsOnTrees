@@ -39,7 +39,6 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
-    , killWorkloadBuffer
     , liftContextToAbort
     , liftUserToAbort
     , localWithinAbort
@@ -53,6 +52,7 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
     , removeWorkerIfPresent
     , runSupervisorStartingFrom
     , setSupervisorDebugMode
+    , setWorkloadBufferSize
     , time_spent_in_supervisor_monad
     , tryGetWaitingWorker
     ) where -- }}}
@@ -252,7 +252,6 @@ data RunStatistics = -- {{{
     ,   runAvailableWorkloadStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the number of available workloads waiting for a worker -}
     ,   runInstantaneousWorkloadRequestRateStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous rate at which workloads were requested (using an exponentially decaying sum) -}
     ,   runInstantaneousWorkloadStealTimeStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous time needed for workloads to be stolen (using an exponentially decaying weighted average) -}
-    ,   runBufferSizeStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the size of the workload buffer -}
     } deriving (Eq,Show)
 -- }}}
 
@@ -332,13 +331,6 @@ data SupervisorConstants exploration_mode worker_id m = SupervisorConstants -- {
 $( makeLenses ''SupervisorConstants )
 -- }}}
 
-data WorkloadBufferSizeParameters = WorkloadBufferSizeParameters -- {{{
-    {   _minimum_size :: {-# UNPACK #-} !Int
-    ,   _scale_factor :: {-# UNPACK #-} !Int
-    } deriving (Eq,Show)
-$( makeLenses ''WorkloadBufferSizeParameters )
--- }}}
-
 data SupervisorState exploration_mode worker_id = -- {{{
     SupervisorState
     {   _waiting_workers_or_available_workloads :: !(Either (Map worker_id (Maybe UTCTime)) (Set Workload))
@@ -364,8 +356,6 @@ data SupervisorState exploration_mode worker_id = -- {{{
     ,   _instantaneous_workload_steal_time_statistics :: !(StepFunctionOfTime Float)
     ,   _time_spent_in_supervisor_monad :: !NominalDiffTime
     ,   _workload_buffer_size :: !Int
-    ,   _workload_buffer_size_parameters :: !WorkloadBufferSizeParameters
-    ,   _workload_buffer_size_statistics :: !(StepFunctionOfTime Int)
     ,   _number_of_calls :: !Int
     }
 $( makeLenses ''SupervisorState )
@@ -935,11 +925,6 @@ getCurrentStatistics = do
             runStartTime
             (use $ instantaneous_workload_steal_time . current_average_value)
             (use instantaneous_workload_steal_time_statistics)
-    runBufferSizeStatistics ←
-        extractFunctionOfTimeStatisticsWithFinalPoint
-            runStartTime
-            (use workload_buffer_size)
-            (use workload_buffer_size_statistics)
     return RunStatistics{..}
 -- }}}
 
@@ -993,12 +978,6 @@ initialStepFunctionForStartingTime = flip initialStepFunctionForStartingTimeAndV
 
 initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionOfTime α -- {{{
 initialStepFunctionForStartingTimeAndValue = StepFunctionOfTime .* initialFunctionForStartingTimeAndValue
--- }}}
-
-killWorkloadBuffer :: SupervisorMonadConstraint m ⇒ ContextMonad exploration_mode worker_id m () -- {{{
-killWorkloadBuffer = do
-    workload_buffer_size .= 0
-    workload_buffer_size_parameters .= WorkloadBufferSizeParameters 0 0
 -- }}}
 
 liftContextToAbort :: Monad m ⇒ ContextMonad exploration_mode worker_id m α → AbortMonad exploration_mode worker_id m α -- {{{
@@ -1336,8 +1315,6 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
             ,   _instantaneous_workload_steal_time_statistics = initialStepFunctionForStartingTime start_time
             ,   _time_spent_in_supervisor_monad = 0
             ,   _workload_buffer_size = 4
-            ,   _workload_buffer_size_parameters = WorkloadBufferSizeParameters 4 3
-            ,   _workload_buffer_size_statistics = initialStepFunctionForStartingTimeAndValue start_time 4
             ,   _number_of_calls = 0
             }
         )
@@ -1382,6 +1359,10 @@ sendWorkloadTo workload worker_id = do
 
 setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → ContextMonad exploration_mode worker_id m () -- {{{
 setSupervisorDebugMode = (debug_mode .=)
+-- }}}
+
+setWorkloadBufferSize :: SupervisorMonadConstraint m ⇒ Int → ContextMonad exploration_mode worker_id m () -- {{{
+setWorkloadBufferSize = (workload_buffer_size .=)
 -- }}}
 
 timePassedSince :: -- {{{
@@ -1440,25 +1421,6 @@ tryToObtainWorkloadFor is_new_worker worker_id =
       | is_new_worker = return Nothing
       | otherwise = Just <$> view current_time
 
--- }}}
-
-updateBuffer :: -- {{{
-    ( SupervisorMonadConstraint m'
-    , SupervisorFullConstraint worker_id m
-    ) ⇒ ContextMonad exploration_mode worker_id m ()
-updateBuffer = do
-    ratio ←
-        liftM2 (*)
-            (use instantaneous_workload_request_rate >>= computeInstantaneousRateFromDecayingSum)
-            (use $ instantaneous_workload_steal_time . current_average_value)
-    new_size ← uses workload_buffer_size_parameters $
-        liftA2 max
-            (^.minimum_size)
-            (ceiling . (* ratio) . fromIntegral . (^.scale_factor))
-    old_size ← workload_buffer_size <<.= new_size
-    when (new_size /= old_size) $ do
-        updateFunctionOfTimeUsingLens workload_buffer_size_statistics new_size
-        when (new_size > old_size) checkWhetherMoreStealsAreNeeded
 -- }}}
 
 updateCurrentProgress :: -- {{{
