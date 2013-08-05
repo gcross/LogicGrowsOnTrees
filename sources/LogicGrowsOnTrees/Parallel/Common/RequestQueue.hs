@@ -91,6 +91,8 @@ class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
     {-| Requests that a global progress update be performed, and invoke the given callback with the result;  see 'requestProgressUpdate' for the synchronous version. -}
     requestProgressUpdateAsync :: (ProgressFor (ExplorationModeFor m) → IO ()) → m ()
+    {-| Sets the size of the workload buffer. -}
+    setWorkloadBufferSize :: Int → m ()
 
 --------------------------------------------------------------------------------
 ------------------------------------- Types ------------------------------------
@@ -128,6 +130,7 @@ instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueue
         liftA2 (>>)
             (addProgressReceiver receiveUpdatedProgress)
             (enqueueRequest Supervisor.performGlobalProgressUpdate)
+    setWorkloadBufferSize size = ask >>= enqueueRequest (Supervisor.setWorkloadBufferSize size)
 
 --------------------------------------------------------------------------------
 ---------------------------------- Functions -----------------------------------

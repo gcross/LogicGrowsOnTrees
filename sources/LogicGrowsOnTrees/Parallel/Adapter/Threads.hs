@@ -31,6 +31,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , getNumberOfWorkersAsync
     , requestProgressUpdate
     , requestProgressUpdateAsync
+    , setWorkloadBufferSize
     -- * Outcome types
     , RunOutcome(..)
     , RunStatistics(..)

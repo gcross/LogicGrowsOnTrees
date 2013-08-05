@@ -174,6 +174,7 @@ data StatisticsConfiguration = StatisticsConfiguration
 
 data SupervisorConfiguration = SupervisorConfiguration
     {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
+    ,   maybe_workload_buffer_size_configuration :: Maybe Int
     ,   statistics_configuration :: StatisticsConfiguration
     } deriving (Eq,Show)
 
@@ -729,6 +730,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
     supervisor_configuration_term =
         SupervisorConfiguration
             <$> checkpoint_configuration_term
+            <*> maybe_workload_buffer_size_configuration_term
             <*> statistics_configuration_term
     initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} =
         updateGlobalLogger rootLoggerName (setLevel log_level)
@@ -837,6 +839,10 @@ statistics_configuration_term =
         <*> value (flag ((optInfo ["show-workload-steal-time"]) { optDoc ="This option will cause statistics about the (roughly) instantaneous amount of time that it took to steal a workload to be printed to standard error after the program terminates." }))
         )
 
+maybe_workload_buffer_size_configuration_term :: Term (Maybe Int)
+maybe_workload_buffer_size_configuration_term =
+    value (opt Nothing ((optInfo ["buffer-size"]) { optName = "SIZE", optDoc = "This option sets the size of the workload buffer, which contains stolen workloads that are held at the supervisor so that if a worker needs a new workload it can be given one immediately rather than having to wait for a new workload to be stolen.  This setting should be large enough that a request for a new workload can always be answered immediately using a workload from the buffer, which is roughly a function of the product of the number of workloads requested per second and the time needed to steal a new workload (both of which are server statistics than you can request to see upon completions).  If you are not having problems with scaling, then you can ignore this option (it defaults to 4)." }))
+
 makeSharedConfigurationTerm :: Term tree_configuration → Term (SharedConfiguration tree_configuration)
 makeSharedConfigurationTerm tree_configuration_term =
     SharedConfiguration
@@ -858,6 +864,7 @@ controllerLoop ::
     , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ SupervisorConfiguration → m ()
 controllerLoop SupervisorConfiguration{..} = do
+    maybe (return ()) setWorkloadBufferSize $ maybe_workload_buffer_size_configuration
     maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration
     case catMaybes
         [maybe_checkpoint_thread_id

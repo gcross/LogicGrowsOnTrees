@@ -85,7 +85,7 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Path
-import LogicGrowsOnTrees.Parallel.Common.RequestQueue
+import LogicGrowsOnTrees.Parallel.Common.RequestQueue hiding (setWorkloadBufferSize)
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
 import LogicGrowsOnTrees.Utils.PerfectTree
 import LogicGrowsOnTrees.Utils.WordSum
