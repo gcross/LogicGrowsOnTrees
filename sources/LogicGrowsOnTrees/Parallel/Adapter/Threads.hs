@@ -77,9 +77,9 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , runExplorer
     ) where
 
-import Control.Applicative (Applicative,liftA2)
+import Control.Applicative (Applicative,liftA3)
 import Control.Concurrent (getNumCapabilities,killThread)
-import Control.Monad (void)
+import Control.Monad (void,when)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict (get,modify)
@@ -90,6 +90,9 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
 import Data.Void (absurd)
 
+import GHC.Conc (setNumCapabilities)
+
+import System.Console.CmdTheLine (OptInfo(..),required,opt,optInfo)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
@@ -129,17 +132,32 @@ deriveLoggers "Logger" [DEBUG]
  -}
 driver :: Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
-    (shared_configuration,supervisor_configuration) ←
-        mainParser (liftA2 (,) shared_configuration_term supervisor_configuration_term) program_info
+    (shared_configuration,supervisor_configuration,number_of_threads) ←
+        mainParser (liftA3 (,,) shared_configuration_term supervisor_configuration_term number_of_threads_term) program_info
     initializeGlobalState shared_configuration
     starting_progress ← getStartingProgress shared_configuration supervisor_configuration
     runExplorer
         (constructExplorationMode shared_configuration)
          purity
          starting_progress
-        (changeNumberOfWorkersToMatchCapabilities >> constructController shared_configuration supervisor_configuration)
+        (do liftIO $ do
+                number_of_capabilities ← getNumCapabilities
+                when (number_of_capabilities < number_of_threads) $
+                    setNumCapabilities number_of_threads
+            changeNumberOfWorkersAsync
+                (const . return . fromIntegral $ number_of_threads)
+                (void . return)
+            constructController shared_configuration supervisor_configuration
+        )
         (constructTree shared_configuration)
      >>= notifyTerminated shared_configuration supervisor_configuration
+  where
+    number_of_threads_term = required (flip opt (
+        (optInfo ["n","number-of-threads"])
+        {   optName = "#"
+        ,   optDoc = "This *required* option specifies the number of worker threads to spawn."
+        }
+        ) Nothing )
 
 --------------------------------------------------------------------------------
 ---------------------------------- Controller ----------------------------------
