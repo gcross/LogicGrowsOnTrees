@@ -137,7 +137,7 @@ driver = Driver $ \DriverParameters{..} → do
         (constructExplorationMode shared_configuration)
          purity
          starting_progress
-        (changeNumberOfWorkersToMatchCapabilities >> constructManager shared_configuration supervisor_configuration)
+        (changeNumberOfWorkersToMatchCapabilities >> constructController shared_configuration supervisor_configuration)
         (constructTree shared_configuration)
      >>= notifyTerminated shared_configuration supervisor_configuration
 

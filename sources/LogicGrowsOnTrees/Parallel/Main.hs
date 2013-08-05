@@ -191,7 +191,7 @@ $( derive makeSerialize ''SharedConfiguration )
     function that is called to start the run with a set of parameters specified
     in 'DriverParameters'.
 
-    Note that the manager_monad type parameter is within an existential type;
+    Note that the controller_monad type parameter is within an existential type;
     this is because the user of the driver should not need to know what it is.
  -}
 data Driver
@@ -200,9 +200,9 @@ data Driver
     supervisor_configuration
     m n
     exploration_mode
-  = ∀ manager_monad.
-    ( RequestQueueMonad (manager_monad exploration_mode)
-    , ExplorationModeFor (manager_monad exploration_mode) ~ exploration_mode
+  = ∀ controller_monad.
+    ( RequestQueueMonad (controller_monad exploration_mode)
+    , ExplorationModeFor (controller_monad exploration_mode) ~ exploration_mode
     ) ⇒
     Driver (
         ( Serialize (ProgressFor exploration_mode)
@@ -213,7 +213,7 @@ data Driver
             supervisor_configuration
             m n
             exploration_mode
-            manager_monad
+            controller_monad
         → result_monad ()
     )
 
@@ -225,7 +225,7 @@ data DriverParameters
     supervisor_configuration
     m n
     exploration_mode
-    manager_monad =
+    controller_monad =
     DriverParameters
     {   {-| the mode of the exploration -}
         constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
@@ -245,8 +245,8 @@ data DriverParameters
     ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
         {-| in the supervisor process, respond to the termination of the run -}
     ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
-        {-| in the supervisor process, construct the manager that does things like periodic checkpointing -}
-    ,   constructManager :: shared_configuration → supervisor_configuration → manager_monad exploration_mode ()
+        {-| in the supervisor process, construct the controller that does things like periodic checkpointing -}
+    ,   constructController :: shared_configuration → supervisor_configuration → controller_monad exploration_mode ()
     }
 
 -------------------------------- Outcome types ---------------------------------
@@ -760,7 +760,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                     Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
                     Completed _ → deleteCheckpointFile
                     Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint
-    constructManager = const managerLoop
+    constructController = const controllerLoop
 
 ------------------------------ Utility functions -------------------------------
 
@@ -855,11 +855,11 @@ checkpointLoop CheckpointConfiguration{..} = forever $ do
   where
     delay = round $ checkpoint_interval * 1000000
 
-managerLoop ::
+controllerLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ SupervisorConfiguration → m ()
-managerLoop SupervisorConfiguration{..} = do
+controllerLoop SupervisorConfiguration{..} = do
     maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration
     case catMaybes
         [maybe_checkpoint_thread_id
