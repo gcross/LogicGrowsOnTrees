@@ -126,7 +126,7 @@ driver = Driver $ \DriverParameters{..} → do
         (curry $ uncurry getStartingProgress . second snd)
         (\shared_configuration (Word_ number_of_processes,supervisor_configuration) → do
             changeNumberOfWorkers (const $ return number_of_processes)
-            constructManager shared_configuration supervisor_configuration
+            constructController shared_configuration supervisor_configuration
         )
     >>=
     maybe (return ()) (notifyTerminated <$> fst . fst <*> snd . snd . fst <*> snd)
@@ -313,7 +313,7 @@ runExplorer
     initializeGlobalState
     constructTree
     getStartingProgress
-    constructManager
+    constructController
   = getArgs >>= \args →
     if args == sentinel
         then do
@@ -338,7 +338,7 @@ runExplorer
                     sentinel
                     (flip send shared_configuration)
                     starting_progress
-                    (constructManager shared_configuration supervisor_configuration)
+                    (constructController shared_configuration supervisor_configuration)
             return $ Just (configuration,termination_result)
   where
     sentinel = ["explorer","worker","bee"]
