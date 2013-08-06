@@ -555,6 +555,22 @@ Executable tutorial-11
     else
         GHC-Options: -threaded
 
+Executable tutorial-12
+    Main-is: tutorial-12.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        cmdtheline == 0.2.*
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
 Benchmark tree-versus-list-trivial-tree
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-trivial-tree.hs

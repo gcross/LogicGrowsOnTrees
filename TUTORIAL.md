@@ -1010,3 +1010,142 @@ to the worker processes.  The `driver` automates the mechanism for this.
 Finally, it is worth noting that all that it takes to use multiple processes
 instead of multiple threads is to install `LogicGrowsOnTrees-processes` and then
 replace "Threads" with "Processes" in the imports.
+
+For a slightly more sophisticated example, consider the following (see
+tutorial/tutorial-12.hs):
+
+```haskell
+import Control.Applicative (liftA2)
+import System.Console.CmdTheLine (PosInfo(..),TermInfo(..),defTI,pos,posInfo,required)
+
+import LogicGrowsOnTrees.Checkpoint (Progress(..))
+import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
+import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..),mainForExploreTreeUntilFoundUsingPush)
+import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
+
+import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
+
+main =
+    mainForExploreTreeUntilFoundUsingPush
+        (\(board_size,number_to_find) -> (>= number_to_find) . length)
+        driver
+        (liftA2 (,)
+            (required $
+                pos 0
+                    (Nothing :: Maybe Int)
+                    posInfo
+                      { posName = "BOARD_SIZE"
+                      , posDoc = "the size of the board"
+                      }
+            )
+            (required $
+                pos 1
+                    (Nothing :: Maybe Int)
+                    posInfo
+                      { posName = "#"
+                      , posDoc = "the number of solutions to find"
+                      }
+            )
+        )
+        (defTI
+            { termName = "tutorial-12"
+            , termDoc = "find some of the solutions to the n-queens problem for a given board size"
+            }
+        )
+        (\(board_size,number_to_find) (RunOutcome _ termination_reason) -> do
+            case termination_reason of
+                Aborted _ -> error "search aborted"
+                Completed (Left found) -> do
+                    putStrLn $ "For board size " ++ show board_size ++ ", only found " ++ show (length found) ++ "/" ++ show number_to_find ++ " solutions:"
+                    mapM_ print found
+                Completed (Right (Progress checkpoint found)) -> do
+                    putStrLn $ "Found all " ++ show number_to_find ++ " requested solutions for board size " ++ show board_size ++ ":"
+                    mapM_ print found
+                Failure _ message -> error $ "error: " ++ message
+        )
+        (fmap (:[]) . nqueensUsingBitsSolutions . fromIntegral . fst)
+```
+
+This differs from the previous example in two main respects: first, it prints
+out solutions rather than just their count, and second there is a second
+argument to the program that specifies how many should be found.
+
+To understand what is going on, let us first look at the third argument to
+mainForExploreTreeUntilFoundUsingPush:
+
+```haskell
+(liftA2 (,)
+    (required $
+        pos 0
+            (Nothing :: Maybe Int)
+            posInfo
+              { posName = "BOARD_SIZE"
+              , posDoc = "the size of the board"
+              }
+    )
+    (required $
+        pos 1
+            (Nothing :: Maybe Int)
+            posInfo
+              { posName = "#"
+              , posDoc = "the number of solutions to find"
+              }
+    )
+)
+```
+
+This argument essentially takes the argument from the previous example,
+duplicates it to create a second argument (the number of solutions to find), and
+then merges the two terms together in Applicative style via a call to `liftA2`.
+After parsing is complete, the result will be a pair where the first value is
+the board size and the second value is the number of solutions to find.
+
+Now we look a the first argument to mainForExploreTreeUntilFoundUsingPush:
+
+```haskell
+(\(board_size,number_to_find) -> (>= number_to_find) . length)
+```
+
+This argument is a function that takes the configuration information and returns
+a condition function that indicates where enough results have been accumulated.
+In this case, the condition function checks whether the number of solutions
+found (obtained via. `length1) is at least as many as were requested
+(`number_to_find`).  Not that `board_size` is ignored and would probably
+normally be replaced by `_` (or possibly by use of higher-order functions to
+make the expression entirely point-free);  we include it here purely for
+pedagogical reasons.
+
+Next we look at the last argument of mainForExploreTreeUntilFoundUsingPush:
+
+```haskell
+(fmap (:[]) . nqueensUsingBitsSolutions . fromIntegral . fst)
+```
+
+This is just like in the previous example, save that now at the end there is
+`fst` which takes the first value in the configuration pair (which is the board
+size) and instead of replacing each solution with a `WordSum` it turns it into
+a singleton list.
+
+Finally, we look at the second-to-last argument:
+
+```haskell
+(\(board_size,number_to_find) (RunOutcome _ termination_reason) -> do
+    case termination_reason of
+        Aborted _ -> error "search aborted"
+        Completed (Left found) -> do
+            putStrLn $ "For board size " ++ show board_size ++ ", only found " ++ show (length found) ++ "/" ++ show number_to_find ++ " solutions:"
+            mapM_ print found
+        Completed (Right (Progress checkpoint found)) -> do
+            putStrLn $ "Found all " ++ show number_to_find ++ " requested solutions for board size " ++ show board_size ++ ":"
+            mapM_ print found
+        Failure _ message -> error $ "error: " ++ message
+)
+```
+
+The difference compared to the previous example is that there are two cases for
+a `Completed` run.  In the first case, the run fully completed before it was
+able to find all of the requested number of solutions;  the solutions it did
+find are returned in a `Left` value.  In the second case, the run found all of
+the requested solutions and then stopped;  the result is a `Progress` value
+whose checkpoint value allows you to resume the search later to find more
+solutions if you wish and whose result value is the requested solutions.
