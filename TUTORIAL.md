@@ -982,7 +982,7 @@ This program simply calls `mainForExploreTree` with the following arguments:
     The first argument to this function is equal to the value supplied by the
     user for the first command line argument.
 
-    NOTE:  When Completed, any existing checkpoint file will be deleted after
+    NOTE:  When `Completed`, any existing checkpoint file will be deleted after
     you return.
 
 5. a function that constructs the logic program:
