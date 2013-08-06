@@ -483,7 +483,7 @@ Executable tutorial-7
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        transformers >= 0.3 && < 0.4
+        transformers >= 0.2 && < 0.4
     if flag(tutorial)
         Buildable: True
     else
@@ -499,7 +499,7 @@ Executable tutorial-8
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        transformers >= 0.3 && < 0.4
+        transformers >= 0.2 && < 0.4
     if flag(tutorial)
         Buildable: True
     else
