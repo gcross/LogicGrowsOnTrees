@@ -516,7 +516,7 @@ single argument which is a function that maps the current number of workers to
 an IO action whose result is the new number of workers;  this lets you do things
 like increasing the number of workers by one and setting the number of workers
 to a value that you need to query in the IO monad such as the number of
-capabilities;  the `void` at the begging just throws out the return value of
+capabilities;  the `void` at the beginning just throws out the return value of
 changeNumberOfWorkers, which is the new number of workers (as if you just
 increased it by 1 then you might want to know what the result was).
 
