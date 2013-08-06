@@ -101,31 +101,31 @@ following:
 
 1. First, it makes a non-deterministic choice for the color of the country:
 
-```haskell
-color <- between 1 number_of_colors
-```
+    ```haskell
+    color <- between 1 number_of_colors
+    ```
 
 2. Second, it checks that all other countries that have been colored and which
    are adjacent to the current country are a different color:
 
-```haskell
-forM_ coloring $ \(other_country, other_color) ->
-    when (country `isAdjacentTo` other_country) $
-        guard (color /= other_color)
-```
+    ```haskell
+    forM_ coloring $ \(other_country, other_color) ->
+        when (country `isAdjacentTo` other_country) $
+            guard (color /= other_color)
+    ```
 
-   The first line of this snippet is a standard construct for looping over a
-   list and executing an action for each element.  The second line checks to see
-   whether the current country in the loop is adjecent to the country we just
-   colored, and if so then the third line checks that the two adjacent countries
-   have different colors and fails if this is not the case.
+    The first line of this snippet is a standard construct for looping over a
+    list and executing an action for each element. The second line checks to see
+    whether the current country in the loop is adjecent to the country we just
+    colored, and if so then the third line checks that the two adjacent
+    countries have different colors and fails if this is not the case.
 
 3. Finally, it adds this country's color to the coloring and recursively calls
    itself with the next country:
 
-```haskell
-go (country-1) ((country,color):coloring)
-```
+    ```haskell
+    go (country-1) ((country,color):coloring)
+    ```
 
 When all countries have been colored --- that is, when the current country is 0
 --- then go returns.
@@ -219,32 +219,32 @@ it does the following:
    use the function allFrom (part of the LogicGrowsOnTrees module) to convert
    the list of available columns to a MonadPlus that generates it.
 
-```haskell
-column <- allFrom $ IntSet.toList available_columns
-```
+    ```haskell
+    column <- allFrom $ IntSet.toList available_columns
+    ```
 
 2. Next, we check if this choice of column conflicts with the positive and
    negative diagonals, and if so we backtrack and try a different column:
 
-```haskell
-let negative_diagonal = row + column
-guard $ IntSet.notMember negative_diagonal occupied_negative_diagonals
-let positive_diagonal = row - column
-guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
-```
+    ```haskell
+    let negative_diagonal = row + column
+    guard $ IntSet.notMember negative_diagonal occupied_negative_diagonals
+    let positive_diagonal = row - column
+    guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
+    ```
 
 3. Finally, we recursively call go for the next row with updated values for the
    updated available columns and occupied diagonals, as well as the chosen board
    position added to the (partial) solution:
 
-```haskell
-go (n-1)
-   (row+1)
-   (IntSet.delete column available_columns)
-   (IntSet.insert negative_diagonal occupied_negative_diagonals)
-   (IntSet.insert positive_diagonal occupied_positive_diagonals)
-   ((fromIntegral row,fromIntegral column):value)
-```
+    ```haskell
+    go (n-1)
+       (row+1)
+       (IntSet.delete column available_columns)
+       (IntSet.insert negative_diagonal occupied_negative_diagonals)
+       (IntSet.insert positive_diagonal occupied_positive_diagonals)
+       ((fromIntegral row,fromIntegral column):value)
+    ```
 
 When we are done, we reverse the solution as it currently has the last row
 first and the first row last.
@@ -292,13 +292,13 @@ Now in the function go we do the following:
    are either occupied or such that a queen placed there would conflict with
    another queen on the same diagonal:
 
-```haskell
-column <- allFrom . goGetOpenings 0 $
-    occupied_columns .|. 
-    occupied_negative_diagonals .|.
-    occupied_positive_diagonals
-let column_bit = bit (fromIntegral column)
-```
+    ```haskell
+    column <- allFrom . goGetOpenings 0 $
+        occupied_columns .|.
+        occupied_negative_diagonals .|.
+        occupied_positive_diagonals
+    let column_bit = bit (fromIntegral column)
+    ```
 
 2. Mark the column and diagonals as being occupied, and also shift the occupied
    diagonals so that they correspond with the columns in the next row.  That is,
@@ -307,14 +307,14 @@ let column_bit = bit (fromIntegral column)
    intersects with column i for a given row then it intersects with i-1 in the
    next row.  Finally, add the board position to the partial solution:
 
-```haskell
-go (n-1)
-   (row+1)
-   (occupied_columns .|. column_bit)
-   ((occupied_negative_diagonals .|. column_bit) `shiftR` 1)
-   ((occupied_positive_diagonals .|. column_bit) `shiftL` 1)
-   ((row,column):value)
-```
+    ```haskell
+    go (n-1)
+       (row+1)
+       (occupied_columns .|. column_bit)
+       ((occupied_negative_diagonals .|. column_bit) `shiftR` 1)
+       ((occupied_positive_diagonals .|. column_bit) `shiftL` 1)
+       ((row,column):value)
+   ```
 
 The new nested function getOpenings scans through the input bits and builds a
 list of columns where a queen may be placed without conflict.  If there are no
