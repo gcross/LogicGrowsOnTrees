@@ -1,5 +1,6 @@
 import Control.Monad.IO.Class (liftIO)
 import Data.Monoid (mempty)
+import GHC.Conc (setNumCapabilities)
 import System.Exit (exitFailure,exitSuccess)
 
 import LogicGrowsOnTrees.Checkpoint (Progress(..))
@@ -14,7 +15,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
-main = go mempty
+main = setNumCapabilities 2 >> go mempty
  where
   go progress@(Progress _ (WordSum count)) = do
     putStrLn $ "Counting... (starting with " ++ show count ++ " solutions); press <Enter> to abort"

@@ -472,6 +472,7 @@ following (see tutorial/tutorial-6.hs):
 
 ```haskell
 import Control.Monad (void)
+import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
@@ -483,6 +484,7 @@ import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main = do
+    setNumCapabilities 2
     RunOutcome statistics termination_reason <-
         exploreTree (void . changeNumberOfWorkers . const . return $ 2)
         .
@@ -496,11 +498,6 @@ main = do
         Completed (WordSum count) -> putStrLn $ "Found " ++ show count ++ " solutions."
         Failure progress message -> putStrLn $ "Failed: " ++ message
 ```
-
-(Note:  Although the above uses two threads, the two threads will not actually
-run in parallel unless you compile with the options "-threaded" to use the
-threaded run-time and then also run the program with "+RTS -N2" to tell the
-runtime (+RTS) that you want it to spawn two OS threads (-N2).)
 
 First, observe that exploreTree now has an additional argument:
 
@@ -520,7 +517,19 @@ capabilities;  the `void` at the beginning just throws out the return value of
 changeNumberOfWorkers, which is the new number of workers (as if you just
 increased it by 1 then you might want to know what the result was).
 
-Next, in the first line of the body of the main function, we have
+In order for the two worker threads to run in parallel, two things need to
+happen. First, you need to compile with the `-threaded` option, and second, you
+need to set the number of capabilities to 2 so that up to 2 threads can run in
+parallel, as is done in the first line of the body of `main`:
+
+```haskell
+setNumCapabilities 2
+```
+
+(Alternatively, you could also use the `+RTS -N#` command-line option to set the
+number of capabilities to #.)
+
+Now observe that in the first line of the body of the main function, we have
 
 ```haskell
 RunOutcome statistics termination_reason <-
@@ -584,6 +593,7 @@ of a non-trivial controller (see tutorial/tutorial-7.hs):
 ```haskell
 import Control.Monad.IO.Class (liftIO)
 import Data.Monoid (mempty)
+import GHC.Conc (setNumCapabilities)
 import System.Exit (exitFailure,exitSuccess)
 
 import LogicGrowsOnTrees.Checkpoint (Progress(..))
@@ -598,11 +608,11 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
-main = go mempty
+main = setNumCapabilities 2 >> go mempty
  where
   go progress@(Progress _ (WordSum count)) = do
     putStrLn $ "Counting... (starting with " ++ show count ++ " solutions); press <Enter> to abort"
-    RunOutcome _ termination_reason <-
+    RunOutcome statistics termination_reason <-
         exploreTreeStartingFrom
             progress
             (do _ <- changeNumberOfWorkers . const . return $ 2
@@ -651,7 +661,7 @@ and checkpoints --- and then finally it tells the supervisor to abort.
 Next, note that main function is a loop:
 
 ```haskell
-main = go mempty
+main = setNumCapabilities 2 >> go mempty
  where
   go progress@(Progress _ (WordSum count)) = do
     ...
@@ -680,6 +690,7 @@ For an example of a more useful controller, see the following
 ```haskell
 import Control.Monad (forever)
 import Control.Monad.IO.Class (liftIO)
+import GHC.Conc (setNumCapabilities)
 import System.IO (hFlush,stdout)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -692,6 +703,7 @@ import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main = do
+    setNumCapabilities 2
     RunOutcome _ termination_reason <-
         exploreTree (forever $
             liftIO (do
@@ -724,6 +736,7 @@ run.  The following code only looks for the first result (see tutorials/tutorial
 
 ```haskell
 import Control.Monad (void)
+import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
@@ -735,6 +748,7 @@ import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main = do
+    setNumCapabilities 2
     RunOutcome statistics termination_reason <-
         exploreTreeUntilFirst (void . changeNumberOfWorkers . const . return $ 2)
         .
@@ -767,6 +781,7 @@ tutorials/tutorial-10.hs):
 
 ```haskell
 import Control.Monad (void)
+import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
@@ -778,6 +793,7 @@ import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main = do
+    setNumCapabilities 2
     RunOutcome statistics termination_reason <-
         exploreTreeUntilFoundUsingPush
             ((>= 5) . length)

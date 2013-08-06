@@ -1,4 +1,5 @@
 import Control.Monad (void)
+import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
@@ -10,6 +11,7 @@ import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main = do
+    setNumCapabilities 2
     RunOutcome statistics termination_reason <-
         exploreTreeUntilFoundUsingPush
             ((>= 5) . length)
