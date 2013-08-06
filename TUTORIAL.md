@@ -833,3 +833,180 @@ controller periodically request progress updates. (Note that the
 that you can use to spawn another controller thread if this would make your life
 easier;  like the main controller thread it will be killed when the run is
 over.)
+
+
+Parallel using Main
+--------------------
+
+Threads is one of the *adapters* provided by LogicGrowsOnTrees and its siblings.
+Each of these adapters provides a way of adapting the supervisor/worker
+parallelization model to a particular means of running computations in parallel.
+The current adapters are as follows:
+
+* Threads
+
+    This adapter provides parallelism by spawning multiple threads; the number
+    of workers can be changed arbitrarily at runtime (though you need to make
+    sure that the number of capabilities is also high enough for all of them to
+    run in parallel). This back-end can be a bit slower than the others because
+    it is the only one that requires the threaded runtime, which adds additional
+    overhead.
+
+* Processes
+
+    This adapter privides parallelism by spawning a child process for each
+    worker;  the number of workers can be changed arbitrarily at runtime.
+
+    Install `LogicGrowsOnTrees-processes` to use this adapter.
+
+* Network
+
+    This adapter provides parallelism by allowing multiple workers to connect to
+    a supervisor over a network; the number of workers is then equal to the
+    number that are are connected to the supervisor. (It is possible for the
+    same process to be both a supervisor and one or more workers, though this is
+    only useful for testing.)
+
+    Install `LogicGrowsOnTrees-network` to use this adapter.
+
+* MPI
+
+    This adapter provides parallelism using the Message Passing Interface (MPI)
+    which is the standard communication system used in supercomputers, allowing
+    you to use a very large number of nodes in your run. One of the nodes (id 0)
+    will act entirely as the supervisor and the rest will act as workers.
+
+    Install `LogicGrowsOnTrees-MPI` to use this adapter;  note that you will
+    need to have an MPI implementation installed.
+
+All of these adapters provide low-level means of accessing their functionality
+directly if you wish (though they are much more complicated to use than the
+`exploreTree` functions in Threads) but there is also a universal high-level
+interface that works for *all* of the adapters, which we will not discuss.
+
+The Main module provides a framework that automates a lot of the work of setting
+up and running an exploration in parallel, and the interface it provides is
+compltely agnostic as to the adapter that is used;  the `mainFor*` functions
+all take an argument which is the `driver` of the adapter that you are using,
+and so switching to a different adapter is as simple as switching the driver
+argument.
+
+Here is an example of using the Main framework (see tutorial/tutorial-11.hs):
+
+```haskell
+import System.Console.CmdTheLine (PosInfo(..),TermInfo(..),defTI,pos,posInfo,required)
+
+import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
+import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..),mainForExploreTree)
+import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
+
+import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
+
+main =
+    mainForExploreTree
+        driver
+        (required $
+            pos 0
+                (Nothing :: Maybe Int)
+                posInfo
+                  { posName = "BOARD_SIZE"
+                  , posDoc = "the size of the board"
+                  }
+        )
+        (defTI
+            { termName = "tutorial-11"
+            , termDoc = "count the number of n-queens solutions for a given board size"
+            }
+        )
+        (\board_size (RunOutcome _ termination_reason) -> do
+            case termination_reason of
+                Aborted _ -> error "search aborted"
+                Completed (WordSum count) -> putStrLn $ show count ++ " solutions found for board size " ++ show board_size
+                Failure _ message -> error $ "error: " ++ message
+        )
+        (fmap (const $ WordSum 1) . nqueensUsingBitsSolutions . fromIntegral)
+```
+
+This program simply calls `mainForExploreTree` with the following arguments:
+
+1. the driver, which in this case was imported from Threads
+
+2.  a Term which specifies that our program takes a single required positional
+    argument for the board size:
+
+    ```haskell
+    (required $
+        pos 0
+            (Nothing :: Maybe Int)
+            posInfo
+              { posName = "BOARD_SIZE"
+              , posDoc = "the size of the board"
+              }
+    )
+    ```
+
+    Most of the functions above are part of Cmdtheline, an applicative
+    command-line parsing library.  This library was used because it makes it
+    easy to compose options together;  your argument value here will essentially
+    be merged in with the adapter options and some generic options (such as the
+    checkpointing options).
+
+    Specifically, `pos` here is a function that takes a position, a default
+    value, and a PosInfo data structure that contains information about the name
+    of the option and a brief description of it; the result is a value of type
+    `Arg (Maybe Int)`. `required` then takes this term and maps it to a value of
+    type `Term Int` with the property that an error is raised if this positional
+    argument is not present.
+
+3. a TermInfo which specifies the name and a short description of this program:
+    
+    ```haskell
+            (defTI
+                { termName = "tutorial-11"
+                , termDoc = "count the number of n-queens solutions for a given board size"
+                }
+            )
+    ```
+
+4. an action to be executed with the final result:
+
+    ```haskell
+    (\board_size (RunOutcome _ termination_reason) -> do
+        case termination_reason of
+            Aborted _ -> error "search aborted"
+            Completed (WordSum count) -> putStrLn $ show count ++ " solutions found for board size " ++ show board_size
+            Failure _ message -> error $ "error: " ++ message
+    )
+    ```
+
+    The first argument to this function is equal to the value supplied by the
+    user for the first command line argument.
+
+    NOTE:  When Completed, any existing checkpoint file will be deleted after
+    you return.
+
+5. a function that constructs the logic program:
+
+    ```haskell
+    (fmap (const $ WordSum 1) . nqueensUsingBitsSolutions . fromIntegral)
+    ```
+
+    The argument to this function is equal to the value supplied by the user
+    for the first command line argument.
+
+This program comes with an automatically generated help (via. `--help`), and it
+already includes options to specify the location of the checkpoint file (if it
+exists, then the run will be resumed from it), how often a checkpoint should be
+written, at what level to print logging messages, and whether various server
+statistics should be printed to the screen (possibly useful if your computation
+is not scaling well). Because we are using the Threads driver, there will be a
+"-n" option to set the number of threads.
+
+If this interface seems complex, it helps to understand that part of the reason
+for its complexity is that the supervisor and worker will in general be in
+different processes, which means that configuration information needs to be sent
+to the worker processes.  The `driver` automates the mechanism for this.
+
+Finally, it is worth noting that all that it takes to use multiple processes
+instead of multiple threads is to install `LogicGrowsOnTrees-processes` and then
+replace "Threads" with "Processes" in the imports.
