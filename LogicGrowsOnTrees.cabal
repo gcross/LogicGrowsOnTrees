@@ -176,9 +176,9 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["LogicGrowsOnTrees.Parallel.Common.Purity"] ] specifies the purity of the tree being explored
                      .
-                        ["LogicGrowsOnTrees.Parallel.Common.Supervisor"] common infrastructure for keeping track of the state of workers and of the system of a whole, including determining when the run is over
+                        ["LogicGrowsOnTrees.Parallel.Common.RequestQueue"] infrastructure for sending requests to the 'SupervisorMonad' from another thread
                      .
-                        ["LogicGrowsOnTrees.Parallel.Common.Supervisor.RequestQueue"] infrastructure for sending requests to the 'SupervisorMonad' from another thread
+                        ["LogicGrowsOnTrees.Parallel.Common.Supervisor"] common infrastructure for keeping track of the state of workers and of the system of a whole, including determining when the run is over
                      .
                         ["LogicGrowsOnTrees.Parallel.Common.Worker"] contains the workhorse of the parallel infrastructure:  a thread that steps through a given workload while continuously polling for requests
                      .
@@ -192,9 +192,9 @@ Description:         You can think of this package in two equvalent ways. First,
                      .
                         ["LogicGrowsOnTrees.Utils.IntSum"] a monoid that contains an 'Int' to be summed over
                      .
-                        ["LogicGrowsOnTrees.Utils.MonadPlusForest"] provides an algorithm for efficiently building up a tree from a sequence of leaves
-                     .
                         ["LogicGrowsOnTrees.Utils.PerfectTree"] provides algorithms for generating various simple trees
+                     .
+                        ["LogicGrowsOnTrees.Utils.Word_"] a newtype wrapper that provides an ArgVal instance for Word
                      .
                         ["LogicGrowsOnTrees.Utils.WordSum"] a monoid that contains an 'Word' to be summed over
                      .
