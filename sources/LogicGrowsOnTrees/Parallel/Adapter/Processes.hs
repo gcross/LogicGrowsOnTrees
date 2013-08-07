@@ -27,6 +27,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     , getNumberOfWorkersAsync
     , requestProgressUpdate
     , requestProgressUpdateAsync
+    , setWorkloadBufferSize
     -- * Outcome types
     , RunOutcome(..)
     , RunStatistics(..)
@@ -34,6 +35,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     -- * Generic runner functions
     -- $runners
     , runSupervisor
+    , runWorkerUsingHandles
     , runExplorer
     -- * Utility functions
     , getProgFilepath
