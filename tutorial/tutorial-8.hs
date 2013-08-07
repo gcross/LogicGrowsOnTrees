@@ -1,6 +1,5 @@
 import Control.Monad (forever)
 import Control.Monad.IO.Class (liftIO)
-import GHC.Conc (setNumCapabilities)
 import System.IO (hFlush,stdout)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -13,7 +12,6 @@ import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main = do
-    setNumCapabilities 2
     RunOutcome _ termination_reason <-
         exploreTree (forever $
             liftIO (do

@@ -690,7 +690,6 @@ For an example of a more useful controller, see the following
 ```haskell
 import Control.Monad (forever)
 import Control.Monad.IO.Class (liftIO)
-import GHC.Conc (setNumCapabilities)
 import System.IO (hFlush,stdout)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -703,7 +702,6 @@ import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main = do
-    setNumCapabilities 2
     RunOutcome _ termination_reason <-
         exploreTree (forever $
             liftIO (do
@@ -729,7 +727,10 @@ main = do
 ```
 
 Now the controller continually polls the user for the desired number of workers
-and then changes the number of workers to be equal to it.
+and then changes the number of workers to be equal to it. (Unfortunately,
+calling `setNumCapabilities` many times in succession can destabilize the GHC
+runtime so for this example you will need to use `+RTS -N#` on the command-line
+to set the number of capabilities.)
 
 As in the serial case, there are multiple modes in which an exploration can be
 run.  The following code only looks for the first result (see tutorials/tutorial-9.hs):
