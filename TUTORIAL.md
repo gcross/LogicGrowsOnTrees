@@ -850,9 +850,8 @@ The current adapters are as follows:
     This adapter provides parallelism by spawning multiple threads; the number
     of workers can be changed arbitrarily at runtime (though you need to make
     sure that the number of capabilities is also high enough for all of them to
-    run in parallel). This back-end can be a bit slower than the others because
-    it is the only one that requires the threaded runtime, which adds additional
-    overhead.
+    run in parallel). This back-end is the only one that requires the threaded
+    runtime, which adds additional overhead.
 
 * Processes
 
