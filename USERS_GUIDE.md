@@ -288,3 +288,181 @@ NOTE:  You should almost never resume from a checkpoint if you change the tree!
        tree that have been explored, then if you are lucky an exception will be
        thrown (if the branching structure has changed) and if you are unlucky
        then your results will be silently corrupted.
+
+
+Writing an adapter
+==================
+
+LogicGrowsOnTrees contains a lot of functionality that automates much of the
+generalizable work in writing an adapter.  Most of the modules providing this
+functionality live in LogicGrowsOnTrees.Parallel.Common, so henceforth any
+module brought up in discussion should be assumed to live there unless told
+otherwise.
+
+The main module is Supervisor, which is essentially a big state machine that
+keeps track of all the workers and the progress that has been made. Your adapter
+essentially acts as an intermediary between the supervisor and the workers,
+relaying information from the workers to the supervisors and vice versa. The way
+that this works is that you run your main loop in the SupervisorMonad; you
+communicate to the supervisor by calling the appropriate functions that act in
+this monad, and it communicates with you by calling functions from a set of
+callbacks that you give it when starting the run. So for example, at the
+beginning of the run you might call `addWorker` to tell the supervisor that a
+worker has just been added to the system, and immediately after this the
+supervisor will call your `sendWorkloadToWorker` callback function to ask you to
+send it the workload.
+
+If your adapter allows the number of workers to be adjusted arbitrarily at
+runtime, then you should look at the Workgroup modules which is designed
+exactly for that case.  You use it by calling `runWorkgroup` and passing in
+an argument containing callbacks that the Workgroup uses to do things like
+creating and destroying workers;  your argument is a function that takes a
+data structure that tells you how to send messages to the supervisor.  See the
+Threads and Processes adaptors for examples of how to do this.
+
+If you are not using Workgroup, then you will need to write the main loop
+yourself. Part of your job is to provide is for the controller to communicate to
+the Supervisor. Functionality for doing this is contained within the
+RequestQueue monad. You use it by first calling newRequestQueue to create a new
+request queue, and then processing any requests that are sent to it.
+
+Your main loop can work in one of two ways: it can either continuously poll for
+communications from workers, or it can block waiting for a communication. Each
+of these modes corresponds to a `SupervisorProgram`; the former is a
+`PollingProgram` and the latter is a `BlockingProgram`. You are expected to use
+one of these two patterns rather than writing your own loop explicitly because
+they allow the server to keep track of what fraction of the time it is busy; in
+principle you can always use `UnrestrictedProgram`, but in this case it is your
+responsibility to call `beginSupervisorOccupied` when the supervisor becomes
+active (i.e., after having waited for an incoming communication) and to call
+`endSupervisorOccupied` when the supervisor becomes inactive (i.e., as it waits
+for another incoming communication).
+
+If your main loop is polling, then you also need to regularly poll the request
+queue and send any request there to the supervisor. If your main loop is
+blocking, then an easy option is for you to use `requestQueueProgram` instead of
+your own loop and then to have incoming communication be handled by sending the
+actions you want to run in response to the request queue. (The owner of the
+request queue can send any SupervisorMonad action to it, but the controller has
+to go through the RequestQueueMonad which restricts the actions that they can
+run to a subset, i.e. so that the controller can't do things like adding and
+removing workers.)
+
+Your adapter also has responsibility for running the controller.  You should do
+this using the `forkControllerThread` function in RequestQueue, because this
+automatically adds the forked ThreadId to the list of controller thread ids.
+The controller is free to fork additional threads, and these will automatically
+be added to this list as well.  When you are done, you should kill all of these
+threads by calling `killControllerThreads`.
+
+This far we have only talked about the supervisor side, but you will also be
+responsible for starting and communicating with workers.  Most of the time you
+will probably want to use either the `runWorker` or `runWorkerUsingHandles`
+functions in the Process module, with the former taking actions that send and
+receive messages and the latter taking handles for sending and receiving.  (The
+latter calls the former.)  These functions provide a loop that listens for and
+responds to messages from the supervisor.  When a workload is received, they
+spawn a new worker thread;  the original thread then forwards requests for
+stolen workloads and progress updates to the worker thread.  When the worker
+thread completes, it sends the result back to the supervisor.
+
+The only adapter that does not use the Process module is the Threads adapter;
+this is because, unlike the other adapters, the worker threads in this case run
+in the same process as the supervisor.  Thus, it is possible to talk directly
+to the worker threads rather than creating an intermediary.  In such cases,
+you will want to use the Worker module;  call `forkWorkerThread` to spawn a
+worker thread, and then use `sendAbortRequest`, `sendProgressUpdateRequest`, and
+`sendWorkloadStealRequest` on the request queue returned by `forkWorkerThread`
+to communicate directly with the worker thread;  it is designed to poll the
+queue on a regular basis, though it does so merely by reading an `IORef` which
+might mean that it will take a while to receive the request as the CPU caches
+synchronize.  (This was a deliberate design decision to minimize the overhead
+of polling the request queue.)
+
+It is good practice to package the functionality offered by your adapter under a
+`runSupervisor` function to be run on the supervisor process, a `runWorker`
+function to be run on worker processes, and a `runExplorer` function that is run
+on *both* kinds of nodes and automatically figures out if it this node is a
+supervisor or a worker.
+
+Once you have written these functions, you should also write a driver for your
+adapter, which is a function that takes a `DriverParamters` and runs the
+exploration.  These parameters are as follows:
+
+* purity
+
+    This gives the purity of the tree being explored.
+
+* shared_configuration_term
+
+    This is a configuration term whose information is shared by both the
+    supervisor and the workers;  you may require that its type be serializable.
+
+* supervisor_configuration_term
+
+    This is a configuration term whose information is only available to the
+    supervisor.
+
+* program_info
+
+    This is a `TermInfo` that the users use to customize the name and brief
+    description of their program in the help screen.
+
+* initializeGlobalState
+
+    This function is called on *all* processes with the shared configuration;
+    its job is to initialize process-specific settings such as the logging
+    level.
+
+* constructExplorationMode
+
+    This function is called on both the supervisor and the workers;  it takes
+    the shared configuration and uses it to compute the exploration mode.  (This
+    is needed because the Found modes take a function argument which, for
+    examples, checks that enough results have been generated based, which will
+    in general be based on a command line argument.)
+
+* constructTree
+
+    This function is only called on workers; it takes the shared configuration
+    and constructs the tree to be explored.
+
+* getStartingProgress
+
+    This function is only called on the superivsor; it takes *both* the shared
+    and supervisor configuration and returns the starting progress of the run,
+    which could be the result of reading a checkpoint file.
+
+* notifyTerminated
+
+    This function is only called on the supervisor;  it takes *both* the shared
+    configuration and the supervisor configuration, and processes the outcome of
+    the run.
+
+* constructController
+
+    This function is only called on the supervisor;  it takes *both* the shared
+    configuration and the supervisor configuration, and constructs the
+    controller that you are expected to run on the supervisor.
+
+There is not a single pattern to follow from here because different adapters can
+be very different how they glue the various bits together. For example, the
+Processes adapter's driver looks at its command line arguments for a sentinel
+value in order to determine whether it is the supervisor or a worker, the
+Network adapter's driver uses uses the first command line argument to specify
+whether it is a supervisor or a worker that needs to connect over the network to
+a supervisor, and the MPI adapter checks whether it is process number 0, in
+which case it is the supervisor, or some other process number, in which case it
+is a worker.  In most cases you will likely need to send the shared
+configuration out to the workers.
+
+For examples of how to write your own adapter, your best bet is to look at the
+source code of the four adapters that have been provided.
+
+
+Conclusion
+==========
+
+This concludes the Users's Guide. For more information, see TUTORIAL.md for lots
+of examples of how to write logic programs and run them in parallel as well as
+the package haddock documentation for reference.
