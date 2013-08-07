@@ -65,8 +65,10 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , removeWorkerIfPresent
     -- ** Supervisor interaction
     , abortSupervisor
+    , beginSupervisorOccupied
     , disableSupervisorDebugMode
     , enableSupervisorDebugMode
+    , endSupervisorOccupied
     , setSupervisorDebugMode
     , setWorkloadBufferSize
     -- ** Inquiries
