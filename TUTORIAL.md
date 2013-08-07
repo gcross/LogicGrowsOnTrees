@@ -733,7 +733,8 @@ runtime so for this example you will need to use `+RTS -N#` on the command-line
 to set the number of capabilities.)
 
 As in the serial case, there are multiple modes in which an exploration can be
-run.  The following code only looks for the first result (see tutorials/tutorial-9.hs):
+run.  The following code only looks for the first result (see
+tutorials/tutorial-9.hs):
 
 ```haskell
 import Control.Monad (void)
