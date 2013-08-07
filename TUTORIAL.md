@@ -1150,3 +1150,12 @@ find are returned in a `Left` value.  In the second case, the run found all of
 the requested solutions and then stopped;  the result is a `Progress` value
 whose checkpoint value allows you to resume the search later to find more
 solutions if you wish and whose result value is the requested solutions.
+
+
+Conclusion
+==========
+
+At this point you have learned how to write logic programs and how to use this
+package to write them in parallel.  For more information, see USERS_GUIDE.md for
+a more detailed discussion of some aspects of this package as well as the
+package haddock documentation for reference.
