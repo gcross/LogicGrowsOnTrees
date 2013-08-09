@@ -333,13 +333,13 @@ exploreTree ::
 exploreTree v =
     case view (unwrapTreeT v) of
         Return !x → x
-        (Cache mx :>>= k) → maybe mempty (exploreTree . TreeT . k) (runIdentity mx)
-        (Choice left right :>>= k) →
+        Cache mx :>>= k → maybe mempty (exploreTree . TreeT . k) (runIdentity mx)
+        Choice left right :>>= k →
             let !x = exploreTree $ left >>= TreeT . k
                 !y = exploreTree $ right >>= TreeT . k
                 !xy = mappend x y
             in xy
-        (Null :>>= _) → mempty
+        Null :>>= _ → mempty
 {-# INLINEABLE exploreTree #-}
 
 {-| Explores all the nodes in an impure tree and sums over all the
@@ -352,12 +352,12 @@ exploreTreeT ::
 exploreTreeT = viewT . unwrapTreeT >=> \view →
     case view of
         Return !x → return x
-        (Cache mx :>>= k) → mx >>= maybe (return mempty) (exploreTreeT . TreeT . k)
-        (Choice left right :>>= k) →
+        Cache mx :>>= k → mx >>= maybe (return mempty) (exploreTreeT . TreeT . k)
+        Choice left right :>>= k →
             liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
                 (exploreTreeT $ left >>= TreeT . k)
                 (exploreTreeT $ right >>= TreeT . k)
-        (Null :>>= _) → return mempty
+        Null :>>= _ → return mempty
 {-# SPECIALIZE exploreTreeT :: Monoid α ⇒ Tree α → Identity α #-}
 {-# SPECIALIZE exploreTreeT :: Monoid α ⇒ TreeIO α → IO α #-}
 {-# INLINEABLE exploreTreeT #-}
@@ -370,11 +370,11 @@ exploreTreeTAndIgnoreResults ::
 exploreTreeTAndIgnoreResults = viewT . unwrapTreeT >=> \view →
     case view of
         Return _ → return ()
-        (Cache mx :>>= k) → mx >>= maybe (return ()) (exploreTreeTAndIgnoreResults . TreeT . k)
-        (Choice left right :>>= k) → do
+        Cache mx :>>= k → mx >>= maybe (return ()) (exploreTreeTAndIgnoreResults . TreeT . k)
+        Choice left right :>>= k → do
             exploreTreeTAndIgnoreResults $ left >>= TreeT . k
             exploreTreeTAndIgnoreResults $ right >>= TreeT . k
-        (Null :>>= _) → return ()
+        Null :>>= _ → return ()
 {-# SPECIALIZE exploreTreeTAndIgnoreResults :: Tree α → Identity () #-}
 {-# SPECIALIZE exploreTreeTAndIgnoreResults :: TreeIO α → IO () #-}
 {-# INLINEABLE exploreTreeTAndIgnoreResults #-}
@@ -389,12 +389,12 @@ exploreTreeUntilFirst ::
 exploreTreeUntilFirst v =
     case view (unwrapTreeT v) of
         Return x → Just x
-        (Cache mx :>>= k) → maybe Nothing (exploreTreeUntilFirst . TreeT . k) (runIdentity mx)
-        (Choice left right :>>= k) →
+        Cache mx :>>= k → maybe Nothing (exploreTreeUntilFirst . TreeT . k) (runIdentity mx)
+        Choice left right :>>= k →
             let x = exploreTreeUntilFirst $ left >>= TreeT . k
                 y = exploreTreeUntilFirst $ right >>= TreeT . k
             in if isJust x then x else y
-        (Null :>>= _) → Nothing
+        Null :>>= _ → Nothing
 {-# INLINEABLE exploreTreeUntilFirst #-}
 
 {-| Same as 'exploreTreeUntilFirst', but taking an impure tree instead
@@ -407,13 +407,13 @@ exploreTreeTUntilFirst ::
 exploreTreeTUntilFirst = viewT . unwrapTreeT >=> \view →
     case view of
         Return !x → return (Just x)
-        (Cache mx :>>= k) → mx >>= maybe (return Nothing) (exploreTreeTUntilFirst . TreeT . k)
-        (Choice left right :>>= k) → do
+        Cache mx :>>= k → mx >>= maybe (return Nothing) (exploreTreeTUntilFirst . TreeT . k)
+        Choice left right :>>= k → do
             x ← exploreTreeTUntilFirst $ left >>= TreeT . k
             if isJust x
                 then return x
                 else exploreTreeTUntilFirst $ right >>= TreeT . k
-        (Null :>>= _) → return Nothing
+        Null :>>= _ → return Nothing
 {-# SPECIALIZE exploreTreeTUntilFirst :: Tree α → Identity (Maybe α) #-}
 {-# SPECIALIZE exploreTreeTUntilFirst :: TreeIO α → IO (Maybe α) #-}
 {-# INLINEABLE exploreTreeTUntilFirst #-}
@@ -446,16 +446,16 @@ exploreTreeUntilFound ::
 exploreTreeUntilFound f v =
     case view (unwrapTreeT v) of
         Return x → (x,f x)
-        (Cache mx :>>= k) →
+        Cache mx :>>= k →
             maybe (mempty,False) (exploreTreeUntilFound f . TreeT . k)
             $
             runIdentity mx
-        (Choice left right :>>= k) →
+        Choice left right :>>= k →
             let x@(xr,xf) = exploreTreeUntilFound f $ left >>= TreeT . k
                 (yr,yf) = exploreTreeUntilFound f $ right >>= TreeT . k
                 zr = xr <> yr
             in if xf then x else (zr,yf || f zr)
-        (Null :>>= _) → (mempty,False)
+        Null :>>= _ → (mempty,False)
 
 {-| Same as 'exploreTreeUntilFound', but taking an impure tree instead of
     a pure tree.
@@ -473,11 +473,11 @@ exploreTreeTUntilFound ::
 exploreTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
     case view of
         Return x → return (x,f x)
-        (Cache mx :>>= k) →
+        Cache mx :>>= k →
             mx
             >>=
             maybe (return (mempty,False)) (exploreTreeTUntilFound f . TreeT . k)
-        (Choice left right :>>= k) → do
+        Choice left right :>>= k → do
             x@(xr,xf) ← exploreTreeTUntilFound f $ left >>= TreeT . k
             if xf
                 then return x
@@ -485,7 +485,7 @@ exploreTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
                     (yr,yf) ← exploreTreeTUntilFound f $ right >>= TreeT . k
                     let zr = xr <> yr
                     return (zr,yf || f zr)
-        (Null :>>= _) → return (mempty,False)
+        Null :>>= _ → return (mempty,False)
 
 ---------------------------------- Builders ------------------------------------
 

@@ -365,12 +365,12 @@ exploreTreeTWithLocationsStartingAt label =
     viewT . unwrapTreeT >=> \view →
     case view of
         Return x → return [Solution label x]
-        (Cache mx :>>= k) → mx >>= maybe (return []) (exploreTreeTWithLocationsStartingAt label . TreeT . k)
-        (Choice left right :>>= k) →
+        Cache mx :>>= k → mx >>= maybe (return []) (exploreTreeTWithLocationsStartingAt label . TreeT . k)
+        Choice left right :>>= k →
             liftM2 (++)
                 (exploreTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeT . k)
                 (exploreTreeTWithLocationsStartingAt (rightBranchOf label) $ right >>= TreeT . k)
-        (Null :>>= _) → return []
+        Null :>>= _ → return []
 
 {-| Explores all the nodes in a locatable tree until a result (i.e., a leaf) has
     been found; if a result has been found then it is returned wrapped in
