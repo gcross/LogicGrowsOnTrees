@@ -3,6 +3,7 @@
 {-# LANGUAGE DoRec #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -119,11 +120,13 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
         arb 0 = null
         arb 1 = frequency
             [(1,null)
-            ,(3,resultPlus)
+            ,(1,processPlus)
+            ,(2,resultPlus)
             ,(2,cachedPlus)
             ]
         arb n = frequency
-            [(2,liftM2 (>=>) resultPlus (arb n))
+            [(1,liftM2 (>=>) processPlus (arb n))
+            ,(2,liftM2 (>=>) resultPlus (arb n))
             ,(2,liftM2 (>=>) cachedPlus (arb n))
             ,(4, do left_size ← choose (0,n)
                     let right_size = n-left_size
@@ -143,6 +146,9 @@ instance (Arbitrary α, Monoid α, Serialize α, Functor m, Monad m) ⇒ Arbitra
         resultPlus, cachedPlus :: Monoid α ⇒ Gen (α → TreeT m α)
         resultPlus = (\x → flip fmap x . mappend) <$> result
         cachedPlus = (\x → flip fmap x . mappend) <$> cached
+
+        processPlus :: Gen (α → TreeT m α)
+        processPlus = return processPendingRequestsAndReturn
 -- }}}
 
 instance Monad m ⇒ Arbitrary (NullTreeT m) where -- {{{
@@ -376,6 +382,10 @@ shuffle items = do
     return (hd:tl)
 -- }}}
 
+processPendingRequestsAndReturn :: Monad m ⇒ α → TreeT m α -- {{{
+processPendingRequestsAndReturn x = processPendingRequests >> return x
+-- }}}
+
 randomCheckpointForTree :: Monoid α ⇒ Tree α → Gen (α,Checkpoint) -- {{{
 randomCheckpointForTree (TreeT tree) = go1 tree
   where
@@ -390,6 +400,7 @@ randomCheckpointForTree (TreeT tree) = go1 tree
         liftM2 (\(left_result,left) (right_result,right) →
             (left_result `mappend` right_result, ChoicePoint left right)
         ) (go1 (x >>= k)) (go1 (y >>= k))
+    go2 (view → ProcessPendingRequests :>>= k) = go2 (k ())
     go2 tree = elements [(exploreTree (TreeT tree),Explored),(mempty,Unexplored)]
 -- }}}
 
@@ -406,7 +417,8 @@ randomNullTreeWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1
     arb2 0 _ = return (const mzero)
     arb2 1 _ = return (const mzero)
     arb2 n intermediate = frequencyT
-        [(2,generateForNext return intermediate (arb1 n))
+        [(1,generateForNext processPendingRequestsAndReturn intermediate (arb1 n))
+        ,(2,generateForNext return intermediate (arb1 n))
         ,(2,generateForNext cache intermediate (arb1 n))
         ,(4, do left_size ← lift $ choose (0,n)
                 let right_size = n-left_size
@@ -444,6 +456,7 @@ randomPathForTree (TreeT tree) = go tree
         ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
         ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
         ]
+    go (view → ProcessPendingRequests :>>= k) = go (k ())
     go _ = return Seq.empty
 -- }}}
 
@@ -460,11 +473,13 @@ randomUniqueTreeWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (ar
     arb2 0 _ = return (const mzero)
     arb2 1 intermediate = frequencyT
         [(1,return (const mzero))
+        ,(1,generateUnique processPendingRequestsAndReturn intermediate)
         ,(3,generateUnique return intermediate)
         ,(2,generateUnique cache intermediate)
         ]
     arb2 n intermediate = frequencyT
-        [(2,generateForNext return intermediate (arb1 n))
+        [(1,generateForNext processPendingRequestsAndReturn intermediate (arb1 n))
+        ,(2,generateForNext return intermediate (arb1 n))
         ,(2,generateForNext cache intermediate (arb1 n))
         ,(4, do left_size ← lift $ choose (0,n)
                 let right_size = n-left_size
@@ -514,10 +529,12 @@ randomTreeWithoutCache = sized arb
                 [(2,result)
                 ,(1,bindToArbitrary n result)
                 ,(1,bindToArbitrary n null)
+                ,(1,bindToArbitrary n process)
                 ,(3,liftM2 mplus (arb (n `div` 2)) (arb (n `div` 2)))
                 ]
     null = return mzero
     result = fmap return arbitrary
+    process = fmap processPendingRequestsAndReturn arbitrary
 
     bindToArbitrary n = flip (liftM2 (>>)) (arb (n-1))
 -- }}}
@@ -1097,6 +1114,16 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testCase "processPendingRequests" $ do
+            mvar ← newEmptyMVar
+            RunOutcome{..} ← Threads.exploreTreeIO (void . Threads.changeNumberOfWorkers . const . return $ 2) $
+                let go = processPendingRequests >> liftIO (tryTakeMVar mvar) >>= maybe go return
+                in go `mplus` liftIO (putMVar mvar ())
+            case runTerminationReason of
+                Aborted _ → error "aborted"
+                Completed () → return ()
+                Failure _ message → error message
+            return ()
         ]
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Parallel.Common.RequestQueue" -- {{{

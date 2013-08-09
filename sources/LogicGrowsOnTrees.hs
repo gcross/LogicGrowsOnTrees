@@ -144,7 +144,8 @@ NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
  -}
 
 {-| The 'MonadExplorable' class provides caching functionality when exploring a
-    tree;  at minimum 'cacheMaybe' needs to be defined.
+    tree, as well as a way to give a worker a chance to process any pending
+    requests; at minimum 'cacheMaybe' needs to be defined.
  -}
 class MonadPlus m ⇒ MonadExplorable m where
     {-| Cache a value in case we explore this node again. -}
@@ -164,6 +165,21 @@ class MonadPlus m ⇒ MonadExplorable m where
         this method.
      -}
     cacheMaybe :: Serialize x ⇒ Maybe x → m x
+
+    {-| This function tells the worker to take a break to process any pending
+        requests; it does nothing if we are not in a parallel setting.
+
+        NOTE: You should normally never need to use this function as requests
+        are processed whenever a choice point, a cache point, mzero, or a leaf
+        in the decision tree has been encountered. However, if you have noticed
+        that workload steals are taking so long that as a result workers are
+        sitting idle for too big a fraction of the total time, and you can trace
+        this down to a computation that takes so much time that it almost never
+        gives the worker a chance to process requests, then can use this method
+        to ensure that requests are given a chance to be processed.
+     -}
+    processPendingRequests :: m ()
+    processPendingRequests = return ()
 
 {-| This class is like 'MonadExplorable', but it is designed to work with monad
     stacks;  at minimum 'runAndCacheMaybe' needs to be defined.
@@ -211,6 +227,7 @@ instance Eq α ⇒ Eq (Tree α) where
                     _ → False
             (Choice (TreeT ax) (TreeT bx) :>>= kx, Choice (TreeT ay) (TreeT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
+            (ProcessPendingRequests :>>= kx,ProcessPendingRequests :>>= ky) → e (kx ()) (ky ())
             _  → False
 
 {-| For this type, 'mplus' creates a branch node with a choice between two
@@ -258,6 +275,7 @@ instance Monad m ⇒ MonadExplorable (TreeT m) where
     cache = runAndCache . return
     cacheGuard = runAndCacheGuard . return
     cacheMaybe = runAndCacheMaybe . return
+    processPendingRequests = TreeT . singleton $ ProcessPendingRequests
 
 instance Monad m ⇒ MonadExplorableTrans (TreeT m) where
     type NestedMonad (TreeT m) = m
@@ -276,6 +294,7 @@ instance (MonadTrans t, MonadExplorable m, MonadPlus (t m)) ⇒ MonadExplorable 
     cache = lift . cache
     cacheGuard = lift . cacheGuard
     cacheMaybe = lift . cacheMaybe
+    processPendingRequests = lift processPendingRequests
 
 instance MonadTrans TreeT where
     lift = TreeT . lift
@@ -292,6 +311,7 @@ instance Show α ⇒ Show (Tree α) where
         s x = case view x of
             Return x → show x
             Null :>>= _ → "<NULL> >>= (...)"
+            ProcessPendingRequests :>>= k → "<PPR> >>= " ++ (s . k $ ())
             Cache c :>>= k →
                 case runIdentity c of
                     Nothing → "NullCache"
@@ -339,6 +359,7 @@ exploreTree v =
                 !xy = mappend x y
             in xy
         Null :>>= _ → mempty
+        ProcessPendingRequests :>>= k → exploreTree . TreeT . k $ ()
 {-# INLINEABLE exploreTree #-}
 
 {-| Explores all the nodes in an impure tree and sums over all the
@@ -357,6 +378,7 @@ exploreTreeT = viewT . unwrapTreeT >=> \view →
                 (exploreTreeT $ left >>= TreeT . k)
                 (exploreTreeT $ right >>= TreeT . k)
         Null :>>= _ → return mempty
+        ProcessPendingRequests :>>= k → exploreTreeT . TreeT . k $ ()
 {-# SPECIALIZE exploreTreeT :: Monoid α ⇒ Tree α → Identity α #-}
 {-# SPECIALIZE exploreTreeT :: Monoid α ⇒ TreeIO α → IO α #-}
 {-# INLINEABLE exploreTreeT #-}
@@ -374,6 +396,7 @@ exploreTreeTAndIgnoreResults = viewT . unwrapTreeT >=> \view →
             exploreTreeTAndIgnoreResults $ left >>= TreeT . k
             exploreTreeTAndIgnoreResults $ right >>= TreeT . k
         Null :>>= _ → return ()
+        ProcessPendingRequests :>>= k → exploreTreeTAndIgnoreResults . TreeT . k $ ()
 {-# SPECIALIZE exploreTreeTAndIgnoreResults :: Tree α → Identity () #-}
 {-# SPECIALIZE exploreTreeTAndIgnoreResults :: TreeIO α → IO () #-}
 {-# INLINEABLE exploreTreeTAndIgnoreResults #-}
@@ -394,6 +417,7 @@ exploreTreeUntilFirst v =
                 y = exploreTreeUntilFirst $ right >>= TreeT . k
             in if isJust x then x else y
         Null :>>= _ → Nothing
+        ProcessPendingRequests :>>= k → exploreTreeUntilFirst . TreeT . k $ ()
 {-# INLINEABLE exploreTreeUntilFirst #-}
 
 {-| Same as 'exploreTreeUntilFirst', but taking an impure tree instead
@@ -413,6 +437,7 @@ exploreTreeTUntilFirst = viewT . unwrapTreeT >=> \view →
                 then return x
                 else exploreTreeTUntilFirst $ right >>= TreeT . k
         Null :>>= _ → return Nothing
+        ProcessPendingRequests :>>= k → exploreTreeTUntilFirst . TreeT . k $ ()
 {-# SPECIALIZE exploreTreeTUntilFirst :: Tree α → Identity (Maybe α) #-}
 {-# SPECIALIZE exploreTreeTUntilFirst :: TreeIO α → IO (Maybe α) #-}
 {-# INLINEABLE exploreTreeTUntilFirst #-}
@@ -455,6 +480,7 @@ exploreTreeUntilFound f v =
                 zr = xr <> yr
             in if xf then x else (zr,yf || f zr)
         Null :>>= _ → (mempty,False)
+        ProcessPendingRequests :>>= k → exploreTreeUntilFound f . TreeT . k $ ()
 
 {-| Same as 'exploreTreeUntilFound', but taking an impure tree instead of
     a pure tree.
@@ -485,6 +511,7 @@ exploreTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
                     let zr = xr <> yr
                     return (zr,yf || f zr)
         Null :>>= _ → return (mempty,False)
+        ProcessPendingRequests :>>= k → exploreTreeTUntilFound f . TreeT . k $ ()
 
 ---------------------------------- Builders ------------------------------------
 
@@ -544,7 +571,7 @@ endowTree tree =
                 (endowTree left >>= endowTree . TreeT . k)
                 (endowTree right >>= endowTree . TreeT . k)
         Null :>>= _ → mzero
-
+        ProcessPendingRequests :>>= k → endowTree . TreeT . k $ ()
 
 --------------------------------------------------------------------------------
 ------------------------------- Implementation ---------------------------------
@@ -568,6 +595,7 @@ data TreeTInstruction m α where
     Cache :: Serialize α ⇒ m (Maybe α) → TreeTInstruction m α
     Choice :: TreeT m α → TreeT m α → TreeTInstruction m α
     Null :: TreeTInstruction m α
+    ProcessPendingRequests :: TreeTInstruction m ()
 
 {-| This is just a convenient alias for working with pure tree. -}
 type TreeInstruction = TreeTInstruction Identity

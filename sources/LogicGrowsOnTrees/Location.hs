@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -305,6 +306,7 @@ sendTreeTDownLocation (Location label) = go root
           (viewT . unwrapTreeT) tree >>= \view → case view of
             Return _ → throw TreeEndedBeforeEndOfWalk
             Null :>>= _ → throw TreeEndedBeforeEndOfWalk
+            ProcessPendingRequests :>>= k → go parent . TreeT . k $ ()
             Cache mx :>>= k → mx >>= maybe (throw TreeEndedBeforeEndOfWalk) (go parent . TreeT . k)
             Choice left right :>>= k →
                 if parent > label
@@ -371,6 +373,7 @@ exploreTreeTWithLocationsStartingAt label =
                 (exploreTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeT . k)
                 (exploreTreeTWithLocationsStartingAt (rightBranchOf label) $ right >>= TreeT . k)
         Null :>>= _ → return []
+        ProcessPendingRequests :>>= k → exploreTreeTWithLocationsStartingAt label . TreeT . k $ ()
 
 {-| Explores all the nodes in a locatable tree until a result (i.e., a leaf) has
     been found; if a result has been found then it is returned wrapped in

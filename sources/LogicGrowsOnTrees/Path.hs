@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
@@ -135,4 +136,6 @@ sendTreeTDownPath path tree =
                     sendTreeTDownPath tail (left >>= TreeT . k)
                 (Choice _ right :>>= k,ChoiceStep RightBranch) →
                     sendTreeTDownPath tail (right >>= TreeT . k)
+                (ProcessPendingRequests :>>= k,_) →
+                    sendTreeTDownPath path (TreeT . k $ ())
                 _ → throw PastTreeIsInconsistentWithPresentTree

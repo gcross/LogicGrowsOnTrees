@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -422,6 +423,7 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
     Unexplored → getView >>= \view → case view of
         Return x → return (Just x, moveUpContext)
         Null :>>= _ → return (Nothing, moveUpContext)
+        ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
         Cache mx :>>= k →
             mx >>= return . maybe
                 (Nothing, moveUpContext)
@@ -439,6 +441,7 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
                     (left >>= TreeT . k)
             )
     CachePoint cache rest_checkpoint → getView >>= \view → case view of
+        ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
         Cache _ :>>= k → return
             (Nothing, Just $
                 ExplorationTState
@@ -448,6 +451,7 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
             )
         _ → throw PastTreeIsInconsistentWithPresentTree
     ChoicePoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
+        ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
         Choice left right :>>= k → return
             (Nothing, Just $
                 ExplorationTState
