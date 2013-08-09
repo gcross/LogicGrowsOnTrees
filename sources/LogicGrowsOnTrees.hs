@@ -54,7 +54,6 @@ import Control.Monad.Trans.Maybe (MaybeT)
 import Data.Foldable (Foldable)
 import qualified Data.Foldable as Fold
 
-import Data.Array ((!),listArray)
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
 import Data.Monoid ((<>),Monoid(..))

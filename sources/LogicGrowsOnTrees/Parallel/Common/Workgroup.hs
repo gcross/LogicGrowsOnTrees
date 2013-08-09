@@ -26,7 +26,6 @@ module LogicGrowsOnTrees.Parallel.Common.Workgroup
     ) where
 
 import Control.Applicative (Applicative,(<$>))
-import Control.Concurrent (forkIO,killThread)
 import Control.Lens (makeLenses)
 import Control.Lens.Getter (use)
 import Control.Lens.Lens ((<<%=))

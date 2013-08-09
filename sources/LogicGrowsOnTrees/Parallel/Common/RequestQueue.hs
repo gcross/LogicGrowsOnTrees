@@ -67,7 +67,6 @@ import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition ((.*))
-import Data.Functor ((<$>))
 import Data.IORef (IORef,atomicModifyIORef,readIORef,newIORef)
 import Data.List (delete)
 

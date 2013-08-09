@@ -18,7 +18,6 @@ module LogicGrowsOnTrees.Path
     ) where
 
 import Control.Exception (Exception(),throw)
-import Control.Monad ((>=>))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
