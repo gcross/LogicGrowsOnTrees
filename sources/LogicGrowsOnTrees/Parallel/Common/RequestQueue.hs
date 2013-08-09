@@ -118,7 +118,7 @@ instance HasExplorationMode (RequestQueueReader exploration_mode worker_id m) wh
 
 instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader exploration_mode worker_id m) where
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
-    fork m = ask >>= flip forkControllerThread m
+    fork m = ask >>= flip forkControllerThread' m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
     getNumberOfWorkersAsync = (ask >>=) . getQuantityAsync Supervisor.getNumberOfWorkers
     requestProgressUpdateAsync receiveUpdatedProgress =
@@ -267,8 +267,15 @@ forkControllerThread ::
     MonadIO m' ⇒
     RequestQueue exploration_mode worker_id m {-^ the request queue -} →
     RequestQueueReader exploration_mode worker_id m () {-^ the controller thread -} →
+    m' ()
+forkControllerThread = liftM (const ()) .* forkControllerThread'
+
+forkControllerThread' ::
+    MonadIO m' ⇒
+    RequestQueue exploration_mode worker_id m →
+    RequestQueueReader exploration_mode worker_id m () →
     m' ThreadId
-forkControllerThread request_queue controller = liftIO $ do
+forkControllerThread' request_queue controller = liftIO $ do
     start_signal ← newEmptyMVar
     rec thread_id ←
             forkIO
