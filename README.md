@@ -64,6 +64,26 @@ this package, USERS_GUIDE.md for a more detailed explanation of how things work,
 and the haddock documentation available at:
 
 
+What platforms does it support:
+===============================
+
+The following packages have been tested on Linux, OSX, and Windows using the
+latest Haskell Platform (2013.2.0.0):
+
+* LogicGrowsOnTrees (+ threads adapter);
+
+* LogicGrowsOnTrees-processors; and
+
+* LogicGrowsOnTrees-network.
+
+LogicGrowsOnTrees-MPI has been tested as working on Linux and OSX using OpenMPI,
+and since it only uses very basic functionality (just sending, probing, and
+receiving messages) it should work on any MPI implementation.
+
+(I wasn't able to try Microsoft's MPI because it only let me install the 64-bit
+version (as my test machine was 64-bit) but Haskell on Windows is only 32-bit.)
+
+
 Why would I use this instead of Cloud Haskell?
 ==============================================
 
