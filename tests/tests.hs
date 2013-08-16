@@ -29,8 +29,6 @@ import Control.Monad.Trans.Writer
 
 import Data.Bits
 import Data.Composition ((.*))
-import qualified Data.DList as DList
-import Data.DList (DList)
 import Data.Function
 import Data.Functor.Identity
 import qualified Data.IntSet as IntSet
@@ -104,10 +102,6 @@ newtype NullTreeT m = NullTree { unwrapNullTree :: TreeT m IntSet }
 
 -- Arbitrary {{{
 instance Arbitrary BranchChoice where arbitrary = elements [LeftBranch,RightBranch]
-
-instance Arbitrary α ⇒ Arbitrary (DList α) where -- {{{
-    arbitrary = DList.fromList <$> listOf arbitrary
--- }}}
 
 instance Arbitrary UUID where -- {{{
     arbitrary = MkGen (\r _ -> fst (random r))
@@ -210,11 +204,6 @@ instance Serial IO (Set String) where series = Set.fromList <$> series
 -- }}}
 
 -- Serialize {{{
-instance Serialize α ⇒ Serialize (DList α) where -- {{{
-    put = Serialize.putListOf Serialize.put . DList.toList
-    get = DList.fromList <$> Serialize.getListOf Serialize.get
--- }}}
-
 instance Serialize UUID where -- {{{
     put = Serialize.putLazyByteString . UUID.toByteString
     get = fromJust . UUID.fromByteString <$> Serialize.getLazyByteString 16
@@ -226,16 +215,7 @@ instance Serialize (Sum Int) where -- {{{
 -- }}}
 -- }}} Serialize
 
--- Eq {{{
-instance Eq α ⇒ Eq (DList α) where -- {{{
-    (==) = (==) `on` DList.toList
--- }}}
--- }}}
-
 -- Show {{{
-instance Show α ⇒ Show (DList α) where -- {{{
-    show = ("DList.fromList " ++) . show . DList.toList
--- }}}
 instance Show UniqueTree where show = show . unwrapUniqueTree
 -- }}}
 -- }}}
