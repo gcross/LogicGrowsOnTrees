@@ -205,18 +205,18 @@ nqueensUsingSetsSolutions n =
            ((fromIntegral row,fromIntegral column):value)
 ```
 
-(The use of fromIntegral comes from the fact that the input board size and
-output board positions are naturally Words as they cannot be negative but the
-IntSet type only stores Ints, which means that we need to work internally using
-Int and use fromIntegral to convert from the input Word and to the output
-Words.)
+(The use of `fromIntegral` comes from the fact that the input board size and
+output board positions are naturally `Words` as they cannot be negative but the
+`IntSet` type only stores `Int`s, which means that we need to work internally
+using `Int` and use `fromIntegral` to convert from the input `Word` and to the
+output `Word`s.)
 
 The function go is where most of the work happens.  For each row in the board,
 it does the following:
 
 1. First, make a non-deterministic choice from the available columns;  here we
-   use the function allFrom (part of the LogicGrowsOnTrees module) to convert
-   the list of available columns to a MonadPlus that generates it.
+   use the function `allFrom` (part of the `LogicGrowsOnTrees` module) to
+   convert the list of available columns to a `MonadPlus` that generates it.
 
     ```haskell
     column <- allFrom $ IntSet.toList available_columns
@@ -232,9 +232,9 @@ it does the following:
     guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
     ```
 
-3. Finally, we recursively call go for the next row with updated values for the
-   updated available columns and occupied diagonals, as well as the chosen board
-   position added to the (partial) solution:
+3. Finally, we recursively call `go` for the next row with updated values for
+   the updated available columns and occupied diagonals, as well as the chosen
+   board position added to the (partial) solution:
 
     ```haskell
     go (n-1)
@@ -248,9 +248,9 @@ it does the following:
 When we are done, we reverse the solution as it currently has the last row
 first and the first row last.
 
-While IntSet is very efficient, even more efficient is to use a bit field for a
-set --- i.e., such that bits that are 1 correspond to being occupied and those
-that are 0 correspond to being available.  A solution using this approach is as
+While `IntSet` is very efficient, even more efficient is to use a bit field for
+a set --- i.e., such that bits that are 1 correspond to being occupied and those
+that are 0 correspond to being available. A solution using this approach is as
 follows:
 
 ```haskell
@@ -300,11 +300,12 @@ Now in the function go we do the following:
     ```
 
 2. Mark the column and diagonals as being occupied, and also shift the occupied
-   diagonals so that they correspond with the columns in the next row.  That is,
-   if a given positive diagonal intersects with column i for a given row then it
-   intersects with column i+1 in the next row, and if a given negative diagonal
-   intersects with column i for a given row then it intersects with i-1 in the
-   next row.  Finally, add the board position to the partial solution:
+   diagonals so that they correspond with the columns in the next row. That is,
+   if a given positive diagonal intersects with column i`` for a given row then
+   it intersects with column `i+1` in the next row, and if a given negative
+   diagonal intersects with column `i` for a given row then it intersects with
+   `i-1` in the next row. Finally, add the board position to the partial
+   solution:
 
     ```haskell
     go (n-1)
@@ -315,13 +316,13 @@ Now in the function go we do the following:
        ((row,column):value)
    ```
 
-The new nested function getOpenings scans through the input bits and builds a
+The new nested function `getOpenings` scans through the input bits and builds a
 list of columns where a queen may be placed without conflict.  If there are no
 such columns, then the list will be empty and the code will backtrack.
 
 It is possible to use symmetry breaking gain a significant speed-up, but the
 solution I came up with that does this ended up being quite complicated.  You
-can see it for yourself in the LogicGrowsOnTrees.Examples.Queens.Advanced
+can see it for yourself in the `LogicGrowsOnTrees.Examples.Queens.Advanced`
 module.
 
 
