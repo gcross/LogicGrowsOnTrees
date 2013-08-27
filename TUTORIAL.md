@@ -84,20 +84,20 @@ generates solutions to this problem is as follows:
 ```haskell
 coloringSolutions :: MonadPlus m => Word -> Word -> (Word -> Word -> Bool) -> m [(Word,Word)]
 coloringSolutions number_of_colors number_of_countries isAdjacentTo =
-    go number_of_countries []
+    foldM addCountryToColoring [] [1..number_of_countries]
   where
-    go 0 coloring = return coloring
-    go country coloring = do
+    addCountryToColoring coloring country = do
         color <- between 1 number_of_colors
         forM_ coloring $ \(other_country, other_color) ->
             when (country `isAdjacentTo` other_country) $
                 guard (color /= other_color)
-        go (country-1) ((country,color):coloring)
+        return $ (country,color):coloring
 ```
 
-The meat of this function is in the nested function `go`. For each country,
-starting from the last country and ending at country `1`, the function go does
-the following:
+The way that this function works is that it calls `foldM` (in `Control.Monad`)
+which in turn calls `addCountryToColoring` once for each country (i.e., it
+*folds* over the list `[1..number_of_countries]`), carrying along the current
+coloring. The function `addCountryToColoring` does the following:
 
 1. First, it makes a non-deterministic choice for the color of the country:
 
@@ -114,55 +114,54 @@ the following:
             guard (color /= other_color)
     ```
 
-    The first line of this snippet is a standard construct for looping over a
-    list and executing an action for each element. The second line checks to see
-    whether the current country in the loop is adjecent to the country we just
-    colored, and if so then the third line checks that the two adjacent
-    countries have different colors and fails if this is not the case.
+    The first line of this snippet loops over the current coloring. The second
+    line checks to see whether the current country (in the loop) is adjacent to
+    the country we just colored, and if so then the third line checks that the
+    two adjacent countries have different colors and fails if this is not the
+    case.
 
-3. Finally, it adds this country's color to the coloring and recursively calls
-   itself with the next country:
+3. Finally, it adds this country's color to the coloring, and returns the
+   updated coloring (which will then be passed to `addCountryToColoring` at the
+   next call, if any).
 
     ```haskell
-    go (country-1) ((country,color):coloring)
+    return $ (country,color):coloring
     ```
-
-When all countries have been colored --- that is, when the current country is 0
---- then go returns.
 
 A major inefficiency in the code above is that a large number of the solutions
 generated are equivalent in the sense that they only differ by a permutation of
 the colors and the selection of the colors used (when this is less than the
-total number of colors). In particular, if all n colors are used in a given
-solution then there are n! equivalent solutions, if n-1 of the n colors are used
-then there are n!/2 equivalent solutions, etc; in general if m colors are used
-out of n for a given solution then there are n!/(n-m)! equivalent solutions.
+total number of colors). In particular, if all `n` colors are used in a given
+solution then there are `n!` equivalent solutions, if `n-1` of the `n` colors
+are used then there are `n!/2` equivalent solutions, etc; in general if `m`
+colors are used out of `n` for a given solution then there are `n!/(n-m)!`
+equivalent solutions.
 
 The solution to this is a trick I like to call "symmetry breaking", where you
-a symmetry (in this case, the fact that permuting the colors and/or changing the
-choice of colors results in an equivalent solution) and factor it out by forcing
-a particular ordering.  The following code does this:
+take a symmetry (in this case, the fact that permuting the colors and/or
+changing the choice of colors results in an equivalent solution) and factor it
+out by forcing a particular ordering. The following code does this:
 
 ```haskell
 coloringUniqueSolutions number_of_colors number_of_countries isAdjacentTo =
-    go 0 number_of_countries []
+    liftM snd $ foldM addCountryToColoring (0,[]) [1..number_of_countries]
   where
-    go _ 0 coloring = return coloring
-    go number_of_colors_used country coloring = do
+    addCountryToColoring (number_of_colors_used,coloring) country = do
         color <- between 1 ((number_of_colors_used + 1) `min` number_of_colors)
         forM_ coloring $ \(other_country, other_color) ->
             when (country `isAdjacentTo` other_country) $
                 guard (color /= other_color)
-        go (number_of_colors_used `max` color) (country-1) ((country,color):coloring)
+        return (number_of_colors_used `max` color,(country,color):coloring)
 ```
 
-The above is a modified version of coloringSolutions where we *force* the first
-color chosen to be 1, the second color chosen (if not the same as the first) to
-be 2, and so on. Specifically, we keep track of the number of colors used so
-far, and when the next color is chosen we restrict ourselves to these colors
-plus the next greatest color if we have not already used all the available
-colors; if our choice involves a new color then we bump up the number of colors
-used for the next recursive call to go, otherwise we use the same set of colors.
+The above is a modified version of `coloringSolutions` where we *force* the
+first color chosen to be 1, the second color chosen (if not the same as the
+first) to be 2, and so on. Specifically, we keep track of the number of colors
+used so far, and when the next color is chosen we restrict ourselves to these
+colors plus the next greatest color if we have not already used all the
+available colors; if our choice involves a new color then we bump up the number
+of colors used for the next call to `addCountryToColoring`, otherwise we use the
+same set of colors.
 
 
 N-Queens Problem
