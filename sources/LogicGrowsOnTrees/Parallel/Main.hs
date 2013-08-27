@@ -748,19 +748,22 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
       where
         initial_progress = initialProgress . constructExplorationMode $ shared_configuration
     notifyTerminated SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} =
-        do showStatistics statistics_configuration runStatistics
-           notifyTerminated_ tree_configuration run_outcome
-        `finally`
         case maybe_checkpoint_configuration of
-            Nothing → return ()
+            Nothing → doEndOfRun
             Just CheckpointConfiguration{checkpoint_path} →
-                let deleteCheckpointFile = do
-                        noticeM "Deleting any remaining checkpoint file"
-                        removeFileIfExists checkpoint_path
-                in case runTerminationReason of
+                do doEndOfRun
+                   noticeM "Deleting any remaining checkpoint file"
+                   removeFileIfExists checkpoint_path
+                `finally`
+                case runTerminationReason of
                     Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
-                    Completed _ → deleteCheckpointFile
                     Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint
+                    _ → return ()
+      where
+        doEndOfRun = do
+            showStatistics statistics_configuration runStatistics
+            notifyTerminated_ tree_configuration run_outcome
+
     constructController = const controllerLoop
 
 ------------------------------ Utility functions -------------------------------
