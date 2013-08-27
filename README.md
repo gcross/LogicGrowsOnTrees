@@ -59,10 +59,10 @@ earlier parts of the solution.
 Where can I learn more about this?
 ==================================
 
-Read TUTORIAL.md for a tutorial of how to write and run logic programs using
-this package, USERS_GUIDE.md for a more detailed explanation of how things work,
-and the haddock documentation available at:
-
+Read [TUTORIAL.md](TUTORIAL.md) for a tutorial of how to write and run logic
+programs using this package, [USERS_GUIDE.md](USERS_GUIDE.md) for a more
+detailed explanation of how things work, and the haddock documentation available
+at:
 
 What platforms does it support:
 ===============================
