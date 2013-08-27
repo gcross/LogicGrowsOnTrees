@@ -1,8 +1,8 @@
 This file contains a tutorial for using this package. The first part explains
-through examples how to do logic programming in Haskell using MonadPlus. The
-second part explains how to take a logic program in the form of a Tree (which is
-an instance of MonadPlus) and use the infrastructure in this package to run it
-in parallel.
+through examples how to do logic programming in Haskell using `MonadPlus`. The
+second part explains how to take a logic program in the form of a `Tree` (which
+is an instance of `MonadPlus`) and use the infrastructure in this package to run
+it in parallel.
 
 
 Logic programming
@@ -31,24 +31,24 @@ pairs max_x max_y = do
 
 This program generates all pairs of integers within the given ranges such that
 the first element of the pair is less than the second element of the pair. The
-first line in the pairs function body,
+first line in the body of `pairs`,
 
 ```haskell
 x <- between 1 max_x
 ```
 
-makes a non-deterministic choice for x that is between 1 and max_x (inclusive),
-and likewise for y; the between function is part of the LogicGrowsOnTrees
-module.  The third line in the function body is a guard that succeeds if x < y
-and fails otherwise;  failure results in backtracking to try another choice of
-x and/or y.
+makes a non-deterministic choice for `x` that is between `1` and `max_x`
+(inclusive), and likewise for `y`; the `between` function is part of the
+`LogicGrowsOnTrees` module. The third line in the function body is a guard that
+succeeds if `x < y` and fails otherwise; failure results in backtracking to try
+another choice of `x` and/or `y`.
 
-pairs can return a value that is an instance of an arbitrary type --- that is,
-one the caller can choose --- that is an instance of MonadPlus.  For example,
-if let you let m be Maybe then pairs will return either nothing if no choices
-of x and y satisfy the guard and otherwise it will return a Just value with the
-first found solution.  If you let m be the list type then the function will
-return the list of all solutions.
+`pairs` can return a value that is an instance of an arbitrary type --- that is,
+one the caller can choose --- that is an instance of `MonadPlus`. For example,
+if let you let `m` be `Maybe` then `pairs` will return either nothing if no
+choices of `x` and `y` satisfy the guard and otherwise it will return a `Just`
+value with the first found solution. If you let `m` be the List type then the
+function will return the list of all solutions.
 
 This function illustrates the basic functionality but it is not a good example
 of how you would actually generate such pairs because a better implementation is
@@ -61,24 +61,24 @@ pairs max_x max_y = do
     return (x,y)
 ```
 
-This is more efficient because it restricts the choice of y to only those values
-that will satisfy the constraint. This is actually an important optimization
-that one should always try to make when working on non-trivial problems: when
-possible, one should enforce a constraint by reducing the set of available
-choices to those that meet the constraint rather than by generating a larger set
-of choices and then applying a filter to eliminate those that don't meet the
-constraint.
+This is more efficient because it restricts the choice of `y` to only those
+values that will satisfy the constraint. This is actually an important
+optimization that one should always try to make when working on non-trivial
+problems: when possible, one should enforce a constraint by reducing the set of
+available choices to those that meet the constraint rather than by generating a
+larger set of choices and then applying a filter to eliminate those that don't
+meet the constraint.
 
 
 Map Coloring
 ------------
 
-For our next example, we consider the problem of coloring a map.  That is, we
-are given a list of countries, a relation that tells us which are adjacent, and
-a list of colors, and our goal is to find a way to choose a color for each
-country such that no two adjacent countries have the same color.  To keep things
-simple, we will assume that the colors are numbered from 1 to number_of_colors
-and the countries are numbered from 1 to number_of_countries.  A function that
+For our next example, we consider the problem of coloring a map. That is, we are
+given a list of countries, a relation that tells us which are adjacent, and a
+list of colors, and our goal is to find a way to choose a color for each country
+such that no two adjacent countries have the same color. To keep things simple,
+we will assume that the colors are numbered from `1` to `number_of_colors` and
+the countries are numbered from `1` to `number_of_countries`. A function that
 generates solutions to this problem is as follows:
 
 ```haskell
@@ -95,9 +95,9 @@ coloringSolutions number_of_colors number_of_countries isAdjacentTo =
         go (country-1) ((country,color):coloring)
 ```
 
-The meat of this function is in the nested function go.  For each country,
-starting from the last country and ending at country 1, the function go does the
-following:
+The meat of this function is in the nested function `go`. For each country,
+starting from the last country and ending at country `1`, the function go does
+the following:
 
 1. First, it makes a non-deterministic choice for the color of the country:
 
