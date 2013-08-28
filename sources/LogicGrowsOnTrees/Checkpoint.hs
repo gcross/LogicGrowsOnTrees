@@ -10,9 +10,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 {-| This module contains the infrastructure used to maintain a checkpoint during
-    a tree exploration so that if the exploration is interrupted one can start
-    immediately from where one had been rather than having to start over from
-    scratch.
+    a tree exploration.
  -}
 module LogicGrowsOnTrees.Checkpoint
     (
@@ -126,7 +124,7 @@ simplifyCheckpointRoot checkpoint = checkpoint
 
 {-| The 'Monoid' instance is designed to take checkpoints from two different
     explorations of a given tree and merge them together to obtain a
-    checkpoint that indicates *all* of the areas that have been explored by
+    checkpoint that indicates /all/ of the areas that have been explored by
     anyone so far. For example, if the two checkpoints are @ChoicePoint Explored
     Unexplored@ and @ChoicePoint Unexplored (ChoicePoint Explored Unexplored)@
     then the result will be @ChoicePoint Explored (ChoicePoint Explored
@@ -170,27 +168,25 @@ instance Functor Progress where
 
 {- $cursors
 The types in this subsection are essentially two kinds of zippers for the
-'Checkpoint' type.  Put another way, as we explore a tree they represent where
-we are and how how to backtrack and explore other branches in tree.
-
-The difference between the two types that do this is that, at each branch,
-'Context' keeps around the subtree for the other branch whereas
+'Checkpoint' type; as we explore a tree they represent where we are and how how
+to backtrack. The difference between the two types that do this is that, at each
+branch, 'Context' keeps around the subtree for the other branch whereas
 'CheckpointCursor' does not. The reason for there being two different types is
 workload stealing; specifically, when a branch has been stolen from us we want
-to forget about its subtree because we are no longer going to explore
-that branch ourselves; thus, workload stealing converts 'ContextStep's to
+to forget about its subtree because we are no longer going to explore that
+branch ourselves; thus, workload stealing converts 'ContextStep's to
 'CheckpointDifferential's. Put another way, as a worker (implemented in
-"LogicGrowsOnTrees.Worker") explores the tree at all times it has a 'CheckpointCursor'
-which tells us about the decisions that it made which are /frozen/ as we will
-never backtrack into them to explore the other branch and a 'Context' which
-tells us about where we need to backtrack to explore the rest of the workload
-assigned to us.
+"LogicGrowsOnTrees.Parallel.Common.Worker") explores the tree at all times it
+has a 'CheckpointCursor' which tells us about the decisions that it made which
+are /frozen/ as we will never backtrack into them to explore the other branch
+and a 'Context' which tells us about where we need to backtrack to explore the
+rest of the workload assigned to us.
  -}
 
-{-| A zipper that allows us to zoom in on a particular point in the Checkpoint. -}
+{-| A zipper that allows us to zoom in on a particular point in the checkpoint. -}
 type CheckpointCursor = Seq CheckpointDifferential
 
-{-| The derivative of 'Checkpoint', used to implement the zipper type 'CheckpointCursor' -}
+{-| The derivative of 'Checkpoint', used to implement the zipper type 'CheckpointCursor'. -}
 data CheckpointDifferential =
     CachePointD ByteString
   | ChoicePointD BranchChoice Checkpoint
@@ -241,26 +237,20 @@ initialExplorationState = ExplorationTState Seq.empty
 
 ---------------------------- Checkpoint construction ---------------------------
 
-{-| Constructs a full checkpoint given where you are at (as indicated by the
-    context) and the subcheckpoint at your location.
+{-| Constructs a full checkpoint given a (context) checkpoint zipper with a hole
+    at your current location and the subcheckpoint at your location.
  -}
-checkpointFromContext ::
-  Context m α {-^ indicates where you are at in the full checkpoint -} →
-  Checkpoint {-^ indicates the subcheckpoint to splice in at your location -} →
-  Checkpoint {-^ the resulting full checkpoint -}
+checkpointFromContext :: Context m α → Checkpoint → Checkpoint
 checkpointFromContext = checkpointFromSequence $
     \step → case step of
         CacheContextStep cache → CachePoint cache
         LeftBranchContextStep right_checkpoint _ → flip ChoicePoint right_checkpoint
         RightBranchContextStep → ChoicePoint Explored
 
-{-| Constructs a full checkpoint given where you are at (as indicated by the
-    cursor) and the subcheckpoint at your location.
+{-| Constructs a full checkpoint given a (cursor) checkpoint zipper with a hole
+    at your current location and the subcheckpoint at your location.
  -}
-checkpointFromCursor ::
-    CheckpointCursor {-^ indicates where you are at in the full checkpoint -} →
-    Checkpoint {-^ indicates the subcheckpoint to splice in at your location -} →
-    Checkpoint {-^ the resulting full checkpoint -}
+checkpointFromCursor :: CheckpointCursor → Checkpoint → Checkpoint
 checkpointFromCursor = checkpointFromSequence $
     \step → case step of
         CachePointD cache → CachePoint cache
@@ -279,8 +269,8 @@ checkpointFromExplorationState ExplorationTState{..} =
     The main reason that you should use this function is that, as it builds up
     the full checkpoint, it makes some important simplifications via.
     'simplifyCheckpointRoot', such as replacing @ChoicePoint Explored Explored@
-    with @Explored@, without which the final result would be much larger and
-    more complicated than necessary.
+    with @Explored@, which both shrinks the size of the checkpoint as well as
+    making it /much/ easier to determine if it is equivalent to 'Explored'. 
  -}
 checkpointFromSequence ::
     (α → (Checkpoint → Checkpoint)) →
@@ -300,12 +290,9 @@ checkpointFromSequence processStep sequence =
 {-| Constructs a full checkpoint given the path to where you are currently
     searching and the subcheckpoint at your location, assuming that we have no
     knowledge of anything outside our location (which is indicated by marking it
-    as "unexplored").
+    as 'Unexplored').
  -}
-checkpointFromInitialPath ::
-    Path {-^ path to the current location -} →
-    Checkpoint {-^ subcheckpoint to splice in at the current location -} →
-    Checkpoint {-^ full checkpoint with unknown parts marked as 'Unexplored'. -}
+checkpointFromInitialPath :: Path → Checkpoint → Checkpoint
 checkpointFromInitialPath = checkpointFromSequence $
     \step → case step of
         CacheStep c → CachePoint c
@@ -313,14 +300,10 @@ checkpointFromInitialPath = checkpointFromSequence $
         ChoiceStep RightBranch → ChoicePoint Unexplored
 
 {-| Constructs a full checkpoint given the path to where you are currently
-    searching, assuming that the current location is 'Unexplored' and everything
+    located, assuming that the current location is 'Unexplored' and everything
     outside of our location has been fully explored already.
  -}
-checkpointFromUnexploredPath ::
-    Path {-^ path to the current location -} →
-    Checkpoint {-^ full checkpoint with current location marked as 'Unexplored'
-                   and everywhere else marked as 'Explored'.
-                -}
+checkpointFromUnexploredPath :: Path → Checkpoint
 checkpointFromUnexploredPath path = checkpointFromSequence
     (\step → case step of
         CacheStep c → CachePoint c
@@ -406,7 +389,8 @@ modes of exploring the tree.
 
 {-| Given the current state of exploration, perform an additional step of
     exploration, return any solution that was found and the next state of the
-    exploration -- which will be 'Nothing' if the entire tree has been explored.
+    exploration --- which will be 'Nothing' if the entire tree has been
+    explored.
  -}
 stepThroughTreeStartingFromCheckpoint ::
     ExplorationState α →
