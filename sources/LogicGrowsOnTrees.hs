@@ -64,32 +64,20 @@ import Data.Serialize (Serialize(),encode)
 --------------------------------------------------------------------------------
 
 {- $types
-The following are the tree types that are accepted by most of he
+The following are the tree types that are accepted by most of the
 functions in this package.  You do not need to know the details of their
 definitions unless you intend to write your own custom routines for running and
 transforming trees, in which case the relevant information is at the bottom
 of this page in the Implementation section.
 
-There is one type of pure tree and two types of impure trees.
-In general, your tree should nearly always be pure if you are planning
-to make use of checkpointing or parallel exploring, because in general parts of
-the tree may be explored multiple times, some parts may not be run at all on a
-given processor, and whenever a leaf is hit there will be a jump to a higher
-node, so if your tree is impure the effects need to be meaningful no
-matter how the tree is run on a given processor.
-
-Having said that, there are a few times when an impure tree can make sense:
-first, if the inner monad is something like the `Reader` monad, which has no
-side-effects; second, for testing purposes (e.g., many of my tests of the
-various tree explorers use `MVar`s and the like to ensure that trees are
-explored in a certain way to test certain code paths); finally, if there is some
-side-effectful action that you want to run on each result (such as storing a
-result into a database), though in this case you will need to make sure that
-your code is robust against being run multiple times as there is no guarantee in
-an environment where the system might be shut down and resumed from a checkpoint
-that your action will only have been run once on a given result (i.e., if the
-system goes down after your action was run but before a checkpoint was made
-marking that its node was explored).
+There is one type of pure tree and two types of impure trees. In general, your
+tree should nearly always be pure if you are planning to make use of
+checkpointing or parallel exploring as parts of the tree may be explored
+multiple times, some parts may not be run at all on a given processor, and
+whenever a leaf is hit there will be a jump to a higher node, so if your tree is
+impure then the result needs to not depend on how the tree is explored; an
+example of an acceptable use of an inner monad is when you want to memoize a
+pure function using a stateful monad.
 
 If you need something like state in your tree, then you should consider
 nesting the tree monad in the state monad rather than vice-versa,
@@ -101,11 +89,9 @@ from the leaf to an inner node, which will usually be what you want.
 {-| A pure tree, which is what you should normally be using. -}
 type Tree = TreeT Identity
 
-{-| A tree running in the I/O monad, which you should only be using for
-    testing purposes or, say, if you are planning on storing each result in an
-    external database, in which case you need to guard against the possibility
-    that an action for a given result might be run twice in checkpointing and/or
-    parallel settings.
+{-| A tree running in the I/O monad, which you should only be using for doing
+    things like reading data from an external file or database that will be
+    constant for the entire run.
 -}
 type TreeIO = TreeT IO
 
@@ -131,7 +117,7 @@ These features could have been provided as functions, but there are two reasons
 why they were subsumed into type-classes: first, because one might want to
 add another layer above the 'Tree' monad transformers in the monad stack
 (as is the case in "LogicGrowsOnTrees.Location"), and second, because one might want
-to run a tree using a simpler monad such as [] for testing purposes.
+to run a tree using a simpler monad such as List for testing purposes.
 
 NOTE:  Caching a computation takes space in the 'Checkpoint', so it is something
        you should only do when the result is relatively small and the
@@ -158,8 +144,7 @@ class MonadPlus m ⇒ MonadExplorable m where
 
     {-| This function is a combination of the previous two;  it performs a
         computation which might fail by returning 'Nothing', and if that happens
-        it aborts the tree;  if it passes then the result is cached and
-        returned.
+        then it backtracks; if it passes then the result is cached and returned.
 
         Note that the previous two methods are essentially specializations of
         this method.
@@ -172,11 +157,12 @@ class MonadPlus m ⇒ MonadExplorable m where
         NOTE: You should normally never need to use this function as requests
         are processed whenever a choice point, a cache point, mzero, or a leaf
         in the decision tree has been encountered. However, if you have noticed
-        that workload steals are taking so long that as a result workers are
-        sitting idle for too big a fraction of the total time, and you can trace
-        this down to a computation that takes so much time that it almost never
-        gives the worker a chance to process requests, then can use this method
-        to ensure that requests are given a chance to be processed.
+        that workload steals are taking such a large amount of time that as a
+        result workers are spending too much time sitting idle while they wait
+        for a workload, and you can trace this as being due to a computation
+        that takes so much time that it almost never gives the worker a chance
+        to process requests, then you can use this method to ensure that
+        requests are given a chance to be processed.
      -}
     processPendingRequests :: m ()
     processPendingRequests = return ()
@@ -208,12 +194,12 @@ class (MonadPlus m, Monad (NestedMonad m)) ⇒ MonadExplorableTrans m where
 ---------------------------------- Instances -----------------------------------
 --------------------------------------------------------------------------------
 
-{-| The 'Alternative' instance functions like the 'MonadPlus' instance. -}
+{-| The 'Alternative' instance functions just like the 'MonadPlus' instance. -}
 instance Monad m ⇒ Alternative (TreeT m) where
     empty = mzero
     (<|>) = mplus
 
-{-| Two trees are equal if they have the same structure. -}
+{-| Two 'Tree's are equal if they have the same structure. -}
 instance Eq α ⇒ Eq (Tree α) where
     (TreeT x) == (TreeT y) = e x y
       where
@@ -231,7 +217,8 @@ instance Eq α ⇒ Eq (Tree α) where
             _  → False
 
 {-| For this type, 'mplus' creates a branch node with a choice between two
-    subtrees and 'mzero' aborts the tree.
+    subtrees and 'mzero' signifies failure which results in backtracking up the
+    tree.
  -}
 instance Monad m ⇒ MonadPlus (TreeT m) where
     mzero = TreeT . singleton $ Null
@@ -283,12 +270,12 @@ instance Monad m ⇒ MonadExplorableTrans (TreeT m) where
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
     runAndCacheMaybe = TreeT . singleton . Cache
 
-{-| This instance allows you to automatically get a MonadExplorable instance for
-    any monad transformer that has `MonadPlus` defined.  (Unfortunately its
-    presence requires OverlappingInstances because it overlaps with the instance
-    for `TreeT`, even though the constraints are such that it is impossible
-    in practice for there to ever be a case where a given type is satisfied by
-    both instances.)
+{-| This instance allows you to automatically get a 'MonadExplorable' instance
+    for any monad transformer that has 'MonadPlus' defined. (Unfortunately its
+    presence requires @OverlappingInstances@ because it overlaps with the
+    instance for 'TreeT', even though the constraints are such that it is
+    impossible in practice for there to ever be a case where a given type is
+    satisfied by both instances.)
  -}
 instance (MonadTrans t, MonadExplorable m, MonadPlus (t m)) ⇒ MonadExplorable (t m) where
     cache = lift . cache
@@ -334,11 +321,11 @@ which changes the base monad of a pure tree.
 {- $runners
 The following functions all take a tree as input and produce the result
 of exploring it as output. There are seven functions because there are two kinds
-of trees -- pure and impure -- and three ways of exploring a tree --
+of trees --- pure and impure --- and three ways of exploring a tree ---
 exploring everything and summing all results (i.e., in the leaves), exploring
 until the first result (i.e., in a leaf) is encountered and immediately
 returning, and gathering results (i.e., from the leaves) until they satisfy a
-condition and then return -- plus a seventh function that explores a tree only
+condition and then return --- plus a seventh function that explores a tree only
 for the side-effects.
  -}
 
@@ -457,7 +444,7 @@ exploreTreeTUntilFirst = viewT . unwrapTreeT >=> \view →
            results have been found, and so it should not be 'True' for 'mempty'
            as nothing has been found and if it is 'True' for @x@ then it should
            not be 'False' for the sum of @y@ with @x@ as this would mean that
-           having *more* than enough results is no longer having enough results.
+           having /more/ than enough results is no longer having enough results.
  -}
 exploreTreeUntilFound ::
     Monoid α ⇒
@@ -580,7 +567,7 @@ endowTree tree =
 {- $implementation
 The implementation of the 'Tree' types uses the approach described in
 "The Operational Monad Tutorial", published in Issue 15 of The Monad.Reader at
-<http://themonadreader.wordpress.com/>;  specifically it uses the `operational`
+<http://themonadreader.wordpress.com/>;  specifically it uses the @operational@
 package.  The idea is that a list of instructions are provided in
 'TreeTInstruction', and then the operational monad does all the heavy lifting
 of turning them into a monad.
