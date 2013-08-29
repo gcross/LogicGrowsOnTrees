@@ -12,7 +12,7 @@ module LogicGrowsOnTrees.Location
     -- * Type-classes
       MonadLocatable(..)
     -- * Types
-    , Location(..)
+    , Location
     , Solution(..)
     , LocatableT(..)
     , LocatableTree
