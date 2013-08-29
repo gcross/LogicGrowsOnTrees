@@ -6,13 +6,20 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This adapter implements parallelism by spawning multiple threads.  The
-    number of threads can be changed during the run and even be set to zero.
+{-| This adapter implements parallelism by spawning multiple worker threads, the
+    number of which can be changed arbitrarily during the run.
 
-    The driver provided by this adapter sets the number of threads equal to the
-    number of capabilities as reported by 'getNumCapabilities';  that is, if you
-    want @#@ parallel workers, then you need to pass @+RTS -N#@ as command-line
-    arguments to tell the runtime that you want it to run @#@ threads in parallel.
+    NOTE: For the use of threads to results in parallelism, you need to make
+    sure that the number of capabilities is at least as large as the largest
+    number of worker threads you will be spawning. If you are using the driver,
+    then this will be taken care of for you. If not, then you will need to
+    either call 'GHC.Conc.setNumCapabilities' (but only to increase the number
+    of threads in GHC 7.4, and not too often as it may crash) or use the
+    command-line argument @+RTS -N\#@, where @\#@ is the number of threads you
+    want to run in parallel. The driver takes care of this automatically by
+    calling 'setNumCapabilities' a single time to set the number of capabilities
+    equal to the number of request threads (provided via. a command-line
+    argument).
  -}
 module LogicGrowsOnTrees.Parallel.Adapter.Threads
     (
@@ -21,16 +28,16 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     -- * Controller
     , ThreadsControllerMonad
     , abort
-    , changeNumberOfWorkers
     , changeNumberOfWorkersAsync
+    , changeNumberOfWorkers
     , changeNumberOfWorkersToMatchCapabilities
     , fork
-    , getCurrentProgress
     , getCurrentProgressAsync
-    , getNumberOfWorkers
+    , getCurrentProgress
     , getNumberOfWorkersAsync
-    , requestProgressUpdate
+    , getNumberOfWorkers
     , requestProgressUpdateAsync
+    , requestProgressUpdate
     , setWorkloadBufferSize
     -- * Outcome types
     , RunOutcome(..)
@@ -56,8 +63,6 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , exploreTreeTUntilFirst
     , exploreTreeTUntilFirstStartingFrom
     -- ** Stop when sum of results meets condition
-    -- $found
-
     -- *** Pull
     -- $pull
     , exploreTreeUntilFoundUsingPull
@@ -125,11 +130,10 @@ deriveLoggers "Logger" [DEBUG]
 ------------------------------------ Driver ------------------------------------
 --------------------------------------------------------------------------------
 
-{-| This is the driver for the threads adapter.  The number of workers is set
-    to be equal to the number of runtime capabilities, which you set by using
-    the @-N@ option for the RTS --- i.e., by specifying @+RTS -N#@ for @#@
-    parallel workers (or just @+RTS -N@ to set the number of workers equal to
-    the number of processors).
+{-| This is the driver for the threads adapter.  The number of workers is
+    specified via. the (required) command-line option "-n"; 'setNumCapabilities'
+    is called exactly once to make sure that there is an equal number of
+    capabilities.
  -}
 driver :: Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
@@ -184,22 +188,24 @@ changeNumberOfWorkersToMatchCapabilities =
 --------------------------------------------------------------------------------
 
 {- $exploration
-The functions in this section are provided as a way to use the threads adapter
-directly rather than using the framework provided in "LogicGrowsOnTrees.Parallel.Main".
-They are all specialized versions of 'runExplorer', which appears
-in the following section; they are provided for convenience --- specifically, to
-minimize the knowledge needed of the implementation and how the types specialize
-for the various exploration modes.
+The functions in this section are provided as a way to use the Threads adapter
+directly rather than using the framework provided in
+"LogicGrowsOnTrees.Parallel.Main". They are all specialized versions of
+'runExplorer', which appears in the following section. The specialized versions
+are provided for convenience --- specifically, to minimize the knowledge needed
+of the implementation and how the types specialize for the various exploration
+modes.
 
 There are 3 × 2 × 4 = 24 functions in this section; the factor of 3 comes from
 the fact that there are three cases of monad in which the exploration is run:
 pure, IO, and impure (where IO is a special case of impure provided for
 convenience); the factor of 2 comes from the fact that one can either start with
-no progress or start with a given progress; the factor of 4 comes from the fact
-that there are four exploration modes: summing over all results, returning the first
-result, summing over all results until a criteria is met with intermediate
-results only being sent to the supervisor upon request, and the previous mode
-but with all intermediate results being sent immediately to the supervisor.
+no progress or start with a given progress; and the factor of 4 comes from the
+fact that there are four exploration modes: summing over all results, returning
+the first result, summing over all results until a criteria is met with
+intermediate results only being sent to the supervisor upon request, and the
+previous mode but with all intermediate results being sent immediately to the
+supervisor.
  -}
 
 ---------------------------- Sum over all results ------------------------------
@@ -246,7 +252,7 @@ exploreTreeIOStartingFrom = runExplorer AllMode io_purity
 {-| Like 'exploreTree' but with a generic impure tree. -}
 exploreTreeT ::
     (Monoid result, MonadIO m) ⇒
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
@@ -255,7 +261,7 @@ exploreTreeT = flip exploreTreeTStartingFrom mempty
 {-| Like 'exploreTreeT', but with a starting progress. -}
 exploreTreeTStartingFrom ::
     (Monoid result, MonadIO m) ⇒
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     Progress result {-^ the starting progress -} →
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
@@ -265,7 +271,7 @@ exploreTreeTStartingFrom = runExplorer AllMode  . ImpureAtopIO
 ---------------------------- Stop at first result ------------------------------
 
 {- $first
-See "LogicGrowsOnTrees.Parallel.Main#first" for more details on this mode.
+See "LogicGrowsOnTrees.Parallel.Main#first" (a direct hyper-link to the relevant section) for more details on this mode.
  -}
 
 {-| Explore the pure tree until a result has been found. -}
@@ -301,7 +307,7 @@ exploreTreeIOUntilFirstStartingFrom = runExplorer FirstMode io_purity
 {-| Like 'exploreTreeUntilFirst' but with a generic impure tree. -}
 exploreTreeTUntilFirst ::
     MonadIO m ⇒
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
@@ -310,7 +316,7 @@ exploreTreeTUntilFirst = flip exploreTreeTUntilFirstStartingFrom mempty
 {-| Like 'exploreTreeTUntilFirst', but with a starting progress. -}
 exploreTreeTUntilFirstStartingFrom ::
     MonadIO m ⇒
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     Checkpoint {-^ the starting progress -} →
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
@@ -318,10 +324,6 @@ exploreTreeTUntilFirstStartingFrom ::
 exploreTreeTUntilFirstStartingFrom = runExplorer FirstMode . ImpureAtopIO
 
 ------------------------ Stop when sum of results found ------------------------
-
-{- $found
-See "LogicGrowsOnTrees.Parallel.Main#found" (a direct hyper-link to the relevant section) for more information on this mode.
--}
 
 {- $pull
 See "LogicGrowsOnTrees.Parallel.Main#pull" (a direct hyper-link to the relevant section) for more information on this mode.
@@ -374,7 +376,7 @@ exploreTreeIOUntilFoundUsingPullStartingFrom f = runExplorer (FoundModeUsingPull
 exploreTreeTUntilFoundUsingPull ::
     (Monoid result, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
@@ -384,7 +386,7 @@ exploreTreeTUntilFoundUsingPull f run = exploreTreeTUntilFoundUsingPullStartingF
 exploreTreeTUntilFoundUsingPullStartingFrom ::
     (Monoid result, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     Progress result {-^ the starting progress -} →
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
@@ -438,7 +440,7 @@ exploreTreeIOUntilFoundUsingPushStartingFrom f = runExplorer (FoundModeUsingPush
 exploreTreeTUntilFoundUsingPush ::
     (Monoid result, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
@@ -448,7 +450,7 @@ exploreTreeTUntilFoundUsingPush f run = exploreTreeTUntilFoundUsingPushStartingF
 exploreTreeTUntilFoundUsingPushStartingFrom ::
     (Monoid result, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ α. m α → IO α) {-^ the function that runs the tree's monad in IO -} →
+    (∀ α. m α → IO α) {-^ a function that runs the tree's monad in IO -} →
     Progress result {-^ the starting progress -} →
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →

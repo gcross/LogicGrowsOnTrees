@@ -82,15 +82,21 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()
-    {-| Fork a new thread running in this monad. -}
+    {-| Fork a new thread running in this monad;  all controller threads are automnatically killed when the run is finished. -}
     fork :: m () → m ThreadId
-    {-| Request the current progress, and invoke the given callback with the result;  see 'getCurrentProgress' for the synchronous version. -}
+    {-| Request the current progress, invoking the given callback with the result;  see 'getCurrentProgress' for the synchronous version. -}
     getCurrentProgressAsync :: (ProgressFor (ExplorationModeFor m) → IO ()) → m ()
-    {-| Request the number of workers, and invoke the given callback with the result;  see 'getNumberOfWorkers' for the synchronous version. -}
+    {-| Request the number of workers, invoking the given callback with the result;  see 'getNumberOfWorkers' for the synchronous version. -}
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
-    {-| Requests that a global progress update be performed, and invoke the given callback with the result;  see 'requestProgressUpdate' for the synchronous version. -}
+    {-| Request that a global progress update be performed, invoking the given callback with the result;  see 'requestProgressUpdate' for the synchronous version. -}
     requestProgressUpdateAsync :: (ProgressFor (ExplorationModeFor m) → IO ()) → m ()
-    {-| Sets the size of the workload buffer. -}
+    {-| Sets the size of the workload buffer.  (Normally the default value of 4
+        will be fine, but if you run into a problem where the amount of time
+        needed to steal a workload is greater than the average time between
+        requests for new workloads, then setting this to be roughly equal to the
+        time needed to steal a workload divided by the time between workload
+        requests may help.)
+     -}
     setWorkloadBufferSize :: Int → m ()
 
 --------------------------------------------------------------------------------
@@ -150,7 +156,7 @@ requestProgressUpdate :: RequestQueueMonad m ⇒ m (ProgressFor (ExplorationMode
 requestProgressUpdate = syncAsync requestProgressUpdateAsync
 
 {-| General utility function for converting an asynchronous request to a
-    syncronous request;  it uses an 'MVar' to hold the result of the request and
+    synchronous request;  it uses an 'MVar' to hold the result of the request and
     blocks until the 'MVar' has been filled.
  -}
 syncAsync :: MonadIO m ⇒ ((α → IO ()) → m ()) → m α

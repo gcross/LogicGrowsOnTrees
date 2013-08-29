@@ -77,7 +77,7 @@ class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where
         an action in IO in the process), and the second argument is a callback
         that will be invoked with the new number of workers.
 
-        See 'changeNumberOfWorkers' for the syncronous version of this request.
+        See 'changeNumberOfWorkers' for the synchronous version of this request.
      -}
     changeNumberOfWorkersAsync :: (Word → IO Word) → (Word → IO ()) → m ()
 
