@@ -8,15 +8,15 @@
 This module contains a heavily optimized solver for the n-queens problems.
 Specifically, it uses the following tricks:
 
-  * Symmetry breaking to prune redundant solutions
+  * symmetry breaking to prune redundant solutions
 
-  * Unpacked datatypes instead of multiple arguments
+  * unpacked datatypes instead of multiple arguments
 
-  * Heavily optimized 'getOpenings' that uses bottom-up tree building
+  * heavily optimized 'getOpenings'
 
   * C code for the inner-most loop
 
-  * INLINEs in many places in order to create optimized specializations of
+  * @INLINE@s in many places in order to create optimized specializations of
     the generic functions
 
 Benchmarks were used to determine that all of these tricks resulted in
@@ -135,8 +135,8 @@ nqueensGeneric ::
     ,Typeable α
     ,Typeable β
     ) ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solution -} →
-    (Word → NQueensSymmetry → α → m β) {-^ finalizes a partial solution with the given board size and symmetry -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (Word → NQueensSymmetry → α → m β) {-^ function that finalizes a partial solution with the given board size and symmetry -} →
     α {-^ initial partial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
@@ -166,28 +166,30 @@ nqueensGeneric updateValue finalizeValueWithSymmetry initial_value n =
 A performance gain can be obtained by factoring out symmetries because if, say,
 a solution has rotational symmetry, then that means that there are four
 configurations that are equivalent, and so we would ideally like to prune three
-of these four equivalent solution from the tree.
+of these four equivalent solutions.
 
 I call the approach used here "symmetry breaking". The idea is we start with a
-perfectly symmetrical board (as it has nothing on it) and then proceed from the
-outside layer in, where by a layer I am referring to the n-th square in starting
-from the outside border. At each step we either preserve a given symmetry for
-the current layer or we break it; in the former case we stay within the current
-routine to try to break it in the next layer in, in the latter case we jump to a
-routine designed to break the new symmetry in the next layer in. When all
-symmetries have been broken, we jump to the brute-force search code. If we place
-all of the queens while having preserved one or more symmetries, then either we
-apply the rotations and reflects of the symmetry to generate all of the
-solutions or we multiply the solution count by the number of equivalent
-solutions.
+perfectly symmetrical board (as it has nothing on it) and then we work our way
+from the outside in. We shall use the term /layer/ to refer to a set of board
+positions that form a centered (hollow) square on the board, so the outermost
+layer is the set of all positions at the boundary of the board, the next layer
+in is the square just nested in the outermost layer, and so in. At each step we
+either preserve a given symmetry for the current layer or we break it; in the
+former case we stay within the current routine to try to break it in the next
+layer in, in the latter case we jump to a routine designed to break the new
+symmetry in the next layer in. When all symmetries have been broken, we jump to
+the brute-force search code. If we place all of the queens while having
+preserved one or more symmetries, then either we apply the rotations and
+reflections of the symmetry to generate all of the solutions or we multiply the
+solution count by the number of equivalent solutions.
 
 This code is unforunately quite complicated because there are many possibilities
 for how to break or not break the symmetries and at each step it has to place
 between 0 and 4 queens in such a way as to not conflict with any queen that has
 already been placed.
 
-Also, each function takes callbacks for each symmetry rather than directly
-calling 'nqueensBreak90', etc. in order to ease testing.
+Each function takes callbacks for each symmetry rather than directly calling
+'nqueensBreak90', etc. in order to ease testing.
 
 -}
 
@@ -196,10 +198,10 @@ calling 'nqueensBreak90', etc. in order to ease testing.
 {-| Break the reflection symmetry. -}
 nqueensStart ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (α → NQueensBreak90State → m β) {-^ break the rotational symmetry for the next inner layer -} →
-    (α → NQueensBreak180State → m β) {-^ break the 180-degree rotational symmetry for the next inner layer -} →
-    (α → Int → NQueensSearchState → m β) {-^ brute-force search -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → NQueensBreak90State → m β) {-^ function to break the rotational symmetry for the next inner layer -} →
+    (α → NQueensBreak180State → m β) {-^ function to break the 180-degree rotational symmetry for the next inner layer -} →
+    (α → Int → NQueensSearchState → m β) {-^ function to apply a brute-force search -} →
     α {-^ partial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
@@ -359,11 +361,11 @@ data NQueensBreak90State = NQueensBreak90State
 {-| Break the 90-degree rotational symmetry at the current layer. -}
 nqueensBreak90 ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (α → m β) {-^ finalize the solution -} →
-    (α → NQueensBreak90State → m β) {-^ break the rotational symmetry for the next inner layer -} →
-    (α → NQueensBreak180State → m β) {-^ break the 180-degree rotational symmetry for the next inner layer -} →
-    (α → Int → NQueensSearchState → m β) {-^ brute-force search -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → m β) {-^ function that finalizes the partial solution -} →
+    (α → NQueensBreak90State → m β) {-^ function to break the rotational symmetry for the next inner layer -} →
+    (α → NQueensBreak180State → m β) {-^ function to break the 180-degree rotational symmetry for the next inner layer -} →
+    (α → Int → NQueensSearchState → m β) {-^ function to apply a brute-force search -} →
     α {-^ partial solution -} →
     NQueensBreak90State {-^ current state -} →
     m β {-^ the final result -}
@@ -576,10 +578,10 @@ data NQueensBreak180State = NQueensBreak180State
 {-| Break the 180-degree rotational symmetry at the current layer. -}
 nqueensBreak180 ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (α → m β) {-^ finalize the solution -} →
-    (α → NQueensBreak180State → m β) {-^ break the 180-degree rotational symmetry for the next inner layer -} →
-    (α → Int → NQueensSearchState → m β) {-^ brute-force search -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → m β) {-^ function that finalizes the partial solution -} →
+    (α → NQueensBreak180State → m β) {-^ function to break the 180-degree rotational symmetry for the next inner layer -} →
+    (α → Int → NQueensSearchState → m β) {-^ function to apply a brute-force search -} →
     α {-^ partial solution -} →
     NQueensBreak180State {-^ current state -} →
     m β {-^ the final result -}
@@ -943,8 +945,8 @@ nqueensSearch ::
     ,Typeable α
     ,Typeable β
     ) ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (α → m β) {-^ finalize the solution -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ partial solution -} →
     Int {-^ board size -} →
     NQueensSearchState {-^ current state -} →
@@ -1002,8 +1004,8 @@ nqueensBruteForceGeneric ::
     ,Typeable α
     ,Typeable β
     ) ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (α → m β) {-^ finalize the solution -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ initial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
@@ -1056,7 +1058,7 @@ foreign import ccall "wrapper" mkPopValue :: IO () → IO (FunPtr (IO ()))
 foreign import ccall "wrapper" mkFinalizeValue :: IO () → IO (FunPtr (IO ()))
 
 {-| Calls C code to perform a brute-force search for the remaining queens.  The
-    types α and β must be 'Typeable' because this function actually optimizes
+    types α and β must be   'Typeable' because this function actually optimizes
     for the case where only counting is being done by providing null values for
     the function pointer inputs.
  -}
@@ -1066,8 +1068,8 @@ nqueensCSearch ::
     ,Typeable α
     ,Typeable β
     ) ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (α → m β) {-^ finalize the solution -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ partial solution -} →
     Int {-^ board size -} →
     Int {-^ window start -} →
@@ -1127,8 +1129,8 @@ nqueensCGeneric ::
     ,Typeable α
     ,Typeable β
     ) ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (α → m β) {-^ finalize the solution -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ initial value -} →
     Word {-^ the board size -} →
     m β {-^ the final result -}
