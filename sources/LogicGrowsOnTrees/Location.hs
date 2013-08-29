@@ -80,7 +80,7 @@ import LogicGrowsOnTrees.Path
 --------------------------------- Type-classes ---------------------------------
 --------------------------------------------------------------------------------
 
-{-| The class 'MonadLocatable' allows you to get your current location. -}
+{-| The class 'MonadLocatable' allows you to get your current location within a tree. -}
 class MonadPlus m ⇒ MonadLocatable m where
     getLocation :: m Location
 
@@ -190,8 +190,9 @@ instance Monad m ⇒ MonadExplorableTrans (LocatableTreeT m) where
 applyCheckpointCursorToLocation ::
     CheckpointCursor {-^ a path within the subtree -} →
     Location {-^ the location of the subtree -} →
-    Location {-^ the location within the subtree obtained by following the path
-                 indicated by the checkpoint cursor
+    Location {-^ the location within the full tree obtained by following the path
+                 to the subtree and then the path indicated by the checkpoint
+                 cursor
               -}
 applyCheckpointCursorToLocation cursor =
     case viewl cursor of
@@ -207,8 +208,8 @@ applyCheckpointCursorToLocation cursor =
 applyContextToLocation ::
     Context m α {-^ the path within the subtree -} →
     Location {-^ the location of the subtree -} →
-    Location {-^ the location within the subtree obtained by following the path
-                 indicated by the context
+    Location {-^ the location within the full tree obtained by following the path
+                 to the subtree and then the path indicated by the context
               -}
 applyContextToLocation context =
     case viewl context of
@@ -225,7 +226,9 @@ applyContextToLocation context =
 applyPathToLocation ::
     Path {-^ a path within the subtree -} →
     Location {-^ the location of the subtree -} →
-    Location {-^ the location within the subtree obtained by following the given path -}
+    Location {-^ the location within the full tree obtained by following the path
+                 to the subtree and then the given path
+              -}
 applyPathToLocation path =
     case viewl path of
         EmptyL → id
@@ -327,7 +330,7 @@ solutionsToMap = Fold.foldl' (flip $ \(Solution label solution) → Map.insert l
 
 ------------------------------ Exploration functions -------------------------------
 
-{-| Explore all the nodes in a LocatableTree and sum over all the results in the
+{-| Explore all the nodes in a 'LocatableTree' and sum over all the results in the
     leaves.
  -}
 exploreLocatableTree :: Monoid α ⇒ LocatableTree α → α
@@ -375,7 +378,7 @@ exploreTreeTWithLocationsStartingAt label =
         Null :>>= _ → return []
         ProcessPendingRequests :>>= k → exploreTreeTWithLocationsStartingAt label . TreeT . k $ ()
 
-{-| Explores all the nodes in a locatable tree until a result (i.e., a leaf) has
+{-| Explores all the nodes in a 'LocatableTree' until a result (i.e., a leaf) has
     been found; if a result has been found then it is returned wrapped in
     'Just', otherwise 'Nothing' is returned.
  -}
@@ -388,7 +391,7 @@ exploreLocatableTreeUntilFirstT = exploreTreeTUntilFirst . runLocatableT . unwra
 
 {-| Explores all the nodes in a tree until a result (i.e., a leaf) has been found;
     if a result has been found then it is returned tagged with the location at
-    which it was found and wrapped in 'Just', otherwise'Nothing' is returned.
+    which it was found and wrapped in 'Just', otherwise 'Nothing' is returned.
  -}
 exploreTreeUntilFirstWithLocation :: Tree α → Maybe (Solution α)
 exploreTreeUntilFirstWithLocation = runIdentity . exploreTreeTUntilFirstWithLocation
