@@ -2,29 +2,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This module contains examples of 'MonadPlus's that represent the solutions
-    to the n-queens problem, which is the problem of finding ways to put n
-    queens on an n-by-n chessboard in such a way that they do not conflict;
-    recall that, in chess, a queen attacks the row it is on, the column it is
-    one, and both diagonals that it is one. Thus, solutions of the n-queens
-    problem take the form of a list of coordinates such that no coordinates have
-    overlapping rows, columns, or diagonals.
-
-    The 'MonadPlus's in this module are written in such a way that the same code
-    can return either the solutions themselves or just the number of solutions.
-    Specifically, the generic form of the functions takes an initial value, a
-    way to update this value when a queen has been placed, and a way to finalize
-    this value when all queens have been placed. For the simple examples in this
-    module, if one is interested in solutions then the initial value is '[]',
-    the updater prepends the column of the new queen to the list (as the queens
-    are in consecutive rows), and the finalizer reverses and adds row-numbers to
-    the column coordinates. If one is only interested in the count then the
-    value is (), the updater returns (), and the finalizer returns `WordSum 1`.
-    (The advanced example uses a more complicated arrangement but are basically
-    the same idea.) The reason for this design is that it allows one to use one
-    code path to obtain both kinds of results, which means that once the
-    solution mode has been fully tested the count mode should work as well as it
-    uses the same tested code path.
+{-| This module contains examples of logic programs that generate solutions to the
+    n-queens problem, which is the problem of finding ways to put n queens on an
+    n x n chessboard in such a way that they do not conflict. Solutions of the
+    n-queens problem take the form of a list of n coordinates such that no
+    coordinates have overlapping rows, columns, or diagonals (as these are the
+    directions in which a queen can attack).
  -}
 module LogicGrowsOnTrees.Examples.Queens
     (
@@ -43,7 +26,7 @@ module LogicGrowsOnTrees.Examples.Queens
     , nqueensUsingBitsSolutions
     , nqueensUsingBitsCount
     -- * Advanced example
-    -- $basic
+    -- $advanced
     , nqueensGeneric
     , nqueensSolutions
     , nqueensCount
@@ -58,6 +41,7 @@ import Data.Bits ((.|.),(.&.),bit,bitSize,shiftL,shiftR)
 import Data.Functor ((<$>))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import Data.IntSet (IntSet) -- imported so that haddock will link to it
 import qualified Data.IntSet as IntSet
 import Data.Maybe (fromJust)
 import Data.Word (Word,Word64)
@@ -66,7 +50,7 @@ import System.Console.CmdTheLine
 
 import Text.PrettyPrint (text)
 
-import LogicGrowsOnTrees (Tree,allFrom)
+import LogicGrowsOnTrees (Tree,allFrom,exploreTree) -- exploreTree added so that haddock will link to it
 import qualified LogicGrowsOnTrees.Examples.Queens.Advanced as Advanced
 import LogicGrowsOnTrees.Examples.Queens.Advanced (NQueensSolution,NQueensSolutions,multiplySolution,nqueensGeneric)
 import LogicGrowsOnTrees.Utils.Word_
@@ -77,7 +61,7 @@ import LogicGrowsOnTrees.Utils.WordSum
 --------------------------------------------------------------------------------
 
 {-| This newtype wrapper is used to provide an ArgVal instance that ensure that
-    an input board size is between 1 and 'maximum_board_size'.  In general you
+    an input board size is between 1 and 'nqueens_maximum_size'.  In general you
     do not need to use this type directly but instead can use the function
     'makeBoardSizeTermAtPosition'.
  -}
@@ -99,7 +83,7 @@ instance ArgVal (Maybe BoardSize) where
     converter = just
 
 {-| This constructs a term for the `cmdtheline` command line parser that expects
-    a valid board size (i.e., a number between 1 and 'maximum_board_size' at the
+    a valid board size (i.e., a number between 1 and 'nqueens_maximum_size' at the
     given positional argument.
  -}
 makeBoardSizeTermAtPosition ::
@@ -158,7 +142,7 @@ nqueens_correct_counts = IntMap.fromDistinctAscList $
     ,(26,22317699616364044)
     ]
 
-{-| The maximum board size in `nqueens_correct_counts`.  In a 64-bit environment
+{-| The maximum board size in 'nqueens_correct_counts'.  In a 64-bit environment
     this value is equal to the largest board size for which we know the number
     of solutions, which is 26.  In a 32-bit environment this value is equal to
     the largest board size such that the number of solutions fits within a
@@ -169,7 +153,7 @@ nqueens_maximum_size = fst . IntMap.findMax $ nqueens_correct_counts
 
 {-| A /partial function/ that returns the number of solutions for the given
     input board size;  this should only be used when you are sure that the input
-    is less than `nqueens_maximum_size`.
+    is not greater than 'nqueens_maximum_size'.
  -}
 nqueensCorrectCount :: Word → Word
 nqueensCorrectCount =
@@ -186,16 +170,9 @@ nqueensCorrectCount =
 --------------------------------------------------------------------------------
 
 {- $basic
-The examples in this section are pretty basic in that they do not make use of
-the many optimizations that are available but which increase code complexity.
-They are provided in order to demonstrate how one can construct trees that
-generate the solutions to a problem, namely the n-queens problem. Note that
-because they are defined in terms of the methods in 'MonadPlus', the result can
-be a type other than 'Tree', such as the List type.
-
-Two basic solutions are included here.  The first uses set operations, and the
-second uses bitwise operations.
-
+The two examples in this section are pretty basic in that they do not make use of
+the many optimizations that are available (at the cost of code complexity). The first
+example uses set operations, and the second uses bitwise operations.
  -}
 
 ---------------------------------- Using sets ----------------------------------
@@ -314,10 +291,10 @@ nqueensUsingBitsCount = liftM (const $ WordSum 1) . nqueensUsingBitsSolutions
 --------------------------------------------------------------------------------
 
 {- $advanced
-The advanced example use a number of advanced techniques to try and squeeze out
-as much performance as possible using the functionality of this package.  The
-functions listed here are just the interface to it;  for the implementation
-driving these functions, see the "LogicGrowsOnTrees.Examples.Queens.Advanced" module.
+The advanced example use several techniques to try and squeeze out as much
+performance as possible using the functionality of this package. The functions
+listed here are just the interface to it; for the implementation driving these
+functions, see the "LogicGrowsOnTrees.Examples.Queens.Advanced" module.
  -}
 
 {-| Generates the solutions to the n-queens problem with the given board size. -}

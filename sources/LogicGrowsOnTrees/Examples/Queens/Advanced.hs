@@ -126,7 +126,8 @@ data PositionAndBitWithReflection = PositionAndBitWithReflection {-# UNPACK #-} 
 -------------------------------- Main algorithm --------------------------------
 --------------------------------------------------------------------------------
 
-{-| Interface to the main algorithm;  note that α and β need to be 'Typeable'
+-- NOTE:  the spaces before 'Typeable' are needed due to a haddock glitch
+{-| Interface to the main algorithm;  note that α and β need to be   'Typeable'
     because of an optimization used in the C part of the code.
  -}
 nqueensGeneric ::
@@ -134,9 +135,9 @@ nqueensGeneric ::
     ,Typeable α
     ,Typeable β
     ) ⇒
-    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solutions -} →
-    (Word → NQueensSymmetry → α → m β) {-^ finalizes a solution with the given size and symmetry -} →
-    α {-^ initial solution -} →
+    ([(Word,Word)] → α → α) {-^ add a list of coordinates to the partial solution -} →
+    (Word → NQueensSymmetry → α → m β) {-^ finalizes a partial solution with the given board size and symmetry -} →
+    α {-^ initial partial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
 nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 1 =
