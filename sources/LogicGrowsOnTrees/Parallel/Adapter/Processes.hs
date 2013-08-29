@@ -18,15 +18,15 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     -- * Controller
     , ProcessesControllerMonad
     , abort
-    , changeNumberOfWorkers
     , changeNumberOfWorkersAsync
+    , changeNumberOfWorkers
     , fork
-    , getCurrentProgress
     , getCurrentProgressAsync
-    , getNumberOfWorkers
+    , getCurrentProgress
     , getNumberOfWorkersAsync
-    , requestProgressUpdate
+    , getNumberOfWorkers
     , requestProgressUpdateAsync
+    , requestProgressUpdate
     , setWorkloadBufferSize
     -- * Outcome types
     , RunOutcome(..)
