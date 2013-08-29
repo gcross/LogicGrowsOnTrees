@@ -1,7 +1,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This module contains examples of trees that represent the valid colorings of
-    a given (geographical) map.
+{-| This module contains examples of logic programs that generate all the valid
+    colorings of a given (geographical) map.
  -}
 module LogicGrowsOnTrees.Examples.MapColoring where
 
@@ -27,8 +27,8 @@ coloringSolutions number_of_colors number_of_countries isAdjacentTo =
                 guard (color /= other_color)
         return $ (country,color):coloring
 
-{-| Generate all valid /unique/ map colorings.  That is, exactly one coloring
-    will be generated from each class of colorings that are equivalent under a
+{-| Generate all /unique/ valid map colorings.  That is, exactly one coloring will
+    be generated from each class of colorings that are equivalent under a
     permutation of colors.
  -}
 coloringUniqueSolutions ::
