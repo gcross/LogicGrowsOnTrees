@@ -7,20 +7,19 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| To understand the purpose of this module, it helps to know that during the
-    global exploration process there will be two main loops running in the
-    supervisor. The first loop runs inside the 'SupervisorMonad' and is usually
-    taken over by the adapter, which handles the communication between the
-    supervisors and the workers. The second loop (usually referred to as the
-    /controller/) is intended for the user of the adapter to be able to submit
-    requests such as a global progress update to the supervisor, or possibly
-    adapter-specific requests (such as changing the number of workers).
+{-| To understand the purpose of this module, it helps to know that there are
+    two main loops running in the supervisor. The first loop runs inside the
+    'SupervisorMonad' and is usually taken over by the adapter, which handles
+    the communication between the supervisors and the workers. The second loop
+    (referred to as the /controller/) is intended for the user to be able to
+    submit requests such as a global progress update to the supervisor, or
+    possibly adapter-specific requests (such as changing the number of workers).
 
     With this in mind, the purpose of this module is to create infrastructure
     for the second loop (the controller) to submit requests to the first loop.
-    It provides this functionality through a class so that specific adapters
-    can extend this to provide requests specific to that adapter (such as
-    changing the number of workers).
+    It provides this functionality through a class so that specific adapters can
+    extend this to provide requests specific to that adapter (such as changing
+    the number of workers).
  -}
 module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     (
@@ -78,7 +77,7 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 --------------------------------- Type-classes ---------------------------------
 --------------------------------------------------------------------------------
 
-{-| This class provides a set of supervisor requests common to all adapters. -}
+{-| This class provides the set of supervisor requests common to all adapters. -}
 class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()
@@ -294,7 +293,7 @@ forkControllerThread' request_queue controller = liftIO $ do
               thread to start until after its thread id has been added to the
               list, as otherwise it could result in an orphan thread that won't
               get garbage collected until the supervisor finishes due to a
-              pecularity of the GHC runtime where it doesn't garbage collect a
+              peculiarity of the GHC runtime where it doesn't garbage collect a
               thread as long as a ThreadId referring to it exists.
      -}
     putMVar start_signal ()
@@ -309,7 +308,7 @@ killControllerThreads = liftIO . readIORef . controllerThreads >=> liftIO . mapM
 
 ---------------------------------- Miscellaneous ----------------------------------
 
-{-| Submits a 'Request' to the supervisor and invoks the given callback with the
+{-| Submits a 'Request' to the supervisor and invokes the given callback with the
     result when it is available.  (This function is used by
     'getCurrentProgressAsync' and 'getNumberOfWorkersAsync'.)
  -}
