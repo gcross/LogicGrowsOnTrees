@@ -206,9 +206,9 @@ data ExponentiallyWeightedAverage = ExponentiallyWeightedAverage -- {{{
 $( makeLenses ''ExponentiallyWeightedAverage )
 -- }}}
 
-{-| This datatype represents statistics obtained by integrating a value that is
-    a function of time --- i.e., a quantity that holds a single value at any
-    given point in time.
+{-| Statistics for a value obtained by integrating a value that is a function of
+    time --- i.e., a quantity that holds a single value at any given point in
+    time.
  -}
 data FunctionOfTimeStatistics α = FunctionOfTimeStatistics -- {{{
     {   timeCount :: !Word {-^ the number of points at which the function changed -}
@@ -255,9 +255,7 @@ data RunStatistics = -- {{{
     } deriving (Eq,Show)
 -- }}}
 
-{-| This datatype represents statistics obtained by collecting a number of
-    independent measurements.
- -}
+{-| Statistics for a value obtained by collecting a number of independent measurements. -}
 data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics -- {{{
     {   statCount :: {-# UNPACK #-} !Int {-^ the number of measurements -}
     ,   statAverage :: {-# UNPACK #-} !Double {-^ the average value -}

@@ -100,7 +100,7 @@ import LogicGrowsOnTrees.Utils.WordSum
 ------------------------------------ Types -------------------------------------
 --------------------------------------------------------------------------------
 
-{-| This datatype is used to represent one of the possible board symmetries. -}
+{-| The possible board symmetries. -}
 data NQueensSymmetry =
     NoSymmetries {-^ the board has no symmetries at all -}
   | Rotate180Only {-^ the board is symmetric under 180 degree rotations -}

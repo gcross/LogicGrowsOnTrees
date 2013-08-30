@@ -96,7 +96,7 @@ class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
 ------------------------------------- Types ------------------------------------
 --------------------------------------------------------------------------------
 
-{-| The type of a supervisor request. -}
+{-| A supervisor request. -}
 type Request exploration_mode worker_id m = SupervisorMonad exploration_mode worker_id m ()
 {-| A basic supervisor request queue. -}
 data RequestQueue exploration_mode worker_id m = RequestQueue

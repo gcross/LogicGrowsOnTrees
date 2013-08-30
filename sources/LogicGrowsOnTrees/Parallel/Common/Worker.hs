@@ -81,10 +81,10 @@ import LogicGrowsOnTrees.Workload
 
 ------------------------------ Worker responses --------------------------------
 
-{-| The type of progress updates sent to the supervisor;  it has a component
-    which contains information about how much of the tree has been explored and
-    what results have been found so far, as well as the remaining 'Workload' to
-    be completed by this worker.
+{-| A progress update sent to the supervisor;  it has a component which contains
+    information about how much of the tree has been explored and what results
+    have been found so far, as well as the remaining 'Workload' to be completed
+    by this worker.
  -}
 data ProgressUpdate progress = ProgressUpdate
     {   progressUpdateProgress :: progress
@@ -92,15 +92,16 @@ data ProgressUpdate progress = ProgressUpdate
     } deriving (Eq,Show)
 $( derive makeSerialize ''ProgressUpdate )
 
-{-| A convenient type alias for the type of 'ProgressUpdate' corresponding to
-    the given exploration mode. -}
+{-| A convenient type alias for the type of 'ProgressUpdate' associated with the
+    given exploration mode.
+ -}
 type ProgressUpdateFor exploration_mode = ProgressUpdate (ProgressFor exploration_mode)
 
-{-| The type of stolen workloads sent to the supervisor;  in addition to a
-    component with the stolen 'Workload' itself, it also has a 'ProgressUpdate'
-    component, which is required in to maintain the invariant that all of the
-    'Workloads's that the supervisor has on file (both assigned to workers and
-    unassigned) plus the progress equals the full tree.
+{-| A stolen workload sent to the supervisor;  in addition to a component with
+    the stolen 'Workload' itself, it also has a 'ProgressUpdate' component,
+    which is required in to maintain the invariant that all of the 'Workloads's
+    that the supervisor has on file (both assigned to workers and unassigned)
+    plus the progress equals the full tree.
  -}
 data StolenWorkload progress = StolenWorkload
     {   stolenWorkloadProgressUpdate :: ProgressUpdate progress
@@ -108,13 +109,14 @@ data StolenWorkload progress = StolenWorkload
     } deriving (Eq,Show)
 $( derive makeSerialize ''StolenWorkload )
 
-{-| A convenient type alias for the type of 'StolenWorkload' corresponding to
-    the given exploration mode. -}
+{-| A convenient type alias for the type of 'StolenWorkload' associated with the
+    the given exploration mode.
+ -}
 type StolenWorkloadFor exploration_mode = StolenWorkload (ProgressFor exploration_mode)
 
 ------------------------------- Worker requests --------------------------------
 
-{-| The type of worker requests. -}
+{-| A worker request. -}
 data WorkerRequest progress =
     {-| Request that the worker abort. -}
     AbortRequested
@@ -123,15 +125,15 @@ data WorkerRequest progress =
     {-| Request that the worker respond with a stolen workload (if possible). -}
   | WorkloadStealRequested (Maybe (StolenWorkload progress) → IO ())
 
-{-| The type of the queue of worker requests.
+{-| A queue of worker requests.
 
     NOTE:  Although the type is a list, and requests are added by prepending
     them to the list, it still acts as a queue because the worker will reverse
     the list before processing the requests.
 -}
 type WorkerRequestQueue progress = IORef [WorkerRequest progress]
-{-| A convenient type alias for the type of 'WorkerRequestQueue' corresponding
-    to the given exploration mode. -}
+{-| A convenient type alias for the type of 'WorkerRequestQueue' associated with
+    the given exploration mode. -}
 type WorkerRequestQueueFor exploration_mode = WorkerRequestQueue (ProgressFor exploration_mode)
 
 --------------------------------- Worker types ---------------------------------
@@ -144,11 +146,11 @@ data WorkerEnvironment progress = WorkerEnvironment
     ,   workerTerminationFlag :: IVar () {-^ an IVar that is filled when the worker terminates -}
     }
 
-{-| A convenient type alias for the type of 'WorkerEnvironment' corresponding to
+{-| A convenient type alias for the type of 'WorkerEnvironment' associated with
     the given exploration mode. -}
 type WorkerEnvironmentFor exploration_mode = WorkerEnvironment (ProgressFor exploration_mode)
 
-{-| A datatype representing the reason why a worker terminated. -}
+{-| The reason why a worker terminated. -}
 data WorkerTerminationReason worker_final_progress =
     {-| worker completed normally without error;  included is the final result -}
     WorkerFinished worker_final_progress
@@ -171,8 +173,8 @@ instance Functor WorkerTerminationReason where
     fmap _ (WorkerFailed x) = WorkerFailed x
     fmap _ WorkerAborted = WorkerAborted
 
-{-| A convenient type alias for the type of 'WorkerTerminationReason'
-    corresponding to the given exploration mode.
+{-| A convenient type alias for the type of 'WorkerTerminationReason' associated
+    with the given exploration mode.
  -}
 type WorkerTerminationReasonFor exploration_mode = WorkerTerminationReason (WorkerFinalProgressFor exploration_mode)
 

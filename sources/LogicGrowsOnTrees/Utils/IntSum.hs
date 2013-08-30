@@ -9,7 +9,7 @@ import Data.Monoid (Monoid(..))
 import Data.Serialize (Serialize(..))
 import Data.Typeable (Typeable)
 
-{-| A datatype that contains an unboxed 'Int'. -}
+{-| An unpacked 'Int' whose 'Monoid' instance is addition. -}
 data IntSum = IntSum { getIntSum :: {-# UNPACK #-} !Int } deriving (Eq,Show,Typeable)
 
 {-| This instance sums the two contained 'Int's. -}

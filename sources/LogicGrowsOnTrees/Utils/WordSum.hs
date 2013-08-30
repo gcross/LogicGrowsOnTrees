@@ -10,7 +10,7 @@ import Data.Serialize (Serialize(..))
 import Data.Typeable (Typeable)
 import Data.Word (Word)
 
-{-| A datatype that contains an unboxed 'Word'. -}
+{-| An unpacked 'Word' whose 'Monoid' instance is addition. -}
 data WordSum = WordSum { getWordSum :: {-# UNPACK #-} !Word } deriving (Eq,Show,Typeable)
 
 {-| This instance sums the two contained 'Word's. -}

@@ -85,7 +85,7 @@ class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where
 ------------------------------------ Types -------------------------------------
 --------------------------------------------------------------------------------
 
-{-| The type of worker ids that use this module (an alias for 'Int'). -}
+{-| The type of worker ids used by this module (an alias for 'Int'). -}
 type WorkerId = Int
 
 type RemovalPriority = Word64
