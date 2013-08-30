@@ -207,8 +207,8 @@ $( makeLenses ''ExponentiallyWeightedAverage )
 -- }}}
 
 {-| This datatype represents statistics obtained by integrating a value that is
-    a function of time --- i.e., that holds a single value at any given point in
-    time.
+    a function of time --- i.e., a quantity that holds a single value at any
+    given point in time.
  -}
 data FunctionOfTimeStatistics α = FunctionOfTimeStatistics -- {{{
     {   timeCount :: !Word {-^ the number of points at which the function changed -}
@@ -262,7 +262,7 @@ data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics -- {{
     {   statCount :: {-# UNPACK #-} !Int {-^ the number of measurements -}
     ,   statAverage :: {-# UNPACK #-} !Double {-^ the average value -}
     ,   statStdDev ::  {-# UNPACK #-} !Double {-^ the standard deviation -}
-    ,   statMin :: {-# UNPACK #-} !Double {-^ the minimum measuremnt value -}
+    ,   statMin :: {-# UNPACK #-} !Double {-^ the minimum measurement value -}
     ,   statMax :: {-# UNPACK #-} !Double {-^ the maximum measurement value -}
     } deriving (Eq,Show)
 -- }}}
@@ -303,22 +303,13 @@ $( makeLenses ''StepFunctionOfTime )
  -}
 data SupervisorCallbacks exploration_mode worker_id m = -- {{{
     SupervisorCallbacks
-    {   {-| This callback is used by the supervisor to signal that a progress
-            update request should be send to the given list of workers.
-         -}
+    {   {-| send a progress update request to the given workers -}
         broadcastProgressUpdateToWorkers :: [worker_id] → m ()
-    ,   {-| This callback is used by the supervisor to signal that a workload
-            steal request should be send to the given list of workers.
-         -}
+    ,   {-| send a workload steal request to the given workers -}
         broadcastWorkloadStealToWorkers :: [worker_id] → m ()
-    ,   {-| This callback is used by the supervisor to signal that the global
-            progress update that was earlier requested by the adapter has
-            finished, with the current progress given as the argument.
-         -}
+    ,   {-| receive the result of the global progress update that was requested by the controller -}
         receiveCurrentProgress :: ProgressFor exploration_mode → m ()
-    ,   {-| This callback is used by the supervisor to signal that a workload
-            should be send to the indicated worker.
-         -}
+    ,   {-| send the given workload to the given worker -}
      sendWorkloadToWorker :: Workload → worker_id → m ()
     }
 -- }}}
@@ -374,14 +365,14 @@ data SupervisorTerminationReason final_result progress worker_id = -- {{{
 {-| A convenient type alias for the 'SupervisorTerminationReason' associated with a given exploration mode. -} 
 type SupervisorTerminationReasonFor exploration_mode = SupervisorTerminationReason (FinalResultFor exploration_mode) (ProgressFor exploration_mode)
 
-{-| This type has the outcome of running the supervisor, which includes the
-    reason why it terminated, the statistics for the run, and the workers that
-    were present when it finished.
- -}
+{-| The outcome of running the supervisor. -}
 data SupervisorOutcome final_result progress worker_id = -- {{{
     SupervisorOutcome
-    {   supervisorTerminationReason :: SupervisorTerminationReason final_result progress worker_id
+    {   {-| the reason the supervisor terminated -}
+        supervisorTerminationReason :: SupervisorTerminationReason final_result progress worker_id
+        {-| the statistics for the run -}
     ,   supervisorRunStatistics :: RunStatistics
+        {-| the workers that were present when it finished -}
     ,   supervisorRemainingWorkers :: [worker_id]
     } deriving (Eq,Show)
 -- }}}
@@ -419,7 +410,7 @@ type SupervisorStateConstraint exploration_mode worker_id m' = MonadState (Super
 type SupervisorMonadConstraint m = (Functor m, MonadIO m)
 {-| This is the constraint placed on the types that can be used as worker ids. -}
 type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
-{-| This is just a sum of the 'SupervisorMonadConstraint' and the 'SupervisorWorkerIdConstraint'. -}
+{-| This is just a sum of 'SupervisorMonadConstraint' and the 'SupervisorWorkerIdConstraint'. -}
 type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,SupervisorMonadConstraint m)
 -- }}}
 

@@ -15,22 +15,15 @@
 {-# LANGUAGE ViewPatterns #-}
 
 {-| The Supervisor module contains logic that is common to all of the adapters
-    for the parallization infrastructure. The way to use it is to build the
+    for the parallization infrastructure. The way to use it is to package the
     logic for communicating with your workers into a 'SupervisorProgram' that
     runs in the 'SupervisorMonad' with your state just below the
     'SupervisorMonad' in the monad stack.
 
-    A great deal of the logic in this module deals with gathering statistics.
-    The main purpose of these statistics is twofold. First, these statistics
-    provide data that can be used to determine why the running time is not
-    scaling inversely linear to the number of processors. Second, the workload
-    buffer (a set of workloads kept around so that worker does not have to wait
-    to obtain a new workload) is designed to increase in size with the ratio of
-    the time needed to steal a workload over the time between workload requests
-    --- i.e., if the time needed to steal a workload is twice the time between
-    workload requests then we want to send out twice as many workload steal
-    requests so that the average wait time to steal a workload from someone is
-    on the same order as the time between requests.
+    A great deal of the logic in this module deals with gathering statistics
+    whose purpose is to provide data that can be used to figure out what is
+    going wrong if the runtime is not scaling inversely with the number of
+    workers.
  -}
 module LogicGrowsOnTrees.Parallel.Common.Supervisor
     (
@@ -138,10 +131,10 @@ deriveLoggers "Logger" [DEBUG]
 
 ---------------------- Supervisor monad and program types ----------------------
 
-{-| This is the monad in which the supervisor logic should run;  it keeps track
-    of the state of the system including the current workers and their
-    workloads, the current progress of the system, which workers we are waiting
-    for a progress update or stolen workload from, etc.
+{-| This is the monad in which the supervisor logic is run;  it keeps track of
+    the state of the system including the current workers and their workloads,
+    the current progress of the system, which workers we are waiting for a
+    progress update or stolen workload from, etc.
  -}
 newtype SupervisorMonad exploration_mode worker_id m α =
     SupervisorMonad {
@@ -183,7 +176,7 @@ data SupervisorProgram exploration_mode worker_id m =
      -}
   | ∀ α. PollingProgram (SupervisorMonad exploration_mode worker_id m ()) (m (Maybe α)) (α → SupervisorMonad exploration_mode worker_id m ())
     {-| An 'UnrestrictedProgram' is an event loop that you implement manually;
-        note that it must run forever until the logic in the 'SupervisorModule'
+        note that it must run forever until the logic in the 'SupervisorMonad'
         decides to exit --- although you can always force it to abort by calling
         'abortSupervisor'.  This mode exists for testing rather than to be used
         by an adapter, but if you do use it then you take on responsibility for
@@ -296,7 +289,7 @@ receiveWorkerFinished ::
 receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
 
 {-| Informs the supervisor that a worker has finished its current workload and
-    returned the given final progress;  the worker should be removed after its
+    returned the given final progress; the worker will be removed after its
     final progress has been processed.
  -}
 receiveWorkerFinishedAndRemoved ::
@@ -324,8 +317,9 @@ receiveWorkerFinishedWithRemovalFlag = wrapIntoSupervisorMonad .** Implementatio
 
 {-| Informs the supervisor that a worker (which might have been active and
     possibly even being waited on for a progress update and/or stolen workload)
-    has been removed;  its workload will be returned to the set of available
-    workloads and it will be removed from the set of workers pending requests.
+    has been removed; the worker will be removed from the set of workers with
+    pending requests and its workload will be returned to the pool of available
+    workloads.
  -}
 removeWorker ::
     ( SupervisorMonadConstraint m
@@ -350,19 +344,28 @@ removeWorkerIfPresent = wrapIntoSupervisorMonad . Implementation.removeWorkerIfP
 abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ SupervisorMonad exploration_mode worker_id m α
 abortSupervisor = wrapIntoSupervisorMonad Implementation.abortSupervisor
 
-{-| Indicates that the supervisor has begun processing an event. -}
+{-| Signals that the supervisor has begun processing an event. -}
 beginSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
 beginSupervisorOccupied = changeSupervisorOccupiedStatus True
 
-{-| Changes the occupied states of the supervisor. -}
+{-| Changes the occupied status of the supervisor. -}
 changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad exploration_mode worker_id m ()
 changeSupervisorOccupiedStatus = wrapIntoSupervisorMonad . Implementation.changeSupervisorOccupiedStatus
 
-{-| Indicates that the supervisor has finished processing an event. -}
+{-| Signals that the supervisor has finished processing an event. -}
 endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
 endSupervisorOccupied = changeSupervisorOccupiedStatus False
 
-{-| Sets the workload buffer size. -}
+{-| Sets the workload buffer size, which is the minimum number of workloads that
+    the supervisor will attempt to have available at all times so that requests
+    for new workloads from workers can be responded to immediately.
+
+    Normally the default value of 4 will be fine, but if you run into a problem
+    where the amount of time needed to steal a workload is greater than the
+    average time between requests for new workloads, then setting this to be
+    roughly equal to the time needed to steal a workload divided by the time
+    between workload requests may help.
+ -}
 setWorkloadBufferSize :: SupervisorMonadConstraint m ⇒ Int → SupervisorMonad exploration_mode worker_id m ()
 setWorkloadBufferSize = wrapIntoSupervisorMonad . Implementation.setWorkloadBufferSize
 
@@ -374,18 +377,25 @@ getCurrentProgress ::
     ) ⇒ SupervisorMonad exploration_mode worker_id m (ProgressFor exploration_mode)
 getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
 
-{-| Gets the current statistics of the system. -}
+{-| Gets the current statistics of the system.
+
+    NOTE:  This operation is cheap but it is not free because the statistics
+           exist in an intermediate form that needs to be finalized before being
+           returned.
+ -}
 getCurrentStatistics ::
     SupervisorFullConstraint worker_id m ⇒
     SupervisorMonad exploration_mode worker_id m RunStatistics
 getCurrentStatistics = SupervisorMonad Implementation.getCurrentStatistics
 
-{-| Gets the number of workers that are present in the system. -}
+{-| Gets the number of workers that are currently present in the system. -}
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m Int
 getNumberOfWorkers = wrapIntoSupervisorMonad Implementation.getNumberOfWorkers
 
 {-| If there exists any workers waiting for a workload, it returns the id of one
-    of them wrapped in 'Just';  it not, it returns 'Nothing'.
+    of them wrapped in 'Just'; it not, it returns 'Nothing'. (This is useful,
+    for example, if you want to reduce the number of workers as it is best to
+    start by removing ones that are currently idle.)
  -}
 tryGetWaitingWorker ::
     ( SupervisorMonadConstraint m
@@ -413,8 +423,8 @@ setSupervisorDebugMode = wrapIntoSupervisorMonad . Implementation.setSupervisorD
 
 --------------------------- Launching the supervisor ---------------------------
 
-{-| Runs the supervisor in the given exploration mode, with the given callbacks, and
-    running the given program.
+{-| Runs the supervisor in the given exploration mode with the given callbacks
+    and program.
  -}
 runSupervisor ::
     ( SupervisorMonadConstraint m
@@ -426,9 +436,7 @@ runSupervisor ::
     m (SupervisorOutcomeFor exploration_mode worker_id)
 runSupervisor exploration_mode = runSupervisorStartingFrom exploration_mode (initialProgress exploration_mode)
 
-{-| Runs the supervisor in the given exploration mode, with the given callbacks,
-    running the given program, and starting from the given progress.
- -}
+{-| Like 'runSupervisor' but starting from the given progress. -}
 runSupervisorStartingFrom ::
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
@@ -478,7 +486,11 @@ The functions in this section are intended for testing purposes and normally
 should not be used
  -}
 
-{-| Runs the supervisor with a raw action in the 'SupervisorMonad'. -}
+{-| Runs the supervisor with a raw action in the 'SupervisorMonad'.
+
+    NOTE:  You should not normally use this function, as it exists primarily for
+           testing purposes;  see 'SupervisorProgram' for details.
+ -}
 runUnrestrictedSupervisor ::
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id
@@ -492,7 +504,7 @@ runUnrestrictedSupervisor exploration_mode callbacks =
     .
     UnrestrictedProgram
 
-{-| Runs the supervisor with a raw action in the 'SupervisorMonad' that starts from the given progress. -}
+{-| Like 'runUnrestrictedSupervisor' but starting from the given progress. -}
 runUnrestrictedSupervisorStartingFrom ::
     ( SupervisorMonadConstraint m
     , SupervisorWorkerIdConstraint worker_id

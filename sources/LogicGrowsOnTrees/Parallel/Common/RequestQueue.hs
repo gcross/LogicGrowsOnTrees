@@ -89,13 +89,7 @@ class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
     {-| Request that a global progress update be performed, invoking the given callback with the result;  see 'requestProgressUpdate' for the synchronous version. -}
     requestProgressUpdateAsync :: (ProgressFor (ExplorationModeFor m) → IO ()) → m ()
-    {-| Sets the size of the workload buffer.  (Normally the default value of 4
-        will be fine, but if you run into a problem where the amount of time
-        needed to steal a workload is greater than the average time between
-        requests for new workloads, then setting this to be roughly equal to the
-        time needed to steal a workload divided by the time between workload
-        requests may help.)
-     -}
+    {-| Sets the size of the workload buffer;  for more information, see 'Supervisor.setWorkloadBufferSize' (which links to the "LogicGrowsOnTrees.Parallel.Common.Supervisor" module). -}
     setWorkloadBufferSize :: Int → m ()
 
 --------------------------------------------------------------------------------
