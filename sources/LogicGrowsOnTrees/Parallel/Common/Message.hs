@@ -5,9 +5,6 @@
 
 {-| This module contains infrastructure for communicating with workers over an
     inter-process channel.
-
-    Note:  This module is used by the processes and network adapter, which are
-           provided in separate packages.
  -}
 module LogicGrowsOnTrees.Parallel.Common.Message
     (
@@ -53,7 +50,7 @@ data MessageForSupervisor progress worker_final_progress =
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForSupervisor)
 
-{-| Convenient type alias for obtaining the 'MessageForSupervisor' type corresponding with the given exploration mode. -}
+{-| Convenient type alias for the 'MessageForSupervisor' type for the given exploration mode. -}
 type MessageForSupervisorFor exploration_mode = MessageForSupervisor (ProgressFor exploration_mode) (WorkerFinalProgressFor exploration_mode)
 
 {-| This data structure contains callbacks to be invoked when a message has
@@ -66,7 +63,7 @@ data MessageForSupervisorReceivers exploration_mode worker_id = MessageForSuperv
     ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload (ProgressFor exploration_mode)) → IO ()
         {-| called when a failure (with the given message) has been received from a worker -}
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
-        {-| called when a worker has finished withthe given final progress -}
+        {-| called when a worker has finished with the given final progress -}
     ,   receiveFinishedFromWorker :: worker_id → WorkerFinalProgressFor exploration_mode → IO ()
         {-| called when a worker has quit the system and is no longer available -}
     ,   receiveQuitFromWorker :: worker_id → IO ()
@@ -74,10 +71,12 @@ data MessageForSupervisorReceivers exploration_mode worker_id = MessageForSuperv
 
 {-| A message from the supervisor to a worker.
 
-    Note: It doesn't make sense to send, say, a progress update request when the
-          worker is not processing a workload, nor does it make sense to send it
-          a workload when it already has one.  It is your responsibility to not
-          send a nonsense message.
+    NOTE: It is your responsibility not to send a workload to a worker that
+          already has one;  if you do then the worker will report an error and
+          then terminate.  The converse, however, is not true:  it is okay to
+          send a progress request to a worker without a workload because the
+          worker might have finished between when you sent the message and when
+          it was received.
  -}
 data MessageForWorker =
     RequestProgressUpdate {-^ request a progress update -}
