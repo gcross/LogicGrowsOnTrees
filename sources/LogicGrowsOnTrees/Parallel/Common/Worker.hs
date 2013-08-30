@@ -12,10 +12,10 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| The 'Worker' module contains the workhorses code of the parallelization
+{-| The 'Worker' module contains the workhorse code of the parallelization
     infrastructure in the form of the 'forkWorkerThread' function, which
-    explores a tree step by step while continuously polling for requests;  more
-    details for how this function works are available at 'forkWorkerThread'.
+    explores a tree step by step while continuously polling for requests; for
+    more details see 'forkWorkerThread'.
  -}
 module LogicGrowsOnTrees.Parallel.Common.Worker
     (
@@ -99,9 +99,9 @@ type ProgressUpdateFor exploration_mode = ProgressUpdate (ProgressFor exploratio
 
 {-| A stolen workload sent to the supervisor;  in addition to a component with
     the stolen 'Workload' itself, it also has a 'ProgressUpdate' component,
-    which is required in to maintain the invariant that all of the 'Workloads's
-    that the supervisor has on file (both assigned to workers and unassigned)
-    plus the progress equals the full tree.
+    which is required in order to maintain the invariant that all of the
+    'Workload's that the supervisor has on file (both assigned to workers and
+    unassigned) plus the current progress equals the full tree.
  -}
 data StolenWorkload progress = StolenWorkload
     {   stolenWorkloadProgressUpdate :: ProgressUpdate progress
@@ -179,8 +179,8 @@ instance Functor WorkerTerminationReason where
 type WorkerTerminationReasonFor exploration_mode = WorkerTerminationReason (WorkerFinalProgressFor exploration_mode)
 
 {-| The action that a worker can take to push a result to the supervisor;  this
-    type is effectively null (with value 'absurd' for all modes except
-    'FoundModeUsingPush'.
+    type is effectively null (with the exact value 'absurd') for all modes
+    except 'FoundModeUsingPush'.
  -}
 type family WorkerPushActionFor exploration_mode :: *
 -- NOTE:  Setting the below instances equal to Void → () is a hack around the
@@ -213,26 +213,26 @@ deriveLoggers "Logger" [DEBUG]
 {-| The 'forkWorkerThread' function is the workhorse of the parallization
     infrastructure; it explores a tree in a separate thread while polling for
     requests. Specifically, the worker alternates between stepping through the
-    tree and checking to see if there are any new requests in the queue
+    tree and checking to see if there are any new requests in the queue.
     
     The worker is optimized around the assumption that requests are rare. For
     this reason, it uses an 'IORef' for the queue to minimize the cost of
     peeking at it rather than an 'MVar' or other thread synchronization
     variable; the trade-off is that if a request is added to the queue by a
     different processor then it might not be noticed immediately until the
-    caches get synchronized, but since requests are rare this not a significant
-    cost to pay. Likewise, the request queue uses the list type rather than
-    something like "Data.Sequence" for simplicity; the vast majority of the time
-    the worker will encounter an empty list, and on the rare occasion when the
-    list is non-empty it will be short enough that 'reverse'ing it will not pose
-    a significant cost.
+    caches get synchronized; since requests are rare this not a significant cost
+    to pay. Likewise, the request queue uses the list type rather than something
+    like "Data.Sequence" for simplicity; the vast majority of the time the
+    worker will encounter an empty list, and on the rare occasion when the list
+    is non-empty it will be short enough that 'reverse'ing it will not pose a
+    significant cost.
 
     At any given point in the exploration, there is an initial path which
     locates the subtree that was given as the original workload, a cursor which
     indicates the subtree /within/ this subtree that makes up the /current/
-    workload, and the context which indicates the current location in the tree
-    that is being explored. All workers start with an empty cursor; when a
-    workload is stolen, decisions made early on in the the context are frozen
+    workload, and the context which indicates the current location in the
+    subtree that is being explored. All workers start with an empty cursor; when
+    a workload is stolen, decisions made early on in the the context are frozen
     and moved into the cursor because if they were not then when the worker
     backtracked it would explore a workload that it just gave away, resulting in
     some results being observed twice.
@@ -396,7 +396,7 @@ forkWorkerThread
 ------------------------------ Request functions ------------------------------
 --------------------------------------------------------------------------------
 
-{-| Sends a request to abort to the given request queue. -}
+{-| Sends a request to abort. -}
 sendAbortRequest :: WorkerRequestQueue progress → IO ()
 sendAbortRequest = flip sendRequest AbortRequested
 
@@ -426,10 +426,10 @@ sendRequest queue request = atomicModifyIORef queue ((request:) &&& const ())
 ------------------------------ Utility functions -------------------------------
 --------------------------------------------------------------------------------
 
-{-| This function explores a tree with the specified purity using the given mode
-    by forking a worker thread and waiting for it to finish;  it exists to
-    facilitate testing and benchmarking and is not a function that you are
-    likely to ever have a need for yourself.
+{-| Explores a tree with the specified purity using the given mode by forking a
+    worker thread and waiting for it to finish; it exists to facilitate testing
+    and benchmarking and is not a function that you are likely to ever have a
+    need for yourself.
  -}
 exploreTreeGeneric ::
     ( WorkerPushActionFor exploration_mode ~ (Void → ())
