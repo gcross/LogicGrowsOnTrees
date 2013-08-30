@@ -95,23 +95,23 @@ type InnerMonad inner_state = StateT inner_state IO
 
 {-| A set of callbacks invoked by the supervisor code in this module. -}
 data WorkgroupCallbacks inner_state = WorkgroupCallbacks
-    {   {-| Create a worker with the given id. -}
+    {   {-| create a worker with the given id -}
         createWorker :: WorkerId → InnerMonad inner_state ()
-        {-| Destroy the worker with the given id.  (Ideally this should be
+        {-| destroy the worker with the given id; ideally this should be
             implemented by signaling the worker to quit and then waiting for it
-            to respond.)
+            to respond
          -}
     ,   destroyWorker :: WorkerId → Bool → InnerMonad inner_state ()
-        {-| Kill all of the workers in the given list;  do this in a manner that
-            ensures they are all terminated as promptly as possible. (This will
-            be called at the end of the run and/or when it is aborted.)
+        {-| destroy all of the workers in the given list in a manner that
+            ensures they all terminate promptly; this will be called at the end
+            of the run (successful or not)
          -}
     ,   killAllWorkers :: [WorkerId] → InnerMonad inner_state ()
-        {-| Send a progress update request to the given worker. -}
+        {-| send a progress update request to the given worker -}
     ,   sendProgressUpdateRequestTo :: WorkerId → InnerMonad inner_state ()
-        {-| Send a workload steal request to the given worker. -}
+        {-| send a workload steal request to the given worker -}
     ,   sendWorkloadStealRequestTo :: WorkerId → InnerMonad inner_state ()
-        {-| Send a workload to the given worker. -}
+        {-| send a workload to the given worker -}
     ,   sendWorkloadTo :: WorkerId → Workload → InnerMonad inner_state ()
     }
 
@@ -158,8 +158,8 @@ changeNumberOfWorkers ::
     m Word
 changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
 
-{-| Explores a tree using a workgroup;  this function is only intended to be uesd
-    by adapters where the number of workers can be changed on demand.
+{-| Explores a tree using a workgroup;  this function is only intended to be
+    used by adapters where the number of workers can be changed on demand.
  -}
 runWorkgroup ::
     ExplorationMode exploration_mode {-^ the mode in which we are exploring the tree -} →
