@@ -2,10 +2,10 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| This module contains a couple of utility functions for sending an receiving
-   'Serialize'-able data over a handle.  They assume a protocol where first a
-   line is sent with the size of the data in plain text terminated by a newline,
-   and then the raw data is serialized, sent over the line, and deserialize on
-   the other side.
+    'Serialize'-able data over a handle.  They assume a protocol where first a
+    line is sent with the size of the data in plain text terminated by a newline,
+    and then the raw data is serialized, sent over the line, and deserialize on
+    the other side.
  -}
 module LogicGrowsOnTrees.Utils.Handle
     (
@@ -33,7 +33,7 @@ import System.IO.Error (isEOFError,ioeGetErrorType)
 ---------------------------------- Exceptions ----------------------------------
 --------------------------------------------------------------------------------
 
-{-| This connection is thrown when the connection has been lost. -}
+{-| This exception is thrown when the connection has been lost. -}
 data ConnectionLost = ConnectionLost
   deriving (Show,Typeable)
 instance Exception ConnectionLost
