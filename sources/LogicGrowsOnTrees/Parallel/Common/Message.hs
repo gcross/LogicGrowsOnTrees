@@ -57,15 +57,15 @@ type MessageForSupervisorFor exploration_mode = MessageForSupervisor (ProgressFo
     been received, depending on the kind of message.
  -}
 data MessageForSupervisorReceivers exploration_mode worker_id = MessageForSupervisorReceivers
-    {   {-| called when a progress update has been received from a worker -}
+    {   {-| to be called when a progress update has been received from a worker -}
         receiveProgressUpdateFromWorker :: worker_id → Worker.ProgressUpdate (ProgressFor exploration_mode) → IO ()
-        {-| called when a (possibly) stolen workload has been received from a worker -}
+        {-| to be called when a (possibly) stolen workload has been received from a worker -}
     ,   receiveStolenWorkloadFromWorker :: worker_id → Maybe (Worker.StolenWorkload (ProgressFor exploration_mode)) → IO ()
-        {-| called when a failure (with the given message) has been received from a worker -}
+        {-| to be called when a failure (with the given message) has been received from a worker -}
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
-        {-| called when a worker has finished with the given final progress -}
+        {-| to be called when a worker has finished with the given final progress -}
     ,   receiveFinishedFromWorker :: worker_id → WorkerFinalProgressFor exploration_mode → IO ()
-        {-| called when a worker has quit the system and is no longer available -}
+        {-| to be called when a worker has quit the system and is no longer available -}
     ,   receiveQuitFromWorker :: worker_id → IO ()
     }
 
