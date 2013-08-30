@@ -137,9 +137,9 @@ runWorker exploration_mode purity tree receiveMessage sendMessage =
             ConnectionLost → debugM "Connection to supervisor was lost before this process had finished."
         ]
 
-{-| This function is the same as 'runWorker', but it lets you provide handles
-    through which the messages will be sent and received.  (Note that the
-    reading and writing handles might be the same.)
+{-| The same as 'runWorker', but it lets you provide handles through which the
+    messages will be sent and received. (Note that the reading and writing
+    handles might be the same.)
  -}
 runWorkerUsingHandles ::
     ( Serialize (ProgressFor exploration_mode)

@@ -86,9 +86,9 @@ data MessageForWorker =
   deriving (Eq,Show)
 $(derive makeSerialize ''MessageForWorker)
 
-{-| This function continually performs an IO action to read a message from a
-    worker with the given id and calls one of the given callbacks depending on
-    the content of the message.
+{-| Continually performs the given IO action to read a message from a worker
+    with the given id and calls one of the given callbacks depending on the
+    content of the message.
  -}
 receiveAndProcessMessagesFromWorker ::
     MessageForSupervisorReceivers exploration_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
@@ -117,9 +117,9 @@ receiveAndProcessMessagesFromWorker
     processMessage WorkerQuit =
         receiveQuitFromWorker worker_id
 
-{-| This function is the same as 'receiveAndProcessMessagesFromWorker' except
-    that instead of giving it an IO action to fetch a message you provide a
-    'Handle' from which messsages (assumed to be deserializable) are read.
+{-| The same as 'receiveAndProcessMessagesFromWorker' except that instead of
+    giving it an IO action to fetch a message you provide a 'Handle' from which
+    messsages (assumed to be deserializable) are read.
  -}
 receiveAndProcessMessagesFromWorkerUsingHandle ::
     ( Serialize (ProgressFor exploration_mode)

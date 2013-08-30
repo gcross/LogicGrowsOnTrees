@@ -687,8 +687,9 @@ mainForExploreTreeImpureUntilFoundUsingPush constructCondition = genericMain (Fo
 
 ---------------------------- Generic main function -----------------------------
 
-{-| This function is just like those in the previous functions except that it is
-    generalized over all tree purities and exploration modes.
+{-| This is just like the previous functions, except that it is generalized over
+    all tree purities and exploration modes.  (In fact, the specailized
+    functions are just wrappers around this function.)
  -}
 genericMain ::
     ( MonadIO result_monad

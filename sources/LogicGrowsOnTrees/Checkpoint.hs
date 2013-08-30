@@ -96,9 +96,7 @@ instance Exception InconsistentCheckpoints
 ----------------------------------- Types --------------------------------------
 --------------------------------------------------------------------------------
 
-{-| This type contains information about the parts of a tree that have been
-    explored.
- -}
+{-| Information about the parts of a tree that have been explored. -}
 data Checkpoint =
     CachePoint ByteString Checkpoint
   | ChoicePoint Checkpoint Checkpoint
@@ -108,7 +106,7 @@ data Checkpoint =
 $( derive makeSerialize ''Checkpoint )
 
 -- Note:  This function is not in the same place where it appears in the documentation.
-{-| This function simplifies the root of the checkpoint by replacing
+{-| Simplifies the root of the checkpoint by replacing
 
     * @Choicepoint Unexplored Unexplored@ with @Unexplored@;
     
@@ -151,8 +149,8 @@ instance Monoid Checkpoint where
       | cx == cy = simplifyCheckpointRoot (CachePoint cx (x `mappend` y))
     mappend x y = throw (InconsistentCheckpoints x y)
 
-{-| This type contains information both about current checkpoint and about the
-    results we have gathered so far.
+{-| Information about both the current checkpoint and the results we have
+    gathered so far.
  -}
 data Progress α = Progress
     {   progressCheckpoint :: Checkpoint
@@ -262,9 +260,9 @@ checkpointFromExplorationState :: ExplorationTState m α → Checkpoint
 checkpointFromExplorationState ExplorationTState{..} =
     checkpointFromContext explorationStateContext explorationStateCheckpoint
 
-{-| This function incrementally builds up a full checkpoint given a sequence
-    corresponding to some cursor at a particular location of the full checkpoint
-    and the subcheckpoint to splice in at that location.
+{-| Incrementally builds up a full checkpoint given a sequence corresponding to
+    some cursor at a particular location of the full checkpoint and the
+    subcheckpoint to splice in at that location.
 
     The main reason that you should use this function is that, as it builds up
     the full checkpoint, it makes some important simplifications via.
@@ -313,8 +311,8 @@ checkpointFromUnexploredPath path = checkpointFromSequence
     path
     Unexplored
 
-{-| This function applies 'simplifyCheckpointRoot' everywhere in the checkpoint
-    starting from the bottom up.
+{-| Applies 'simplifyCheckpointRoot' everywhere in the checkpoint starting from
+    the bottom up.
  -}
 simplifyCheckpoint :: Checkpoint → Checkpoint
 simplifyCheckpoint (ChoicePoint left right) = simplifyCheckpointRoot (ChoicePoint (simplifyCheckpoint left) (simplifyCheckpoint right))
