@@ -12,9 +12,11 @@
 {-# LANGUAGE ViewPatterns #-}
 
 {-| This module provides a framework for creating a program that explores a tree
-    in parallel. The way that you use it is that you pick the mainFor...
-    function that corresponds to the kind of tree, and then provide
-    the following:
+    in parallel. The way that you use it is that you call the function
+    @mainForXY@ where @X@ depends on the purity of the tree and @Y@ depends on
+    the mode (see "LogicGrowsOnTrees.Parallel.Main#push" for more information;
+    the link does go to the right place even though it only shows the module
+    name) and then provide the following:
 
     1. a driver provided by the adapter you want to use;
 
@@ -26,16 +28,16 @@
 
         > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
 
-    4. an action to run when the exploration has terminated (a function of the
-       command line arguments); and
+    4. an action to run when the exploration has terminated, as a function of
+       the outcome and the command line arguments; and
 
     5. the tree, as a function of the command line arguments.
 
     Specifically, a program created using this module will automatically take
     care of running the supervisor and the workers (which includes figuring out
-    which of the two this program is supposed to run as, where applicable). It
-    also provides command line options that specify if, where, and how often a
-    checkpoint file should be created (an will resume from an existing
+    which of the two roles this program is supposed to take, where applicable).
+    It also provides command line options that specify if, where, and how often
+    a checkpoint file should be created (and will resume from an existing
     checkpoint file if it exists) as well as what supervisor statistics (if any)
     should be printed to the screen at the end, and it also provides options for
     the current adapter that specify things like the number of workers to
@@ -43,7 +45,8 @@
     and will be displayed if the user requests help with how to use the program.
 
     All of this functionality is adapter independent, so if you want to use a
-    different back end you only need to change the driver argument.
+    different back end you only need to change the driver argument and
+    recompile.
  -}
 module LogicGrowsOnTrees.Parallel.Main
     (
@@ -191,8 +194,9 @@ $( derive makeSerialize ''SharedConfiguration )
     function that is called to start the run with a set of parameters specified
     in 'DriverParameters'.
 
-    Note that the controller_monad type parameter is within an existential type;
-    this is because the user of the driver should not need to know what it is.
+    Note that the @controller_monad@ type parameter is within an existential
+    type; this is because the user of the driver should not need to know what it
+    is.
  -}
 data Driver
     result_monad
@@ -227,25 +231,28 @@ data DriverParameters
     exploration_mode
     controller_monad =
     DriverParameters
-    {   {-| the mode of the exploration -}
-        constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
-        {-| the purity of the tree -}
-    ,   purity :: Purity m n
-        {-| configuration options that are shared between the supervisor and the worker -}
-    ,   shared_configuration_term :: Term shared_configuration
+    {   {-| configuration options that are shared between the supervisor and the worker -}
+        shared_configuration_term :: Term shared_configuration
         {-| configuration options specific to the supervisor -}
     ,   supervisor_configuration_term :: Term supervisor_configuration
         {-| program information;  should at a minimum put a brief description of the program in 'termDoc' -}
     ,   program_info :: TermInfo
-        {-| action that initializes the global state of all processes, both worker and supervisor -}
+        {-| action that initializes the global state of each process --- that
+            is, once for each running instance of the executable, which
+            depending on the adapter might be a supervisor, a worker, or both
+         -}
     ,   initializeGlobalState :: shared_configuration → IO ()
+        {-| in the supervisor, gets the starting progress for the exploration;  this is where a checkpoint is loaded, if one exists -}
+    ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
+        {-| in the supervisor, responds to the termination of the run -}
+    ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
+        {-| constructs the exploration mode given the shared configuration -}
+    ,   constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
         {-| constructs the tree given the shared configuration -}
     ,   constructTree :: shared_configuration → TreeT m (ResultFor exploration_mode)
-        {-| in the supervisor process, gets the starting progress for the exploration;  this is where a checkpoint is loaded, if one exists -}
-    ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
-        {-| in the supervisor process, respond to the termination of the run -}
-    ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
-        {-| in the supervisor process, construct the controller that does things like periodic checkpointing -}
+        {-| the purity of the constructed tree -}
+    ,   purity :: Purity m n
+        {-| construct the controller, which runs in the supervisor and handles things like periodic checkpointing -}
     ,   constructController :: shared_configuration → supervisor_configuration → controller_monad exploration_mode ()
     }
 
@@ -259,7 +266,7 @@ data RunOutcome progress final_result = RunOutcome
     ,   runTerminationReason :: TerminationReason progress final_result
     } deriving (Eq,Show)
 
-{-| A convenient type alias that obtains the 'RunOutcome' type for the given exploration mode. -}
+{-| A convenient type alias for the type of 'RunOutcome' associated with the given exploration mode. -}
 type RunOutcomeFor exploration_mode = RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
 
 {-| A type that represents the reason why a run terminated. -}
@@ -272,7 +279,7 @@ data TerminationReason progress final_result =
   | Failure progress String
   deriving (Eq,Show)
 
-{-| A convenient type alias that obtains the 'TerminationReason' type for the given exploration mode. -}
+{-| A convenient type alias for the type of 'TerminationReason' associated with the given exploration mode. -}
 type TerminationReasonFor exploration_mode = TerminationReason (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
 
 --------------------------------------------------------------------------------
@@ -290,7 +297,7 @@ instance ArgVal Priority where
 -------------------------------- Main functions ---------------------------------
 --------------------------------------------------------------------------------
 
-{- $main
+{- $main #main#
 The functions in this section all provide a main function that starts up the
 system that explores a tree in parallel using the given tree (constructed
 possibly using information supplied on the command line) and the given adapter
@@ -300,17 +307,17 @@ All of the functionaliy of this module can be accessed through 'genericMain',
 but we nonethless also provide specialized versions of these functions for all
 of the supported tree purities and exploration modes. This is done for two
 reasons: first, in order to make the types more concrete to hopefully improve
-usability, and second, because often the type of the tree is generic and so
-using a specialized function automatically specializes the type rather than
-requiring a type annotation. The convention is @mainForExploreTreeXY@ where @X@ is
-empty for pure trees, @IO@ for trees with side-effects in the IO monad, and
-@Impure@ for trees with side-effects in some general monad, and @Y@ specifies
-the exploration mode, which is empty for 'AllMode' (sum over all results),
-@UntilFirst@ for 'FirstMode' (stop when first result found),
-@UntilFoundUsingPull@ for 'FoundModeUsingPull' (sum all results until a
-condition has been met, only sending results to the supervisor upon request) and
-@UntilFoundUsingPush@ for 'FoundModeUsingPush' (sum all results until a
-condition has been met, pushing all found results immediately to the
+usability, and second, because often the type of the tree is generalized so it
+could be one of several types, and using a specialized function automatically
+specializes the type rather than requiring a type annotation. The convention is
+@mainForExploreTreeXY@ where @X@ is empty for pure trees, @IO@ for trees with
+side-effects in the IO monad, and @Impure@ for trees with side-effects in some
+general monad, and @Y@ specifies the exploration mode, which is empty for
+'AllMode' (sum over all results), @UntilFirst@ for 'FirstMode' (stop when first
+result found), @UntilFoundUsingPull@ for 'FoundModeUsingPull' (sum all results
+until a condition has been met, only sending results to the supervisor upon
+request) and @UntilFoundUsingPush@ for 'FoundModeUsingPush' (sum all results
+until a condition has been met, pushing all found results immediately to the
 supervisor).
  -}
  
@@ -334,12 +341,12 @@ mainForExploreTree ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) result → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTree = genericMain (const AllMode) Pure
 
@@ -356,12 +363,12 @@ mainForExploreTreeIO ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) result → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIO = genericMain (const AllMode) io_purity
 
@@ -379,12 +386,12 @@ mainForExploreTreeImpure ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) result → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpure = genericMain (const AllMode) . ImpureAtopIO
 
@@ -396,12 +403,12 @@ found a result.
 
 There are two ways in which a system running in this mode can terminate normally:
 
-    1. When a solution is found, in which case a 'Just'-wrapped value is
+    1. when a solution is found, in which case a 'Just'-wrapped value is
        returned with both the found solution and the current 'Checkpoint', the
        latter allowing one to resume the search to look for more solutions
-       later.
+       later
 
-    2. When the whole tree has been explored, in which case 'Nothing' is returned.
+    2. when the whole tree has been explored, in which case 'Nothing' is returned.
 
  -}
 
@@ -418,12 +425,12 @@ mainForExploreTreeUntilFirst ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeUntilFirst = genericMain (const FirstMode) Pure
 
@@ -440,12 +447,12 @@ mainForExploreTreeIOUntilFirst ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIOUntilFirst = genericMain (const FirstMode) io_purity
 
@@ -463,12 +470,12 @@ mainForExploreTreeImpureUntilFirst ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpureUntilFirst = genericMain (const FirstMode) . ImpureAtopIO
 
@@ -487,13 +494,15 @@ In this mode, partial results are left on the workers until they receive either
 a workload steal request or a progress update request. The advantage of this
 approach is that it minimizes communication costs as partial results are sent on
 an occasional basis rather than as soon as they are found. The downside of this
-approach is that one has to poll the workers on a regular basis, and between
-polls it might be the case that the sum of all results in the system meets the
-condition but this will not be found out until the next poll, which wastes time
-equal to the amount of time between polls. If you would rather have the system
-immediately terminate as soon as it has found the desired results (at the price
-of paying an additional cost as each workload is found in sending it to the
-supervisor), then look at the push mode ("LogicGrowsOnTrees.Parallel.Main#push").
+approach is that one has to poll the workers on a regular basis using a global
+process update, and between polls it might be the case that the sum of all
+results in the system meets the condition but this will not be found out until
+the next poll, which wastes time equal to the amount of time between polls. If
+you would rather have the system immediately terminate as soon as it has found
+the desired results (at the price of paying an additional cost as each workload
+is found in sending it to the supervisor), then see push mode described at
+"LogicGrowsOnTrees.Parallel.Main#push" (which does link directly to the push
+mode documentation even though the link doesn't look like it).
 
 There are three ways in which a system running in this mode can terminate:
 
@@ -510,12 +519,10 @@ There are three ways in which a system running in this mode can terminate:
        in a 'Left'.
 
 WARNING:  If you use this mode then you need to enable checkpointing when the
-          program is run as if you don't then results will very rarely be pulled
-          from the workers and gathered together at the supervisor, meaning that
-          the system could spend a long time in a state where the condition
-          function is met by the sum total of all results in the system but the
-          system does not terminate because it does not know this as the results
-          are scattered around.
+          program is run as if you don't then the run will not terminate until
+          the tree has been fully explored even if the sum total of all results
+          in the system at some point meet the condition as it does not know
+          this until the results have been sent to the supervisor.
  -}
 
 {-| Explore the given pure tree in parallel until the sum of results meets the
@@ -532,12 +539,12 @@ mainForExploreTreeUntilFoundUsingPull ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
 
@@ -555,12 +562,12 @@ mainForExploreTreeIOUntilFoundUsingPull ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) io_purity
 
@@ -579,12 +586,12 @@ mainForExploreTreeImpureUntilFoundUsingPull ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpureUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) . ImpureAtopIO
 
@@ -592,12 +599,13 @@ mainForExploreTreeImpureUntilFoundUsingPull constructCondition = genericMain (Fo
 In this mode, whenever a result is found it is immediately sent to the
 supervisor. The advantage of this approach is that the system finds out
 immediately when all the results found so far have met the condition, rather
-than waiting for a poll to occur that gathers them together. The downside of
-this approach is that it costs some time for a worker to send a result to the
-supervisor, so if the condition will not be met until a large number of results
-have been found then it be better let the workers accumulate results locally and
-to poll them on a regular basis; to do this, see the pull mode
-("LogicGrowsOnTrees.Parallel.Main#pull").
+than waiting for a progress update to occur that gathers them together. The
+downside of this approach is that it costs some time for a worker to send a
+result to the supervisor, so if the condition will not be met until a large
+number of results have been found then it be better let the workers accumulate
+results locally and to poll them on a regular basis; to do this, see pull mode
+described at "LogicGrowsOnTrees.Parallel.Main#pull" (which does link directly to
+the pull mode documentation even though the link doesn't look like it).
 
 There are three ways in which a system running in this mode can terminate:
 
@@ -629,12 +637,12 @@ mainForExploreTreeUntilFoundUsingPush ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → Tree result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
 
@@ -652,12 +660,12 @@ mainForExploreTreeIOUntilFoundUsingPush ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeIO result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) io_purity
 
@@ -676,12 +684,12 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpureUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) . ImpureAtopIO
 
@@ -716,12 +724,12 @@ genericMain ::
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
          -} →
     (tree_configuration → RunOutcomeFor exploration_mode → IO ())
-        {-^ a callback that will be invoked with the outcome of the run (as well
-            as the tree configuration information);  note that if the
-            run was 'Completed' then the checkpoint file will be deleted if this
-            function finishes successfully
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
          -} →
-    (tree_configuration → TreeT m result) {-^ constructs the tree given the tree configuration information -} →
+    (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info notifyTerminated_ constructTree_ =
     run DriverParameters{..}
