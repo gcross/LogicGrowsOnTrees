@@ -51,7 +51,7 @@ data MessageForSupervisor progress worker_final_progress =
 $(derive makeSerialize ''MessageForSupervisor)
 
 {-| Convenient type alias for the 'MessageForSupervisor' type for the given exploration mode. -}
-type MessageForSupervisorFor exploration_mode = MessageForSupervisor (ProgressFor exploration_mode) (WorkerFinalProgressFor exploration_mode)
+type MessageForSupervisorFor exploration_mode = MessageForSupervisor (ProgressFor exploration_mode) (WorkerFinishedProgressFor exploration_mode)
 
 {-| This data structure contains callbacks to be invoked when a message has
     been received, depending on the kind of message.
@@ -64,7 +64,7 @@ data MessageForSupervisorReceivers exploration_mode worker_id = MessageForSuperv
         {-| to be called when a failure (with the given message) has been received from a worker -}
     ,   receiveFailureFromWorker :: worker_id → String → IO ()
         {-| to be called when a worker has finished with the given final progress -}
-    ,   receiveFinishedFromWorker :: worker_id → WorkerFinalProgressFor exploration_mode → IO ()
+    ,   receiveFinishedFromWorker :: worker_id → WorkerFinishedProgressFor exploration_mode → IO ()
         {-| to be called when a worker has quit the system and is no longer available -}
     ,   receiveQuitFromWorker :: worker_id → IO ()
     }
@@ -123,7 +123,7 @@ receiveAndProcessMessagesFromWorker
  -}
 receiveAndProcessMessagesFromWorkerUsingHandle ::
     ( Serialize (ProgressFor exploration_mode)
-    , Serialize (WorkerFinalProgressFor exploration_mode)
+    , Serialize (WorkerFinishedProgressFor exploration_mode)
     ) ⇒
     MessageForSupervisorReceivers exploration_mode worker_id {-^ the callbacks to invoke when a message has been received -} →
     Handle {-^ the handle from which messages should be read -} →

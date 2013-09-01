@@ -176,7 +176,7 @@ instance Functor WorkerTerminationReason where
 {-| A convenient type alias for the type of 'WorkerTerminationReason' associated
     with the given exploration mode.
  -}
-type WorkerTerminationReasonFor exploration_mode = WorkerTerminationReason (WorkerFinalProgressFor exploration_mode)
+type WorkerTerminationReasonFor exploration_mode = WorkerTerminationReason (WorkerFinishedProgressFor exploration_mode)
 
 {-| The action that a worker can take to push a result to the supervisor;  this
     type is effectively null (with the exact value 'absurd') for all modes

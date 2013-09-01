@@ -1129,7 +1129,7 @@ receiveWorkerFinishedWithRemovalFlag :: -- {{{
     ) ⇒
     Bool →
     worker_id →
-    WorkerFinalProgressFor exploration_mode →
+    WorkerFinishedProgressFor exploration_mode →
     AbortMonad exploration_mode worker_id m ()
 receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = AbortMonad . postValidate ("receiveWorkerFinished " ++ show worker_id) $ do
     infoM $ if remove_worker

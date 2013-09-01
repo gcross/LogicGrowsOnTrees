@@ -40,7 +40,7 @@ import System.Log.Logger.TH
 import LogicGrowsOnTrees (TreeT)
 import LogicGrowsOnTrees.Parallel.Common.Message (MessageForSupervisor(..),MessageForSupervisorFor,MessageForWorker(..))
 import LogicGrowsOnTrees.Parallel.Common.Worker hiding (ProgressUpdate,StolenWorkload)
-import LogicGrowsOnTrees.Parallel.ExplorationMode (ProgressFor,ResultFor,ExplorationMode(..),WorkerFinalProgressFor)
+import LogicGrowsOnTrees.Parallel.ExplorationMode (ProgressFor,ResultFor,ExplorationMode(..),WorkerFinishedProgressFor)
 import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Utils.Handle
 
@@ -143,7 +143,7 @@ runWorker exploration_mode purity tree receiveMessage sendMessage =
  -}
 runWorkerUsingHandles ::
     ( Serialize (ProgressFor exploration_mode)
-    , Serialize (WorkerFinalProgressFor exploration_mode)
+    , Serialize (WorkerFinishedProgressFor exploration_mode)
     ) ⇒
     ExplorationMode exploration_mode {-^ the mode in to explore the tree -} →
     Purity m n {-^ the purity of the tree -} →

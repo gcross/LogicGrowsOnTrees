@@ -34,7 +34,7 @@ module LogicGrowsOnTrees.Parallel.ExplorationMode
     , ProgressFor
     , FinalResultFor
     , WorkerIntermediateValueFor
-    , WorkerFinalProgressFor
+    , WorkerFinishedProgressFor
     -- * Functions
     , checkpointFromIntermediateProgress
     , initialProgress
@@ -142,11 +142,11 @@ type instance WorkerIntermediateValueFor (FoundModeUsingPull result) = result
 type instance WorkerIntermediateValueFor (FoundModeUsingPush result) = ()
 
 {-| The progress returned by a worker that has finished. -}
-type family WorkerFinalProgressFor exploration_mode :: *
-type instance WorkerFinalProgressFor (AllMode result) = Progress result
-type instance WorkerFinalProgressFor (FirstMode result) = Progress (Maybe result)
-type instance WorkerFinalProgressFor (FoundModeUsingPull result) = Progress result
-type instance WorkerFinalProgressFor (FoundModeUsingPush result) = Progress result
+type family WorkerFinishedProgressFor exploration_mode :: *
+type instance WorkerFinishedProgressFor (AllMode result) = Progress result
+type instance WorkerFinishedProgressFor (FirstMode result) = Progress (Maybe result)
+type instance WorkerFinishedProgressFor (FoundModeUsingPull result) = Progress result
+type instance WorkerFinishedProgressFor (FoundModeUsingPush result) = Progress result
 
 --------------------------------------------------------------------------------
 ---------------------------------- Functions -----------------------------------

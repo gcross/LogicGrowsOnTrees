@@ -284,7 +284,7 @@ receiveWorkerFinished ::
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    WorkerFinalProgressFor exploration_mode →
+    WorkerFinishedProgressFor exploration_mode →
     SupervisorMonad exploration_mode worker_id m ()
 receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
 
@@ -297,7 +297,7 @@ receiveWorkerFinishedAndRemoved ::
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    WorkerFinalProgressFor exploration_mode →
+    WorkerFinishedProgressFor exploration_mode →
     SupervisorMonad exploration_mode worker_id m ()
 receiveWorkerFinishedAndRemoved = receiveWorkerFinishedWithRemovalFlag True
 
@@ -311,7 +311,7 @@ receiveWorkerFinishedWithRemovalFlag ::
     ) ⇒
     Bool →
     worker_id →
-    WorkerFinalProgressFor exploration_mode →
+    WorkerFinishedProgressFor exploration_mode →
     SupervisorMonad exploration_mode worker_id m ()
 receiveWorkerFinishedWithRemovalFlag = wrapIntoSupervisorMonad .** Implementation.receiveWorkerFinishedWithRemovalFlag
 
