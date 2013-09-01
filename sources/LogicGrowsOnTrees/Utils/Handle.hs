@@ -1,10 +1,10 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This module contains a couple of utility functions for sending an receiving
-    'Serialize'-able data over a handle.  They assume a protocol where first a
+{-| This module contains a couple of utility functions for sending and receiving
+    'Serialize'-able data over a handle; they assume a protocol where first a
     line is sent with the size of the data in plain text terminated by a newline,
-    and then the raw data is serialized, sent over the line, and deserialize on
+    and then the raw data is serialized, sent over the line, and deserialized on
     the other side.
  -}
 module LogicGrowsOnTrees.Utils.Handle
@@ -38,7 +38,7 @@ data ConnectionLost = ConnectionLost
   deriving (Show,Typeable)
 instance Exception ConnectionLost
 
-{-| Replaces EOF IOExceptions with the ConnectionLost exception. -}
+{-| Replaces EOF 'IOException's with the 'ConnectionLost' exception. -}
 filterEOFExceptions = flip catch $
     \e → if isEOFError e || (show . ioeGetErrorType $ e) == "resource vanished"
         then throwIO ConnectionLost
@@ -61,7 +61,9 @@ receive handle = filterEOFExceptions $
 
     Specifically, this function serializes the given value to a 'ByteString',
     and then writes the size of the serialized data in bytes in plaintext
-    followed by a newline and then the raw data itself.
+    followed by a newline followed by the raw data itself.
+
+    If the connection has been lost, it throws 'ConnectionLost'.
  -}
 send :: Serialize α ⇒ Handle → α → IO ()
 send handle value = filterEOFExceptions $ do
