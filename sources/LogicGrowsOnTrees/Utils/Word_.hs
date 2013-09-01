@@ -2,8 +2,8 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| This module provides a temporary 'ArgVal' instance for 'Word' (via a newtype
-    wrapper 'Word_' until) 'cmdtheline' releases a new version that includes an
-    instance for 'Word' itself, after which this module will be dropped.
+    wrapper 'Word_') until 'cmdtheline' releases a new version that includes an
+    'ArgVal' instance for 'Word' itself.
  -}
 module LogicGrowsOnTrees.Utils.Word_ where
 
