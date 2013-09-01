@@ -19,7 +19,7 @@ instance Monoid WordSum where
     WordSum x `mappend` WordSum y = WordSum (x+y)
     mconcat = foldl' mappend mempty
 
-{-| This instances is equivalent to the instance for 'Word'. -}
+{-| This instance is equivalent to the instance for 'Word'. -}
 instance Serialize WordSum where
     put = put . getWordSum
     get = fmap WordSum get

@@ -18,7 +18,7 @@ instance Monoid IntSum where
     IntSum x `mappend` IntSum y = IntSum (x+y)
     mconcat = foldl' mappend mempty
 
-{-| This instances is equivalent to the instance for 'Int'. -}
+{-| This instance is equivalent to the instance for 'Int'. -}
 instance Serialize IntSum where
     put = put . getIntSum
     get = fmap IntSum get
