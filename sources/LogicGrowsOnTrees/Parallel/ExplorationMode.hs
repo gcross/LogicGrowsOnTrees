@@ -6,18 +6,18 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| There are several tasks for which a user may wish to use this package, such
-    as gathering up all the results in a tree or stopping as soon as the first
-    result is found. Because almost all of the infrastructure required for these
-    different modes is the same, rather than creating a different system for
-    each mode we instead re-use the same system but pass around a mode parameter
-    that dictates its behavior at various points as well as some of the types in
-    the system.
+{-| There are several tasks for which a user may wish to use LogicGrowsOnTrees,
+    such as gathering up all the results in a tree or stopping as soon as the
+    first result is found. Because almost all of the infrastructure required for
+    these different modes is the same, rather than creating a different system
+    for each mode we instead re-use the same system but pass around a mode
+    parameter that dictates its behavior at various points as well as some of
+    the types in the system.
 
-    The implementation of the 'ExplorationMode' uses a GADT where each constructor
-    causes 'ExplorationMode' to have a different type parameter;  this was done so
-    that pattern matching can be used when the specific mode matters and also
-    type families can be used to specialized types depending on the constructor.
+    'ExplorationMode' is defined using a GADT where each constructor has a
+    different argument for `ExplorationMode`\'s type parameter; this was
+    done so that type families can be used to specialized types depending on the
+    constructor.
  -}
 module LogicGrowsOnTrees.Parallel.ExplorationMode
     (
@@ -74,6 +74,12 @@ data FirstMode result
     there might be a period of time where the collectively found results meet
     the condition but the system is unaware of this as they are scattered
     amongst the workers.
+
+    NOTE:  If you use this mode then you are responsible for ensuring that a
+           global progress update happens on a regular basis in order to pull
+           the results in from the workers and check to see if the condition has
+           been met;  if you do not do this then the run will not terminate
+           until the tree has been fully explored.
  -}
 data FoundModeUsingPull result
 {-| Same as 'FoundModeUsingPull', but pushes each result to the supervisor as it
@@ -135,7 +141,7 @@ type instance WorkerIntermediateValueFor (FirstMode result) = ()
 type instance WorkerIntermediateValueFor (FoundModeUsingPull result) = result
 type instance WorkerIntermediateValueFor (FoundModeUsingPush result) = ()
 
-{-| The final progress returned by a worker that has finished. -}
+{-| The progress returned by a worker that has finished. -}
 type family WorkerFinalProgressFor exploration_mode :: *
 type instance WorkerFinalProgressFor (AllMode result) = Progress result
 type instance WorkerFinalProgressFor (FirstMode result) = Progress (Maybe result)
