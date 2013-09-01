@@ -37,10 +37,10 @@ import LogicGrowsOnTrees.Path
 -------------------- Workload type and simple functions ------------------------
 --------------------------------------------------------------------------------
 
-{-| A 'Workload' describes a portion of work to be performed by a worker;  it is
-    nothing more than a 'Path' to the subtree where the workload is located
-    paired with a 'Checkpoint' that indicates which parts of that subtree have
-    already been explored.
+{-| A 'Workload' describes a portion of work to be performed by a worker;  it
+    consists of a 'Path' to the subtree where the workload is located paired
+    with a 'Checkpoint' that indicates which parts of that subtree have already
+    been explored.
  -}
 data Workload = Workload
     {   workloadPath :: Path
@@ -51,7 +51,7 @@ $( derive makeSerialize ''Workload )
 {-| Workloads are ordered first by their depth (the length of the 'Path'
     component), second by the value of the 'Path' component itself, and finally
     by the value of the 'Checkpoint' component. This ordering was chosen because
-    there are places where it is nice to be able to conveniently order
+    there are times where it is nice to be able to conveniently order
     'Workload's by depth.
  -}
 instance Ord Workload where
@@ -62,7 +62,7 @@ instance Ord Workload where
                 c → c
             c → c
 
-{-| This value represents a 'Workload' that consists of the entire tree. -}
+{-| A 'Workload' that consists of the entire tree. -}
 entire_workload :: Workload
 entire_workload = Workload Seq.empty Unexplored
 
@@ -80,7 +80,7 @@ The functions in this section explore the part of a tree that is given by a
 -}
 
 {-| Explores the nodes in a pure tree given by a 'Workload', and sums
-    over and sums over all the results in the leaves.
+    over all the results in the leaves.
  -}
 exploreTreeWithinWorkload ::
     Monoid α ⇒
