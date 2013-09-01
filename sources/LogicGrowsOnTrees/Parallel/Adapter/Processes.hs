@@ -115,7 +115,7 @@ deriveLoggers "Logger" [DEBUG,INFO,ERROR]
 driver ::
     ( Serialize shared_configuration
     , Serialize (ProgressFor exploration_mode)
-    , Serialize (WorkerFinalProgressFor exploration_mode)
+    , Serialize (WorkerFinishedProgressFor exploration_mode)
     ) ⇒
     Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
@@ -177,7 +177,7 @@ supervisor and worker roles, then use 'runExplorer'.  Otherwise, use
  -}
 runSupervisor ::
     ( Serialize (ProgressFor exploration_mode)
-    , Serialize (WorkerFinalProgressFor exploration_mode)
+    , Serialize (WorkerFinishedProgressFor exploration_mode)
     ) ⇒
     ExplorationMode exploration_mode {-^ the exploration mode -} →
     String {-^ the path to the worker executable -} →
@@ -294,7 +294,7 @@ runSupervisor
 runExplorer ::
     ( Serialize shared_configuration
     , Serialize (ProgressFor exploration_mode)
-    , Serialize (WorkerFinalProgressFor exploration_mode)
+    , Serialize (WorkerFinishedProgressFor exploration_mode)
     ) ⇒
     (shared_configuration → ExplorationMode exploration_mode) {-^ construct the exploration mode given the shared configuration -} →
     Purity m n {-^ the purity of the tree -} →
