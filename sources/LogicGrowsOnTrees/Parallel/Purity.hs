@@ -3,9 +3,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-{-| This module contains types that represent the purity of a Tree.  Trees are
-    either pure or impure running on top of IO, with the value io_purity
-    being a special case of the latter.
+{-| This module contains types that represent the purity of a tree, which is
+    either pure, impure, or IO (a special case of impure).
  -}
 module LogicGrowsOnTrees.Parallel.Purity
     ( Purity(..)
@@ -16,13 +15,13 @@ import Control.Monad.IO.Class
 
 import Data.Functor.Identity (Identity)
 
-{-| The purity of a tree;  the options are 'Pure' for pure trees
-    and 'ImpureAtopIO' for impure trees, where the latter case is restricted to
-    monads that are instances of 'MonadIO' and provide a way to convert the
-    monad into an IO action.
+{-| The purity of a tree, which can be either 'Pure' (for pure trees) and
+    'ImpureAtopIO' (for impure trees); the latter case is restricted to monads
+    that are instances of 'MonadIO' and for which there exists a way to convert
+    the monad into an IO action.
 
-    The two kind argument, m and n, correspond to respectively the monad in
-    on top of which the TreeT monad transformer is stacked and the monad in
+    The two kind arguments, @m@ and @n@, correspond to respectively the monad in
+    on top of which the 'TreeT' monad transformer is stacked and the monad in
     which the worker will be run.
  -} 
 data Purity (m :: * → *) (n :: * → *) where -- {{{
