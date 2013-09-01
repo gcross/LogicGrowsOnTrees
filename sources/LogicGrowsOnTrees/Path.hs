@@ -55,18 +55,15 @@ instance Exception WalkError
 ------------------------------------- Types ------------------------------------
 --------------------------------------------------------------------------------
 
-{-| 'Branch' represents a choice at a branch point to take either the left
-    branch or the right branch.
- -}
+{-| A choice at a branch point to take either the left branch or the right branch. -}
 data BranchChoice =
     LeftBranch
   | RightBranch
   deriving (Eq,Ord,Read,Show)
 $( derive makeSerialize ''BranchChoice )
 
-{-| 'Step' represents a step in a path through a tree, which can either pass
-    through a point with a cached result or take a choice to go left or right
-    at a branch point.
+{-| A step in a path through a tree, which can either pass through a point with
+    a cached result or take a choice to go left or right at a branch point.
  -}
 data Step =
     CacheStep ByteString {-^ Step through a cache point -}
@@ -74,7 +71,7 @@ data Step =
  deriving (Eq,Ord,Show)
 $( derive makeSerialize ''Step )
 
-{-| A 'Path' is just a sequence of 'Step's. -}
+{-| A sequence of 'Step's. -}
 type Path = Seq Step
 
 --------------------------------------------------------------------------------
@@ -86,29 +83,26 @@ oppositeBranchChoiceOf :: BranchChoice → BranchChoice
 oppositeBranchChoiceOf LeftBranch = RightBranch
 oppositeBranchChoiceOf RightBranch = LeftBranch
 
-{-| Has a 'Tree' follow a 'Path' guiding it to a particular subtree;  the
+{-| Follows a 'Path' through a 'Tree' to a particular subtree;  the
     main use case of this function is for a processor which has been given a
-    particular subtree as its workload to get the tree to zoom in on
-    that subtree.
-
-    The way this function works is as follows: as long as the remaining path is
-    non-empty, it runs the 'Tree' until it encounters either a cache
-    point or a choice point; in the former case the path supplies the cached
-    value in the 'CacheStep' constructor, and in the latter case the path
-    supplies the branch to take in the 'ChoiceStep' constructor; when the
-    remaining path is empty then the resulting 'Tree' is returned.
+    particular subtree as its workload to zoom in on that subtree. The way this
+    function works is as follows: as long as the remaining path is non-empty, it
+    explores the 'Tree' until it encounters either a cache point or a choice
+    point; in the former case the path supplies the cached value in the
+    'CacheStep' constructor, and in the latter case the path supplies the branch
+    to take in the 'ChoiceStep' constructor; when the remaining path is empty
+    then the resulting 'Tree' is returned.
 
     WARNING: This function is /not/ valid for all inputs; it makes the
     assumption that the given 'Path' has been derived from the given
-    'Tree' so that the path will always encounted choice points exactly
+    'Tree' so that the path will always encountered choice points exactly
     when the tree does and likewise for cache points. Furthermore, the
     path must not run out before the tree hits a leaf. If any of these
     conditions is violated, a 'WalkError' exception will be thrown; in fact, you
     should hope than exception is thrown because it will let you know that there
     is a bug your code as the alternative is that you accidently give it a path
     that is not derived from the given tree but which coincidentally
-    matches it which means that it will silently return a nonsense result.
-
+    matches it which means that it will silently return a nonsensical result.
     Having said all that, you should almost never need to worry about this
     possibility in practice because there is usually only one tree in
     use at a time and all paths in use have come from that tree.
@@ -116,9 +110,7 @@ oppositeBranchChoiceOf RightBranch = LeftBranch
 sendTreeDownPath :: Path → Tree α → Tree α
 sendTreeDownPath path = runIdentity . sendTreeTDownPath path
 
-{-| See 'sendTreeDownPath';  the only difference is that this function
-    works for impure trees.
- -}
+{-| Like 'sendTreeDownPath', but for impure trees. -}
 sendTreeTDownPath :: Monad m ⇒ Path → TreeT m α → m (TreeT m α)
 sendTreeTDownPath path tree =
     case viewl path of
