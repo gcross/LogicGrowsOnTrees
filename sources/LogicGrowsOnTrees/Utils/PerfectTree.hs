@@ -106,7 +106,7 @@ formArityAndDepth (Arity arity) depth = ArityAndDepth{..}
 perfectTree ::
     MonadPlus m ⇒
     α {-^ the value to place at the leaves -} →
-    Word {-^ the arity of the tree (i.e., number of branches) -} →
+    Word {-^ the arity of the tree (i.e., number of branches at each internal node) -} →
     Word {-^ the depth of the tree -} →
     m α {-^ the tree -}
 perfectTree leaf arity depth
@@ -119,20 +119,20 @@ perfectTree leaf arity depth
 {-| 'tree' with @WordSum 1@ at the leaves. -}
 trivialPerfectTree ::
     MonadPlus m ⇒
-    Word {-^ the arity of the tree (i.e., number of branches) -} →
+    Word {-^ the arity of the tree (i.e., number of branches at each internal node) -} →
     Word {-^ the depth of the tree -} →
     m WordSum {-^ the tree -}
 trivialPerfectTree = perfectTree (WordSum 1)
 {-# SPECIALIZE trivialPerfectTree :: Word → Word → [WordSum] #-}
 {-# SPECIALIZE trivialPerfectTree :: Word → Word → Tree WordSum #-}
 
-{-| Computes the number of leaves in a tree.  It returns a value of type 'Word'
-    so that it can be easily compared to the 'WordSum' value returned by the
-    tre generators, but a consequence of this is that it will blow up if the
+{-| Computes the number of leaves in a perfect tree.  It returns a value of type
+    'Word' so that it can be easily compared to the 'WordSum' value returned by
+    the tre generators, but a consequence of this is that it will blow up if the
     arity and/or depth arguments are too large.
  -}
 numberOfLeaves ::
-    Word {-^ the arity (i.e., number of branches) of the tree -} →
+    Word {-^ the arity of the tree (i.e., number of branches at each internal node) -} →
     Word {-^ the depth of the tree -} →
     Word {-^ the number of leaves in the tree -}
 numberOfLeaves arity depth = arity^depth
