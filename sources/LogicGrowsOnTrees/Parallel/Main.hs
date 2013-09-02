@@ -705,9 +705,9 @@ genericMain ::
     , Serialize (ProgressFor exploration_mode)
     ) ⇒
     (tree_configuration → ExplorationMode exploration_mode)
-        {-^ constructs the exploration mode given the tree configuration;
-            note that the constructor that this function returns is restricted
-            by the value of the exploration_mode type variable
+        {-^ a function that constructs the exploration mode given the tree
+            configuration; note that the constructor that this function returns
+            is restricted by the value of the exploration_mode type variable
          -} →
     Purity m n {-^ the purity of the tree -} →
     Driver
