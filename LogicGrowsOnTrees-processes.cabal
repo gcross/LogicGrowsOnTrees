@@ -7,7 +7,7 @@ Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
 Stability:           Provisional
 Synopsis:            a adapter for the LogicGrowsOnTrees package that uses multiple processes for parallelism
 Description:         This package provides a adapter for the LogicGrowsOnTrees package
-                     that uses multiple processes for parallelism. See the
+                     that uses multiple processes for parallelism; see the
                      module documentation for more details.
 Cabal-version:       >=1.8
 Build-type:          Simple

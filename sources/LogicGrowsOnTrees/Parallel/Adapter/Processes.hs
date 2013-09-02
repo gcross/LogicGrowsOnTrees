@@ -35,6 +35,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     -- * Generic runner functions
     -- $runners
     , runSupervisor
+    , runWorker
     , runWorkerUsingHandles
     , runExplorer
     -- * Utility functions
@@ -104,13 +105,13 @@ deriveLoggers "Logger" [DEBUG,INFO,ERROR]
 ------------------------------------ Driver ------------------------------------
 --------------------------------------------------------------------------------
 
-{-| This is the driver for the threads adapter.  The number of workers is
+{-| This is the driver for the threads adapter; the number of workers is
     specified via. the (required) command-line option "-n".
 
     Note that there are not seperate drivers for the supervisor process and the
-    worker process;  instead, the same executable is used for both the
-    supervisor and the worker, with a sentinel argument list determining which
-    mode it should run in.
+    worker process; instead, the same executable is used for both the supervisor
+    and the worker, with a sentinel argument (or arguments) determining which
+    role it should run as.
  -}
 driver ::
     ( Serialize shared_configuration
@@ -144,7 +145,7 @@ driver = Driver $ \DriverParameters{..} → do
 ---------------------------------- Controller ----------------------------------
 --------------------------------------------------------------------------------
 
-{-| This is the monad in which the processes controller will run. -}
+{-| The monad in which the processes controller will run. -}
 newtype ProcessesControllerMonad exploration_mode α =
     C { unwrapC :: WorkgroupControllerMonad (IntMap Worker) exploration_mode α
     } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
@@ -161,9 +162,9 @@ In this section the full functionality of this module is exposed in case one
 does not want the restrictions of the driver interface. If you decide to go in
 this direction, then you need to decide whether you want there to be a single
 executable for both the supervisor and worker with the process of determining in
-which mode it should run taken care of for you, or whether you want to manually
-solve this problem in order to give yourself more control (such as by having
-separate supervisor and worker executables) at the price of more work.
+which mode it should run taken care of for you, or whether you want to do this
+yourself in order to give yourself more control (such as by having separate
+supervisor and worker executables) at the price of more work.
 
 If you want to use a single executable with automated handling of the
 supervisor and worker roles, then use 'runExplorer'.  Otherwise, use
@@ -296,17 +297,36 @@ runExplorer ::
     , Serialize (ProgressFor exploration_mode)
     , Serialize (WorkerFinishedProgressFor exploration_mode)
     ) ⇒
-    (shared_configuration → ExplorationMode exploration_mode) {-^ construct the exploration mode given the shared configuration -} →
+    (shared_configuration → ExplorationMode exploration_mode)
+        {-^ a function that constructs the exploration mode given the shared
+            configuration
+         -} →
     Purity m n {-^ the purity of the tree -} →
-    IO (shared_configuration,supervisor_configuration) {-^ get the shared and supervisor-specific configuration information (run only on the supervisor) -} →
-    (shared_configuration → IO ()) {-^ initialize the global state of the process given the shared configuration (run on both supervisor and worker processes) -} →
-    (shared_configuration → TreeT m (ResultFor exploration_mode)) {-^ construct the tree from the shared configuration (run only on the worker) -} →
-    (shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)) {-^ get the starting progress given the full configuration information (run only on the supervisor) -} →
-    (shared_configuration → supervisor_configuration → ProcessesControllerMonad exploration_mode ()) {-^ construct the controller for the supervisor, which must at least set the number of workers to be non-zero (run only on the supervisor) -} →
+    IO (shared_configuration,supervisor_configuration)
+        {-^ an action that gets the shared and supervisor-specific configuration
+            information (run only on the supervisor)
+         -} →
+    (shared_configuration → IO ())
+        {-^ an action that initializes the global state of the process given the
+            shared configuration (run on both supervisor and worker processes)
+         -} →
+    (shared_configuration → TreeT m (ResultFor exploration_mode))
+        {-^ a function that constructs the tree from the shared configuration
+            (called only on the worker)
+         -} →
+    (shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode))
+        {-^ an action that gets the starting progress given the full
+            configuration information (run only on the supervisor)
+         -} →
+    (shared_configuration → supervisor_configuration → ProcessesControllerMonad exploration_mode ())
+        {-^ a function that constructs the controller for the supervisor, which
+            must at least set the number of workers to be non-zero (called only
+            on the supervisor)
+         -} →
     IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor exploration_mode))
-        {-^ if this process is the supervisor, then returns the outcome of the
-            run as well as the configuration information wrapped in 'Just';
-            otherwise, if this process is a worker, it returns 'Nothing'
+        {-^ if this process is the supervisor, then the outcome of the run as
+            well as the configuration information wrapped in 'Just'; otherwise
+            'Nothing'
          -}
 runExplorer
     constructExplorationMode
