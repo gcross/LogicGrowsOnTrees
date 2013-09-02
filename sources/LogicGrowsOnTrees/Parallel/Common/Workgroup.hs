@@ -73,9 +73,9 @@ deriveLoggers "Logger" [INFO]
  -}
 class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where
     {-| Change the number of workers;  the first argument is a map that computes
-        new number of workers given the old number of workers (possible running
-        an action in IO in the process), and the second argument is a callback
-        that will be invoked with the new number of workers.
+        the new number of workers given the old number of workers (possible
+        running an action in IO in the process), and the second argument is a
+        callback that will be invoked with the new number of workers.
 
         See 'changeNumberOfWorkers' for the synchronous version of this request.
      -}
