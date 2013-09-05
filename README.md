@@ -56,6 +56,118 @@ permutations result in equivalent solutions then you can factor out this symmetr
 by only choosing later parts of a potential solution that are greater than
 earlier parts of the solution.
 
+What does a program written using this package look like?
+=========================================================
+
+The following is an example of a program that counts the number of solutions to
+the n-queens problem for an input board size (which also given in
+`examples/readme.hs`).  (NOTE:  I have optimized this code to be (hopefully)
+easy to follow, rather than to be fast.)
+
+```haskell
+import Control.Applicative
+import Control.Monad
+import qualified Data.IntSet as IntSet
+import System.Console.CmdTheLine
+
+import LogicGrowsOnTrees
+import LogicGrowsOnTrees.Parallel.Main
+import LogicGrowsOnTrees.Parallel.Adapter.Threads
+import LogicGrowsOnTrees.Utils.Word_
+import LogicGrowsOnTrees.Utils.WordSum
+
+-- Code that counts all the solutions for a given input board size.
+nqueensCount 0 = error "board size must be positive"
+nqueensCount n =
+    -- Start with...
+    go n -- ...n queens left...
+       0 -- ... at row zero...
+       -- ... with all columns available ...
+       (IntSet.fromDistinctAscList [0..fromIntegral n-1])
+       IntSet.empty -- ... with no occupied negative diagonals...
+       IntSet.empty -- ... with no occupied positive diagonals.
+  where
+    -- We have placed the last queen, so this is a solution!
+    go 0 _ _ _ _ = return (WordSum 1)
+
+    -- We are still placing queens.
+    go n
+       row
+       available_columns
+       occupied_negative_diagonals
+       occupied_positive_diagonals
+     = do
+        -- Pick one of the available columns.
+        column <- allFrom $ IntSet.toList available_columns
+
+        -- See if this spot conflicts with another queen on the negative diagonal.
+        let negative_diagonal = row + column
+        guard $ IntSet.notMember negative_diagonal occupied_negative_diagonals
+
+        -- See if this spot conflicts with another queen on the positive diagonal.
+        let positive_diagonal = row - column
+        guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
+
+        -- This spot is good!  Place a queen here and move on to the next row.
+        go (n-1)
+           (row+1)
+           (IntSet.delete column available_columns)
+           (IntSet.insert negative_diagonal occupied_negative_diagonals)
+           (IntSet.insert positive_diagonal occupied_positive_diagonals)
+
+main =
+    -- Explore the tree generated (implicitly) by nqueensCount in parallel.
+    mainForExploreTree
+        -- Use threads for parallelism.
+        driver
+
+        -- Use a single positional required command-line argument to get the board size.
+        (getWord
+         <$>
+         (required
+          $
+          pos 0
+            Nothing
+            posInfo
+              { posName = "BOARD_SIZE"
+              , posDoc = "board size"
+              }
+         )
+        )
+
+        -- Information about the program (for the help screen).
+        (defTI { termDoc = "count the number of n-queens solutions for a given board size" })
+
+        -- Function that processes the result of the run.
+        (\n (RunOutcome _ termination_reason) -> do
+            case termination_reason of
+                Aborted _ -> error "search aborted"
+                Completed (WordSum count) -> putStrLn $
+                    "for a size " ++ show n ++ " board, found " ++ show count ++ " solutions"
+                Failure _ message -> error $ "error: " ++ message
+        )
+
+        -- The logic program that generates the tree to explore.
+        nqueensCount
+```
+
+The code above compiles to a program that takes a positional argument specifying
+the size of the board and a `-n` argument used to specify the number of threads.
+You can use `-c` to have the program create a checkpoint file on a regular basis
+and `-i` to set how often the checkpoint is made (defaults to once per minute);
+if the program starts up and sees the checkpoint file then it automatically
+resumes from it.  To find out more about the available options, use `--help`
+which provides an automatically generated help screen.
+
+The above uses threads for parallelism, which means that you have to compile it
+using the `--threaded` option. If you want to use processes instead of threads
+(which could be more efficient as this does not require the additional overhead
+incurred by the threaded runtime), then install `LogicGrowsOnTrees-processes`
+and replace `Threads` with `Processes` in the import at the 8th line. If you
+want workers to run on different machines then install
+`LogicGrowsOnTrees-processes` and replace `Threads` with `Network`. If you have
+access to a cluster with a large number of nodes, you will want to install
+`LogicGrowsOnTrees-MPI` and replace `Threads` with `MPI`.
 
 Where can I learn more?
 =======================

@@ -321,6 +321,23 @@ Flag tutorial
     Description: Enable building the tutorial examples.
     Default:     False
 
+Executable readme
+    Main-is: readme.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        cmdtheline == 0.2.*,
+        containers >= 0.4 && < 0.6
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
 Executable count-all-nqueens-solutions
     Main-is: count-all-nqueens-solutions.hs
     Hs-source-dirs: examples
