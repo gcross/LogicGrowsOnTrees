@@ -649,6 +649,7 @@ Test-Suite tests
         composition >= 0.2 && < 1.1,
         containers >= 0.4 && < 0.6,
         data-ivar == 0.30.*,
+        directory == 1.2.*,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
         HUnit == 1.2.*,

@@ -55,6 +55,8 @@ import Debug.Trace (trace)
 
 import Text.Printf
 
+import System.Directory (getTemporaryDirectory,removeFile)
+import System.IO
 import System.IO.Unsafe
 import System.Log.Logger (Priority(..),updateGlobalLogger,rootLoggerName,setLevel)
 import System.Random
@@ -86,6 +88,7 @@ import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Path
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue hiding (setWorkloadBufferSize)
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
+import LogicGrowsOnTrees.Utils.Handle (send,receive)
 import LogicGrowsOnTrees.Utils.PerfectTree
 import LogicGrowsOnTrees.Utils.WordSum
 import LogicGrowsOnTrees.Workload
@@ -1839,5 +1842,18 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
+    ,testProperty "LogicGrowsOnTrees.Utils.Handle" $ \(x::UUID) → morallyDubiousIOProperty $
+        bracket
+            (getTemporaryDirectory >>= flip openBinaryTempFile "test-handles")
+            (\(filepath,handle) → do
+                hClose handle
+                removeFile filepath
+            )
+            (\(_,handle) → do
+                send handle x
+                hSeek handle AbsoluteSeek 0
+                y ← receive handle
+                return (x == y)
+            )
     ]
 -- }}}

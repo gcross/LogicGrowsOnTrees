@@ -2,10 +2,10 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| This module contains a couple of utility functions for sending and receiving
-    'Serialize'-able data over a handle; they assume a protocol where first a
-    line is sent with the size of the data in plain text terminated by a newline,
-    and then the raw data is serialized, sent over the line, and deserialized on
-    the other side.
+    'Serialize'-able data over a handle. Because the size of the serialized
+    value can depend on the value being sent, these functions employ a protocol
+    in which first the size of the serialized data is sent as a 64-bit
+    big-endian word, and then the serialized data itself is sent.
  -}
 module LogicGrowsOnTrees.Utils.Handle
     (
@@ -23,10 +23,10 @@ import Control.Exception (Exception,catch,throwIO)
 
 import qualified Data.ByteString as BS
 import Data.ByteString (hGet,hPut)
-import Data.Serialize (Serialize,encode,decode)
+import Data.Serialize (Serialize,encode,decode,runGet,runPut,getWord64be,putWord64be)
 import Data.Typeable (Typeable)
 
-import System.IO (Handle,hFlush,hGetLine,hPrint)
+import System.IO (Handle,hFlush)
 import System.IO.Error (isEOFError,ioeGetErrorType)
 
 --------------------------------------------------------------------------------
@@ -46,28 +46,36 @@ filterEOFExceptions = flip catch $
 
 {-| Receives a 'Serialize'-able value from a handle.
 
-    Specifically, this function reads a line with the size of the raw data to be
-    receieved in plain text (followed by a newline), reads that much data in
-    bytes into a 'ByteString', and then deserializes the 'ByteString' to produce
-    the resulting value.
+    Specifically, this function reads in a 64-bit big-endian word with the
+    size of the raw data to be read, reads that much data in bytes into a
+    'ByteString', and then deserializes the 'ByteString' to produce the
+    resulting value.
 
     If the connection has been lost, it throws 'ConnectionLost'.
  -}
 receive :: Serialize α ⇒ Handle → IO α
 receive handle = filterEOFExceptions $
-    hGetLine handle >>= fmap (either error id . decode) . hGet handle . read
+    fmap (either error id . decode)
+    .
+    hGet handle
+    .
+    either error fromIntegral
+    .
+    runGet getWord64be
+    =<<
+    hGet handle 8
 
 {-| Sends a 'Serialize'-able value to a handle.
 
     Specifically, this function serializes the given value to a 'ByteString',
-    and then writes the size of the serialized data in bytes in plaintext
-    followed by a newline followed by the raw data itself.
+    and then writes the size of the serialized data in bytes as a 64-bit
+    big-endian word followed by the raw data itself.
 
     If the connection has been lost, it throws 'ConnectionLost'.
  -}
 send :: Serialize α ⇒ Handle → α → IO ()
 send handle value = filterEOFExceptions $ do
     let encoded_value = encode value
-    hPrint handle . BS.length $ encoded_value
+    hPut handle . runPut . putWord64be . fromIntegral . BS.length $ encoded_value
     hPut handle encoded_value
     hFlush handle
