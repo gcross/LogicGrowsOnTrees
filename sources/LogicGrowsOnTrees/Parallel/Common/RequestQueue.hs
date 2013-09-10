@@ -38,6 +38,7 @@ module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     -- ** Request queue management
     , addProgressReceiver
     , enqueueRequest
+    , enqueueRequestAndWait
     , newRequestQueue
     , tryDequeueRequest
     -- ** Request processing
@@ -186,6 +187,17 @@ enqueueRequest = flip $
     (liftIO . atomically)
     .*
     (writeTChan . requests)
+
+{-| Like 'enqueueRequest', but does not return until the request has been run -}
+enqueueRequestAndWait ::
+    (MonadIO m, MonadIO m') ⇒
+    Request exploration_mode worker_id m →
+    RequestQueue exploration_mode worker_id m →
+    m' ()
+enqueueRequestAndWait request request_queue = do
+    signal ← liftIO newEmptyMVar
+    enqueueRequest (request >> liftIO (putMVar signal ())) request_queue
+    liftIO $ takeMVar signal
 
 {-| Constructs a new 'RequestQueue'. -}
 newRequestQueue ::
