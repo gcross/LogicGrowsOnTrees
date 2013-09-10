@@ -9,6 +9,7 @@
 -- Imports {{{
 import Prelude hiding (catch)
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException,catch)
 import Control.Monad (forever,replicateM_,void)
 import Control.Monad.IO.Class (liftIO)
@@ -100,6 +101,7 @@ tests = -- {{{
                 mempty
                 (do changeNumberOfWorkers (const $ return 1)
                     forever $ do
+                        liftIO $ threadDelay 10000
                         requestProgressUpdate >>= liftIO . modifyIORef progresses_ref . (:)
                         generateNoise
                 )
