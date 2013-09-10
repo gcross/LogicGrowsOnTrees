@@ -98,7 +98,11 @@ tests = -- {{{
                 ["nqueens",show n]
                 (const $ return ())
                 mempty
-                (forever $ requestProgressUpdate >>= (liftIO . modifyIORef progresses_ref . (:)) >> generateNoise)
+                (do changeNumberOfWorkers (const $ return 1)
+                    forever $ do
+                        requestProgressUpdate >>= liftIO . modifyIORef progresses_ref . (:)
+                        generateNoise
+                )
         result ← case termination_reason of
             Aborted _ → error "prematurely aborted"
             Completed result → return result
