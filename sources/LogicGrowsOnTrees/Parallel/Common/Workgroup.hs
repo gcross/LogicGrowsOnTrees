@@ -51,6 +51,8 @@ import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(INFO))
 import System.Log.Logger.TH
 
+import Text.Printf (printf)
+
 import LogicGrowsOnTrees.Parallel.Common.Message
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
@@ -142,6 +144,7 @@ instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state explor
             GT → replicateM_ (fromIntegral $ new_number_of_workers - old_number_of_workers) hireAWorker
             LT → replicateM_ (fromIntegral $ old_number_of_workers - new_number_of_workers) fireAWorker
             EQ → return ()
+        infoM $ printf "Number of workers has been changed from %i to %i" old_number_of_workers new_number_of_workers
         liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
      )
 
