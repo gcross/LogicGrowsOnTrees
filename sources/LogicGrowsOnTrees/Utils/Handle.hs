@@ -20,6 +20,7 @@ module LogicGrowsOnTrees.Utils.Handle
 import Prelude hiding (catch)
 
 import Control.Exception (Exception,catch,throwIO)
+import Control.Monad (unless)
 
 import qualified Data.ByteString as BS
 import Data.ByteString (hGet,hPut)
@@ -54,16 +55,18 @@ filterEOFExceptions = flip catch $
     If the connection has been lost, it throws 'ConnectionLost'.
  -}
 receive :: Serialize α ⇒ Handle → IO α
-receive handle = filterEOFExceptions $
-    fmap (either error id . decode)
-    .
-    hGet handle
-    .
-    either error fromIntegral
-    .
-    runGet getWord64be
-    =<<
-    hGet handle 8
+receive handle = filterEOFExceptions $ do
+    size_bytes ← hGet handle 8
+    unless (BS.length size_bytes == 8) $ throwIO ConnectionLost
+    let number_of_value_bytes =
+            either error fromIntegral
+            .
+            runGet getWord64be
+            $
+            size_bytes
+    value_bytes ← hGet handle number_of_value_bytes
+    unless (BS.length value_bytes == number_of_value_bytes) $ throwIO ConnectionLost
+    return . either error id . decode $ value_bytes
 
 {-| Sends a 'Serialize'-able value to a handle.
 
