@@ -20,23 +20,25 @@ What do you mean by "distributed"?
 ==================================
 
 By "distributed" I mean parallelization that does not required shared memory but
-only some form of communication. In particular there is package that is sibling
-to this on that provides an *adapter* for MPI, which gives you immediate access
-to large numbers of nodes on most supercomputers. In fact, the following is the
-result of a scaling experiment to see how well the time needed to solve the
-N-Queens problem for N=17, N=18, and N=19 on a local cluster:
+only some form of communication. In particular there is package that is a
+sibling to this one that provides an *adapter* for MPI, which gives you
+immediate access to large numbers of nodes on most supercomputers. In fact, the
+following is the result of an experiment to see how well the time needed to
+solve the N-Queens problem scales with the number of workers for N=17, N=18, and
+N=19 on a local cluster:
 
 ![Alt text](scaling/scaling.png "Scaling experiment")
 
-The above was obtained by running a job three times for each number of workers
-and problem size and then taking the best of three (*); the maximum number of
-workers for this experiment was limited by the size of the cluster.
+The above was obtained by running a job, which counts the number of solutions,
+three times for each number of workers and problem size, and then taking the
+shortest time of each set of three*; the maximum number of workers for this
+experiment was limited by the size of the cluster.
 
-(*) The other two data points for each value of N were usually within a small
+* The other two data points for each value of N were usually within a small
 percentage of the other two points, save for (oddly) the *left*-most data point
-(i.e., the one with the fewest number of workers) for each problem size, which
-varied from 150%-200% of the best time; the full data set is available in the
-`scaling/` directory.
+(i.e., the one with the fewest workers) for each problem size, which varied from
+150%-200% of the best time; the full data set is available in the `scaling/`
+directory.
 
 
 When would I want to use this package?
@@ -49,12 +51,12 @@ or a few elements, etc.
 
 LogicGrowsOnTrees is particularly useful when your solution space has a lot of
 structure as it gives you full control over the non-deterministic choices that
-are made, which lets you avoid avoid making choices entirely that you know will
-end in failure, as well as letting you factor out symmetries so that only one
-solution is generated out of some equivalence class. For example, if
-permutations result in equivalent solutions then you can factor out this symmetry
-by only choosing later parts of a potential solution that are greater than
-earlier parts of the solution.
+are made, which lets you avoid making choices entirely that you know will end in
+failure, as well as letting you factor out symmetries so that only one solution
+is generated out of some equivalence class. For example, if permutations result
+in equivalent solutions then you can factor out this symmetry by only choosing
+later parts of a potential solution that are greater than earlier parts of the
+solution.
 
 What does a program written using this package look like?
 =========================================================
@@ -227,14 +229,14 @@ database.
 Why would I use this instead of a SAT/SMT/CLP/etc. solver?
 ==========================================================
 
-First, it should be mentioned that one could use LogicGrowsOnTrees to
-implement these solvers. That is, a solver could be written that uses the
-`mplus` function whenever it needs to make a non-derministic choices (e.g. when
-guessing whether a boolean variable should be true or false) and `mzero` to
-indicate failure (e.g., when it has become clear that a particular set of
-choices cannot result in a valid solution), and then the solver gets to use the
-parallelization framework of this package for free! (For an example of such a
-solver, see the [incremental-sat-solver
+First, it should be mentioned that one could use LogicGrowsOnTrees to implement
+these solvers. That is, a solver could be written that uses the `mplus` function
+whenever it needs to make a non-deterministic choices (e.g. when guessing
+whether a boolean variable should be true or false) and `mzero` to indicate
+failure (e.g., when it has become clear that a particular set of choices cannot
+result in a valid solution), and then the solver gets to use the parallelization
+framework of this package for free! (For an example of such a solver, see the
+[incremental-sat-solver
 package](http://hackage.haskell.org/packages/archive/incremental-sat-solver/0.1.7/doc/html/Data-Boolean-SatSolver.html)
 (which was not written by me).)
 
@@ -257,17 +259,17 @@ Haskell has many strengths that made it ideal for this project:
 
 1. Laziness
 
-    Haskell has lazy (*) evaluation which means that it does not evaluate
-    anything until the value is required to make progress; this capability means
-    that ordinary functions can act as control structures. In particular, when
-    you use `mplus a b` to signal a non-derministic choice, neither `a` nor `b`
+    Haskell has lazy* evaluation which means that it does not evaluate anything
+    until the value is required to make progress; this capability means that
+    ordinary functions can act as control structures. In particular, when you
+    use `mplus a b` to signal a non-deterministic choice, neither `a` nor `b`
     will be evaluated unless one chooses to explore respectively the left and/or
     right branch of the corresponding decision tree. This is very powerful
     because it allows us to explore the decision tree of a logic program as much
     or as little as we want and only have to pay for the parts that we choose to
     explore.
 
-    (*) Technically Haskell is "non-strict" rather than "lazy", which means
+    * Technically Haskell is "non-strict" rather than "lazy", which means
     there might be times in practice when it evaluates something more than is
     strictly needed.
 
@@ -275,17 +277,17 @@ Haskell has many strengths that made it ideal for this project:
 2. Purity
 
     Haskell is a pure language, which means that functions have no (observable)
-    side-effects other than returning a value (*); in particular, this implies
-    that all operations on data must be immutable which means that they result
-    in a new value (that may reference parts or even all of the old value)
-    rather than modifying the old value. This is an incredibly boon because it
-    means that when we backtrack up to explore another branch of the decision
-    tree we do not have to perform an undo operation to restore the old values
-    from the new values because the old values were never lost! All that you
-    have to do is "forget" about the new values and you are done. Furthermore,
-    most data structures in Haskell are designed to have efficient immutable
-    operations which try to re-use as much of an old value as possible in order
-    to minimize the amount of copying needed to construct the new value.
+    side-effects other than returning a value*; in particular, this implies that
+    all operations on data must be immutable which means that they result in a
+    new value (that may reference parts or even all of the old value) rather
+    than modifying the old value. This is an incredible boon because it means
+    that when we backtrack up to explore another branch of the decision tree we
+    do not have to perform an undo operation to restore the old values from the
+    new values because the old values were never lost! All that you have to do
+    is "forget" about the new values and you are done. Furthermore, most data
+    structures in Haskell are designed to have efficient immutable operations
+    which try to re-use as much of an old value as possible in order to minimize
+    the amount of copying needed to construct the new value.
 
     (Having said all of this, although it is strongly recommended that your
     logic program be pure by making it have type `Tree` as this will cause the
@@ -294,11 +296,11 @@ Haskell has many strengths that made it ideal for this project:
     do this is if there is a data set that will be constant over the run which
     is large enough that you want to read it in from various files or a database
     as you need it. In general if you use side-effects then they need to be
-    non-observable, which means that they are not affected by in which order the
-    tree is explored or whether particular parts of the tree are explored more
-    than once.)
+    non-observable, which means that they are not affected by the order in which
+    the tree is explored or whether particular parts of the tree are explored
+    more than once.)
 
-    (*) Side-effects are implemented by, roughly speaking, having some types
+    * Side-effects are implemented by, roughly speaking, having some types
     represent actions that cause side-effects when executed.
 
 3. Powerful static type system

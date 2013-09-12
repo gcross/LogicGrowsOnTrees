@@ -72,7 +72,7 @@ of this page in the Implementation section.
 
 There is one type of pure tree and two types of impure trees. In general, your
 tree should nearly always be pure if you are planning to make use of
-checkpointing or parallel exploring as parts of the tree may be explored
+checkpointing or parallel exploring, as parts of the tree may be explored
 multiple times, some parts may not be run at all on a given processor, and
 whenever a leaf is hit there will be a jump to a higher node, so if your tree is
 impure then the result needs to not depend on how the tree is explored; an
@@ -110,7 +110,7 @@ which are both subclasses of 'MonadPlus'. The additional functionality offered
 by these type-classes is the ability to cache results so that a computation does
 not need to be repeated when a node is explored a second time, which can happen
 either when resuming from a checkpoint or when a workload has been stolen by
-another processor as the first step is to retrace the path through the tree
+another processor, as the first step is to retrace the path through the tree
 that leads to the stolen workload.
 
 These features could have been provided as functions, but there are two reasons
@@ -144,7 +144,7 @@ class MonadPlus m ⇒ MonadExplorable m where
 
     {-| This function is a combination of the previous two;  it performs a
         computation which might fail by returning 'Nothing', and if that happens
-        then it backtracks; if it passes then the result is cached and returned.
+        it then backtracks; if it passes then the result is cached and returned.
 
         Note that the previous two methods are essentially specializations of
         this method.
@@ -154,15 +154,15 @@ class MonadPlus m ⇒ MonadExplorable m where
     {-| This function tells the worker to take a break to process any pending
         requests; it does nothing if we are not in a parallel setting.
 
-        NOTE: You should normally never need to use this function as requests
+        NOTE: You should normally never need to use this function, as requests
         are processed whenever a choice point, a cache point, mzero, or a leaf
         in the decision tree has been encountered. However, if you have noticed
-        that workload steals are taking such a large amount of time that as a
-        result workers are spending too much time sitting idle while they wait
-        for a workload, and you can trace this as being due to a computation
-        that takes so much time that it almost never gives the worker a chance
-        to process requests, then you can use this method to ensure that
-        requests are given a chance to be processed.
+        that workload steals are taking such a large amount of time that workers
+        are spending too much time sitting idle while they wait for a workload,
+        and you can trace this as being due to a computation that takes so much
+        time that it almost never gives the worker a chance to process requests,
+        then you can use this method to ensure that requests are given a chance
+        to be processed.
      -}
     processPendingRequests :: m ()
     processPendingRequests = return ()
@@ -236,7 +236,7 @@ instance MonadExplorable [] where
 instance Monad m ⇒ MonadExplorable (ListT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadExplorable' isntance, this instance does no caching. -}
+{-| Like the 'MonadExplorable' instance, this instance does no caching. -}
 instance Monad m ⇒ MonadExplorableTrans (ListT m) where
     type NestedMonad (ListT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
@@ -253,7 +253,7 @@ instance MonadExplorable Maybe where
 instance Monad m ⇒ MonadExplorable (MaybeT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadExplorable' isntance, this instance does no caching. -}
+{-| Like the 'MonadExplorable' instance, this instance does no caching. -}
 instance Monad m ⇒ MonadExplorableTrans (MaybeT m) where
     type NestedMonad (MaybeT m) = m
     runAndCacheMaybe = lift >=> maybe mzero return
@@ -311,22 +311,22 @@ instance Show α ⇒ Show (Tree α) where
 --------------------------------------------------------------------------------
 
 {- $functions
-There are three kinds of functions in this module: functions which explore trees
-in various ways, functions to make it easier to build trees, and a function
-which changes the base monad of a pure tree.
+There are three kinds of functions in this module: functions that explore trees
+in various ways, functions that make it easier to build trees, and a function
+that changes the base monad of a pure tree.
  -}
 
 ---------------------------------- Explorers -----------------------------------
 
 {- $runners
-The following functions all take a tree as input and produce the result
-of exploring it as output. There are seven functions because there are two kinds
-of trees --- pure and impure --- and three ways of exploring a tree ---
-exploring everything and summing all results (i.e., in the leaves), exploring
-until the first result (i.e., in a leaf) is encountered and immediately
-returning, and gathering results (i.e., from the leaves) until they satisfy a
-condition and then return --- plus a seventh function that explores a tree only
-for the side-effects.
+The following functions all take a tree as input and produce the result of
+exploring it as output. There are seven functions because there are two kinds of
+trees --- pure and impure --- and three ways of exploring a tree --- exploring
+everything and summing all results (i.e., in the leaves), exploring until the
+first result (i.e., in a leaf) is encountered and immediately returning, and
+gathering results (i.e., from the leaves) until they satisfy a condition and
+then returning --- plus a seventh function that explores a tree only for the
+side-effects.
  -}
 
 {-| Explores all the nodes in a pure tree and sums over all the
@@ -511,7 +511,7 @@ The following functions all create a tree from various inputs.
  -}
 allFrom ::
     (Foldable t, Functor t, MonadPlus m) ⇒
-    t α {-^ the list (or some other Foldable) of results to generate -} →
+    t α {-^ the list (or some other `Foldable`) of results to generate -} →
     m α {-^ a tree that generates the given list of results -}
 allFrom = Fold.msum . fmap return
 {-# INLINE allFrom #-}
@@ -584,5 +584,5 @@ data TreeTInstruction m α where
     Null :: TreeTInstruction m α
     ProcessPendingRequests :: TreeTInstruction m ()
 
-{-| This is just a convenient alias for working with pure tree. -}
+{-| This is just a convenient alias for working with pure trees. -}
 type TreeInstruction = TreeTInstruction Identity

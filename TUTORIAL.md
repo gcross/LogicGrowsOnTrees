@@ -13,7 +13,7 @@ example problems:  generating ordered pairs of integers, finding valid map
 colorings, and finding ways to place n queens on an n x n chess board.
 
 
-Ordered Pairs of Integers
+Ordered pairs of integers
 -------------------------
 
 Logic programming in Haskell is about making choices and applying constraints.
@@ -43,16 +43,16 @@ makes a non-deterministic choice for `x` that is between `1` and `max_x`
 succeeds if `x < y` and fails otherwise; failure results in backtracking to try
 another choice of `x` and/or `y`.
 
-`pairs` can return a value that is an instance of an arbitrary type --- that is,
-one the caller can choose --- that is an instance of `MonadPlus`. For example,
-if let you let `m` be `Maybe` then `pairs` will return either nothing if no
-choices of `x` and `y` satisfy the guard and otherwise it will return a `Just`
-value with the first found solution. If you let `m` be the List type then the
-function will return the list of all solutions.
+`pairs` returns a value that can be an instance of an arbitrary type --- i.e.,
+one the caller can choose --- so long as it is an instance of `MonadPlus`. For
+example, if let you let `m` be `Maybe` then `pairs` will return either nothing
+if no choices of `x` and `y` satisfy the guard and otherwise it will return a
+`Just` value with the first found solution. If you let `m` be the List type then
+the function will return the list of all solutions.
 
 This function illustrates the basic functionality but it is not a good example
-of how you would actually generate such pairs because a better implementation is
-given by:
+of how you would actually generate such pairs; a better implementation is given
+by:
 
 ```haskell
 pairs max_x max_y = do
@@ -70,7 +70,7 @@ larger set of choices and then applying a filter to eliminate those that don't
 meet the constraint.
 
 
-Map Coloring
+Map coloring
 ------------
 
 For our next example, we consider the problem of coloring a map. That is, we are
@@ -94,10 +94,10 @@ coloringSolutions number_of_colors number_of_countries isAdjacentTo =
         return $ (country,color):coloring
 ```
 
-The way that this function works is that it calls `foldM` (in `Control.Monad`)
-which in turn calls `addCountryToColoring` once for each country (i.e., it
-*folds* over the list `[1..number_of_countries]`), carrying along the current
-coloring. The function `addCountryToColoring` does the following:
+This function works by calling `foldM` (in `Control.Monad`) which in turn calls
+`addCountryToColoring` once for each country (i.e., it *folds* over the list
+`[1..number_of_countries]`), carrying along the current coloring. The function
+`addCountryToColoring` does the following:
 
 1. First, it makes a non-deterministic choice for the color of the country:
 
@@ -164,7 +164,7 @@ of colors used for the next call to `addCountryToColoring`, otherwise we use the
 same set of colors.
 
 
-N-Queens Problem
+N-queens problem
 ----------------
 
 Our final example is the n-queens problem, which is the problem of placing n
@@ -206,12 +206,12 @@ nqueensUsingSetsSolutions n =
 ```
 
 (The use of `fromIntegral` comes from the fact that the input board size and
-output board positions are naturally `Words` as they cannot be negative but the
+output board positions are naturally `Word`s as they cannot be negative but the
 `IntSet` type only stores `Int`s, which means that we need to work internally
 using `Int` and use `fromIntegral` to convert from the input `Word` and to the
 output `Word`s.)
 
-The function go is where most of the work happens.  For each row in the board,
+The function `go` is where most of the work happens.  For each row in the board,
 it does the following:
 
 1. First, make a non-deterministic choice from the available columns;  here we
@@ -248,10 +248,10 @@ it does the following:
 When we are done, we reverse the solution as it currently has the last row
 first and the first row last.
 
-While `IntSet` is very efficient, even more efficient is to use a bit field for
-a set --- i.e., such that bits that are 1 correspond to being occupied and those
-that are 0 correspond to being available. A solution using this approach is as
-follows:
+While `IntSet` is very efficient, it is even more efficient to use a bit field
+for a set --- i.e., a field such that bits that are 1 correspond to being
+occupied and those that are 0 correspond to being available. A solution using
+this approach is as follows:
 
 ```haskell
 nqueensUsingBitsSolutions n =
@@ -287,9 +287,8 @@ nqueensUsingBitsSolutions n =
 
 Now in the function go we do the following:
 
-1. Make a non-deterministic choice of the column, excluding those columns which
-   are either occupied or such that a queen placed there would conflict with
-   another queen on the same diagonal:
+1. Make a non-deterministic choice within the current row for the column,
+   excluding those spaces which are either occupied columns or diagonals:
 
     ```haskell
     column <- allFrom . goGetOpenings 0 $
@@ -301,7 +300,7 @@ Now in the function go we do the following:
 
 2. Mark the column and diagonals as being occupied, and also shift the occupied
    diagonals so that they correspond with the columns in the next row. That is,
-   if a given positive diagonal intersects with column i`` for a given row then
+   if a given positive diagonal intersects with column `i` for a given row then
    it intersects with column `i+1` in the next row, and if a given negative
    diagonal intersects with column `i` for a given row then it intersects with
    `i-1` in the next row. Finally, add the board position to the partial
@@ -380,7 +379,7 @@ main = print . exploreTree . fmap (:[]) . nqueensUsingBitsSolutions $ 5
 Note the use of `fmap (:[])` to replace every result generated by the logic
 program with a singleton list containing the result. When there are a lot of
 results it is better to use the `Seq` type in `Data.Sequence` as it has
-asymptotically faster concatenation operations than List;  this is done in the
+(amortized) asymptotically faster concatenation operations; this is done in the
 following (also given in `tutorial/tutorial-2.hs`):
 
 ```haskell
@@ -393,7 +392,7 @@ main = print . exploreTree . fmap Seq.singleton . nqueensUsingBitsSolutions $ 5
 
 Alternatively, if you are only interested in the *number* of solutions rather
 than what they are, then you should replace every solution with `WordSum 1`,
-where `WordSum` is a `Monoid` (included part of this package in the module
+where `WordSum` is a `Monoid` (included as part of this package in the module
 `LogicGrowsTrees.Utils.WordSum`) with the property that the sum of two
 `WordSum`s is a `WordSum` containing the sum of the two contained values; this
 is done in the following (also given in `tutorial/tutorial-3.hs`):
@@ -410,9 +409,9 @@ Note that the only change is that we replaced `fmap Seq.singleton` with
 `fmap (const $ WordSum 1)`.
 
 If you only want the first result then you should use `exploreTreeUntilFirst`,
-which return the first result found wrapped in `Just` if any results are present
-and Nothing if no results were found; for example, see the following (also given
-in `tutorial/tutorial-4.hs`):
+which return the first result found wrapped in `Just` if any results are
+present, and `Nothing` if no results were found; for example, see the following
+(also given in `tutorial/tutorial-4.hs`):
 
 ```haskell
 import LogicGrowsOnTrees (exploreTreeUntilFirst)
@@ -425,13 +424,13 @@ Finally, if you only want a few of the results, then use
 `exploreTreeUntilFound`, which takes a condition function and will stop finding
 new results when it is met; the result is a pair where the first component
 contains the results that were found and the second contains a `Bool` indicating
-whether the conditions was met. Note that the returned results might be less
-than those requested if there weren't enough found to meet your condition
-function, and it also might be *more* than those requested because results are
-not found one at a time but rather are merged from the bottom up, meaning that
-there might be a choice point where the two branches separately did not meet the
-condition but their merged results did. An example of using this to find at
-least 3 results is illustrated as follows (also given in `tutorial/tutorial-5.hs`):
+whether the condition was met. Note that the returned results might be less than
+those requested if there weren't enough found to meet your condition function,
+and it also might be *more* than those requested because results are not found
+one at a time but rather are merged from the bottom up, meaning that there might
+be a choice point where the two branches separately did not meet the condition
+but their merged results did. An example of using this to find at least 3
+results is illustrated as follows (also given in `tutorial/tutorial-5.hs`):
 
 ```haskell
 import LogicGrowsOnTrees (exploreTreeUntilFound)
@@ -450,22 +449,22 @@ main =
 ```
 
 The above will print a pair where the first component has *five* solutions and
-the second component is true.  Note the condition function `((>= 3) . length)`
-which computes the length of the list and checks whether it is at least 3.
+the second component is true. Note the condition function `((>= 3) . length)`
+which computes the length of the list and checks whether it is at least three.
 
-NOTE: If for some reason you really don't want more than, say, 3 solutions ---
-say, because the solutions are very large and you never want to keep around more
-than 3 --- then your best bet is to create a custom `Monoid` type that, say,
-contains a list and never allows concatenation to let it grow bigger than 3
-elements.
+NOTE: If for some reason you really don't want more than, say, three solutions
+--- perhaps because the solutions are very large and you never want to keep
+around more than three --- then your best bet is to create a custom `Monoid`
+type that, say, contains a list and never allows concatenation to let it grow
+bigger than three elements.
 
 
-Parallel using Threads
-----------------------
+Parallelization using the Threads module
+----------------------------------------
 
 The `LogicGrowsOnTrees.Parallel.Adapter.Threads` module provides functions that
-let you run a logic program in parallel using multiple threads.  You have a
-couple of different options for doing this.
+let you run a logic program in parallel using multiple threads. You have a
+couple of options for how to do this this.
 
 First, you can use one of the many specialized functions which roughly follow
 the same pattern as the `exploreTree*` functions in `LogicGrowsOnTrees`, such as
@@ -506,21 +505,21 @@ First, observe that `exploreTree` now has an additional argument:
 void . changeNumberOfWorkers . const . return $ 2
 ```
 
-This argument is called the *controller*, and it is a loop that is run that lets
+This argument is called the *controller*, and is a loop that is run that lets
 you issue commands to the supervisor such as aborting, requesting a progress
 update, and changing the number of workers (which can be done at any time in the
 run and can even bring the number down to zero). `changeNumberOfWorkers` takes a
 single argument which is a function that maps the current number of workers to
 an IO action whose result is the new number of workers; this lets you do things
-like increasing the number of workers by one and setting the number of workers
-to a value that you need to query in the IO monad such as the number of
+like increasing the number of workers by one or setting the number of workers to
+a value that you need to query in the IO monad, such as the number of
 capabilities; the `void` at the beginning just throws out the return value of
-`changeNumberOfWorkers`, which is the new number of workers (as if you just
-increased it by 1 then you might want to know what the result was).
+`changeNumberOfWorkers`, which is the new number of workers (as, if you just
+increased it by one you might want to know what the result was).
 
 In order for the two worker threads to run in parallel, two things need to
 happen. First, you need to compile with the `-threaded` option, and second, you
-need to set the number of capabilities to 2 so that up to 2 threads can run in
+need to set the number of capabilities to two so that up to two threads can run in
 parallel, as is done in the first line of the body of `main`:
 
 ```haskell
@@ -540,7 +539,7 @@ Now that we are running many workers in parallel, the result of the exploration
 is a bit more complicated. The result type is a `RunOutcome`, which contains the
 run statistics and the termination reason. The run statistics contain a lot of
 information whose primary purpose is to help one diagnose why one is not getting
-the appropriate speedup as one increases the number of workers. The termination
+the appropriate speedup as the number of workers increases. The termination
 reason contains information about why the run terminated. As you can see at the
 end of the code, there are three possibilities:
 
@@ -559,8 +558,8 @@ Second, we have `Completed`, which means that the run terminated normally; it
 contains the final result in the run, which in this case is a `Word` wrapped in
 a `WordSum`.
 
-Finally, we have `Failure`, which indicates that something horribly wrong
-happened during the run, such as an exception being thrown; it contains both the
+Finally, we have `Failure`, which indicates that something went horribly wrong
+during the run, such as an exception being thrown; it contains both the
 `progress` that had been made up to that point and also a `message` that
 describes what happened. If your logic program is pure, then this most likely
 means that there is a bug somewhere in your program. (If it is not pure, which
@@ -573,22 +572,23 @@ starting point by calling the `exploreTreeStartingFrom` function.
 
 There is an important caveat, however: it only makes sense to resume an
 exploration using a checkpoint *if you have not changed the program*, because in
-general if you change the program then you change the `Tree`, which means that
+general if you change the program, then you change the `Tree`, which means that
 the checkpoint is no longer a valid; in particular, if the explored part of the
-tree changes then your current sum over results is no longer correct, and if the
-shape of the tree changes then in general the checkpoint will not line up with
-it and will raise an error. (Having said this, if you make a change that only
-affects parts of the tree that have not been explored then you *might* be fine.)
+tree changes, then your current sum over results is no longer correct, and if
+the shape of the tree changes, then in general the checkpoint will not line up
+with it and will raise an error. (Having said this, if you make a change that
+only affects parts of the tree that have not been explored, then you *might* be
+fine.)
 
 Because of this, it will rarely make sense to resume from a `Failure` if your
-program is pure because an exception will almost always signal the presence of a
-bug. The main reason for including the progress with the `Failure` is because,
-although we have not discussed this, it is possible to write logic programs that
-run in the I/O monad and requires access to, say, a database server; if the
-database server goes down then it makes perfect sense to restart it and then
-resume the run from the last progress.
+program is pure, because an exception will almost always signal the presence of
+a bug. The main reason for including the `progress` with the `Failure` is
+because, although we have not discussed this, it is possible to write logic
+programs that run in the I/O monad and require access to, say, a database
+server; if the database server goes down it makes perfect sense to restart it
+and resume the run from the last `progress`.
 
-In the following code, we show an example of resuming after aborting as well as
+In the following code, we show an example of resuming after aborting, as well as
 of a non-trivial controller (also given in `tutorial/tutorial-7.hs`):
 
 ```haskell
@@ -653,13 +653,13 @@ note that the controller is non-trivial:
 )
 ```
 
-Whereas previously the controller just set the number of workers and then quit,
-now it instead waits for the user to press enter;  if the user does so, then
-the controller tells the supervisor that it should perform a progress update ---
+Whereas previously the controller just set the number of workers and quit, it
+now instead waits for the user to press enter, and if the user does so, then the
+controller tells the supervisor that it should perform a progress update ---
 that is, that it should contact all the workers and fetch their current results
 and checkpoints --- and then finally it tells the supervisor to abort.
 
-Next, note that main function is a loop:
+Next, note that the `main` function is a loop:
 
 ```haskell
 main = setNumCapabilities 2 >> go mempty
@@ -826,7 +826,7 @@ condition function was satisfed and `Right (Progress checkpoint results)`
 otherwise, where again the `checkpoint` allows you to resume the search at some
 point in the future if you wish.
 
-There is also an `exploreTreeUntilFoundUsingPull` function which is similar to
+There is also an `exploreTreeUntilFoundUsingPull`, function which is similar to
 this function except that it gathers the results in a different way. The
 difference between them is that `exploreTreeUntilFoundUsingPull` sums results
 locally on each worker until either a progress update is requested or the
@@ -841,19 +841,19 @@ if you take the latter approach then it is your responsibility to have the
 controller periodically request progress updates. (Note that the
 `LogicGrowsOnTrees.Parallel.Common.RequestQueue` module has a `fork` function
 that you can use to spawn another controller thread if this would make your life
-easier;  like the main controller thread it will be killed when the run is
+easier;  like the main controller thread, it will be killed when the run is
 over.)
 
 
-Parallel using Main
---------------------
+Parallelization using the Main framework
+----------------------------------------
 
-Threads is one of the *adapters* provided by LogicGrowsOnTrees and its siblings.
-Each of these adapters provides a way of adapting the supervisor/worker
-parallelization model to a particular means of running computations in parallel.
-The current adapters are as follows:
+`Threads` is one of the *adapters* provided by `LogicGrowsOnTrees` and its
+siblings. Each of these adapters provides a way of adapting the
+supervisor/worker parallelization model to a particular means of running
+computations in parallel. The current adapters are as follows:
 
-* Threads
+* `Threads`
 
     This adapter provides parallelism by spawning multiple threads; the number
     of workers can be changed arbitrarily at runtime (though you need to make
@@ -861,7 +861,7 @@ The current adapters are as follows:
     run in parallel). This adapter is the only one that requires the threaded
     runtime, which adds additional overhead.
 
-* Processes
+* `Processes`
 
     This adapter provides parallelism by spawning a child process for each
     worker;  the number of workers can be changed arbitrarily at runtime.
@@ -878,9 +878,9 @@ The current adapters are as follows:
 
     Install `LogicGrowsOnTrees-network` to use this adapter.
 
-* MPI
+* `MPI`
 
-    This adapter provides parallelism using the Message Passing Interface (MPI)
+    This adapter provides parallelism using the Message Passing Interface (MPI),
     which is the standard communication system used in supercomputers, allowing
     you to use a very large number of nodes in your run. One of the nodes (#0)
     will act entirely as the supervisor and the rest will act as workers.
@@ -891,14 +891,14 @@ The current adapters are as follows:
 
 All of these adapters provide low-level means of accessing their functionality
 directly if you wish (though they are much more complicated to use than the
-`exploreTree` functions in `Threads`) but there is also a universal high-level
+`exploreTree` functions in `Threads`), but there is also a universal high-level
 interface that works for *all* of the adapters, which we will now discuss.
 
 The `Main` module provides a framework that automates a lot of the work of
 setting up and running an exploration in parallel, and the interface it provides
-is completely agnostic as to the adapter that is used; the `mainFor*` functions
+is completely agnostic about the adapter that is used; the `mainFor*` functions
 all take an argument which is the `driver` of the adapter that you are using,
-and so switching to a different adapter is as simple as switching the driver
+and so switching to a different adapter is as simple as switching the `driver`
 argument.
 
 Here is an example of using the `Main` framework (also given in
@@ -940,9 +940,9 @@ main =
 
 This program simply calls `mainForExploreTree` with the following arguments:
 
-1. the driver, which in this case was imported from Threads
+1. the `driver`, which in this case was imported from `Threads`
 
-2.  a Term which specifies that our program takes a single required positional
+2.  a `Term` which specifies that our program takes a single required positional
     argument for the board size:
 
     ```haskell
@@ -957,11 +957,11 @@ This program simply calls `mainForExploreTree` with the following arguments:
     ```
 
     Most of the functions above are part of
-    [cmdtheline](http://hackage.haskell.org/package/cmdtheline), an applicative
-    command-line parsing library. This library was used because it makes it easy
-    to compose options together; your argument value here will essentially be
-    merged in with the adapter options and some generic options (such as the
-    checkpointing options).
+    [`cmdtheline`](http://hackage.haskell.org/package/cmdtheline), an
+    applicative command-line parsing library. This library was used because it
+    makes it easy to compose options together; your argument value here will
+    essentially be merged in with the adapter options and some generic options
+    (such as the checkpointing options).
 
     Specifically, `pos` here is a function that takes a position, a default
     value, and a `PosInfo` data structure that contains information about the
@@ -1013,13 +1013,13 @@ and it already includes options to specify the location of the checkpoint file
 (if it exists, then the run will be resumed from it), how often a checkpoint
 should be written, at what level to print logging messages, and whether various
 server statistics should be printed to the screen (possibly useful if your
-computation is not scaling well). Because we are using the Threads driver, there
-will also be a `-n` option to set the number of threads.
+computation is not scaling well). Because we are using the `Threads` driver,
+there will also be a `-n` option to set the number of threads.
 
-If this interface seems complex, it helps to understand that part of the reason
-for its complexity is that the supervisor and worker will in general be in
-different processes, which means that configuration information needs to be sent
-to the worker processes.  The `driver` automates the mechanism for this.
+If this interface seems complex, it may help to understand that part of the
+reason for its complexity is that the supervisor and worker will in general be
+in different processes, which means that configuration information needs to be
+sent to the worker processes. The `driver` automates the mechanism for this.
 
 Finally, it is worth noting that all that it takes to use multiple processes
 instead of multiple threads is to install `LogicGrowsOnTrees-processes` and then
@@ -1110,9 +1110,9 @@ To understand what is going on, let us first look at the third argument to
 
 This argument essentially takes the argument from the previous example,
 duplicates it to create a second argument (the number of solutions to find), and
-then merges the two terms together in Applicative style via a call to `liftA2`.
-After parsing is complete, the result will be a pair where the first value is
-the board size and the second value is the number of solutions to find.
+then merges the two terms together in `Applicative` style via a call to
+`liftA2`. After parsing is complete, the result will be a pair where the first
+value is the board size and the second value is the number of solutions to find.
 
 Now we look a the first argument to `mainForExploreTreeUntilFoundUsingPush`:
 
@@ -1124,7 +1124,7 @@ This argument is a function that takes the configuration information and returns
 a condition function that indicates where enough results have been accumulated.
 In this case, the condition function checks whether the number of solutions
 found (obtained via. `length`) is at least as many as were requested
-(`number_to_find`).  Not that `board_size` is ignored and would probably
+(`number_to_find`).  Note that `board_size` is ignored and would probably
 normally be replaced by `_` (or possibly by use of higher-order functions to
 make the expression entirely point-free);  we include it here purely for
 pedagogical reasons.
@@ -1136,8 +1136,8 @@ Next we look at the last argument of `mainForExploreTreeUntilFoundUsingPush`:
 ```
 
 This is just like in the previous example, save that now at the end there is
-`fst` which takes the first value in the configuration pair (which is the board
-size) and instead of replacing each solution with a `WordSum` it turns it into
+`fst`, which takes the first value in the configuration pair (which is the board
+size) and instead of replacing each solution with a `WordSum`, it turns it into
 a singleton list.
 
 Finally, we look at the second-to-last argument:
@@ -1161,7 +1161,7 @@ a `Completed` run.  In the first case, the run fully completed before it was
 able to find all of the requested number of solutions;  the solutions it did
 find are returned in a `Left` value.  In the second case, the run found all of
 the requested solutions and then stopped;  the result is a `Progress` value
-whose checkpoint value allows you to resume the search later to find more
+whose `checkpoint` value allows you to resume the search later to find more
 solutions if you wish and whose result value is the requested solutions.
 
 
