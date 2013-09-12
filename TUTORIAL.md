@@ -214,16 +214,16 @@ output `Word`s.)
 The function `go` is where most of the work happens.  For each row in the board,
 it does the following:
 
-1. First, make a non-deterministic choice from the available columns;  here we
-   use the function `allFrom` (part of the `LogicGrowsOnTrees` module) to
-   convert the list of available columns to a `MonadPlus` that generates it.
+1. First, it makes a non-deterministic choice from the available columns;  here
+   we use the function `allFrom` (part of the `LogicGrowsOnTrees` module) to
+   convert the list of available columns to a `MonadPlus` that generates it:
 
     ```haskell
     column <- allFrom $ IntSet.toList available_columns
     ```
 
-2. Next, we check if this choice of column conflicts with the positive and
-   negative diagonals, and if so we backtrack and try a different column:
+2. Next, it checks if this choice of column conflicts with the positive and
+   negative diagonals, and if so it backtracks and tries a different column:
 
     ```haskell
     let negative_diagonal = row + column
@@ -232,7 +232,7 @@ it does the following:
     guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
     ```
 
-3. Finally, we recursively call `go` for the next row with updated values for
+3. Finally, it recursively calls `go` for the next row with updated values for
    the updated available columns and occupied diagonals, as well as the chosen
    board position added to the (partial) solution:
 
@@ -285,9 +285,9 @@ nqueensUsingBitsSolutions n =
         next = goGetOpenings (column + 1) (bits `shiftR` 1)
 ```
 
-Now in the function go we do the following:
+Now the function `go` does the following:
 
-1. Make a non-deterministic choice within the current row for the column,
+1. It makes a non-deterministic choice within the current row for the column,
    excluding those spaces which are either occupied columns or diagonals:
 
     ```haskell
@@ -298,13 +298,13 @@ Now in the function go we do the following:
     let column_bit = bit (fromIntegral column)
     ```
 
-2. Mark the column and diagonals as being occupied, and also shift the occupied
-   diagonals so that they correspond with the columns in the next row. That is,
-   if a given positive diagonal intersects with column `i` for a given row then
-   it intersects with column `i+1` in the next row, and if a given negative
-   diagonal intersects with column `i` for a given row then it intersects with
-   `i-1` in the next row. Finally, add the board position to the partial
-   solution:
+2. It marks the column and diagonals as being occupied, and also shifts the
+   occupied diagonals so that they correspond with the columns in the next row.
+   That is, if a given positive diagonal intersects with column `i` for a given
+   row then it intersects with column `i+1` in the next row, and if a given
+   negative diagonal intersects with column `i` for a given row then it
+   intersects with `i-1` in the next row. Finally, it adds the board position to
+   the partial solution:
 
     ```haskell
     go (n-1)
@@ -319,7 +319,7 @@ The new nested function `getOpenings` scans through the input bits and builds a
 list of columns where a queen may be placed without conflict.  If there are no
 such columns, then the list will be empty and the code will backtrack.
 
-It is possible to use symmetry breaking gain a significant speed-up, but the
+It is possible to use symmetry breaking gain a significant speed-up, though the
 solution I came up with that does this ended up being quite complicated.  You
 can see it for yourself in the `LogicGrowsOnTrees.Examples.Queens.Advanced`
 module.
@@ -330,11 +330,11 @@ Using LogicGrowsOnTrees
 
 In the preceding part, we gave some examples of how to write a logic program
 using `MonadPlus`. In this part we will talk about how to use this package to
-with such programs, and in particular how to run them in parallel. First we will
-show how to use this package to run a logic program serially, which is done for
-two reasons: first, to introduce the functionality of this package in a simpler
-setting, and second, because it is useful when one is testing a program. Next we
-will show how to run a logic program in parallel using the
+write such programs, and in particular how to run them in parallel. First we
+will show how to use this package to run a logic program serially, which is done
+for two reasons: first, to introduce the functionality of this package in a
+simpler setting, and second, because it is useful when one is testing a program.
+Next we will show how to run a logic program in parallel using the
 `LogicGrowsOnTrees.Parallel.Adapter.Threads` module. Finally, we will show how
 to run a logic program in parallel using the `LogicGrowsOnTrees.Parallel.Main`
 module, which provides a universal interface to all adapters as well as
@@ -429,7 +429,7 @@ those requested if there weren't enough found to meet your condition function,
 and it also might be *more* than those requested because results are not found
 one at a time but rather are merged from the bottom up, meaning that there might
 be a choice point where the two branches separately did not meet the condition
-but their merged results did. An example of using this to find at least 3
+but their merged results did. An example of using this to find at least three
 results is illustrated as follows (also given in `tutorial/tutorial-5.hs`):
 
 ```haskell
@@ -529,9 +529,9 @@ Now that we are running many workers in parallel, the result of the exploration
 is a bit more complicated. The result type is a `RunOutcome`, which contains the
 run statistics and the termination reason. The run statistics contain a lot of
 information whose primary purpose is to help one diagnose why one is not getting
-the appropriate speedup as the number of workers increases. The termination
-reason contains information about why the run terminated. As you can see at the
-end of the code, there are three possibilities:
+the appropriate speedup as the number of workers increases (should this happen).
+The termination reason contains information about why the run terminated. As you
+can see at the end of the code, there are three possibilities:
 
 ```haskell
 case termination_reason of
@@ -562,24 +562,26 @@ starting point by calling the `exploreTreeStartingFrom` function.
 
 There is an important caveat, however: it only makes sense to resume an
 exploration using a checkpoint *if you have not changed the program*, because in
-general if you change the program, then you change the `Tree`, which means that
+general if you change the program, then you change the tree, which means that
 the checkpoint is no longer a valid; in particular, if the explored part of the
-tree changes, then your current sum over results is no longer correct, and if
-the shape of the tree changes, then in general the checkpoint will not line up
-with it and will raise an error. (Having said this, if you make a change that
-only affects parts of the tree that have not been explored, then you *might* be
-fine.)
+tree changes, then in general your current sum over results will no longer
+correct, and if the shape of the tree changes, then in general the checkpoint
+will not line up with it and will raise an error --- in fact, if you make a
+mistake and change the parts of the tree that have been explored and resume from
+a checkpoint anyway then you should *hope* that an error is raised as the
+alternative is for your results to be silently corrupted!
 
 Because of this, it will rarely make sense to resume from a `Failure` if your
 program is pure, because an exception will almost always signal the presence of
 a bug. The main reason for including the `progress` with the `Failure` is
 because, although we have not discussed this, it is possible to write logic
 programs that run in the I/O monad and require access to, say, a database
-server; if the database server goes down it makes perfect sense to restart it
+server; if the database server goes down, it makes perfect sense to restart it
 and resume the run from the last `progress`.
 
-In the following code, we show an example of resuming after aborting, as well as
-of a non-trivial controller (also given in `tutorial/tutorial-7.hs`):
+In the following code, we show a (somewhat contrived) example of resuming after
+aborting, as well as of a non-trivial controller (also given in
+`tutorial/tutorial-7.hs`):
 
 ```haskell
 import Control.Monad.IO.Class (liftIO)
@@ -648,7 +650,8 @@ Whereas previously the controller just set the number of workers and quit, it
 now instead waits for the user to press enter, and if the user does so, then the
 controller tells the supervisor that it should perform a progress update ---
 that is, that it should contact all the workers and fetch their current results
-and checkpoints --- and then finally it tells the supervisor to abort.
+and checkpoints --- and then finally the controller tells the supervisor to
+abort.
 
 Next, note that the `main` function is a loop:
 
@@ -677,7 +680,7 @@ the controller terminates because if the run terminates for any reason then it
 kills the controller thread rather than leaving it hanging.
 
 Obviously this is not a particularly useful controller, although it does
-illustrate that the run can be arbitrarily aborted and restarted from a
+demonstrate that the run can be arbitrarily aborted and restarted from a
 checkpoint without suffering any problems. For an example of a more useful
 controller, see the following (also given in `tutorial/tutorial-8.hs`):
 
@@ -719,16 +722,21 @@ main = do
         Failure _ message -> putStrLn $ "Failed: " ++ message
 ```
 
-Now the controller continually polls the user for the desired number of workers
-and then changes the number of workers to be equal to it, which for example you
-could use to adjust the number of processors being used by the run to be larger
-or smaller depending on how many processors you want to use for other tasks at
-that moment.
+Now the controller continually polls the user for the desired number of workers,
+and then changes the number of workers to be equal to it, which, for example,
+you could use to adjust the number of processors being used by the run to be
+larger or smaller depending on how many processors you want to use for other
+tasks at that moment.
 
 (Unfortunately, calling `setNumCapabilities` many times in succession can
 destabilize the GHC runtime, so for this example you will need to use `+RTS -N#`
 on the command-line to set the number of capabilities to be equal to the largest
-number of workers that you will want to run in parallel.)
+number of workers that you will want to run in parallel; it is worth mentioning
+that the `Processes` adapter, provided in the `LogicGrowsOnTrees-procesess`
+package, also features a controller that can change the number of workers, but
+does not suffer from this problem because it creates and destroyers workers by
+spawning and destroying single-threaded processes rather than telling the GHC
+threaded runtime to grow and shrink the number of capabilities.)
 
 As in the serial case, there are multiple modes in which an exploration can be
 run.  The following code only looks for the first result (also given in
@@ -816,7 +824,7 @@ condition function was satisfed and `Right (Progress checkpoint results)`
 otherwise, where again the `checkpoint` allows you to resume the search at some
 point in the future if you wish.
 
-There is also an `exploreTreeUntilFoundUsingPull`, function which is similar to
+There is also an `exploreTreeUntilFoundUsingPull` function, which is similar to
 this function except that it gathers the results in a different way. The
 difference between them is that `exploreTreeUntilFoundUsingPull` sums results
 locally on each worker until either a progress update is requested or the
@@ -863,8 +871,7 @@ computations in parallel. The current adapters are as follows:
     This adapter provides parallelism by allowing multiple workers to connect to
     a supervisor over a network; the number of workers is then equal to the
     number that are are connected to the supervisor. (It is possible for the
-    same process to be both a supervisor and one or more workers, though this is
-    only really useful for testing purposes.)
+    same process to be both a supervisor and one or more workers.)
 
     Install `LogicGrowsOnTrees-network` to use this adapter.
 
@@ -873,7 +880,7 @@ computations in parallel. The current adapters are as follows:
     This adapter provides parallelism using the Message Passing Interface (MPI),
     which is the standard communication system used in supercomputers, allowing
     you to use a very large number of nodes in your run. One of the nodes (#0)
-    will act entirely as the supervisor and the rest will act as workers.
+    will act entirely as the supervisor, and the rest will act as workers.
 
     Install `LogicGrowsOnTrees-MPI` to use this adapter; note that you will need
     to have an MPI implementation installed (such as
@@ -920,6 +927,14 @@ should be written, at what level to print logging messages, and whether various
 server statistics should be printed to the screen (possibly useful if your
 computation is not scaling well). Because we are using the `Threads` driver,
 there will also be a `-n` option to set the number of threads.
+
+The reason why the function that processes the result of the run has be
+specified as an argument rather than having the result be returned by
+`simpleMainForExploreTree` is twofold: first, because in general the supervisor
+and workers will be in separate processes and the result is only processed by
+the supervisor, and second, because this allows `simpleMainForExploreTree` to be
+sure that your code has successfully processes the result (as opposed to, say,
+throwing an exception) before deleting the checkpoint file.
 
 The following is a more complicated example that uses a more general function
 in `Main` that lets one specify the board size using a command-line argument
@@ -1029,10 +1044,11 @@ This program calls `mainForExploreTree` with the following arguments:
     The argument to this function is equal to the value supplied by the user
     for the first command line argument.
 
-If this interface seems complex, it may help to understand that part of the
-reason for its complexity is that the supervisor and worker will in general be
-in different processes, which means that configuration information needs to be
-sent to the worker processes. The `driver` automates the mechanism for this.
+Again, there is additional complexity in this interface because, as the
+supervisor and workers will in general be in different processes, the
+configuration information needs to be sent from the supervisor to the worker
+processes so that they can locally construct the tree. The `driver` automates
+the mechanism for this.
 
 Finally, it is worth noting that all that it takes to use multiple processes
 instead of multiple threads is to install `LogicGrowsOnTrees-processes` and then

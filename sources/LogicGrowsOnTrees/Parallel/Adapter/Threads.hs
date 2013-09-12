@@ -9,14 +9,14 @@
 {-| This adapter implements parallelism by spawning multiple worker threads, the
     number of which can be changed arbitrarily during the run.
 
-    NOTE: For the use of threads to results in parallelism, you need to make
+    NOTE: For the use of threads to results in parallelization, you need to make
     sure that the number of capabilities is at least as large as the largest
-    number of worker threads you will be spawning. If you are using the driver,
-    then this will be taken care of for you. If not, then you will need to
-    either call 'GHC.Conc.setNumCapabilities' (but only to increase the number
-    of threads in GHC 7.4, and not too often as it may crash) or use the
+    number of worker threads you will be spawning. If you are using the
+    'driver', then this will be taken care of for you. If not, then you will
+    need to either call 'GHC.Conc.setNumCapabilities' (but only to increase the
+    number of threads in GHC 7.4, and not too often as it may crash) or use the
     command-line argument @+RTS -N\#@, where @\#@ is the number of threads you
-    want to run in parallel. The driver takes care of this automatically by
+    want to run in parallel. The 'driver' takes care of this automatically by
     calling 'setNumCapabilities' a single time to set the number of capabilities
     equal to the number of request threads (provided via. a command-line
     argument).
@@ -273,7 +273,7 @@ exploreTreeTStartingFrom = runExplorer AllMode  . ImpureAtopIO
 ---------------------------- Stop at first result ------------------------------
 
 {- $first
-See "LogicGrowsOnTrees.Parallel.Main#first" (a direct hyper-link to the relevant section) for more details on this mode.
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#first"
  -}
 
 {-| Explore the pure tree until a result has been found. -}
@@ -328,7 +328,7 @@ exploreTreeTUntilFirstStartingFrom = runExplorer FirstMode . ImpureAtopIO
 ------------------------ Stop when sum of results found ------------------------
 
 {- $pull
-See "LogicGrowsOnTrees.Parallel.Main#pull" (a direct hyper-link to the relevant section) for more information on this mode.
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#pull"
 
 Note that because using these functions entails writing the controller yourself,
 it is your responsibility to ensure that a global progress update is performed
@@ -396,7 +396,7 @@ exploreTreeTUntilFoundUsingPullStartingFrom ::
 exploreTreeTUntilFoundUsingPullStartingFrom f = runExplorer (FoundModeUsingPull f) . ImpureAtopIO
 
 {- $push
-See "LogicGrowsOnTrees.Parallel.Main#push" (a direct hyper-link to the relevant section) for more information on this mode.
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#push"
 -}
 
 

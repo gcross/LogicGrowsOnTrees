@@ -12,7 +12,7 @@ Specifically, it uses the following tricks:
 
   * unpacked datatypes instead of multiple arguments
 
-  * heavily optimized 'getOpenings'
+  * optimized 'getOpenings'
 
   * C code for the inner-most loop
 
@@ -128,14 +128,20 @@ data PositionAndBitWithReflection = PositionAndBitWithReflection {-# UNPACK #-} 
 
 -- NOTE:  the spaces before 'Typeable' are needed due to a haddock glitch
 {-| Interface to the main algorithm;  note that α and β need to be   'Typeable'
-    because of an optimization used in the C part of the code.
+    because of an optimization used in the C part of the code. This function
+   takes functions for its first two operators that operate on partial solutions
+   so that the same algorithm can be used both for generating solutions and
+   counting them; the advantage of this approach is that it is much easier to
+   find problems in the generated solution than it is in their count, so we can
+   test it by looking for problems in the generated solutions, and when we are
+   assured that it works we can trust it to obtain the correct counts.
  -}
 nqueensGeneric ::
     (MonadPlus m
     ,Typeable α
     ,Typeable β
     ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solution -} →
     (Word → NQueensSymmetry → α → m β) {-^ function that finalizes a partial solution with the given board size and symmetry -} →
     α {-^ initial partial solution -} →
     Word {-^ board size -} →
@@ -924,7 +930,7 @@ nqueensBreak180
 --------------------------------------------------------------------------------
 
 {- $brute-force
-After the symmetry has been fully broken, the "brute-force" approach attempts to
+After the symmetry has been fully broken, the brute-force approach attempts to
 place queens in the remaining inner sub-board.  When the number of queens falls
 to 10 or less, it farms the rest of the search out to a routine written in C.
  -}

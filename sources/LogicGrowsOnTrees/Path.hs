@@ -39,8 +39,8 @@ import LogicGrowsOnTrees
     is incompatible with it.
  -}
 data WalkError =
-    {-| Indicates that a path is too long for a given tree --- i.e., the
-        walk has hit a leaf (or a null) before the path finishes.
+    {-| Indicates that a path is too long for a given tree --- that is, the walk
+        hit a leaf (or a null) before the end of the path was reached.
      -}
     TreeEndedBeforeEndOfWalk
     {-| Indicates that a choice step in a path coincided with a cache point in
@@ -94,18 +94,18 @@ oppositeBranchChoiceOf RightBranch = LeftBranch
     then the resulting 'Tree' is returned.
 
     WARNING: This function is /not/ valid for all inputs; it makes the
-    assumption that the given 'Path' has been derived from the given
-    'Tree' so that the path will always encountered choice points exactly
-    when the tree does and likewise for cache points. Furthermore, the
-    path must not run out before the tree hits a leaf. If any of these
-    conditions is violated, a 'WalkError' exception will be thrown; in fact, you
-    should hope than exception is thrown because it will let you know that there
-    is a bug your code as the alternative is that you accidently give it a path
-    that is not derived from the given tree but which coincidentally
-    matches it which means that it will silently return a nonsensical result.
-    Having said all that, you should almost never need to worry about this
-    possibility in practice because there is usually only one tree in
-    use at a time and all paths in use have come from that tree.
+    assumption that the given 'Path' has been derived from the given 'Tree' so
+    that the path will always encountered choice points exactly when the tree
+    does and likewise for cache points. Furthermore, the path must not run out
+    before the tree hits a leaf. If any of these conditions is violated, a
+    'WalkError' exception will be thrown; in fact, you should hope than
+    exception is thrown because it will let you know that there is a bug your
+    code as the alternative is that you accidently give it a path that is not
+    derived from the given tree but which coincidentally matches it which means
+    that it will silently return a nonsensical result. Having said all that, you
+    should almost never need to worry about this possibility in practice because
+    there will normally be only one tree in use at a time and all paths in use
+    will have come from that tree.
  -}
 sendTreeDownPath :: Path → Tree α → Tree α
 sendTreeDownPath path = runIdentity . sendTreeTDownPath path

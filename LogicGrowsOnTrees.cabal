@@ -7,14 +7,16 @@ Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
 Stability:           Provisional
 Synopsis:            a distributed (parallel) implementation of logic programming via. dynamically generated trees
 Description:         NOTE:  In addition to the following package description, see
-                     <https://github.com/gcross/LogicGrowsOnTrees/blob/master/TUTORIAL.md>
-                     (or the file @TUTORIAL.md@ in this package) for a tutorial,
-                     <https://github.com/gcross/LogicGrowsOnTrees/blob/master/USERS_GUIDE.md>
-                     (or the file @USERS_GUIDE.md@) for a user's guide that
-                     provides more information about how to use this package,
-                     and
-                     <https://github.com/gcross/LogicGrowsOnTrees/blob/master/README.md>
-                     (or the file @README.md@), for an FAQ.
+                     .
+                       * <http://github.com/gcross/LogicGrowsOnTrees/blob/master/TUTORIAL.md TUTORIAL.md>
+                         for a tutorial,
+                     .
+                       * <http://github.com/gcross/LogicGrowsOnTrees/blob/master/USERS_GUIDE.md USERS_GUIDE.md>
+                         for a user's guide that provides more information about
+                         how to use this package, and
+                     .
+                       * <http://github.com/gcross/LogicGrowsOnTrees/blob/master/README.md README.md>
+                         for an FAQ.
                      .
                      You can think of this package in two equivalent ways.
                      First, you can think of it as an implementation of logic
@@ -34,9 +36,8 @@ Description:         NOTE:  In addition to the following package description, se
                      'MonadPlus' to indicate choice and failure, and the 'Tree'
                      implementation of this typeclass will take care of the
                      details of turning your logic program into tree. (If you
-                     are not familiar with this approach, then see @TUTORIAL.md@
-                     which is a file included in this package and also online at
-                     <https://github.com/gcross/LogicGrowsOnTrees/blob/master/TUTORIAL.md>.)
+                     are not familiar with this approach, then see
+                     <http://github.com/gcross/LogicGrowsOnTrees/blob/master/TUTORIAL.md TUTORIAL.md>.)
                      .
                      To use this package, you first write a function that builds
                      a tree (say, by using logic programming); the
@@ -64,26 +65,25 @@ Description:         NOTE:  In addition to the following package description, se
                      then you need to make sure that your side-effects do not
                      break this assumption; for example, a monad which memoizes
                      a pure function is perfectly fine. By contrast if you are
-                     working within `IO` monad and writing results to a database
-                     rather than returning them (and assuming that duplicate
-                     results would cause problems) then you need to check to
-                     make sure you aren't writing the same result twice, such as
-                     by using the "LogicGrowsOnTrees.Location" functionality to
-                     identify where you are in the tree so you can query to see
-                     if your current location is already listed in the database.
+                     working within the `IO` monad and writing results to a
+                     database rather than returning them (and assuming that
+                     duplicate results would cause problems) then you need to
+                     check to make sure you aren't writing the same result
+                     twice, such as by using the "LogicGrowsOnTrees.Location"
+                     functionality to identify where you are in the tree so you
+                     can query to see if your current location is already listed
+                     in the database.
                      .
                      If you want to see examples of generating a tree to solve a
                      problem, then see "LogicGrowsOnTrees.Examples.MapColoring"
                      or "LogicGrowsOnTrees.Examples.Queens" modules, which have
                      some basic examples of using logic programming to find
                      and/or count the number of solutions to a given map
-                     coloring problem and the n-queens problem for a given board
-                     size respectively. The
+                     coloring problem and a given n-queens problem. The
                      "LogicGrowsOnTrees.Examples.Queens.Advanced" module has my
                      own solution to the n-queens problem where I use symmetry
                      breaking to prune the search tree, cutting the runtime by
-                     about a factor of three; the resulting code is very
-                     complex, though.
+                     about a factor of three.
                      .
                      Once your tree has been debugged, you can start taking
                      advantage of the major features of this package. If you are
@@ -150,7 +150,7 @@ Description:         NOTE:  In addition to the following package description, se
                      has infrastructure designed for this case; look at
                      "LogicGrowsOnTrees.Parallel.Adapter.Threads" for an example
                      of using it. Second, if your adapter does not meet this
-                     criteria, then you should look at the
+                     criterion, then you should look at the
                      "LogicGrowsOnTrees.Parallel.Common.Supervisor" module; your
                      adapter will need to run within the 'SupervisorMonad', with
                      its own state contained in its own monad below the
@@ -223,9 +223,8 @@ Description:         NOTE:  In addition to the following package description, se
                      you might find the "LogicGrowsOnTrees.Utils.Word_" module
                      to be useful. The other modules provide lower-level
                      functionality; in particular the
-                     @LogicGrowsOnTrees.Parallel.Common.*@ modules are only
-                     intended to be used directly by people writing their own
-                     adapter.
+                     @LogicGrowsOnTrees.Parallel.Common.*@ modules are primarily
+                     geared towards people writing their own adapter.
 
 Cabal-version:       >=1.8
 Build-type:          Simple

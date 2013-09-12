@@ -38,6 +38,7 @@ module LogicGrowsOnTrees
     -- ** ...that transform trees
     , endowTree
     -- * Implementation
+    -- $implementation
     , TreeTInstruction(..)
     , TreeInstruction
     ) where
@@ -63,11 +64,11 @@ import Data.Serialize (Serialize(),encode)
 --------------------------------------------------------------------------------
 
 {- $types
-The following are the tree types that are accepted by most of the
-functions in this package.  You do not need to know the details of their
-definitions unless you intend to write your own custom routines for running and
-transforming trees, in which case the relevant information is at the bottom
-of this page in the Implementation section.
+The following are the tree types that are accepted by most of the functions in
+this package. You do not need to know the details of their definitions unless
+you intend to write your own custom routines for running and transforming trees,
+in which case the relevant information is at the bottom of this page in the
+Implementation section.
 
 There is one type of pure tree and two types of impure trees. In general, your
 tree should nearly always be pure if you are planning to make use of
@@ -104,7 +105,7 @@ newtype TreeT m α = TreeT { unwrapTreeT :: ProgramT (TreeTInstruction m) m α }
 
 {- $type-classes
 
-'Tree's are instances of 'MonadExplorable' and/or 'MonadExplorableTrans',
+'Tree's are instances of 'MonadExplorable' and 'MonadExplorableTrans',
 which are both subclasses of 'MonadPlus'. The additional functionality offered
 by these type-classes is the ability to cache results so that a computation does
 not need to be repeated when a node is explored a second time, which can happen
@@ -551,18 +552,21 @@ endowTree tree =
 --------------------------------------------------------------------------------
 
 {- $implementation
-The implementation of the 'Tree' types uses the approach described in
-"The Operational Monad Tutorial", published in Issue 15 of The Monad.Reader at
-<http://themonadreader.wordpress.com/>;  specifically it uses the @operational@
-package.  The idea is that a list of instructions are provided in
-'TreeTInstruction', and then the operational monad does all the heavy lifting
-of turning them into a monad.
+The implementation of the 'Tree' types uses the approach described in \"The
+Operational Monad Tutorial\", published in
+<http://themonadreader.wordpress.com/ Issue 15 of The Monad.Reader>;
+specifically it uses the @operational@ package. The idea is that a list of
+instructions are provided in 'TreeTInstruction', and then the operational monad
+does all the heavy lifting of turning them into a monad.
  -}
 
 {-| The core of the implementation of 'Tree' is mostly contained in this
     type, which provides a list of primitive instructions for trees:
     'Cache', which caches a value, 'Choice', which signals a branch with two
-    choices, and 'Null', which indicates that there are no more results.
+    choices, 'Null', which indicates that there are no more results, and
+    'ProcessPendingRequests', which signals that a break should be taken from
+    exploration to process any pending requests (only meant to be used in
+    exceptional cases).
  -}
 data TreeTInstruction m α where
     Cache :: Serialize α ⇒ m (Maybe α) → TreeTInstruction m α

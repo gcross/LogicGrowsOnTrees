@@ -196,6 +196,12 @@ $( derive makeSerialize ''SharedConfiguration )
     function that is called to start the run with a set of parameters specified
     in 'DriverParameters'.
 
+    (Unfortunately in haddock the type signature below can be difficult to read
+    because it puts all of the type on a single line; the type is essentially
+    just a map from 'DriverParameters' to @result_monad ()@, but involving a
+    bunch of type variables and some constraints on them. It might be easier to
+    click the link to go to the source.)
+
     Note that the @controller_monad@ type parameter is within an existential
     type; this is because the user of the driver should not need to know what it
     is.
@@ -233,11 +239,11 @@ data DriverParameters
     exploration_mode
     controller_monad =
     DriverParameters
-    {   {-| configuration options that are shared between the supervisor and the worker -}
+    {   {-| configuration information shared between the supervisor and the worker -}
         shared_configuration_term :: Term shared_configuration
-        {-| configuration options specific to the supervisor -}
+        {-| configuration information specific to the supervisor -}
     ,   supervisor_configuration_term :: Term supervisor_configuration
-        {-| program information;  should at a minimum put a brief description of the program in 'termDoc' -}
+        {-| program information;  should at a minimum put a brief description of the program in the 'termDoc' field -}
     ,   program_info :: TermInfo
         {-| action that initializes the global state of each process --- that
             is, once for each running instance of the executable, which
@@ -305,15 +311,15 @@ system that explores a tree in parallel using the given tree (constructed
 possibly using information supplied on the command line) and the given adapter
 provided via the driver argument.
 
-All of the functionaliy of this module can be accessed through 'genericMain',
-but we nonethless also provide specialized versions of these functions for all
+All of the functionality of this module can be accessed through 'genericMain',
+but we nonetheless also provide specialized versions of these functions for all
 of the supported tree purities and exploration modes. This is done for two
 reasons: first, in order to make the types more concrete to hopefully improve
 usability, and second, because often the type of the tree is generalized so it
 could be one of several types, and using a specialized function automatically
 specializes the type rather than requiring a type annotation. The convention is
 @mainForExploreTreeXY@ where @X@ is empty for pure trees, @IO@ for trees with
-side-effects in the IO monad, and @Impure@ for trees with side-effects in some
+side-effects in the `IO` monad, and @Impure@ for trees with side-effects in some
 general monad, and @Y@ specifies the exploration mode, which is empty for
 'AllMode' (sum over all results), @UntilFirst@ for 'FirstMode' (stop when first
 result found), @UntilFoundUsingPull@ for 'FoundModeUsingPull' (sum all results
@@ -335,8 +341,8 @@ The functions in this section are for when you want to sum over all the results
 in (the leaves of) the tree.
  -}
 
-{-| Explore the given pure tree in parallel; the results
-    in the leaves will be summed up using the 'Monoid' instance.
+{-| Explore the given pure tree in parallel; the results in the leaves will be
+    summed up using the 'Monoid' instance.
  -}
 mainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
@@ -357,8 +363,8 @@ mainForExploreTree ::
     result_monad ()
 mainForExploreTree = genericMain (const AllMode) Pure
 
-{-| Explore the given IO tree in parellel;
-    the results in the leaves will be summed up using the 'Monoid' instance.
+{-| Explore the given IO tree in parallel; the results in the leaves will be
+    summed up using the 'Monoid' instance.
  -}
 mainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
@@ -379,12 +385,12 @@ mainForExploreTreeIO ::
     result_monad ()
 mainForExploreTreeIO = genericMain (const AllMode) io_purity
 
-{-| Explore the given impure tree in parallel; the
-    results in all of the leaves will be summed up using the 'Monoid' instance.
+{-| Explore the given impure tree in parallel; the results in all of the leaves
+    will be summed up using the 'Monoid' instance.
  -}
 mainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
@@ -410,18 +416,15 @@ found a result.
 
 There are two ways in which a system running in this mode can terminate normally:
 
-    1. when a solution is found, in which case a 'Just'-wrapped value is
-       returned with both the found solution and the current 'Checkpoint', the
-       latter allowing one to resume the search to look for more solutions
-       later
+    1. A solution is found, in which case a 'Just'-wrapped value is returned
+       with both the found solution and the current 'Checkpoint', the latter
+       allowing one to resume the search to look for more solutions later.
 
-    2. when the whole tree has been explored, in which case 'Nothing' is returned.
+    2. The whole tree has been explored, in which case 'Nothing' is returned.
 
  -}
 
-{-| Explore the given pure tree in parallel, stopping if
-    a solution is found.
- -}
+{-| Explore the given pure tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -441,9 +444,7 @@ mainForExploreTreeUntilFirst ::
     result_monad ()
 mainForExploreTreeUntilFirst = genericMain (const FirstMode) Pure
 
-{-| Explore the given IO tree in parellel,
-    stopping if a solution is found.
- -}
+{-| Explore the given IO tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -463,12 +464,10 @@ mainForExploreTreeIOUntilFirst ::
     result_monad ()
 mainForExploreTreeIOUntilFirst = genericMain (const FirstMode) io_purity
 
-{-| Explore the given impure tree in parallel, stopping
-    if a solution is found.
- -}
+{-| Explore the given impure tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
@@ -507,29 +506,29 @@ results in the system meets the condition but this will not be found out until
 the next poll, which wastes time equal to the amount of time between polls. If
 you would rather have the system immediately terminate as soon as it has found
 the desired results (at the price of paying an additional cost as each workload
-is found in sending it to the supervisor), then see push mode described at
-"LogicGrowsOnTrees.Parallel.Main#push" (which does link directly to the push
-mode documentation even though the link doesn't look like it).
+is found in sending it to the supervisor), then follow
+"LogicGrowsOnTrees.Parallel.Main#push" to see the description of push mode.
 
 There are three ways in which a system running in this mode can terminate:
 
-    1. A worker can have its local sum meet the condition;  in this case the
-       result of the condition function is returned as well as the partial
-       result on the supervisor and the current checkpoint, all wrapped in a
-       'Right'; the latter values are provided to allow one one to resume the
-       search to find more results at a later time.
+    1. A worker finds another result and now its (new) local sum meet the
+       condition; in this case the sum of the worker's local sum and the
+       supervisor's local sum is returned along with the current checkpoint
+       (which allows the search to be resumed later to find more results), all
+       wrapped in a 'Right'.
 
-    2. The supervisor can have its local sum meet the condition;  this is the
-       same as 1 but the partial result is 'mempty'.
+    2. The supervisor, having just received some new results from a worker, has
+       its (new) local sum meet the condition; this has essentially the same
+       effect as 1.
 
-    3. The tree can be fully explored, in which case the partial sum is returned
+    3. The tree has been fully explored, in which case the full sum is returned
        in a 'Left'.
 
 WARNING:  If you use this mode then you need to enable checkpointing when the
-          program is run as if you don't then the run will not terminate until
-          the tree has been fully explored even if the sum total of all results
-          in the system at some point meet the condition as it does not know
-          this until the results have been sent to the supervisor.
+          program is run; if you do not do this, then you might end up in a
+          situation where the sum of results over the entire system meets the
+          condition but the system does not realize this because the results
+          have not been gathered together and summed at the supervisor.
  -}
 
 {-| Explore the given pure tree in parallel until the sum of results meets the
@@ -555,7 +554,7 @@ mainForExploreTreeUntilFoundUsingPull ::
     result_monad ()
 mainForExploreTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
 
-{-| Explore the given IO tree in parellel until the sum of results meets the
+{-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
  -}
 mainForExploreTreeIOUntilFoundUsingPull ::
@@ -584,7 +583,7 @@ mainForExploreTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundM
 mainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
@@ -610,19 +609,17 @@ than waiting for a progress update to occur that gathers them together. The
 downside of this approach is that it costs some time for a worker to send a
 result to the supervisor, so if the condition will not be met until a large
 number of results have been found then it be better let the workers accumulate
-results locally and to poll them on a regular basis; to do this, see pull mode
-described at "LogicGrowsOnTrees.Parallel.Main#pull" (which does link directly to
-the pull mode documentation even though the link doesn't look like it).
+results locally and to poll them on a regular basis; to do this, follow
+"LogicGrowsOnTrees.Parallel.Main#pull" to see the description of pull mode.
 
 There are three ways in which a system running in this mode can terminate:
 
-    1. The supervisor, have just received a new result from a worker, finds that
-       its current sum meets the condition function, in which case it returns
-       the result of the condition function plus the current checkpoint (to
-       allow the search to be resumed later to find more results) wrapped in a
-       'Right'.
+    1. The supervisor, having just received a new result from a worker, finds
+       that its current sum meets the condition function, in which case it
+       returns the sum as well as the current checkpoint (which allows the
+       search to be resumed later to find more results) wrapped in a 'Right'.
 
-    2. The tree can be fully explored, in which case the partial sum is returned
+    2. The tree has been fully explored, in which case the full sum is returned
        in a 'Left'.
 
 (Note that, unlike the pull version, a partial result will not be returned upon
@@ -653,7 +650,7 @@ mainForExploreTreeUntilFoundUsingPush ::
     result_monad ()
 mainForExploreTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
 
-{-| Explore the given IO tree in parellel until the sum of results meets the
+{-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
  -}
 mainForExploreTreeIOUntilFoundUsingPush ::
@@ -682,7 +679,7 @@ mainForExploreTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundM
 mainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     TermInfo
@@ -703,7 +700,7 @@ mainForExploreTreeImpureUntilFoundUsingPush constructCondition = genericMain (Fo
 ---------------------------- Generic main function -----------------------------
 
 {-| This is just like the previous functions, except that it is generalized over
-    all tree purities and exploration modes.  (In fact, the specailized
+    all tree purities and exploration modes.  (In fact, the specialized
     functions are just wrappers around this function.)
  -}
 genericMain ::
@@ -788,9 +785,9 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
 
 {- $main-simple #main-simple#
 The functions in this section provide simpler version of the functions in the
-preceding section ("LogicGrowsOnTrees.Parallel.Main#main") for the case where
-you do not need to use command-line arguments to construct the tree and don't
-care about what the name of the program is on the help screen; the naming
+preceding section (follow "LogicGrowsOnTrees.Parallel.Main#main") for the case
+where you do not need to use command-line arguments to construct the tree and
+don't care about what the name of the program is on the help screen; the naming
 convention follows the same convention as that in the previous section.
  -}
 
@@ -816,7 +813,7 @@ simpleMainForExploreTree ::
     result_monad ()
 simpleMainForExploreTree = dispatchToMainFunction mainForExploreTree
 
-{-| Explore the given IO tree in parellel;
+{-| Explore the given IO tree in parallel;
     the results in the leaves will be summed up using the 'Monoid' instance.
  -}
 simpleMainForExploreTreeIO ::
@@ -836,7 +833,7 @@ simpleMainForExploreTreeIO = dispatchToMainFunction mainForExploreTreeIO
  -}
 simpleMainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -850,7 +847,7 @@ simpleMainForExploreTreeImpure = dispatchToMainFunction . mainForExploreTreeImpu
 ---------------------------- Stop at first result ------------------------------
 
 {- $first-simple
-For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#first-simple"
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#first"
  -}
 
 {-| Explore the given pure tree in parallel, stopping if a solution is found. -}
@@ -866,7 +863,7 @@ simpleMainForExploreTreeUntilFirst ::
     result_monad ()
 simpleMainForExploreTreeUntilFirst = dispatchToMainFunction mainForExploreTreeUntilFirst
 
-{-| Explore the given tree in parellel in IO, stopping if a solution is found. -}
+{-| Explore the given tree in parallel in IO, stopping if a solution is found. -}
 simpleMainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
@@ -882,7 +879,7 @@ simpleMainForExploreTreeIOUntilFirst = dispatchToMainFunction mainForExploreTree
 {-| Explore the given impure tree in parallel, stopping if a solution is found. -}
 simpleMainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -919,7 +916,7 @@ simpleMainForExploreTreeUntilFoundUsingPull ::
     result_monad ()
 simpleMainForExploreTreeUntilFoundUsingPull = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPull . const
 
-{-| Explore the given IO tree in parellel until the sum of results meets the
+{-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
  -}
 simpleMainForExploreTreeIOUntilFoundUsingPull ::
@@ -941,7 +938,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPull = dispatchToMainFunction . mainFor
 simpleMainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -973,7 +970,7 @@ simpleMainForExploreTreeUntilFoundUsingPush ::
     result_monad ()
 simpleMainForExploreTreeUntilFoundUsingPush = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPush . const
 
-{-| Explore the given IO tree in parellel until the sum of results meets the
+{-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
  -}
 simpleMainForExploreTreeIOUntilFoundUsingPush ::
@@ -995,7 +992,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPush = dispatchToMainFunction . mainFor
 simpleMainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    (∀ β. m β → IO β) →
+    (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note

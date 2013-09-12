@@ -273,7 +273,11 @@ requestQueueProgram initialize =
 
 ------------------------------ Controller threads ------------------------------
 
-{-| Adds a controller thread id to the request queue. -}
+{-| Forks a controller thread;  it's 'ThreadId' is added the list in the request
+    queue. We deliberately do not return the 'ThreadId' from this function
+    because you must always call `killControllerThreads` to kill the controller
+    thread as this makes sure that all child threads also get killed.
+ -}
 forkControllerThread ::
     MonadIO m' ⇒
     RequestQueue exploration_mode worker_id m {-^ the request queue -} →
@@ -305,7 +309,7 @@ forkControllerThread' request_queue controller = liftIO $ do
     putMVar start_signal ()
     return thread_id
 
-{-| Kill all the remaining worker threads. -}
+{-| Kill all the controller threads and their children. -}
 killControllerThreads ::
     MonadIO m' ⇒
     RequestQueue exploration_mode worker_id m {-^ the request queue -} →

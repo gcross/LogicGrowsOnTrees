@@ -186,7 +186,7 @@ instance Monad m ⇒ MonadExplorableTrans (LocatableTreeT m) where
 
 ------------------------------ Utility functions -------------------------------
 
-{-| Append the path indicated by a checkpoint cursor to a location's path. -}
+{-| Append the path indicated by a checkpoint cursor to the given location's path. -}
 applyCheckpointCursorToLocation ::
     CheckpointCursor {-^ a path within the subtree -} →
     Location {-^ the location of the subtree -} →
@@ -204,7 +204,7 @@ applyCheckpointCursorToLocation cursor =
                 CachePointD _ → id
                 ChoicePointD active_branch _ → locationTransformerForBranchChoice active_branch
 
-{-| Append the path indicated by a context to a location's path. -}
+{-| Append the path indicated by a context to the given location's path. -}
 applyContextToLocation ::
     Context m α {-^ the path within the subtree -} →
     Location {-^ the location of the subtree -} →
@@ -292,9 +292,9 @@ rootLocation = Location root
 runLocatableT :: LocatableT m α → m α
 runLocatableT = flip runReaderT rootLocation . unwrapLocatableT
 
-{-| Guides a 'Tree' guiding it to the subtree at the given 'Location'.
-    This function is analagous to 'LogicGrowsOnTrees.Path.sendTreeDownPath', and
-    shares the same caveats.
+{-| Walks down a 'Tree' to the subtree at the given 'Location'. This function is
+    analogous to 'LogicGrowsOnTrees.Path.sendTreeDownPath', and shares the
+    same caveats.
  -}
 sendTreeDownLocation :: Location → Tree α → Tree α
 sendTreeDownLocation label = runIdentity . sendTreeTDownLocation label

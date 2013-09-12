@@ -83,8 +83,8 @@ instance ArgVal (Maybe BoardSize) where
     converter = just
 
 {-| This constructs a term for the `cmdtheline` command line parser that expects
-    a valid board size (i.e., a number between 1 and 'nqueens_maximum_size' at the
-    given positional argument.
+    a valid board size (i.e., a number between 1 and 'nqueens_maximum_size') at
+    the given positional argument.
  -}
 makeBoardSizeTermAtPosition ::
     Int {-^ the position in the commonand line arguments where this argument is expected -} →
@@ -146,7 +146,7 @@ nqueens_correct_counts = IntMap.fromDistinctAscList $
     this value is equal to the largest board size for which we know the number
     of solutions, which is 26.  In a 32-bit environment this value is equal to
     the largest board size such that the number of solutions fits within a
-    32-bit (signed) integer (i.e., the range of 'Int'), which is 18.
+    32-bit (unsigned) integer (i.e., the range of 'Word'), which is 18.
  -}
 nqueens_maximum_size :: Int
 nqueens_maximum_size = fst . IntMap.findMax $ nqueens_correct_counts

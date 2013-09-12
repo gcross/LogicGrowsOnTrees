@@ -215,17 +215,19 @@ deriveLoggers "Logger" [DEBUG]
     requests. Specifically, the worker alternates between stepping through the
     tree and checking to see if there are any new requests in the queue.
     
-    The worker is optimized around the assumption that requests are rare. For
-    this reason, it uses an 'IORef' for the queue to minimize the cost of
-    peeking at it rather than an 'MVar' or other thread synchronization
-    variable; the trade-off is that if a request is added to the queue by a
-    different processor then it might not be noticed immediately until the
-    caches get synchronized; since requests are rare this not a significant cost
-    to pay. Likewise, the request queue uses the list type rather than something
-    like "Data.Sequence" for simplicity; the vast majority of the time the
-    worker will encounter an empty list, and on the rare occasion when the list
-    is non-empty it will be short enough that 'reverse'ing it will not pose a
-    significant cost.
+    The worker is optimized around the observation that the vast majority of its
+    time is spent exploring the tree rather than responding to requests, and so
+    the amount of overhead needed to check if any requests are present needs to
+    be minimized at the cost of possibly delaying a response to an incoming
+    request. For this reason, it uses an 'IORef' for the queue to minimize the
+    cost of peeking at it rather than an 'MVar' or some other thread
+    synchronization variable; the trade-off is that if a request is added to the
+    queue by a different processor then it might not be noticed immediately the
+    caches get synchronized. Likewise, the request queue uses the List type
+    rather than something like "Data.Sequence" for simplicity; the vast majority
+    of the time the worker will encounter an empty list, and on the rare
+    occasion when the list is non-empty it will be short enough that
+    'reverse'ing it will not pose a significant cost.
 
     At any given point in the exploration, there is an initial path which
     locates the subtree that was given as the original workload, a cursor which

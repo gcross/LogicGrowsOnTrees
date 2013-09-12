@@ -55,8 +55,9 @@ import LogicGrowsOnTrees.Checkpoint
     associated types to be specialized based on the value.
 
     Unfortunately Haddock does not seem to support documenting the constructors
-    of a GADT, so for the documentation for each constructor refer to the types
-    used to tag them, defined after the 'ExplorationMode' type.
+    of a GADT, so the documentation for each constructor is located at the type
+    it is tagged with, all of which are defined after the 'ExplorationMode'
+    type.
  -}
 data ExplorationMode exploration_mode where
     AllMode :: Monoid result ⇒ ExplorationMode (AllMode result)
@@ -64,15 +65,15 @@ data ExplorationMode exploration_mode where
     FoundModeUsingPull :: Monoid result ⇒ (result → Bool) → ExplorationMode (FoundModeUsingPull result)
     FoundModeUsingPush :: Monoid result ⇒ (result → Bool) → ExplorationMode (FoundModeUsingPush result)
 
-{-| Explore all nodes and sum the results in all of the leaves. -}
+{-| Explore the entire tree and sum the results in all of the leaves. -}
 data AllMode result
-{-| Explore nodes until a result is found, and if so then stop. -}
+{-| Explore the tree until a result is found, and if so then stop. -}
 data FirstMode result
-{-| Explore nodes, summing the results, until a condition has been met; `Pull`
-    means that each worker's results will be kept and summed locally until a
-    request for them has been received from the supervisor, which means that
-    there might be a period of time where the collectively found results meet
-    the condition but the system is unaware of this as they are scattered
+{-| Explore the tree, summing the results, until a condition has been met;
+    `Pull` means that each worker's results will be kept and summed locally
+    until a request for them has been received from the supervisor, which means
+    that there might be a period of time where the collectively found results
+    meet the condition but the system is unaware of this as they are scattered
     amongst the workers.
 
     NOTE:  If you use this mode then you are responsible for ensuring that a
@@ -111,7 +112,7 @@ The type families in this section allow the types to be used at various places
 to be specialized based on the current exploration mode.
 -}
 
-{-| The result type of the tree. -}
+{-| The result type of the tree, i.e. the type of values at the leaves. -}
 type family ResultFor exploration_mode :: *
 type instance ResultFor (AllMode result) = result
 type instance ResultFor (FirstMode result) = result
@@ -127,21 +128,21 @@ type instance ProgressFor (FirstMode result) = Checkpoint
 type instance ProgressFor (FoundModeUsingPull result) = Progress result
 type instance ProgressFor (FoundModeUsingPush result) = Progress result
 
-{-| The final result of exploring the tree. -}
+{-| The type of the final result of exploring the tree. -}
 type family FinalResultFor exploration_mode :: *
 type instance FinalResultFor (AllMode result) = result
 type instance FinalResultFor (FirstMode result) = Maybe (Progress result)
 type instance FinalResultFor (FoundModeUsingPull result) = Either result (Progress result)
 type instance FinalResultFor (FoundModeUsingPush result) = Either result (Progress result)
 
-{-| The intermediate value being maintained internally by the worker. -}
+{-| The type of the intermediate value being maintained internally by the worker. -}
 type family WorkerIntermediateValueFor exploration_mode :: *
 type instance WorkerIntermediateValueFor (AllMode result) = result
 type instance WorkerIntermediateValueFor (FirstMode result) = ()
 type instance WorkerIntermediateValueFor (FoundModeUsingPull result) = result
 type instance WorkerIntermediateValueFor (FoundModeUsingPush result) = ()
 
-{-| The progress returned by a worker that has finished. -}
+{-| The progress type returned by a worker that has finished. -}
 type family WorkerFinishedProgressFor exploration_mode :: *
 type instance WorkerFinishedProgressFor (AllMode result) = Progress result
 type instance WorkerFinishedProgressFor (FirstMode result) = Progress (Maybe result)

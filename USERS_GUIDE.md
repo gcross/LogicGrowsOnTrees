@@ -76,9 +76,9 @@ The supervisor functionality is given in the
 `LogicGrowsOnTrees.Parallel.Common.Supervisor` module. Normally you will not be
 using it directly but rather you will be using a provided adapter which builds
 on top of it to provide a simplified, specialized interface. The
-`LogicGrowsOnTrees` package provides a `Threads` adapter (parallelism via.
-threads); other packages provide a `Processes` adapter (parallelism via.
-processes), a `Network` adapter (parallelism via. zero or more processes
+`LogicGrowsOnTrees` package provides a `Threads` adapter (parallelization via
+threads); other packages provide a `Processes` adapter (parallelization via
+processes), a `Network` adapter (parallelization via zero or more processes
 connecting over the network to the supervisor), and an `MPI` (Message Passing
 Interface) adapter.
 
@@ -155,7 +155,7 @@ An adapter module provides a way of adapting the supervisor/worker
 parallelization model to a particular means of running computations in parallel.
 The current adapters are as follows:
 
-* Threads
+* `Threads`
 
     This adapter provides parallelism by spawning multiple threads; the number
     of workers can be changed arbitrarily at runtime (though you need to make
@@ -163,7 +163,7 @@ The current adapters are as follows:
     run in parallel). This adapter is the only one that requires the threaded
     runtime, which adds additional overhead.
 
-* Processes
+* `Processes`
 
     This adapter provides parallelism by spawning a child process for each
     worker;  the number of workers can be changed arbitrarily at runtime.
@@ -175,12 +175,11 @@ The current adapters are as follows:
     This adapter provides parallelism by allowing multiple workers to connect to
     a supervisor over a network; the number of workers is then equal to the
     number that are are connected to the supervisor. (It is possible for the
-    same process to be both a supervisor and one or more workers, though this is
-    only really useful for testing purposes.)
+    same process to be both a supervisor and one or more workers.)
 
     Install `LogicGrowsOnTrees-network` to use this adapter.
 
-* MPI
+* `MPI`
 
     This adapter provides parallelism using the Message Passing Interface (MPI),
     which is the standard communication system used in supercomputers, allowing
@@ -240,30 +239,39 @@ parameter which you import from the adapter that you want to use.  This is the
 a different adapter you only need to change your adapter module import so that
 the driver is pulled from the desired adapter.
 
-The main functions that you will be interested in are the `mainForExploreTreeXY`
-methods where `X` corresponds to the purity (empty for `Pure`) and `Y`
+The main functions that you will be interested in are the `simpleMainForExploreTreeXY`
+and `mainForExploreTreeXY` functions,
+where `X` corresponds to the purity (empty for `Pure`) and `Y`
 corresponds to the exploration mode (empty for `All`). Unlike threads, there is
 not argument to specify a starting progress because instead this will be derived
 from a command-line option specifying the checkpoint file; if it exists, then it
 is used as the starting point.
 
-All of these functions also take a `Term` argument and a `TermInfo` argument.
-The latter just specifies a brief name and description for your program; it
-should suffice to glance at [TUTORIAL.md](TUTORIAL.md) to see what to do. The
-former specifies the command-line arguments and/or options that your particular
-logic program needs to, for example, specify the size of the problem (such as
-the board size in the n-queens problem); for simple cases it should again
-suffice to glance at the tutorials, but in general you may need to learn how to
-use [`cmdtheline`](http://hackage.haskell.org/package/cmdtheline). `cmdtheline`
-is used is because it provides a means of combining arguments and options from
-several sources, which in this case includes the configuration for your logic
-program, configuration for the adapter (such as the number of threads or
-processes), and configuration that is used by the `Main` module itself (such as
-the checkpoint file and frequency, and whether to print various server
-statistics). The compiled program will also have a nice `--help` page. After the
-command line arguments have been parsed, the configuration information for the
-term you provided will be passed as an argument to the functions that you
-provide in other arguments. (Again, see the tutorial for examples of this.)
+The `simpleMainForExploreTreeXY` functions provide a relatively simple interface
+that only requires the driver, a function to process the result when the run has
+completed, and the logic program.
+
+The `mainForExploreTreeXY` functions provide a more complicated interface that
+allows you to add command-line arguments and options whose values you can use to
+define the tree being explored, how many solutions to find, etc. All of these
+functions take a `Term` argument and a `TermInfo` argument. The latter just
+specifies a brief name and description for your program; it should suffice to
+glance at [TUTORIAL.md](TUTORIAL.md) to see what to do. The former specifies the
+command-line arguments and/or options that your particular logic program needs
+to, for example, specify the size of the problem (such as the board size in the
+n-queens problem); for simple cases it should again suffice to glance at the
+tutorials, but in general you may need to learn how to use
+[`cmdtheline`](http://hackage.haskell.org/package/cmdtheline).
+[`cmdtheline`](http://hackage.haskell.org/package/cmdtheline) is used is because
+it provides a means of combining arguments and options from several sources,
+which in this case includes the configuration for your logic program,
+configuration for the adapter (such as the number of threads or processes), and
+configuration that is used by the `Main` module itself (such as the checkpoint
+file and frequency, and whether to print various server statistics). The
+compiled program will also have a nice `--help` page. After the command line
+arguments have been parsed, the configuration information for the term you
+provided will be passed as an argument to the functions that you provide in
+other arguments. (Again, see the tutorial for examples of this.)
 
 
 Outcomes
@@ -290,7 +298,7 @@ If the outcome is `Completed`, then it is your responsibility to do what needs
 to be done with the results, as the checkpoint file will be deleted unless your
 code throws an exception.
 
-**NOTE:**
+**WARNING:**
     You should almost never resume from a checkpoint if you change the tree!
     This is only safe if the only parts of the tree that have been changed are
     those that have not yet been explored. If you do change parts of the tree
@@ -352,9 +360,9 @@ queue and send any request there to the supervisor. If your main loop is
 blocking, then an easy option is for you to use `requestQueueProgram` instead of
 your own loop, and then to have incoming communication be handled by sending the
 actions you want to run in response to the request queue. (The owner of the
-request queue can send any `SupervisorMonad` action to it, but the controller has
-to go through the `RequestQueueMonad`, which restricts the actions that they can
-run to a subset i.e. so that the controller can't do things like adding and
+request queue can send any `SupervisorMonad` action to it, but the controller
+has to go through the `RequestQueueMonad`, which restricts the actions that they
+can run to a subset so that the controller can't do things like adding and
 removing workers.)
 
 Your adapter also has responsibility for running the controller.  You should do

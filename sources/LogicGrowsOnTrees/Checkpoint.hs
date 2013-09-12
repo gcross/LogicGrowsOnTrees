@@ -359,11 +359,13 @@ pathStepFromCursorDifferential (ChoicePointD active_branch _) = ChoiceStep activ
     commutes) you will get the same result as exploring the entire tree.  That
     is to say,
 
-    @
-    exploreTreeStartingFromCheckpoint checkpoint tree <>
-        exploreTreeStartingFromCheckpoint (invertCheckpoint checkpoint) tree
-            == exploreTree tree
-    @
+@
+exploreTreeStartingFromCheckpoint checkpoint tree
+\<\>
+exploreTreeStartingFromCheckpoint (invertCheckpoint checkpoint) tree
+==
+exploreTree tree
+@
  -}
 invertCheckpoint :: Checkpoint → Checkpoint
 invertCheckpoint Explored = Unexplored
@@ -386,7 +388,7 @@ modes of exploring the tree.
 -}
 
 {-| Given the current state of exploration, perform an additional step of
-    exploration, return any solution that was found and the next state of the
+    exploration, returning any solution that was found and the next state of the
     exploration --- which will be 'Nothing' if the entire tree has been
     explored.
  -}

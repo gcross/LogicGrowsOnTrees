@@ -241,10 +241,10 @@ data RunStatistics = -- {{{
     {   runStartTime :: !UTCTime {-^ the start time of the run -}
     ,   runEndTime :: !UTCTime {-^ the end time of the run -}
     ,   runWallTime :: !NominalDiffTime {-^ the wall time of the run -}
-    ,   runSupervisorOccupation :: !Float {-^ the fraction of the time the supervisor spent processing an event -}
-    ,   runSupervisorMonadOccupation :: !Float {-^ the fraction of the time the supervisor spent processing an event while inside the 'SupervisorMonad' -}
+    ,   runSupervisorOccupation :: !Float {-^ the fraction of the time the supervisor spent processing events -}
+    ,   runSupervisorMonadOccupation :: !Float {-^ the fraction of the time the supervisor spent processing events while inside the 'SupervisorMonad' -}
     ,   runNumberOfCalls :: !Int {-^ the number of calls made to functions in "LogicGrowsOnTrees.Parallel.Common.Supervisor" -}
-    ,   runAverageTimePerCall :: !Float {-^ the average number of time per call made to functions in "LogicGrowsOnTrees.Parallel.Common.Supervisor" -}
+    ,   runAverageTimePerCall :: !Float {-^ the average amount of time per call made to functions in "LogicGrowsOnTrees.Parallel.Common.Supervisor" -}
     ,   runWorkerOccupation :: !Float {-^ the fraction of the total time that workers were occupied -}
     ,   runWorkerWaitTimes :: !(FunctionOfTimeStatistics NominalDiffTime) {-^ statistics for how long it took for workers to obtain a workload -}
     ,   runStealWaitTimes :: !IndependentMeasurementsStatistics {-^ statistics for the time needed to steal a workload from a worker -}

@@ -181,7 +181,7 @@ data SupervisorProgram exploration_mode worker_id m =
         'abortSupervisor'.  This mode exists for testing rather than to be used
         by an adapter, but if you do use it then you take on responsibility for
         calling 'beginSupervisorOccupied' and 'endSupervisorOccupied' when
-        respectively the supervisor has begun and ended processing an event so
+        respectively the supervisor has begun and ended processing events so
         that the supervisor occupation statistics are correct.
      -}
   | UnrestrictedProgram (∀ α. SupervisorMonad exploration_mode worker_id m α)
@@ -248,7 +248,8 @@ receiveProgressUpdate = wrapIntoSupervisorMonad .* Implementation.receiveProgres
 
 {-| Informs the supervisor that a worker has responded to a workload steal
     request;  a 'Nothing' indicates that the worker did not have a workload that
-    could be stolen (which occurs if it hasn't taken any branches yet).
+    could be stolen (which occurs if it hadn't taken any branches at the time
+    the request was received).
  -}
 receiveStolenWorkload ::
     ( SupervisorMonadConstraint m
@@ -316,8 +317,8 @@ receiveWorkerFinishedWithRemovalFlag ::
 receiveWorkerFinishedWithRemovalFlag = wrapIntoSupervisorMonad .** Implementation.receiveWorkerFinishedWithRemovalFlag
 
 {-| Informs the supervisor that a worker (which might have been active and
-    possibly even being waited on for a progress update and/or stolen workload)
-    has been removed; the worker will be removed from the set of workers with
+    possibly even waited on for a progress update and/or stolen workload) has
+    been removed; the worker will be removed from the set of workers with
     pending requests and its workload will be returned to the pool of available
     workloads.
  -}
@@ -363,7 +364,7 @@ endSupervisorOccupied = changeSupervisorOccupiedStatus False
     Normally the default value of 4 will be fine, but if you run into a problem
     where the amount of time needed to steal a workload is greater than the
     average time between requests for new workloads, then setting this to be
-    roughly equal to the time needed to steal a workload divided by the time
+    proportional to the time needed to steal a workload divided by the time
     between workload requests may help.
  -}
 setWorkloadBufferSize :: SupervisorMonadConstraint m ⇒ Int → SupervisorMonad exploration_mode worker_id m ()
@@ -377,11 +378,9 @@ getCurrentProgress ::
     ) ⇒ SupervisorMonad exploration_mode worker_id m (ProgressFor exploration_mode)
 getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
 
-{-| Gets the current statistics of the system.
-
-    NOTE:  This operation is cheap but it is not free because the statistics
-           exist in an intermediate form that needs to be finalized before being
-           returned.
+{-| Gets the current statistics of the system. (Unlike the other \"get\"
+    operations, there is a small but non-zero cost to do this as the statistics
+    exist in an intermediate state that needs to be finalized.)
  -}
 getCurrentStatistics ::
     SupervisorFullConstraint worker_id m ⇒

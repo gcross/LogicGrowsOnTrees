@@ -107,8 +107,8 @@ data WorkgroupCallbacks inner_state = WorkgroupCallbacks
     {   {-| create a worker with the given id -}
         createWorker :: WorkerId → InnerMonad inner_state ()
         {-| destroy the worker with the given id; ideally this should be
-            implemented by signaling the worker to quit and then waiting for it
-            to respond
+            implemented by signaling the worker to quit and then waiting for an
+            acknowledgement
          -}
     ,   destroyWorker :: WorkerId → Bool → InnerMonad inner_state ()
         {-| destroy all of the workers in the given list in a manner that
@@ -182,10 +182,10 @@ runWorkgroup ::
     ExplorationMode exploration_mode {-^ the mode in which we are exploring the tree -} →
     inner_state {-^ the initial adapter specific state of the inner monad -} →
     (MessageForSupervisorReceivers exploration_mode WorkerId → WorkgroupCallbacks inner_state)
-        {-^ This function constructs a set of callbacks to be used by the
+        {-^ a function that constructs a set of callbacks to be used by the
             supervisor loop in this function to do things like creating and
             destroying workers;  it is given a set of callbacks that allows the
-            adapter specific code to signal conditions to the supervisor.
+            adapter specific code to signal conditions to the supervisor
          -} →
     ProgressFor exploration_mode {-^ the initial progress of the exploration -} →
     WorkgroupControllerMonad inner_state exploration_mode () {-^ the controller, which is at the very least responsible for deciding how many workers should be initially created -} →

@@ -21,7 +21,7 @@ What do you mean by "distributed"?
 
 By "distributed" I mean parallelization that does not required shared memory but
 only some form of communication. In particular there is package that is a
-sibling to this one that provides an *adapter* for MPI, which gives you
+sibling to this one that provides an *adapter* for MPI that gives you
 immediate access to large numbers of nodes on most supercomputers. In fact, the
 following is the result of an experiment to see how well the time needed to
 solve the N-Queens problem scales with the number of workers for N=17, N=18, and
@@ -32,10 +32,10 @@ N=19 on a local cluster:
 The above was obtained by running a job, which counts the number of solutions,
 three times for each number of workers and problem size, and then taking the
 shortest time of each set of three*; the maximum number of workers for this
-experiment was limited by the size of the cluster.
+experiment (128) was limited by the size of the cluster.
 
-* The other two data points for each value of N were usually within a small
-percentage of the other two points, save for (oddly) the *left*-most data point
+\* All of the data points for each value of N were usually within a small
+percentage of one another, save for (oddly) the *left*-most data point
 (i.e., the one with the fewest workers) for each problem size, which varied from
 150%-200% of the best time; the full data set is available in the `scaling/`
 directory.
@@ -51,7 +51,7 @@ or a few elements, etc.
 
 LogicGrowsOnTrees is particularly useful when your solution space has a lot of
 structure as it gives you full control over the non-deterministic choices that
-are made, which lets you avoid making choices entirely that you know will end in
+are made, which lets you entirely avoid making choices that you know will end in
 failure, as well as letting you factor out symmetries so that only one solution
 is generated out of some equivalence class. For example, if permutations result
 in equivalent solutions then you can factor out this symmetry by only choosing
@@ -61,16 +61,16 @@ solution.
 What does a program written using this package look like?
 =========================================================
 
-The following is an example of a program that counts the number of solutions to
-the n-queens problem for an input board size (which also given in
-`examples/readme-simple.hs`). (NOTE: I have optimized this code to be
-(hopefully) easy to follow, rather than to be fast.)
+The following is an example of a program (also given in
+`examples/readme-simple.hs`) that counts the number of solutions to the n-queens
+problem for a board size of 10:
+
+NOTE: I have optimized this code to be (hopefully) easy to follow, rather than
+to be fast.
 
 ```haskell
-import Control.Applicative
 import Control.Monad
 import qualified Data.IntSet as IntSet
-import System.Console.CmdTheLine
 
 import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Parallel.Main
@@ -135,17 +135,16 @@ main =
         (nqueensCount 10)
 ```
 
-The code above compiles to a program that computes the number of solutions to
-the n-queens problem with size 10; it requires that the number of threads be
-specified via `-n #`, where `#` is the number of threads. You can use `-c` to
-have the program create a checkpoint file on a regular basis and `-i` to set how
-often the checkpoint is made (defaults to once per minute); if the program
-starts up and sees the checkpoint file then it automatically resumes from it. To
-find out more about the available options, use `--help` which provides an
-automatically generated help screen.
+This program requires that the number of threads be specified via `-n #` on the
+command line, where `#` is the number of threads. You can use `-c` to have the
+program create a checkpoint file on a regular basis and `-i` to set how often
+the checkpoint is made (defaults to once per minute); if the program starts up
+and sees the checkpoint file then it automatically resumes from it. To find out
+more about the available options, use `--help` which provides an automatically
+generated help screen.
 
 The above uses threads for parallelism, which means that you have to compile it
-using the `--threaded` option. If you want to use processes instead of threads
+using the `-threaded` option. If you want to use processes instead of threads
 (which could be more efficient as this does not require the additional overhead
 incurred by the threaded runtime), then install `LogicGrowsOnTrees-processes`
 and replace `Threads` with `Processes` in the import at the 8th line. If you
@@ -160,6 +159,8 @@ the more general mechanism illustrated as follows (a complete listing is given
 in `examples/readme-full.hs`):
 
 ```haskell
+import Control.Applicative
+import System.Console.CmdTheLine
 ...
 main =
     -- Explore the tree generated (implicitly) by nqueensCount in parallel.
@@ -209,14 +210,14 @@ at http://hackage.haskell.org/package/LogicGrowsOnTrees.
 What platforms does it support:
 ===============================
 
-The following packages have been tested on Linux, OSX, and Windows using the
-latest Haskell Platform (2013.2.0.0):
+The following three packages have been tested on Linux, OSX, and Windows using
+the latest Haskell Platform (2013.2.0.0):
 
-* `LogicGrowsOnTrees` (+ Threads adapter);
+* `LogicGrowsOnTrees` (+ Threads adapter)
 
-* `LogicGrowsOnTrees-processors`; and
+* `LogicGrowsOnTrees-processors`
 
-* `LogicGrowsOnTrees-network`.
+* `LogicGrowsOnTrees-network`
 
 `LogicGrowsOnTrees-MPI` has been tested as working on Linux and OSX using
 [OpenMPI](http://www.open-mpi.org/), and since it only uses very basic
@@ -296,7 +297,7 @@ Haskell has many strengths that made it ideal for this project:
     or as little as we want and only have to pay for the parts that we choose to
     explore.
 
-    * Technically Haskell is "non-strict" rather than "lazy", which means
+    \* Technically Haskell is "non-strict" rather than "lazy", which means
     there might be times in practice when it evaluates something more than is
     strictly needed.
 
@@ -305,29 +306,29 @@ Haskell has many strengths that made it ideal for this project:
 
     Haskell is a pure language, which means that functions have no (observable)
     side-effects other than returning a value*; in particular, this implies that
-    all operations on data must be immutable which means that they result in a
+    all operations on data must be immutable, which means that they result in a
     new value (that may reference parts or even all of the old value) rather
     than modifying the old value. This is an incredible boon because it means
     that when we backtrack up to explore another branch of the decision tree we
     do not have to perform an undo operation to restore the old values from the
-    new values because the old values were never lost! All that you have to do
-    is "forget" about the new values and you are done. Furthermore, most data
+    new values because the old values were never lost! All you have to do is
+    "forget" about the new values and you are done. Furthermore, most data
     structures in Haskell are designed to have efficient immutable operations
     which try to re-use as much of an old value as possible in order to minimize
     the amount of copying needed to construct the new value.
 
     (Having said all of this, although it is strongly recommended that your
-    logic program be pure by making it have type `Tree` as this will cause the
+    logic program be pure by making it have type `Tree`, as this will cause the
     type system to enforce purity, you can add various kinds of side-effects by
-    using type `TreeT` instead; an example of a time when it might make sense to
-    do this is if there is a data set that will be constant over the run which
-    is large enough that you want to read it in from various files or a database
-    as you need it. In general if you use side-effects then they need to be
-    non-observable, which means that they are not affected by the order in which
-    the tree is explored or whether particular parts of the tree are explored
-    more than once.)
+    using type `TreeT` instead; a time when it might make sense to do this is if
+    there is a data set that will be constant over the run which is large enough
+    that you want to read it in from various files or a database as you need it.
+    In general if you use side-effects then they need to be non-observable,
+    which means that they are not affected by the order in which the tree is
+    explored or whether particular parts of the tree are explored more than
+    once.)
 
-    * Side-effects are implemented by, roughly speaking, having some types
+    \* Side-effects are implemented by, roughly speaking, having some types
     represent actions that cause side-effects when executed.
 
 3. Powerful static type system

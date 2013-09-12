@@ -108,7 +108,7 @@ perfectTree ::
     α {-^ the value to place at the leaves -} →
     Word {-^ the arity of the tree (i.e., number of branches at each internal node) -} →
     Word {-^ the depth of the tree -} →
-    m α {-^ the tree -}
+    m α
 perfectTree leaf arity depth
   | depth == 0 = return leaf
   | arity > 0  = msum . genericReplicate arity $ perfectTree leaf arity (depth-1)
@@ -116,23 +116,23 @@ perfectTree leaf arity depth
 {-# SPECIALIZE perfectTree :: α → Word → Word → [α] #-}
 {-# SPECIALIZE perfectTree :: α → Word → Word → Tree α #-}
 
-{-| 'tree' with @WordSum 1@ at the leaves. -}
+{-| Like 'perfectTree' but with @WordSum 1@ at the leaves. -}
 trivialPerfectTree ::
     MonadPlus m ⇒
     Word {-^ the arity of the tree (i.e., number of branches at each internal node) -} →
     Word {-^ the depth of the tree -} →
-    m WordSum {-^ the tree -}
+    m WordSum
 trivialPerfectTree = perfectTree (WordSum 1)
 {-# SPECIALIZE trivialPerfectTree :: Word → Word → [WordSum] #-}
 {-# SPECIALIZE trivialPerfectTree :: Word → Word → Tree WordSum #-}
 
 {-| Computes the number of leaves in a perfect tree.  It returns a value of type
     'Word' so that it can be easily compared to the 'WordSum' value returned by
-    the tre generators, but a consequence of this is that it will blow up if the
-    arity and/or depth arguments are too large.
+    the tree generators, but a consequence of this is that it will overflow if
+    the arity and/or depth arguments are too large.
  -}
 numberOfLeaves ::
     Word {-^ the arity of the tree (i.e., number of branches at each internal node) -} →
     Word {-^ the depth of the tree -} →
-    Word {-^ the number of leaves in the tree -}
+    Word
 numberOfLeaves arity depth = arity^depth

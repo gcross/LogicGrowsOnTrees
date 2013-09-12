@@ -15,7 +15,7 @@ import Control.Monad.IO.Class
 
 import Data.Functor.Identity (Identity)
 
-{-| The purity of a tree, which can be either 'Pure' (for pure trees) and
+{-| The purity of a tree, which can be either 'Pure' (for pure trees) or
     'ImpureAtopIO' (for impure trees); the latter case is restricted to monads
     that are instances of 'MonadIO' and for which there exists a way to convert
     the monad into an IO action.
