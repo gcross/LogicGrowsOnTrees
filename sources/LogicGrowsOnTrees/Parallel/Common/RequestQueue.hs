@@ -79,7 +79,7 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 --------------------------------------------------------------------------------
 
 {-| This class provides the set of supervisor requests common to all adapters. -}
-class (HasExplorationMode m, MonadCatchIO m) ⇒ RequestQueueMonad m where
+class (HasExplorationMode m, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()
     {-| Fork a new thread running in this monad;  all controller threads are automnatically killed when the run is finished. -}
