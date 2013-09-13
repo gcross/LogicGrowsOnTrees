@@ -21,7 +21,11 @@ module LogicGrowsOnTrees.Parallel.Common.Workgroup
     , WorkgroupCallbacks(..)
     , WorkgroupControllerMonad(..)
     -- * Functions
+    -- ** Worker count adjustment
     , changeNumberOfWorkers
+    , setNumberOfWorkersAsync
+    , setNumberOfWorkers
+    -- ** Runner
     , runWorkgroup
     ) where
 
@@ -30,7 +34,7 @@ import Control.Lens (makeLenses)
 import Control.Lens.Getter (use)
 import Control.Lens.Lens ((<<%=))
 import Control.Lens.Setter ((.=),(%=))
-import Control.Monad (forM_,replicateM_)
+import Control.Monad (forM_,replicateM_,void)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (asks)
@@ -75,13 +79,16 @@ deriveLoggers "Logger" [INFO]
  -}
 class RequestQueueMonad m ⇒ WorkgroupRequestQueueMonad m where
     {-| Change the number of workers;  the first argument is a map that computes
-        the new number of workers given the old number of workers (possible
-        running an action in IO in the process), and the second argument is a
-        callback that will be invoked with the new number of workers.
+        the new number of workers given the old number of workers, and the
+        second argument is a callback that will be invoked with the new number
+        of workers.
 
         See 'changeNumberOfWorkers' for the synchronous version of this request.
+
+        If you just want to set the number of workers to some fixed value, then
+        see 'setNumberOfWorkers' / 'setNumberOfWorkersAsync'.
      -}
-    changeNumberOfWorkersAsync :: (Word → IO Word) → (Word → IO ()) → m ()
+    changeNumberOfWorkersAsync :: (Word → Word) → (Word → IO ()) → m ()
 
 --------------------------------------------------------------------------------
 ------------------------------------ Types -------------------------------------
@@ -139,7 +146,7 @@ instance HasExplorationMode (WorkgroupControllerMonad inner_state exploration_mo
 instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state exploration_mode) where
     changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
         old_number_of_workers ← numberOfWorkers
-        new_number_of_workers ← liftIO $ computeNewNumberOfWorkers old_number_of_workers
+        let new_number_of_workers = computeNewNumberOfWorkers old_number_of_workers
         case new_number_of_workers `compare` old_number_of_workers of
             GT → replicateM_ (fromIntegral $ new_number_of_workers - old_number_of_workers) hireAWorker
             LT → replicateM_ (fromIntegral $ old_number_of_workers - new_number_of_workers) fireAWorker
@@ -152,14 +159,21 @@ instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state explor
 ---------------------------------- Functions -----------------------------------
 --------------------------------------------------------------------------------
 
+--------------------------- Worker count adjustment ----------------------------
+
 {-| Like 'changeNumberOfWorkersAsync', but it blocks until the number of workers
     has been changed and returns the new number of workers.
  -}
-changeNumberOfWorkers ::
-    WorkgroupRequestQueueMonad m ⇒
-    (Word → IO Word) →
-    m Word
+changeNumberOfWorkers :: WorkgroupRequestQueueMonad m ⇒ (Word → Word) → m Word
 changeNumberOfWorkers = syncAsync . changeNumberOfWorkersAsync
+
+{-| Request that the number of workers be set to the given amount, invoking the given callback when this has been done. -}
+setNumberOfWorkersAsync :: WorkgroupRequestQueueMonad m ⇒ Word → IO () → m ()
+setNumberOfWorkersAsync n callback = changeNumberOfWorkersAsync (const n) (const callback)
+
+{-| Like 'setNumberOfWorkersAsync', but blocks until the number of workers has been set to the desired value. -}
+setNumberOfWorkers :: WorkgroupRequestQueueMonad m ⇒ Word → m ()
+setNumberOfWorkers = void . syncAsync . changeNumberOfWorkersAsync . const
 
 {-| Explores a tree using a workgroup;  this function is only intended to be
     used by adapters where the number of workers can be changed on demand.

@@ -38,6 +38,8 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , getNumberOfWorkers
     , requestProgressUpdateAsync
     , requestProgressUpdate
+    , setNumberOfWorkersAsync
+    , setNumberOfWorkers
     , setWorkloadBufferSize
     -- * Outcome types
     , RunOutcome(..)
@@ -149,9 +151,9 @@ driver = Driver $ \DriverParameters{..} → do
                 number_of_capabilities ← getNumCapabilities
                 when (number_of_capabilities < number_of_threads) $
                     setNumCapabilities number_of_threads
-            changeNumberOfWorkersAsync
-                (const . return . fromIntegral $ number_of_threads)
-                (void . return)
+            setNumberOfWorkersAsync
+                (fromIntegral number_of_threads)
+                (return ())
             constructController shared_configuration supervisor_configuration
         )
         (constructTree shared_configuration)
@@ -181,7 +183,7 @@ instance HasExplorationMode (ThreadsControllerMonad exploration_mode) where
  -}
 changeNumberOfWorkersToMatchCapabilities :: ThreadsControllerMonad exploration_mode ()
 changeNumberOfWorkersToMatchCapabilities =
-    liftIO getNumCapabilities >>= \n → changeNumberOfWorkersAsync (const . return . fromIntegral $ n) (void . return)
+    liftIO getNumCapabilities >>= flip setNumberOfWorkersAsync (return ()) . fromIntegral
 
 --------------------------------------------------------------------------------
 ---------------------------- Exploration functions -----------------------------

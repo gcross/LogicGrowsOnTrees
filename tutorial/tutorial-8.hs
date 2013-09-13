@@ -7,6 +7,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,TerminationReason(..)
     ,changeNumberOfWorkers
     ,exploreTree
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -20,9 +21,7 @@ main = do
                 readLn
             )
             >>=
-            changeNumberOfWorkers . const . return
-            >>=
-            liftIO . putStrLn . (\n -> "Now there are " ++ show n ++ " workers.")
+            setNumberOfWorkers
         )
         .
         fmap (const $ WordSum 1)

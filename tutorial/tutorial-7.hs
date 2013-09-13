@@ -11,6 +11,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,changeNumberOfWorkers
     ,exploreTreeStartingFrom
     ,requestProgressUpdate
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -22,7 +23,7 @@ main = setNumCapabilities 2 >> go mempty
     RunOutcome statistics termination_reason <-
         exploreTreeStartingFrom
             progress
-            (do _ <- changeNumberOfWorkers . const . return $ 2
+            (do setNumberOfWorkers 2
                 _ <- liftIO $ getLine
                 _ <- requestProgressUpdate
                 abort

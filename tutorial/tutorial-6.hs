@@ -1,4 +1,3 @@
-import Control.Monad (void)
 import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -6,6 +5,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,TerminationReason(..)
     ,changeNumberOfWorkers
     ,exploreTree
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -13,7 +13,7 @@ import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 main = do
     setNumCapabilities 2
     RunOutcome statistics termination_reason <-
-        exploreTree (void . changeNumberOfWorkers . const . return $ 2)
+        exploreTree (setNumberOfWorkers 2)
         .
         fmap (const $ WordSum 1)
         .

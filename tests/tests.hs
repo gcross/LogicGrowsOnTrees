@@ -881,7 +881,7 @@ tests = -- {{{
             [testCase "two threads, one blocked" $ do -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFirst
-                        (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
+                        (Workgroup.setNumberOfWorkers 2)
                         (liftIO (threadDelay 1) >> endless_tree
                          `mplus`
                          return ()
@@ -895,7 +895,7 @@ tests = -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFoundUsingPull
                         ((== 2) . length)
-                        (void . Workgroup.changeNumberOfWorkers . const . return $ 4)
+                        (Workgroup.setNumberOfWorkers 4)
                         ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                 case termination_reason of
                     Completed (Right (Progress _ result)) → sort result @?= [1,2]
@@ -908,7 +908,7 @@ tests = -- {{{
                 RunOutcome _ termination_reason ←
                     Threads.exploreTreeIOUntilFoundUsingPush
                         ((== 2) . length)
-                        (void . Workgroup.changeNumberOfWorkers . const . return $ 2)
+                        (Workgroup.setNumberOfWorkers 2)
                         ((return [1] `mplus` endless_tree) `mplus` (return [2] `mplus` endless_tree))
                 case termination_reason of
                     Completed (Right (Progress _ result)) → sort result @?= [1,2]
@@ -936,7 +936,7 @@ tests = -- {{{
                  ) -- }}}
                 receiveProgressInto progresses_ref progress = atomicModifyIORef progresses_ref ((progress:) &&& const ())
                 respondToRequests request_queue generateNoise progresses_ref = do -- {{{
-                    _ ← Workgroup.changeNumberOfWorkers (const . return $ 1)
+                    Workgroup.setNumberOfWorkers 1
                     forever $ do
                         liftIO $ threadDelay 10
                         mvar ← liftIO $ readChan request_queue
@@ -946,18 +946,17 @@ tests = -- {{{
                         liftIO $ putMVar mvar ()
                 -- }}}
                 oneThreadNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
-                    0 → void $ do
-                         Workgroup.changeNumberOfWorkers (return . (const 0))
-                         Workgroup.changeNumberOfWorkers (return . (const 1))
+                    0 → do Workgroup.setNumberOfWorkers 0
+                           Workgroup.setNumberOfWorkers 1
                     1 → void $ requestProgressUpdateAsync receiveProgress
                 -- }}}
                 twoThreadsNoise receiveProgress = liftIO (randomRIO (0,1::Int)) >>= \i → case i of -- {{{
-                    0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → 3-i))
+                    0 → void $ Workgroup.changeNumberOfWorkers (3-)
                     1 → void $ requestProgressUpdateAsync receiveProgress
                 -- }}}
                 manyThreadsNoise receiveProgress = liftIO (randomRIO (0,2::Int)) >>= \i → case i of -- {{{
-                    0 → void $ Workgroup.changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
-                    1 → void $ Workgroup.changeNumberOfWorkers (return . (+1))
+                    0 → void $ Workgroup.changeNumberOfWorkers (\i → if i > 1 then i-1 else i)
+                    1 → void $ Workgroup.changeNumberOfWorkers (+1)
                     2 → void $ requestProgressUpdateAsync receiveProgress
                 -- }}}
             in
@@ -1099,7 +1098,7 @@ tests = -- {{{
          -- }}}
         ,testCase "processPendingRequests" $ do
             mvar ← newEmptyMVar
-            RunOutcome{..} ← Threads.exploreTreeIO (void . Threads.changeNumberOfWorkers . const . return $ 2) $
+            RunOutcome{..} ← Threads.exploreTreeIO (Threads.setNumberOfWorkers 2) $
                 let go = processPendingRequests >> liftIO (tryTakeMVar mvar) >>= maybe go return
                 in go `mplus` liftIO (putMVar mvar ())
             case runTerminationReason of

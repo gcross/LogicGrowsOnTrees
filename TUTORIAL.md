@@ -471,7 +471,6 @@ the same pattern as the `exploreTree*` functions in `LogicGrowsOnTrees`, such as
 the following (also given in `tutorial/tutorial-6.hs`):
 
 ```haskell
-import Control.Monad (void)
 import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -479,6 +478,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,TerminationReason(..)
     ,changeNumberOfWorkers
     ,exploreTree
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -486,7 +486,7 @@ import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 main = do
     setNumCapabilities 2
     RunOutcome statistics termination_reason <-
-        exploreTree (void . changeNumberOfWorkers . const . return $ 2)
+        exploreTree (setNumberOfWorkers 2)
         .
         fmap (const $ WordSum 1)
         .
@@ -499,23 +499,13 @@ main = do
         Failure progress message -> putStrLn $ "Failed: " ++ message
 ```
 
-First, observe that `exploreTree` now has an additional argument:
-
-```haskell
-void . changeNumberOfWorkers . const . return $ 2
-```
-
-This argument is called the *controller*, and is a loop that is run that lets
-you issue commands to the supervisor such as aborting, requesting a progress
-update, and changing the number of workers (which can be done at any time in the
-run and can even bring the number down to zero). `changeNumberOfWorkers` takes a
-single argument which is a function that maps the current number of workers to
-an IO action whose result is the new number of workers; this lets you do things
-like increasing the number of workers by one or setting the number of workers to
-a value that you need to query in the IO monad, such as the number of
-capabilities; the `void` at the beginning just throws out the return value of
-`changeNumberOfWorkers`, which is the new number of workers (as, if you just
-increased it by one you might want to know what the result was).
+First, observe that `exploreTree` now has an additional argument,
+`setNumberOfWorkers 2`. This argument is called the *controller*, and is a loop
+that is run that lets you issue commands to the supervisor such as aborting,
+requesting a progress update, and changing the number of workers (which can be
+done at any time in the run and can even bring the number down to zero).
+`setNumberOfWorkers` is a function that changes the number of workers to be
+equal to its argument, spawning or killing workers as necessary.
 
 In order for the two worker threads to run in parallel, two things need to
 happen. First, you need to compile with the `-threaded` option, and second, you
@@ -605,6 +595,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,changeNumberOfWorkers
     ,exploreTreeStartingFrom
     ,requestProgressUpdate
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -616,7 +607,7 @@ main = setNumCapabilities 2 >> go mempty
     RunOutcome statistics termination_reason <-
         exploreTreeStartingFrom
             progress
-            (do _ <- changeNumberOfWorkers . const . return $ 2
+            (do setNumberOfWorkers 2
                 _ <- liftIO $ getLine
                 _ <- requestProgressUpdate
                 abort
@@ -646,7 +637,7 @@ This code features a number of differences from the previous example.  First we
 note that the controller is non-trivial:
 
 ```haskell
-(do _ <- changeNumberOfWorkers . const . return $ 2
+(do setNumberOfWorkers 2
     _ <- liftIO $ getLine
     _ <- requestProgressUpdate
     abort
@@ -700,6 +691,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,TerminationReason(..)
     ,changeNumberOfWorkers
     ,exploreTree
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -713,9 +705,7 @@ main = do
                 readLn
             )
             >>=
-            changeNumberOfWorkers . const . return
-            >>=
-            liftIO . putStrLn . (\n -> "Now there are " ++ show n ++ " workers.")
+            setNumberOfWorkers
         )
         .
         fmap (const $ WordSum 1)
@@ -745,7 +735,6 @@ run.  The following code only looks for the first result (also given in
 `tutorials/tutorial-9.hs`):
 
 ```haskell
-import Control.Monad (void)
 import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -753,6 +742,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,TerminationReason(..)
     ,changeNumberOfWorkers
     ,exploreTreeUntilFirst
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -760,7 +750,7 @@ import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 main = do
     setNumCapabilities 2
     RunOutcome statistics termination_reason <-
-        exploreTreeUntilFirst (void . changeNumberOfWorkers . const . return $ 2)
+        exploreTreeUntilFirst (setNumberOfWorkers 2)
         .
         nqueensUsingBitsSolutions
         $
@@ -790,7 +780,6 @@ found, as in the following code which looks for at least five solutions (also
 given in `tutorials/tutorial-10.hs`):
 
 ```haskell
-import Control.Monad (void)
 import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -798,6 +787,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,TerminationReason(..)
     ,changeNumberOfWorkers
     ,exploreTreeUntilFoundUsingPush
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -807,7 +797,7 @@ main = do
     RunOutcome statistics termination_reason <-
         exploreTreeUntilFoundUsingPush
             ((>= 5) . length)
-            (void . changeNumberOfWorkers . const . return $ 2)
+            (setNumberOfWorkers 2)
         .
         fmap (:[])
         .

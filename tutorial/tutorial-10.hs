@@ -1,4 +1,3 @@
-import Control.Monad (void)
 import GHC.Conc (setNumCapabilities)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -6,6 +5,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     ,TerminationReason(..)
     ,changeNumberOfWorkers
     ,exploreTreeUntilFoundUsingPush
+    ,setNumberOfWorkers
     )
 import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
@@ -15,7 +15,7 @@ main = do
     RunOutcome statistics termination_reason <-
         exploreTreeUntilFoundUsingPush
             ((>= 5) . length)
-            (void . changeNumberOfWorkers . const . return $ 2)
+            (setNumberOfWorkers 2)
         .
         fmap (:[])
         .
