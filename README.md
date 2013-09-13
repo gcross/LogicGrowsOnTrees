@@ -63,8 +63,8 @@ What does a program written using this package look like?
 
 The following is an example of a program that counts the number of solutions to
 the n-queens problem for an input board size (which also given in
-`examples/readme.hs`).  (NOTE:  I have optimized this code to be (hopefully)
-easy to follow, rather than to be fast.)
+`examples/readme-simple.hs`). (NOTE: I have optimized this code to be
+(hopefully) easy to follow, rather than to be fast.)
 
 ```haskell
 import Control.Applicative
@@ -119,6 +119,50 @@ nqueensCount n =
 
 main =
     -- Explore the tree generated (implicitly) by nqueensCount in parallel.
+    simpleMainForExploreTree
+        -- Use threads for parallelism.
+        driver
+
+        -- Function that processes the result of the run.
+        (\(RunOutcome _ termination_reason) -> do
+            case termination_reason of
+                Aborted _ -> error "search aborted"
+                Completed (WordSum count) -> putStrLn $ "found " ++ show count ++ " solutions"
+                Failure _ message -> error $ "error: " ++ message
+        )
+
+        -- The logic program that generates the tree to explore.
+        (nqueensCount 10)
+```
+
+The code above compiles to a program that computes the number of solutions to
+the n-queens problem with size 10; it requires that the number of threads be
+specified via `-n #`, where `#` is the number of threads. You can use `-c` to
+have the program create a checkpoint file on a regular basis and `-i` to set how
+often the checkpoint is made (defaults to once per minute); if the program
+starts up and sees the checkpoint file then it automatically resumes from it. To
+find out more about the available options, use `--help` which provides an
+automatically generated help screen.
+
+The above uses threads for parallelism, which means that you have to compile it
+using the `--threaded` option. If you want to use processes instead of threads
+(which could be more efficient as this does not require the additional overhead
+incurred by the threaded runtime), then install `LogicGrowsOnTrees-processes`
+and replace `Threads` with `Processes` in the import at the 8th line. If you
+want workers to run on different machines then install
+`LogicGrowsOnTrees-processes` and replace `Threads` with `Network`. If you have
+access to a cluster with a large number of nodes, you will want to install
+`LogicGrowsOnTrees-MPI` and replace `Threads` with `MPI`.
+
+If you would prefer that the problem size be specified at run-time via a
+command-line argument rather than hard-coded at compile time, then you can use
+the more general mechanism illustrated as follows (a complete listing is given
+in `examples/readme-full.hs`):
+
+```haskell
+...
+main =
+    -- Explore the tree generated (implicitly) by nqueensCount in parallel.
     mainForExploreTree
         -- Use threads for parallelism.
         driver
@@ -153,23 +197,6 @@ main =
         nqueensCount
 ```
 
-The code above compiles to a program that takes a positional argument specifying
-the size of the board and a `-n` argument used to specify the number of threads.
-You can use `-c` to have the program create a checkpoint file on a regular basis
-and `-i` to set how often the checkpoint is made (defaults to once per minute);
-if the program starts up and sees the checkpoint file then it automatically
-resumes from it.  To find out more about the available options, use `--help`
-which provides an automatically generated help screen.
-
-The above uses threads for parallelism, which means that you have to compile it
-using the `--threaded` option. If you want to use processes instead of threads
-(which could be more efficient as this does not require the additional overhead
-incurred by the threaded runtime), then install `LogicGrowsOnTrees-processes`
-and replace `Threads` with `Processes` in the import at the 8th line. If you
-want workers to run on different machines then install
-`LogicGrowsOnTrees-processes` and replace `Threads` with `Network`. If you have
-access to a cluster with a large number of nodes, you will want to install
-`LogicGrowsOnTrees-MPI` and replace `Threads` with `MPI`.
 
 Where can I learn more?
 =======================

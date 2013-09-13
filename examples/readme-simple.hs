@@ -1,7 +1,6 @@
 import Control.Applicative
 import Control.Monad
 import qualified Data.IntSet as IntSet
-import System.Console.CmdTheLine
 
 import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Parallel.Main
@@ -33,11 +32,11 @@ nqueensCount n =
         -- Pick one of the available columns.
         column <- allFrom $ IntSet.toList available_columns
 
-        -- See if placing here would conflict with a queen on the negative diagonal.
+        -- See if this spot conflicts with another queen on the negative diagonal.
         let negative_diagonal = row + column
         guard $ IntSet.notMember negative_diagonal occupied_negative_diagonals
 
-        -- See if placing here would conflict with a queen on the positive diagonal.
+        -- See if this spot conflicts with another queen on the positive diagonal.
         let positive_diagonal = row - column
         guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
 
@@ -50,35 +49,17 @@ nqueensCount n =
 
 main =
     -- Explore the tree generated (implicitly) by nqueensCount in parallel.
-    mainForExploreTree
+    simpleMainForExploreTree
         -- Use threads for parallelism.
         driver
 
-        -- Use a single positional required command-line argument to get the board size.
-        (getWord
-         <$>
-         (required
-          $
-          pos 0
-            Nothing
-            posInfo
-              { posName = "BOARD_SIZE"
-              , posDoc = "board size"
-              }
-         )
-        )
-
-        -- Information about the program (for the help screen).
-        (defTI { termDoc = "count the number of n-queens solutions for a given board size" })
-
         -- Function that processes the result of the run.
-        (\n (RunOutcome _ termination_reason) -> do
+        (\(RunOutcome _ termination_reason) -> do
             case termination_reason of
                 Aborted _ -> error "search aborted"
-                Completed (WordSum count) -> putStrLn $
-                    "for a size " ++ show n ++ " board, found " ++ show count ++ " solutions"
+                Completed (WordSum count) -> putStrLn $ "found " ++ show count ++ " solutions"
                 Failure _ message -> error $ "error: " ++ message
         )
 
         -- The logic program that generates the tree to explore.
-        nqueensCount
+        (nqueensCount 10)

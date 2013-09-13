@@ -1,49 +1,31 @@
-import Control.Applicative (liftA2)
 import System.Console.CmdTheLine (PosInfo(..),TermInfo(..),defTI,pos,posInfo,required)
 
-import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
-import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..),mainForExploreTreeUntilFoundUsingPush)
+import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..),mainForExploreTree)
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
 main =
-    mainForExploreTreeUntilFoundUsingPush
-        (\(board_size,number_to_find) -> (>= number_to_find) . length)
+    mainForExploreTree
         driver
-        (liftA2 (,)
-            (required $
-                pos 0
-                    (Nothing :: Maybe Int)
-                    posInfo
-                      { posName = "BOARD_SIZE"
-                      , posDoc = "the size of the board"
-                      }
-            )
-            (required $
-                pos 1
-                    (Nothing :: Maybe Int)
-                    posInfo
-                      { posName = "#"
-                      , posDoc = "the number of solutions to find"
-                      }
-            )
+        (required $
+            pos 0
+                (Nothing :: Maybe Int)
+                posInfo
+                  { posName = "BOARD_SIZE"
+                  , posDoc = "the size of the board"
+                  }
         )
         (defTI
-            { termName = "tutorial-12"
-            , termDoc = "find some of the solutions to the n-queens problem for a given board size"
+            { termName = "tutorial-11"
+            , termDoc = "count the number of n-queens solutions for a given board size"
             }
         )
-        (\(board_size,number_to_find) (RunOutcome _ termination_reason) -> do
+        (\board_size (RunOutcome _ termination_reason) -> do
             case termination_reason of
                 Aborted _ -> error "search aborted"
-                Completed (Left found) -> do
-                    putStrLn $ "For board size " ++ show board_size ++ ", only found " ++ show (length found) ++ "/" ++ show number_to_find ++ " solutions:"
-                    mapM_ print found
-                Completed (Right (Progress checkpoint found)) -> do
-                    putStrLn $ "Found all " ++ show number_to_find ++ " requested solutions for board size " ++ show board_size ++ ":"
-                    mapM_ print found
+                Completed (WordSum count) -> putStrLn $ show count ++ " solutions found for board size " ++ show board_size
                 Failure _ message -> error $ "error: " ++ message
         )
-        (fmap (:[]) . nqueensUsingBitsSolutions . fromIntegral . fst)
+        (fmap (const $ WordSum 1) . nqueensUsingBitsSolutions . fromIntegral)

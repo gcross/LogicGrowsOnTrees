@@ -886,13 +886,44 @@ interface that works for *all* of the adapters, which we will now discuss.
 
 The `Main` module provides a framework that automates a lot of the work of
 setting up and running an exploration in parallel, and the interface it provides
-is completely agnostic about the adapter that is used; the `mainFor*` functions
-all take an argument which is the `driver` of the adapter that you are using,
-and so switching to a different adapter is as simple as switching the `driver`
-argument.
+is completely agnostic about the adapter that is used; the `simpleMainFor*` and
+`mainFor*` functions all take an argument which is the `driver` of the adapter
+that you are using, and so switching to a different adapter is as simple as
+switching the `driver` argument.
 
-Here is an example of using the `Main` framework (also given in
+Here is a simple example of using the `Main` framework (also given in
 `tutorial/tutorial-11.hs`):
+
+```haskell
+import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
+import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..),simpleMainForExploreTree)
+import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
+
+import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
+
+main =
+    simpleMainForExploreTree
+        driver
+        (\RunOutcome _ termination_reason -> do
+            case termination_reason of
+                Aborted _ -> error "search aborted"
+                Completed (WordSum count) -> putStrLn $ show count ++ " solutions were found"
+                Failure _ message -> error $ "error: " ++ message
+        )
+        (fmap (const $ WordSum 1) (nqueensUsingBitsSolutions 10))
+```
+
+This program comes with an automatically generated help screen (via. `--help`),
+and it already includes options to specify the location of the checkpoint file
+(if it exists, then the run will be resumed from it), how often a checkpoint
+should be written, at what level to print logging messages, and whether various
+server statistics should be printed to the screen (possibly useful if your
+computation is not scaling well). Because we are using the `Threads` driver,
+there will also be a `-n` option to set the number of threads.
+
+The following is a more complicated example that uses a more general function
+in `Main` that lets one specify the board size using a command-line argument
+(also given in `tutorial/tutorial-12.hs`):
 
 ```haskell
 import System.Console.CmdTheLine (PosInfo(..),TermInfo(..),defTI,pos,posInfo,required)
@@ -928,7 +959,7 @@ main =
         (fmap (const $ WordSum 1) . nqueensUsingBitsSolutions . fromIntegral)
 ```
 
-This program simply calls `mainForExploreTree` with the following arguments:
+This program calls `mainForExploreTree` with the following arguments:
 
 1. the `driver`, which in this case was imported from `Threads`
 
@@ -998,14 +1029,6 @@ This program simply calls `mainForExploreTree` with the following arguments:
     The argument to this function is equal to the value supplied by the user
     for the first command line argument.
 
-This program comes with an automatically generated help screen (via. `--help`),
-and it already includes options to specify the location of the checkpoint file
-(if it exists, then the run will be resumed from it), how often a checkpoint
-should be written, at what level to print logging messages, and whether various
-server statistics should be printed to the screen (possibly useful if your
-computation is not scaling well). Because we are using the `Threads` driver,
-there will also be a `-n` option to set the number of threads.
-
 If this interface seems complex, it may help to understand that part of the
 reason for its complexity is that the supervisor and worker will in general be
 in different processes, which means that configuration information needs to be
@@ -1016,7 +1039,7 @@ instead of multiple threads is to install `LogicGrowsOnTrees-processes` and then
 replace `Threads` with `Processes` in the imports.
 
 For a slightly more sophisticated example, consider the following (also given in
-`tutorial/tutorial-12.hs`):
+`tutorial/tutorial-13.hs`):
 
 ```haskell
 import Control.Applicative (liftA2)

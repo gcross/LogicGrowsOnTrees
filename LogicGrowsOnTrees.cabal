@@ -320,8 +320,24 @@ Flag tutorial
     Description: Enable building the tutorial examples.
     Default:     False
 
-Executable readme
-    Main-is: readme.hs
+Executable readme-simple
+    Main-is: readme-simple.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        containers >= 0.4 && < 0.6
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable readme-full
+    Main-is: readme-full.hs
     Hs-source-dirs: examples
     Build-depends:
         LogicGrowsOnTrees,
@@ -587,6 +603,21 @@ Executable tutorial-11
     Hs-source-dirs: tutorial
     Build-depends:
         LogicGrowsOnTrees,
+        base > 4 && < 5
+    if flag(tutorial)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
+    else
+        GHC-Options: -threaded
+
+Executable tutorial-12
+    Main-is: tutorial-12.hs
+    Hs-source-dirs: tutorial
+    Build-depends:
+        LogicGrowsOnTrees,
         base > 4 && < 5,
         cmdtheline == 0.2.*
     if flag(tutorial)
@@ -598,7 +629,7 @@ Executable tutorial-11
     else
         GHC-Options: -threaded
 
-Executable tutorial-12
+Executable tutorial-13
     Main-is: tutorial-12.hs
     Hs-source-dirs: tutorial
     Build-depends:
