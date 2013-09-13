@@ -12,37 +12,13 @@
 {-# LANGUAGE ViewPatterns #-}
 
 {-| This module provides a framework for creating a program that explores a tree
-    in parallel. The way that you use it is that you call the function
-    @mainForXY@ where @X@ depends on the purity of the tree and @Y@ depends on
-    the mode (see "LogicGrowsOnTrees.Parallel.Main#push" for more information;
-    the link does go to the right place even though it only shows the module
-    name) and then provide the following:
-
-    1. a driver provided by the adapter you want to use;
-
-    2. optional command line arguments that the user can use to specify the tree
-       to generate;
-
-    3. a 'TermInfo' value that specifies the description of what this program
-       does, a typical example being:
-
-        > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-
-    4. an action to run when the exploration has terminated, as a function of
-       the outcome and the command line arguments; and
-
-    5. the tree, as a function of the command line arguments.
-
-    Specifically, a program created using this module will automatically take
-    care of running the supervisor and the workers (which includes figuring out
-    which of the two roles this program is supposed to take, where applicable).
-    It also provides command line options that specify if, where, and how often
-    a checkpoint file should be created (and will resume from an existing
-    checkpoint file if it exists) as well as what supervisor statistics (if any)
-    should be printed to the screen at the end, and it also provides options for
-    the current adapter that specify things like the number of workers to
-    create. Your command line options, if any, will be merged in with the rest
-    and will be displayed if the user requests help with how to use the program.
+    in parallel. There are two families of functions that are available. The
+    first is more general and allows you to construct your tree using arguments
+    given on the command-line; they are described in the section linked to by
+    "LogicGrowsOnTrees.Parallel.Main#main". If you do not need run-time
+    information via a command-line argument to construct the tree, then you may
+    prefer the simpler family of functions which are described in the section
+    linked to by "LogicGrowsOnTrees.Parallel.Main#main-simple".
 
     All of this functionality is adapter independent, so if you want to use a
     different back end you only need to change the driver argument and
@@ -88,6 +64,32 @@ module LogicGrowsOnTrees.Parallel.Main
     , mainForExploreTreeImpureUntilFoundUsingPush
     -- ** Generic main function
     , genericMain
+    -- * Simple main functions
+    -- $main-simple
+
+    -- ** Sum over all results
+    -- $all-simple
+    , simpleMainForExploreTree
+    , simpleMainForExploreTreeIO
+    , simpleMainForExploreTreeImpure
+    -- ** Stop at first result
+    -- $first-simple
+    , simpleMainForExploreTreeUntilFirst
+    , simpleMainForExploreTreeIOUntilFirst
+    , simpleMainForExploreTreeImpureUntilFirst
+    -- ** Stop when sum of results found
+    -- $found-simple
+
+    -- *** Pull
+    -- $pull-simple
+    , simpleMainForExploreTreeUntilFoundUsingPull
+    , simpleMainForExploreTreeIOUntilFoundUsingPull
+    , simpleMainForExploreTreeImpureUntilFoundUsingPull
+    -- *** Push
+    -- $push-simple
+    , simpleMainForExploreTreeUntilFoundUsingPush
+    , simpleMainForExploreTreeIOUntilFoundUsingPush
+    , simpleMainForExploreTreeImpureUntilFoundUsingPush
     -- * Utility functions
     , extractRunOutcomeFromSupervisorOutcome
     , mainParser
@@ -95,7 +97,7 @@ module LogicGrowsOnTrees.Parallel.Main
 
 import Prelude hiding (readFile,writeFile)
 
-import Control.Applicative ((<$>),(<*>))
+import Control.Applicative ((<$>),(<*>),pure)
 import Control.Concurrent (ThreadId,killThread,threadDelay)
 import Control.Exception (finally,handleJust,onException)
 import Control.Monad (forever,liftM,mplus,when)
@@ -319,6 +321,11 @@ until a condition has been met, only sending results to the supervisor upon
 request) and @UntilFoundUsingPush@ for 'FoundModeUsingPush' (sum all results
 until a condition has been met, pushing all found results immediately to the
 supervisor).
+
+If you do not need to use command-line arguments to construct the tree and don't
+care about what the name of the program is on the help screen then you might be
+interested in the simpler version of these functions in the following section
+(follow "LogicGrowsOnTrees.Parallel.Main#main-simple").
  -}
  
 ---------------------------- Sum over all results ------------------------------
@@ -775,7 +782,233 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
 
     constructController = const controllerLoop
 
+--------------------------------------------------------------------------------
+-------------------------- Simplified main functions ---------------------------
+--------------------------------------------------------------------------------
+
+{- $main-simple #main-simple#
+The functions in this section provide simpler version of the functions in the
+preceding section ("LogicGrowsOnTrees.Parallel.Main#main") for the case where
+you do not need to use command-line arguments to construct the tree and don't
+care about what the name of the program is on the help screen; the naming
+convention follows the same convention as that in the previous section.
+ -}
+
+---------------------------- Sum over all results ------------------------------
+
+{- $all-simple
+The functions in this section are for when you want to sum over all the results
+in (the leaves of) the tree.
+ -}
+
+{-| Explore the given pure tree in parallel; the results
+    in the leaves will be summed up using the 'Monoid' instance.
+ -}
+simpleMainForExploreTree ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) result → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    Tree result {-^ the tree to explore -} →
+    result_monad ()
+simpleMainForExploreTree = dispatchToMainFunction mainForExploreTree
+
+{-| Explore the given IO tree in parellel;
+    the results in the leaves will be summed up using the 'Monoid' instance.
+ -}
+simpleMainForExploreTreeIO ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) result → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeIO result {-^ the tree to explore in IO -} →
+    result_monad ()
+simpleMainForExploreTreeIO = dispatchToMainFunction mainForExploreTreeIO
+
+{-| Explore the given impure tree in parallel; the
+    results in all of the leaves will be summed up using the 'Monoid' instance.
+ -}
+simpleMainForExploreTreeImpure ::
+    (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (∀ β. m β → IO β) →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) result → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeT m result {-^ the (impure) tree to explore -} →
+    result_monad ()
+simpleMainForExploreTreeImpure = dispatchToMainFunction . mainForExploreTreeImpure
+
+---------------------------- Stop at first result ------------------------------
+
+{- $first-simple
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#first-simple"
+ -}
+
+{-| Explore the given pure tree in parallel, stopping if a solution is found. -}
+simpleMainForExploreTreeUntilFirst ::
+    (Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    Tree result {-^ the tree to explore -} →
+    result_monad ()
+simpleMainForExploreTreeUntilFirst = dispatchToMainFunction mainForExploreTreeUntilFirst
+
+{-| Explore the given tree in parellel in IO, stopping if a solution is found. -}
+simpleMainForExploreTreeIOUntilFirst ::
+    (Serialize result, MonadIO result_monad) ⇒
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeIO result {-^ the tree to explore in IO -} →
+    result_monad ()
+simpleMainForExploreTreeIOUntilFirst = dispatchToMainFunction mainForExploreTreeIOUntilFirst
+
+{-| Explore the given impure tree in parallel, stopping if a solution is found. -}
+simpleMainForExploreTreeImpureUntilFirst ::
+    (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (∀ β. m β → IO β) →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeT m result {-^ the impure tree to explore -} →
+    result_monad ()
+simpleMainForExploreTreeImpureUntilFirst = dispatchToMainFunction . mainForExploreTreeImpureUntilFirst
+
+------------------- Stop when sum of results meets condition -------------------
+
+{- $found-simple
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#found"
+ -}
+
+{- $pull-simple
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#pull"
+ -}
+
+{-| Explore the given pure tree in parallel until the sum of results meets the
+    given condition.
+ -}
+simpleMainForExploreTreeUntilFoundUsingPull ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    Tree result {-^ the tree to explore -} →
+    result_monad ()
+simpleMainForExploreTreeUntilFoundUsingPull = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPull . const
+
+{-| Explore the given IO tree in parellel until the sum of results meets the
+    given condition.
+ -}
+simpleMainForExploreTreeIOUntilFoundUsingPull ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeIO result {-^ the tree to explore in IO -} →
+    result_monad ()
+simpleMainForExploreTreeIOUntilFoundUsingPull = dispatchToMainFunction . mainForExploreTreeIOUntilFoundUsingPull . const
+
+{-| Explore the given impure tree in parallel until the sum of results meets the
+    given condition.
+ -}
+simpleMainForExploreTreeImpureUntilFoundUsingPull ::
+    (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (∀ β. m β → IO β) →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeT m result {-^ the impure tree to explore -} →
+    result_monad ()
+simpleMainForExploreTreeImpureUntilFoundUsingPull = (dispatchToMainFunction .* mainForExploreTreeImpureUntilFoundUsingPull) . const
+
+{- $push-simple
+For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#push"
+ -}
+
+{-| Explore the given pure tree in parallel until the sum of results meets the
+    given condition.
+ -}
+simpleMainForExploreTreeUntilFoundUsingPush ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+
+    Tree result {-^ the tree to explore -} →
+    result_monad ()
+simpleMainForExploreTreeUntilFoundUsingPush = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPush . const
+
+{-| Explore the given IO tree in parellel until the sum of results meets the
+    given condition.
+ -}
+simpleMainForExploreTreeIOUntilFoundUsingPush ::
+    (Monoid result, Serialize result, MonadIO result_monad) ⇒
+    (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeIO result {-^ the tree to explore in IO -} →
+    result_monad ()
+simpleMainForExploreTreeIOUntilFoundUsingPush = dispatchToMainFunction . mainForExploreTreeIOUntilFoundUsingPush . const
+
+{-| Explore the given impure tree in parallel until the sum of results meets the
+    given condition.
+ -}
+simpleMainForExploreTreeImpureUntilFoundUsingPush ::
+    (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
+    (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
+    (∀ β. m β → IO β) →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
+        {-^ a callback that will be invoked with the outcome of the run; note
+            that if the run was 'Completed' then the checkpoint file will be
+            deleted if this function finishes successfully
+         -} →
+    TreeT m result {-^ the impure tree to explore -} →
+    result_monad ()
+simpleMainForExploreTreeImpureUntilFoundUsingPush = (dispatchToMainFunction .* mainForExploreTreeImpureUntilFoundUsingPush) . const
+
+--------------------------------------------------------------------------------
 ------------------------------ Utility functions -------------------------------
+--------------------------------------------------------------------------------
 
 {-| Converts a 'SupervisorOutcome' to a 'RunOutcome'. -}
 extractRunOutcomeFromSupervisorOutcome ::
@@ -806,6 +1039,16 @@ mainParser term term_info =
 --------------------------------------------------------------------------------
 ----------------------------------- Internal -----------------------------------
 --------------------------------------------------------------------------------
+
+default_terminfo = defTI { termDoc = "LogicGrowsOnTrees program" }
+
+dispatchToMainFunction f driver notifyTerminated tree =
+    f   driver
+        (pure ())
+        default_terminfo
+        (const notifyTerminated)
+        (const tree)
+{- INLINE dispatchToMainFunction -}
 
 checkpoint_configuration_term :: Term (Maybe CheckpointConfiguration)
 checkpoint_configuration_term =
