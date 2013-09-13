@@ -27,6 +27,8 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     , getNumberOfWorkers
     , requestProgressUpdateAsync
     , requestProgressUpdate
+    , setNumberOfWorkersAsync
+    , setNumberOfWorkers
     , setWorkloadBufferSize
     -- * Outcome types
     , RunOutcome(..)
@@ -128,7 +130,7 @@ driver = Driver $ \DriverParameters{..} → do
         constructTree
         (curry $ uncurry getStartingProgress . second snd)
         (\shared_configuration (Word_ number_of_processes,supervisor_configuration) → do
-            changeNumberOfWorkers (const $ return number_of_processes)
+            setNumberOfWorkers number_of_processes
             constructController shared_configuration supervisor_configuration
         )
     >>=

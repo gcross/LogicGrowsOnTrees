@@ -77,14 +77,14 @@ main = do
         _ → defaultMain tests
 
 tests = -- {{{
-    [testCase "one process" . runTest . void $ do
-        changeNumberOfWorkers (return . (\i → 0))
-        changeNumberOfWorkers (return . (\i → 1))
+    [testCase "one process" . runTest $ do
+        setNumberOfWorkers 0
+        setNumberOfWorkers 1
     ,testCase "two processes" . runTest . void $
-        changeNumberOfWorkers (return . (\i → 3-i))
+        changeNumberOfWorkers (3-)
     ,testCase "many processes" . runTest . void $ liftIO (randomRIO (0,1::Int)) >>= \i → case i of
-        0 → changeNumberOfWorkers (return . (\i → if i > 1 then i-1 else i))
-        1 → changeNumberOfWorkers (return . (+1))
+        0 → changeNumberOfWorkers (\i → if i > 1 then i-1 else i)
+        1 → changeNumberOfWorkers (+1)
     ]
   where
     runTest generateNoise = do
@@ -99,7 +99,7 @@ tests = -- {{{
                 ["nqueens",show n]
                 (const $ return ())
                 mempty
-                (do changeNumberOfWorkers (const $ return 1)
+                (do setNumberOfWorkers 1
                     forever $ do
                         liftIO $ threadDelay 10000
                         requestProgressUpdate >>= liftIO . modifyIORef progresses_ref . (:)
