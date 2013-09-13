@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -269,19 +268,6 @@ instance Monad m ⇒ MonadExplorableTrans (TreeT m) where
     runAndCache = runAndCacheMaybe . liftM Just
     runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
     runAndCacheMaybe = TreeT . singleton . Cache
-
-{-| This instance allows you to automatically get a 'MonadExplorable' instance
-    for any monad transformer that has 'MonadPlus' defined. (Unfortunately its
-    presence requires @OverlappingInstances@ because it overlaps with the
-    instance for 'TreeT', even though the constraints are such that it is
-    impossible in practice for there to ever be a case where a given type is
-    satisfied by both instances.)
- -}
-instance (MonadTrans t, MonadExplorable m, MonadPlus (t m)) ⇒ MonadExplorable (t m) where
-    cache = lift . cache
-    cacheGuard = lift . cacheGuard
-    cacheMaybe = lift . cacheMaybe
-    processPendingRequests = lift processPendingRequests
 
 instance MonadTrans TreeT where
     lift = TreeT . lift
