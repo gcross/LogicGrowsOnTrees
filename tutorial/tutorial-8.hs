@@ -5,7 +5,6 @@ import System.IO (hFlush,stdout)
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
-    ,changeNumberOfWorkers
     ,exploreTree
     ,setNumberOfWorkers
     )

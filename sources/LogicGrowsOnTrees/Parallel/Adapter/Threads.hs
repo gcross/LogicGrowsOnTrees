@@ -87,7 +87,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
 
 import Control.Applicative (Applicative,liftA3)
 import Control.Concurrent (getNumCapabilities,killThread)
-import Control.Monad (void,when)
+import Control.Monad (when)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict (get,modify)

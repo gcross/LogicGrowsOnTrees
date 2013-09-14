@@ -476,7 +476,6 @@ import GHC.Conc (setNumCapabilities)
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
-    ,changeNumberOfWorkers
     ,exploreTree
     ,setNumberOfWorkers
     )
@@ -594,7 +593,6 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
     ,abort
-    ,changeNumberOfWorkers
     ,exploreTreeStartingFrom
     ,requestProgressUpdate
     ,setNumberOfWorkers
@@ -692,7 +690,6 @@ import System.IO (hFlush,stdout)
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
-    ,changeNumberOfWorkers
     ,exploreTree
     ,setNumberOfWorkers
     )
@@ -748,7 +745,6 @@ import GHC.Conc (setNumCapabilities)
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
-    ,changeNumberOfWorkers
     ,exploreTreeUntilFirst
     ,setNumberOfWorkers
     )
@@ -793,7 +789,6 @@ import GHC.Conc (setNumCapabilities)
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
-    ,changeNumberOfWorkers
     ,exploreTreeUntilFoundUsingPush
     ,setNumberOfWorkers
     )

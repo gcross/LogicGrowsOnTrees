@@ -93,7 +93,7 @@ import Foreign.Ptr (FunPtr,freeHaskellFunPtr,nullFunPtr)
 
 import System.IO.Unsafe (unsafePerformIO)
 
-import LogicGrowsOnTrees (Tree,allFrom,between)
+import LogicGrowsOnTrees (Tree,between)
 import LogicGrowsOnTrees.Utils.WordSum
 
 --------------------------------------------------------------------------------

@@ -8,7 +8,6 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
     ,abort
-    ,changeNumberOfWorkers
     ,exploreTreeStartingFrom
     ,requestProgressUpdate
     ,setNumberOfWorkers

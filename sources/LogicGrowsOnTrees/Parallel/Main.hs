@@ -1037,6 +1037,7 @@ mainParser term term_info =
 ----------------------------------- Internal -----------------------------------
 --------------------------------------------------------------------------------
 
+default_terminfo :: TermInfo
 default_terminfo = defTI { termDoc = "LogicGrowsOnTrees program" }
 
 dispatchToMainFunction f driver notifyTerminated tree =

@@ -3,7 +3,6 @@ import GHC.Conc (setNumCapabilities)
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
     (RunOutcome(..)
     ,TerminationReason(..)
-    ,changeNumberOfWorkers
     ,exploreTree
     ,setNumberOfWorkers
     )
