@@ -1,5 +1,5 @@
 Name:                LogicGrowsOnTrees-processes
-Version:             1.0.0
+Version:             1.0.0.0.1
 License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
@@ -20,7 +20,7 @@ Source-Repository head
 Source-Repository this
     Type:     git
     Location: git://github.com/gcross/LogicGrowsOnTrees-processes.git
-    Tag:      1.0.0
+    Tag:      1.0.0.0.1
 
 
 Library
