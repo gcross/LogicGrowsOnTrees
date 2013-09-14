@@ -4,7 +4,7 @@ License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
 Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
-Synopsis:            a distributed (parallel) implementation of logic programming via dynamically generated trees
+Synopsis:            a parallel implementation of logic programming using distributed tree exploration
 Cabal-version:       >=1.8
 Build-type:          Simple
 Category:	         Control, Distributed Computing, Logic, Parallelism
