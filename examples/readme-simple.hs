@@ -7,7 +7,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
 import LogicGrowsOnTrees.Utils.Word_
 import LogicGrowsOnTrees.Utils.WordSum
 
--- Code that counts all the solutions for a given input board size. 
+-- Code that counts all the solutions for a given input board size.
 nqueensCount 0 = error "board size must be positive"
 nqueensCount n =
     -- Start with...
