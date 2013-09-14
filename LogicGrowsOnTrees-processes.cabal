@@ -1,26 +1,26 @@
 Name:                LogicGrowsOnTrees-processes
-Version:             1.0
+Version:             1.0.0
 License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
 Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
-Stability:           Provisional
-Synopsis:            a adapter for the LogicGrowsOnTrees package that uses multiple processes for parallelism
-Description:         This package provides a adapter for the LogicGrowsOnTrees package
-                     that uses multiple processes for parallelism; see the
-                     module documentation for more details.
+Synopsis:            an adapter for the LogicGrowsOnTrees package that uses multiple processes for parallelism
 Cabal-version:       >=1.8
 Build-type:          Simple
-Category:	     
+Category:	         Control, Distributed Computing, Logic, Parallelism
+Description:
+    This package provides a adapter for the LogicGrowsOnTrees package that uses
+    multiple processes for parallelism; see the module documentation for more
+    details.
 
 Source-Repository head
-  Type:                git
-  Location:            git://github.com/gcross/LogicGrowsOnTrees-processes.git
+    Type:     git
+    Location: git://github.com/gcross/LogicGrowsOnTrees-processes.git
 
 Source-Repository this
-    Type:                git
-    Location:            git://github.com/gcross/LogicGrowsOnTrees-processes.git
---    Tag:                 
+    Type:     git
+    Location: git://github.com/gcross/LogicGrowsOnTrees-processes.git
+    Tag:      1.0.0
 
 
 Library
