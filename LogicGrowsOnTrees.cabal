@@ -4,7 +4,6 @@ License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
 Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
-Bug-reports:         https://github.com/gcross/LogicGrowsOnTrees/issues
 Synopsis:            a distributed (parallel) implementation of logic programming via dynamically generated trees
 Cabal-version:       >=1.8
 Build-type:          Simple
@@ -201,6 +200,8 @@ Description:
     geared towards people writing their own adapter.
 
 Extra-source-files: c-sources/queens.c
+
+Bug-reports: https://github.com/gcross/LogicGrowsOnTrees/issues
 
 Source-Repository head
     Type:     git
