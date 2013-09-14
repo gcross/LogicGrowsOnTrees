@@ -1,9 +1,6 @@
--- Language extensions {{{
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
--- Imports {{{
 import Control.Applicative
 
 import System.Console.CmdTheLine
@@ -12,8 +9,6 @@ import LogicGrowsOnTrees.Parallel.Main
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
 import LogicGrowsOnTrees.Utils.PerfectTree
 import LogicGrowsOnTrees.Utils.WordSum
-
--- }}}
 
 main =
     mainForExploreTree

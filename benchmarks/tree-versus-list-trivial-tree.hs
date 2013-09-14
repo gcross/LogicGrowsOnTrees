@@ -1,8 +1,5 @@
--- Language extensions {{{
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
--- Imports {{{
 import Criterion.Main
 import Data.Monoid
 
@@ -13,7 +10,6 @@ import LogicGrowsOnTrees.Utils.WordSum
 import LogicGrowsOnTrees.Parallel.Common.Worker (exploreTreeGeneric)
 import LogicGrowsOnTrees.Parallel.ExplorationMode (ExplorationMode(AllMode))
 import LogicGrowsOnTrees.Parallel.Purity (Purity(Pure))
--- }}}
 
 main = defaultMain
     [bench "list" $ nf (getWordSum . mconcat . trivialPerfectTree 2) depth
