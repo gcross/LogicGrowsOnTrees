@@ -2,11 +2,8 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 import Data.Functor
-import Data.Monoid
-import Data.Serialize (Serialize(..))
 
 import System.Console.CmdTheLine
-import System.Environment
 
 import LogicGrowsOnTrees.Parallel.Adapter.Processes
 import LogicGrowsOnTrees.Parallel.Main
