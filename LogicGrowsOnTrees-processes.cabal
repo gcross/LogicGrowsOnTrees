@@ -4,7 +4,7 @@ License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
 Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
-Synopsis:            an adapter for the LogicGrowsOnTrees package that uses multiple processes for parallelism
+Synopsis:            an adapter for LogicGrowsOnTrees that uses multiple processes for parallelism
 Cabal-version:       >=1.8
 Build-type:          Simple
 Category:            Control, Distributed Computing, Logic, Parallelism
