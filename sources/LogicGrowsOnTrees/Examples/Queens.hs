@@ -30,6 +30,10 @@ module LogicGrowsOnTrees.Examples.Queens
     , nqueensGeneric
     , nqueensSolutions
     , nqueensCount
+    -- ** With a list at the bottom (instead of C)
+    ,nqueensWithListAtBottomGeneric
+    ,nqueensWithListAtBottomSolutions
+    ,nqueensWithListAtBottomCount
     -- * Board size command argument
     , BoardSize(..)
     , makeBoardSizeTermAtPosition
@@ -52,7 +56,13 @@ import Text.PrettyPrint (text)
 
 import LogicGrowsOnTrees (Tree,allFrom,exploreTree) -- exploreTree added so that haddock will link to it
 import qualified LogicGrowsOnTrees.Examples.Queens.Advanced as Advanced
-import LogicGrowsOnTrees.Examples.Queens.Advanced (NQueensSolution,NQueensSolutions,multiplySolution,nqueensGeneric)
+import LogicGrowsOnTrees.Examples.Queens.Advanced
+    (NQueensSolution
+    ,NQueensSolutions
+    ,multiplySolution
+    ,nqueensGeneric
+    ,nqueensWithListAtBottomGeneric
+    )
 import LogicGrowsOnTrees.Utils.Word_
 import LogicGrowsOnTrees.Utils.WordSum
 
@@ -311,4 +321,16 @@ nqueensCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensCount :: Word → Tree WordSum #-}
+
+{-| Like 'nqueensSolutions', but uses List at the bottom instead of C . -}
+nqueensWithListAtBottomSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
+nqueensWithListAtBottomSolutions n = nqueensWithListAtBottomGeneric (++) multiplySolution [] n
+{-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → NQueensSolutions #-}
+{-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → Tree NQueensSolution #-}
+
+{-| Like 'nqueensCount', but uses List at the bottom instead of C . -}
+nqueensWithListAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
+nqueensWithListAtBottomCount = nqueensWithListAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+{-# SPECIALIZE nqueensWithListAtBottomCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensWithListAtBottomCount :: Word → Tree WordSum #-}
 

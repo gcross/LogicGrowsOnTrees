@@ -32,6 +32,8 @@ module LogicGrowsOnTrees.Examples.Queens.Advanced
     , PositionAndBitWithReflection
     -- * Main algorithm
     , nqueensGeneric
+    -- ** Using List instead of C at bottom
+    , nqueensWithListAtBottomGeneric
     -- ** Symmetry breaking
     -- $symmetry-breaking
     , nqueensStart
@@ -78,7 +80,7 @@ module LogicGrowsOnTrees.Examples.Queens.Advanced
 import Control.Applicative ((<$>),liftA2)
 import Control.Arrow ((***))
 import Control.Exception (evaluate)
-import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2)
+import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum)
 
 import Data.Bits ((.&.),(.|.),bit,rotateL,rotateR,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
@@ -163,6 +165,34 @@ nqueensGeneric updateValue finalizeValueWithSymmetry initial_value n =
     break180 = nqueensBreak180 updateValue (finalizeValueWithSymmetry n Rotate180Only) break180 search
     search value size state = nqueensSearch updateValue (finalizeValueWithSymmetry n NoSymmetries) value size state
 {-# INLINE nqueensGeneric #-}
+
+nqueensWithListAtBottomGeneric ::
+    (MonadPlus m
+    ,Typeable α
+    ,Typeable β
+    ) ⇒
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solution -} →
+    (Word → NQueensSymmetry → α → m β) {-^ function that finalizes a partial solution with the given board size and symmetry -} →
+    α {-^ initial partial solution -} →
+    Word {-^ board size -} →
+    m β {-^ the final result -}
+nqueensWithListAtBottomGeneric updateValue finalizeValueWithSymmetry initial_value 1 =
+    finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
+nqueensWithListAtBottomGeneric _ _ _ 2 = mzero
+nqueensWithListAtBottomGeneric _ _ _ 3 = mzero
+nqueensWithListAtBottomGeneric updateValue finalizeValueWithSymmetry initial_value n =
+    nqueensStart
+        updateValue
+        break90
+        break180
+        search
+        initial_value
+        n
+  where
+    break90 = nqueensBreak90 updateValue (finalizeValueWithSymmetry n AllRotations) break90 break180 search
+    break180 = nqueensBreak180 updateValue (finalizeValueWithSymmetry n Rotate180Only) break180 search
+    search value size state = nqueensWithListAtBottomSearch updateValue (finalizeValueWithSymmetry n NoSymmetries) value size state
+{-# INLINE nqueensWithListAtBottomGeneric #-}
 
 --------------------------------------------------------------------------------
 ------------------------------ Symmetry-breaking -------------------------------
@@ -1003,6 +1033,95 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
                 (occupied_positive_diagonals `rotateL` 1)
             )
 {-# INLINE nqueensSearch #-}
+
+{-| Using brute-force to find placements for all of the remaining queens, using
+    the List monad instead of C for the bottom of the tree.
+ -}
+nqueensWithListAtBottomSearch :: ∀ m α β.
+    (MonadPlus m
+    ,Typeable α
+    ,Typeable β
+    ) ⇒
+    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    (α → m β) {-^ function that finalizes the partial solution -} →
+    α {-^ partial solution -} →
+    Int {-^ board size -} →
+    NQueensSearchState {-^ current state -} →
+    m β {-^ the final result -}
+nqueensWithListAtBottomSearch updateValue_ finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
+    go initial_value initial_search_state
+  where
+    updateValue = updateValue_ . convertSolutionToWord
+    go !value !s@(NQueensSearchState
+                    number_of_queens_remaining
+                    row
+                    occupied_rows
+                    occupied_columns
+                    occupied_negative_diagonals
+                    occupied_positive_diagonals
+               )
+      | number_of_queens_remaining <= 10 = msum $ go2 value s
+      | occupied_rows .&. 1 == 0 =
+         (getOpenings size $
+            occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
+         )
+         >>=
+         \(PositionAndBit offset offset_bit) → go
+            ([(row,window_start+offset)] `updateValue` value)
+            (NQueensSearchState
+                (number_of_queens_remaining-1)
+                (row+1)
+                (occupied_rows `unsafeShiftR` 1)
+                (occupied_columns .|. offset_bit)
+                ((occupied_negative_diagonals .|. offset_bit) `unsafeShiftR` 1)
+                ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
+            )
+      | otherwise =
+         go value
+            (NQueensSearchState
+                 number_of_queens_remaining
+                (row+1)
+                (occupied_rows `unsafeShiftR` 1)
+                 occupied_columns
+                (occupied_negative_diagonals `unsafeShiftR` 1)
+                (occupied_positive_diagonals `rotateL` 1)
+            )
+    go2 :: α → NQueensSearchState → [m β]
+    go2 !value !s@(NQueensSearchState
+                    number_of_queens_remaining
+                    row
+                    occupied_rows
+                    occupied_columns
+                    occupied_negative_diagonals
+                    occupied_positive_diagonals
+               )
+      | number_of_queens_remaining == 0 = return $ finalizeValue value
+      | occupied_rows .&. 1 == 0 =
+         (getOpenings size $
+            occupied_columns .|. occupied_negative_diagonals .|. occupied_positive_diagonals
+         )
+         >>=
+         \(PositionAndBit offset offset_bit) → go2
+            ([(row,window_start+offset)] `updateValue` value)
+            (NQueensSearchState
+                (number_of_queens_remaining-1)
+                (row+1)
+                (occupied_rows `unsafeShiftR` 1)
+                (occupied_columns .|. offset_bit)
+                ((occupied_negative_diagonals .|. offset_bit) `unsafeShiftR` 1)
+                ((occupied_positive_diagonals .|. offset_bit) `rotateL` 1)
+            )
+      | otherwise =
+         go2 value
+            (NQueensSearchState
+                 number_of_queens_remaining
+                (row+1)
+                (occupied_rows `unsafeShiftR` 1)
+                 occupied_columns
+                (occupied_negative_diagonals `unsafeShiftR` 1)
+                (occupied_positive_diagonals `rotateL` 1)
+            )
+{-# INLINE nqueensWithListAtBottomSearch #-}
 
 {-| Interface for directly using the brute-force search approach -} 
 nqueensBruteForceGeneric ::
