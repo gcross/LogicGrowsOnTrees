@@ -460,6 +460,7 @@ exploreTreeGeneric exploration_mode purity tree = do
                     then Right progress
                     else Left (progressResult progress)
             _ → error "should never reach here due to incompatible types"
+{-# INLINE exploreTreeGeneric #-}
 
 --------------------------------------------------------------------------------
 ------------------------------ Internal functions ------------------------------
