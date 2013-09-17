@@ -165,6 +165,7 @@ driver = Driver $ \DriverParameters{..} → do
         ,   optDoc = "This *required* option specifies the number of worker threads to spawn."
         }
         ) Nothing )
+{-# INLINE driver #-}
 
 --------------------------------------------------------------------------------
 ---------------------------------- Controller ----------------------------------
@@ -224,6 +225,7 @@ exploreTree ::
     Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 exploreTree = exploreTreeStartingFrom mempty
+{-# INLINE exploreTree #-}
 
 {-| Like 'exploreTree' but with a starting progress. -}
 exploreTreeStartingFrom ::
@@ -233,6 +235,7 @@ exploreTreeStartingFrom ::
     Tree result {-^ the (pure) tree -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
 exploreTreeStartingFrom = runExplorer AllMode Pure
+{-# INLINE exploreTreeStartingFrom #-}
 
 {-| Like 'exploreTree' but with the tree running in IO. -}
 exploreTreeIO ::
@@ -555,6 +558,7 @@ runExplorer exploration_mode purity starting_progress (C controller) tree =
         )
         starting_progress
         controller
+{-# INLINE runExplorer #-}
 
 --------------------------------------------------------------------------------
 ----------------------------------- Internal -----------------------------------

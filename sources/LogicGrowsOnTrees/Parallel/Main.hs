@@ -362,6 +362,7 @@ mainForExploreTree ::
     (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTree = genericMain (const AllMode) Pure
+{-# INLINE mainForExploreTree #-}
 
 {-| Explore the given IO tree in parallel; the results in the leaves will be
     summed up using the 'Monoid' instance.
@@ -384,6 +385,7 @@ mainForExploreTreeIO ::
     (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIO = genericMain (const AllMode) io_purity
+{-# INLINE mainForExploreTreeIO #-}
 
 {-| Explore the given impure tree in parallel; the results in all of the leaves
     will be summed up using the 'Monoid' instance.
@@ -407,6 +409,7 @@ mainForExploreTreeImpure ::
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpure = genericMain (const AllMode) . ImpureAtopIO
+{-# INLINE mainForExploreTreeImpure #-}
 
 ---------------------------- Stop at first result ------------------------------
 
@@ -443,6 +446,7 @@ mainForExploreTreeUntilFirst ::
     (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeUntilFirst = genericMain (const FirstMode) Pure
+{-# INLINE mainForExploreTreeUntilFirst #-}
 
 {-| Explore the given IO tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeIOUntilFirst ::
@@ -463,6 +467,7 @@ mainForExploreTreeIOUntilFirst ::
     (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIOUntilFirst = genericMain (const FirstMode) io_purity
+{-# INLINE mainForExploreTreeIOUntilFirst #-}
 
 {-| Explore the given impure tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeImpureUntilFirst ::
@@ -484,6 +489,7 @@ mainForExploreTreeImpureUntilFirst ::
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpureUntilFirst = genericMain (const FirstMode) . ImpureAtopIO
+{-# INLINE mainForExploreTreeImpureUntilFirst #-}
 
 ------------------- Stop when sum of results meets condition -------------------
 
@@ -553,6 +559,7 @@ mainForExploreTreeUntilFoundUsingPull ::
     (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
+{-# INLINE mainForExploreTreeUntilFoundUsingPull #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
@@ -576,6 +583,7 @@ mainForExploreTreeIOUntilFoundUsingPull ::
     (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) io_purity
+{-# INLINE mainForExploreTreeIOUntilFoundUsingPull #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
     given condition.
@@ -600,6 +608,7 @@ mainForExploreTreeImpureUntilFoundUsingPull ::
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpureUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) . ImpureAtopIO
+{-# INLINE mainForExploreTreeImpureUntilFoundUsingPull #-}
 
 {- $push #push#
 In this mode, whenever a result is found it is immediately sent to the
@@ -649,6 +658,7 @@ mainForExploreTreeUntilFoundUsingPush ::
     (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
+{-# INLINE mainForExploreTreeUntilFoundUsingPush #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
@@ -672,6 +682,7 @@ mainForExploreTreeIOUntilFoundUsingPush ::
     (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) io_purity
+{-# INLINE mainForExploreTreeIOUntilFoundUsingPush #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
     given condition.
@@ -696,6 +707,7 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 mainForExploreTreeImpureUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) . ImpureAtopIO
+{-# INLINE mainForExploreTreeImpureUntilFoundUsingPush #-}
 
 ---------------------------- Generic main function -----------------------------
 
@@ -778,6 +790,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
             notifyTerminated_ tree_configuration run_outcome
 
     constructController = const controllerLoop
+{-# INLINE genericMain #-}
 
 --------------------------------------------------------------------------------
 -------------------------- Simplified main functions ---------------------------
@@ -812,6 +825,7 @@ simpleMainForExploreTree ::
     Tree result {-^ the tree to explore -} →
     result_monad ()
 simpleMainForExploreTree = dispatchToMainFunction mainForExploreTree
+{-# INLINE simpleMainForExploreTree #-}
 
 {-| Explore the given IO tree in parallel;
     the results in the leaves will be summed up using the 'Monoid' instance.
@@ -827,6 +841,7 @@ simpleMainForExploreTreeIO ::
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
 simpleMainForExploreTreeIO = dispatchToMainFunction mainForExploreTreeIO
+{-# INLINE simpleMainForExploreTreeIO #-}
 
 {-| Explore the given impure tree in parallel; the
     results in all of the leaves will be summed up using the 'Monoid' instance.
@@ -843,6 +858,7 @@ simpleMainForExploreTreeImpure ::
     TreeT m result {-^ the (impure) tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeImpure = dispatchToMainFunction . mainForExploreTreeImpure
+{-# INLINE simpleMainForExploreTreeImpure #-}
 
 ---------------------------- Stop at first result ------------------------------
 
@@ -862,6 +878,7 @@ simpleMainForExploreTreeUntilFirst ::
     Tree result {-^ the tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeUntilFirst = dispatchToMainFunction mainForExploreTreeUntilFirst
+{-# INLINE simpleMainForExploreTreeUntilFirst #-}
 
 {-| Explore the given tree in parallel in IO, stopping if a solution is found. -}
 simpleMainForExploreTreeIOUntilFirst ::
@@ -875,6 +892,7 @@ simpleMainForExploreTreeIOUntilFirst ::
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
 simpleMainForExploreTreeIOUntilFirst = dispatchToMainFunction mainForExploreTreeIOUntilFirst
+{-# INLINE simpleMainForExploreTreeIOUntilFirst #-}
 
 {-| Explore the given impure tree in parallel, stopping if a solution is found. -}
 simpleMainForExploreTreeImpureUntilFirst ::
@@ -889,6 +907,7 @@ simpleMainForExploreTreeImpureUntilFirst ::
     TreeT m result {-^ the impure tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeImpureUntilFirst = dispatchToMainFunction . mainForExploreTreeImpureUntilFirst
+{-# INLINE simpleMainForExploreTreeImpureUntilFirst #-}
 
 ------------------- Stop when sum of results meets condition -------------------
 
@@ -915,6 +934,7 @@ simpleMainForExploreTreeUntilFoundUsingPull ::
     Tree result {-^ the tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeUntilFoundUsingPull = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPull . const
+{-# INLINE simpleMainForExploreTreeUntilFoundUsingPull #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
@@ -931,6 +951,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPull ::
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
 simpleMainForExploreTreeIOUntilFoundUsingPull = dispatchToMainFunction . mainForExploreTreeIOUntilFoundUsingPull . const
+{-# INLINE simpleMainForExploreTreeIOUntilFoundUsingPull #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
     given condition.
@@ -948,6 +969,7 @@ simpleMainForExploreTreeImpureUntilFoundUsingPull ::
     TreeT m result {-^ the impure tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeImpureUntilFoundUsingPull = (dispatchToMainFunction .* mainForExploreTreeImpureUntilFoundUsingPull) . const
+{-# INLINE simpleMainForExploreTreeImpureUntilFoundUsingPull #-}
 
 {- $push-simple
 For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#push"
@@ -969,6 +991,7 @@ simpleMainForExploreTreeUntilFoundUsingPush ::
     Tree result {-^ the tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeUntilFoundUsingPush = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPush . const
+{-# INLINE simpleMainForExploreTreeUntilFoundUsingPush #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
     given condition.
@@ -985,6 +1008,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPush ::
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
 simpleMainForExploreTreeIOUntilFoundUsingPush = dispatchToMainFunction . mainForExploreTreeIOUntilFoundUsingPush . const
+{-# INLINE simpleMainForExploreTreeIOUntilFoundUsingPush #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
     given condition.
@@ -1002,6 +1026,7 @@ simpleMainForExploreTreeImpureUntilFoundUsingPush ::
     TreeT m result {-^ the impure tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeImpureUntilFoundUsingPush = (dispatchToMainFunction .* mainForExploreTreeImpureUntilFoundUsingPush) . const
+{-# INLINE simpleMainForExploreTreeImpureUntilFoundUsingPush #-}
 
 --------------------------------------------------------------------------------
 ------------------------------ Utility functions -------------------------------
@@ -1046,7 +1071,7 @@ dispatchToMainFunction f driver notifyTerminated tree =
         default_terminfo
         (const notifyTerminated)
         (const tree)
-{- INLINE dispatchToMainFunction -}
+{-# INLINE dispatchToMainFunction #-}
 
 checkpoint_configuration_term :: Term (Maybe CheckpointConfiguration)
 checkpoint_configuration_term =
