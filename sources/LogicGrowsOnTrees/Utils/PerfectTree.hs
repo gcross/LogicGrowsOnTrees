@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
 {-| This modules contains utility functions for constructing perfect trees for
@@ -21,7 +23,10 @@ module LogicGrowsOnTrees.Utils.PerfectTree
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (MonadPlus,msum)
 
+import Data.Derive.Serialize
+import Data.DeriveTH
 import Data.List (genericReplicate)
+import Data.Serialize
 import Data.Word (Word)
 
 import System.Console.CmdTheLine
@@ -39,7 +44,7 @@ import LogicGrowsOnTrees.Utils.WordSum
 {-| Newtype wrapper for arities that has an 'ArgVal' instance that enforces that
     the arity be at least 2.
  -}
-newtype Arity = Arity { getArity :: Word } deriving (Eq,Show)
+newtype Arity = Arity { getArity :: Word } deriving (Eq,Show,Serialize)
 
 instance ArgVal Arity where
     converter = (parseArity,prettyArity)
@@ -64,6 +69,7 @@ data ArityAndDepth = ArityAndDepth
     {   arity :: !Word
     ,   depth :: !Word
     } deriving (Eq, Show)
+$( derive makeSerialize ''ArityAndDepth )
 
 {-| Constructs a configuration term that expects the arity and depth to be at
     the given command line argument positions.
