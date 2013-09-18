@@ -136,6 +136,7 @@ runWorker exploration_mode purity tree receiveMessage sendMessage =
         ,Handler $ \e → case e of
             ConnectionLost → debugM "Connection to supervisor was lost before this process had finished."
         ]
+{-# INLINE runWorker #-}
 
 {-| The same as 'runWorker', but it lets you provide handles through which the
     messages will be sent and received. (Note that the reading and writing
@@ -159,3 +160,4 @@ runWorkerUsingHandles exploration_mode purity tree receive_handle send_handle =
         tree
         (receive receive_handle)
         (withMVar send_lock . const . send send_handle)
+{-# INLINE runWorkerUsingHandles #-}
