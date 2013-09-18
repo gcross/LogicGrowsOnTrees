@@ -142,6 +142,7 @@ driver = Driver $ \DriverParameters{..} → do
         ,   optDoc = "This *required* option specifies the number of worker processes to spawn."
         }
         ) Nothing )
+{-# INLINE driver #-}
 
 --------------------------------------------------------------------------------
 ---------------------------------- Controller ----------------------------------
@@ -277,6 +278,7 @@ runSupervisor
         )
         starting_progress
         controller
+{-# INLINE runSupervisor #-}
 
 {-| Explores the given tree using multiple processes to achieve parallelism.
 
@@ -366,6 +368,7 @@ runExplorer
             return $ Just (configuration,termination_result)
   where
     sentinel = ["explorer","worker","bee"]
+{-# INLINE runExplorer #-}
 
 --------------------------------------------------------------------------------
 ------------------------------- Utility funtions -------------------------------

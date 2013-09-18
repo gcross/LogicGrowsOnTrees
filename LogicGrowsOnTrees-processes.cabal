@@ -78,6 +78,24 @@ Executable count-all-nqueens-solutions
     if flag(pattern-warnings)
         GHC-Options: -fwarn-incomplete-patterns
 
+Executable count-all-trivial-tree-leaves
+    Main-is: count-all-trivial-tree-leaves.hs
+    Hs-source-dirs: examples
+    Build-depends:
+        LogicGrowsOnTrees-processes,
+        LogicGrowsOnTrees == 1.0.*,
+        base > 4 && < 5,
+        cereal == 0.3.*,
+        cmdtheline == 0.2.*
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+    if flag(pattern-warnings)
+        GHC-Options: -fwarn-incomplete-patterns
+
 Test-Suite tests
     Type: exitcode-stdio-1.0
     Main-is: tests.hs
