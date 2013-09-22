@@ -34,6 +34,8 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , fork
     , getCurrentProgressAsync
     , getCurrentProgress
+    , getCurrentStatisticsAsync
+    , getCurrentStatistics
     , getNumberOfWorkersAsync
     , getNumberOfWorkers
     , requestProgressUpdateAsync

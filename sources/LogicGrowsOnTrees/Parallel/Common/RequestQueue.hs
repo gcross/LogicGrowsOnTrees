@@ -32,6 +32,7 @@ module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     -- * Functions
     -- ** Synchronized requests
     , getCurrentProgress
+    , getCurrentStatistics
     , getNumberOfWorkers
     , requestProgressUpdate
     , syncAsync
@@ -71,7 +72,12 @@ import Data.IORef (IORef,atomicModifyIORef,readIORef,newIORef)
 import Data.List (delete)
 
 import qualified LogicGrowsOnTrees.Parallel.Common.Supervisor as Supervisor
-import LogicGrowsOnTrees.Parallel.Common.Supervisor (SupervisorFullConstraint,SupervisorMonad,SupervisorProgram(..))
+import LogicGrowsOnTrees.Parallel.Common.Supervisor
+    (RunStatistics
+    ,SupervisorFullConstraint
+    ,SupervisorMonad
+    ,SupervisorProgram(..)
+    )
 import LogicGrowsOnTrees.Parallel.ExplorationMode
 
 --------------------------------------------------------------------------------
@@ -86,6 +92,8 @@ class (HasExplorationMode m, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad m 
     fork :: m () → m ThreadId
     {-| Request the current progress, invoking the given callback with the result;  see 'getCurrentProgress' for the synchronous version. -}
     getCurrentProgressAsync :: (ProgressFor (ExplorationModeFor m) → IO ()) → m ()
+    {-| Get the current run statistics. -}
+    getCurrentStatisticsAsync :: (RunStatistics → IO ()) → m ()
     {-| Request the number of workers, invoking the given callback with the result;  see 'getNumberOfWorkers' for the synchronous version. -}
     getNumberOfWorkersAsync :: (Int → IO ()) → m ()
     {-| Request that a global progress update be performed, invoking the given callback with the result;  see 'requestProgressUpdate' for the synchronous version. -}
@@ -120,6 +128,7 @@ instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueue
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
     fork m = ask >>= flip forkControllerThread' m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
+    getCurrentStatisticsAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentStatistics
     getNumberOfWorkersAsync = (ask >>=) . getQuantityAsync Supervisor.getNumberOfWorkers
     requestProgressUpdateAsync receiveUpdatedProgress =
         ask
@@ -140,6 +149,10 @@ instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueue
 {-| Like 'getCurrentProgressAsync', but blocks until the result is ready. -}
 getCurrentProgress :: RequestQueueMonad m ⇒ m (ProgressFor (ExplorationModeFor m))
 getCurrentProgress = syncAsync getCurrentProgressAsync
+
+{-| Like 'getCurrentStatisticsAsync', but blocks until the result is ready. -}
+getCurrentStatistics :: RequestQueueMonad m ⇒ m RunStatistics
+getCurrentStatistics = syncAsync getCurrentStatisticsAsync
 
 {-| Like 'getNumberOfWorkersAsync', but blocks until the result is ready. -}
 getNumberOfWorkers :: RequestQueueMonad m ⇒ m Int
