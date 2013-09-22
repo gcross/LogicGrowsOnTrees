@@ -497,7 +497,7 @@ abortSupervisorWithReason ::  -- {{{
 abortSupervisorWithReason reason = AbortMonad $
     (SupervisorOutcome
         <$> (return reason)
-        <*>  getCurrentStatistics
+        <*>  getCurrentStatistics'
         <*> (Set.toList <$> use known_workers)
     ) >>= abort
 -- }}}
@@ -858,14 +858,14 @@ getCurrentProgress :: SupervisorMonadConstraint m ⇒ ContextMonad exploration_m
 getCurrentProgress = use current_progress
 -- }}}
 
-getCurrentStatistics :: -- {{{
+getCurrentStatistics' :: -- {{{
     ( SupervisorFullConstraint worker_id m
     , SupervisorMonadConstraint m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     , SupervisorStateConstraint exploration_mode worker_id m'
     ) ⇒
     m' RunStatistics
-getCurrentStatistics = do
+getCurrentStatistics' = do
     runEndTime ← view current_time
     runStartTime ← use (supervisor_occupation_statistics . start_time)
     let runWallTime = runEndTime `diffUTCTime` runStartTime
@@ -915,6 +915,10 @@ getCurrentStatistics = do
             (use $ instantaneous_workload_steal_time . current_average_value)
             (use instantaneous_workload_steal_time_statistics)
     return RunStatistics{..}
+-- }}}
+
+getCurrentStatistics :: SupervisorFullConstraint worker_id m ⇒ ContextMonad exploration_mode worker_id m RunStatistics -- {{{
+getCurrentStatistics = getCurrentStatistics'
 -- }}}
 
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ ContextMonad exploration_mode worker_id m Int -- {{{
@@ -1265,7 +1269,7 @@ runSupervisorStartingFrom :: -- {{{
     (∀ α. AbortMonad exploration_mode worker_id m α) →
     m (SupervisorOutcomeFor exploration_mode worker_id)
 runSupervisorStartingFrom exploration_mode starting_progress callbacks program = liftIO Clock.getCurrentTime >>= \start_time →
-    flip runReaderT (SupervisorConstants callbacks undefined exploration_mode)
+    flip runReaderT (SupervisorConstants callbacks (error "The current time was not set when entering the Supervisor module.") exploration_mode)
     .
     flip evalStateT
         (SupervisorState

@@ -385,7 +385,7 @@ getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
 getCurrentStatistics ::
     SupervisorFullConstraint worker_id m ⇒
     SupervisorMonad exploration_mode worker_id m RunStatistics
-getCurrentStatistics = SupervisorMonad Implementation.getCurrentStatistics
+getCurrentStatistics = wrapIntoSupervisorMonad Implementation.getCurrentStatistics
 
 {-| Gets the number of workers that are currently present in the system. -}
 getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m Int
