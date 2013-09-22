@@ -1504,9 +1504,9 @@ removeFileIfExists path =
 writeStatisticsToLog :: Priority → Tense → RunStatistics → [[Statistic]] → IO ()
 writeStatisticsToLog level =
     mapM_ (\(name,output) →
-        logM ("LogicGrowsOnTrees.Parallel.Main." ++ name)
+        logM "LogicGrowsOnTrees.Parallel.Main"
              level
-             output
+             (name ++ ": " ++ output)
     )
     .**
     generateStatistics
