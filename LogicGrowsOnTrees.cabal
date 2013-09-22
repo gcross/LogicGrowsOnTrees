@@ -237,6 +237,7 @@ Library
         pretty == 1.1.*,
         PSQueue == 1.1.*,
         sequential-index == 0.2.*,
+        split == 0.2.*,
         stm >= 2.3 && < 2.5,
         time == 1.4.*,
         transformers >= 0.2 && < 0.4,

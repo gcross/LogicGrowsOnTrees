@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -98,32 +99,40 @@ module LogicGrowsOnTrees.Parallel.Main
 import Prelude hiding (readFile,writeFile)
 
 import Control.Applicative ((<$>),(<*>),pure)
-import Control.Concurrent (ThreadId,killThread,threadDelay)
+import Control.Arrow ((&&&))
+import Control.Concurrent (ThreadId,threadDelay)
 import Control.Exception (finally,handleJust,onException)
-import Control.Monad (forever,liftM,mplus,when)
+import Control.Monad (forever,liftM,mplus,when,void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Tools (ifM)
 
 import Data.ByteString.Lazy (readFile,writeFile)
 import Data.Char (toLower)
-import Data.Composition ((.*))
+import Data.Composition ((.*),(.**))
 import Data.Derive.Serialize
 import Data.DeriveTH
+import Data.Function (on)
 import Data.Functor.Identity (Identity)
-import Data.Maybe (catMaybes)
+import Data.List (find,intercalate,nub)
+import Data.List.Split (splitOn)
 import Data.Monoid (Monoid(..))
+import Data.Ord (comparing)
 import Data.Prefix.Units (FormatMode(FormatSiAll),formatValue,unitName)
 import Data.Serialize
 
 import System.Console.CmdTheLine
 import System.Directory (doesFileExist,removeFile,renameFile)
 import System.Environment (getProgName)
-import System.IO (hPutStr,hPutStrLn,stderr)
+import System.IO (hFlush,hPutStrLn,stderr,stdout)
 import System.IO.Error (isDoesNotExistError)
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(..),setLevel,rootLoggerName,updateGlobalLogger)
+import System.Log.Formatter (simpleLogFormatter)
+import System.Log.Handler (setFormatter)
+import System.Log.Handler.Simple (streamHandler)
+import System.Log.Logger (Priority(..),logM,rootLoggerName,setHandlers,setLevel,updateGlobalLogger)
 import System.Log.Logger.TH
 
+import Text.PrettyPrint (text)
 import Text.Printf (printf)
 
 import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
@@ -149,6 +158,21 @@ deriveLoggers "Logger" [INFO,NOTICE]
 ------------------------------------ Types -------------------------------------
 --------------------------------------------------------------------------------
 
+type Tense = String → String → String
+
+---------------------------------- Statistic -----------------------------------
+
+data Statistic = Statistic
+    {   statisticLongName :: String
+    ,   statisticShortName :: String
+    ,   statisticDescription :: String
+    ,   statisticApplication :: Tense → RunStatistics → String
+    }
+instance Eq Statistic where
+    (==) = (==) `on` statisticLongName
+instance Ord Statistic where
+    compare = comparing statisticLongName
+
 -------------------------------- Configuration ---------------------------------
 
 data CheckpointConfiguration = CheckpointConfiguration
@@ -158,30 +182,26 @@ data CheckpointConfiguration = CheckpointConfiguration
 
 data LoggingConfiguration = LoggingConfiguration
     {   log_level :: Priority
+    ,   maybe_log_format :: Maybe String
     } deriving (Eq,Show)
-instance Serialize LoggingConfiguration where
-    put = put . show . log_level
-    get = LoggingConfiguration . read <$> get
+instance Serialize Priority where
+    put = put . show
+    get = read <$> get
+$( derive makeSerialize ''LoggingConfiguration )
 
 data StatisticsConfiguration = StatisticsConfiguration
-    {   show_wall_times :: !Bool
-    ,   show_supervisor_occupation :: !Bool
-    ,   show_supervisor_monad_occupation :: !Bool
-    ,   show_supervisor_calls :: !Bool
-    ,   show_worker_occupation :: !Bool
-    ,   show_worker_wait_times :: !Bool
-    ,   show_steal_wait_times :: !Bool
-    ,   show_numbers_of_waiting_workers :: !Bool
-    ,   show_numbers_of_available_workloads :: !Bool
-    ,   show_instantaneous_workload_request_rates :: !Bool
-    ,   show_instantaneous_workload_steal_times :: !Bool
-    } deriving (Eq,Show)
+    {   end_stats_configuration :: [[Statistic]]
+    ,   log_end_stats_configuration :: Bool
+    ,   log_stats_configuration :: [[Statistic]]
+    ,   log_stats_level_configuration :: Priority
+    ,   log_stats_interval_configuration :: Float
+    }
 
 data SupervisorConfiguration = SupervisorConfiguration
     {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
     ,   maybe_workload_buffer_size_configuration :: Maybe Int
     ,   statistics_configuration :: StatisticsConfiguration
-    } deriving (Eq,Show)
+    }
 
 data SharedConfiguration tree_configuration = SharedConfiguration
     {   logging_configuration :: LoggingConfiguration
@@ -300,6 +320,21 @@ instance ArgVal Priority where
         >>=
         \level → let name = show level
                  in return (name,level) `mplus` return (map toLower name,level)
+
+instance ArgVal [Statistic] where
+    converter = (parse,pretty)
+      where
+        parse = go [] . splitOn ","
+          where
+            go stats [] = Right . reverse . nub $ stats
+            go _ ("all":_) = Right statistics
+            go stats (name:rest) =
+                case find (\Statistic{..} → statisticLongName == name || statisticShortName == name) statistics of
+                    Just stat → go (stat:stats) rest
+                    Nothing → Left . text $ "unrecognized statistic '" ++ show name ++ "'"
+        pretty stats
+          | length stats == length statistics = text "all"
+          | otherwise = text . intercalate "," . map statisticLongName $ stats
 
 --------------------------------------------------------------------------------
 -------------------------------- Main functions --------------------------------
@@ -747,7 +782,7 @@ genericMain ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info notifyTerminated_ constructTree_ =
+genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_ constructTree_ =
     run DriverParameters{..}
   where
     constructExplorationMode = constructExplorationMode_ . tree_configuration
@@ -757,7 +792,30 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
             <$> checkpoint_configuration_term
             <*> maybe_workload_buffer_size_configuration_term
             <*> statistics_configuration_term
-    initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} =
+    program_info = program_info_
+        { man = man program_info_
+                ++
+                [S "Log Formatting"
+                ,P "The following are the variables you can use in the format string:"
+                ,I "$msg" "The actual log message"
+                ,I "$loggername" "The name of the logger"
+                ,I "$prio" "The priority level of the message"
+                ,I "$tid" "The thread ID"
+                ,I "$pid" "Process ID (Not available on windows)"
+                ,I "$time" "The current time"
+                ,I "$utcTime" "The current time in UTC Time"
+                ]
+                ++
+                [S "Statistics",P "Each statistic has a long-form name and an abbreviated name (in parentheses) shown below; you may use either when specifying it"]
+                ++
+                map (I <$> (printf "%s (%s)" <$> statisticLongName <*> statisticShortName) <*> statisticDescription) statistics
+        }
+    initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} = do
+        case maybe_log_format of
+            Nothing → return ()
+            Just log_format → do
+                handler ← flip setFormatter (simpleLogFormatter log_format) <$> streamHandler stdout log_level
+                updateGlobalLogger rootLoggerName $ setHandlers [handler]
         updateGlobalLogger rootLoggerName (setLevel log_level)
     constructTree = constructTree_ . tree_configuration
     getStartingProgress shared_configuration SupervisorConfiguration{..} =
@@ -785,8 +843,22 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                     Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint
                     _ → return ()
       where
+        StatisticsConfiguration{..} = statistics_configuration
         doEndOfRun = do
-            showStatistics statistics_configuration runStatistics
+            if log_end_stats_configuration
+                then writeStatisticsToLog
+                        log_stats_level_configuration
+                        pastTense
+                        runStatistics
+                        end_stats_configuration
+                else mapM_ (hPutStrLn stderr)
+                        .
+                        map snd
+                        .
+                        generateStatistics pastTense runStatistics
+                        $
+                        end_stats_configuration
+            hFlush stderr
             notifyTerminated_ tree_configuration run_outcome
 
     constructController = const controllerLoop
@@ -1062,16 +1134,207 @@ mainParser term term_info =
 ----------------------------------- Internal -----------------------------------
 --------------------------------------------------------------------------------
 
-default_terminfo :: TermInfo
-default_terminfo = defTI { termDoc = "LogicGrowsOnTrees program" }
+---------------------------------- Statistics ----------------------------------
 
-dispatchToMainFunction f driver notifyTerminated tree =
-    f   driver
-        (pure ())
-        default_terminfo
-        (const notifyTerminated)
-        (const tree)
-{-# INLINE dispatchToMainFunction #-}
+statistics :: [Statistic]
+statistics =
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    [Statistic "walltimes" "times"
+        "the starting, ending, and duration (wall) time of the run"
+     (\tense RunStatistics{..} →
+        let total_time = realToFrac runWallTime :: Float
+        in tense
+          (printf "The run started at %s, and so far it has run for %sseconds."
+            (show runStartTime)
+            (showWithUnitPrefix total_time)
+          )
+          (printf "The run started at %s, ended at %s, and took %sseconds."
+            (show runStartTime)
+            (show runEndTime)
+            (showWithUnitPrefix total_time)
+          )
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "supervisor-occupation" "supocc"
+        "the percentage of the time that the supervisor was occupied"
+     (\tense RunStatistics{..} →
+        printf "The supervior %s occupied for %.2f%% of the time so far, of which %.2f%% %s spent inside the SupervisorMonad."
+          (tense "has been" "was")
+          (runSupervisorOccupation*100)
+          (runSupervisorOccupation/runSupervisorMonadOccupation*100)
+          (tense "has been" "was")
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "supervisor-calls" "supcalls"
+        "the number of calls made to functions in the Supervisor module as well as the average time per call"
+     (\tense RunStatistics{..} →
+        printf "There %s %i calls made to functions in the Supervisor module, each of which took an average of %sseconds to complete."
+          (tense "have been" "were")
+          runNumberOfCalls
+          (showWithUnitPrefix runAverageTimePerCall)
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "worker-occupation" "workocc"
+        "the average percentage of the time that the workers were occupied"
+     (\tense RunStatistics{..} →
+        printf "Workers %s occupied for %.2f%% of the time on average."
+          (tense "have been" "were")
+          (runWorkerOccupation*100)
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "worker-waiting-times" "workwait"
+        "statistics about the amount of time that it took for a worker to obtain a new workload after finishing a workload"
+     (\tense RunStatistics{..} →
+        let FunctionOfTimeStatistics{..} = runWorkerWaitTimes
+            total_time = realToFrac runWallTime :: Float
+        in if timeCount == 0
+          then
+            printf "At no point %s a worker receive%s a new workload after finishing its current workload."
+              (tense "has" "did")
+              (tense "d" "")
+          else
+            if timeMax == 0
+              then
+                printf "Workers %scompleted their workload and obtained a new one %i times and never once has any had to wait to receive a new workload."
+                  (tense "have " "")
+                  timeCount
+              else
+                printf (
+                  intercalate ","
+                    ["Workers %scompleted their task and obtained a new workload %i times with an average of one every %sseconds or %.1g enqueues/second."
+                    ,"The minimum waiting time %s %sseconds, and the maximum waiting time %s %sseconds."
+                    ,"On average, a worker %shad to wait %sseconds +/- %sseconds (std. dev) for a new workload."
+                    ]
+                )
+                  (tense "have " "")
+                  timeCount
+                  (showWithUnitPrefix $ total_time / fromIntegral timeCount)
+                  (fromIntegral timeCount / total_time)
+                  (tense "has been" "was")
+                  (showWithUnitPrefix timeMin)
+                  (tense "has been" "was")
+                  (tense "has " "")
+                  (showWithUnitPrefix timeMax)
+                  (showWithUnitPrefix timeAverage)
+                  (showWithUnitPrefix timeStdDev)
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "steal-waiting-times" "stealwait"
+        "statistics about the amount of time needed to steal a workload"
+     (\tense RunStatistics{..} →
+        let IndependentMeasurementsStatistics{..} = runStealWaitTimes
+            total_time = realToFrac runWallTime :: Float
+        in if statCount == 0
+          then
+            printf "No workloads %s stolen."
+                (tense "have been" "were")
+          else
+            printf (
+              intercalate ","
+                ["Workloads %s stolen %i times with an average of %sseconds between each steal or %.1g steals/second."
+                ,"The minimum waiting time for a steal %s %sseconds, and the maximum waiting time hasbeen %sseconds."
+                ,"On average, it %s %sseconds +/- %sseconds (std. dev) to steal a workload."
+                ]
+            )
+              (tense "have been" "were")
+              statCount
+              (showWithUnitPrefix $ total_time / fromIntegral statCount)
+              (fromIntegral statCount / total_time)
+              (tense "has been" "was")
+              (showWithUnitPrefix statMin)
+              (showWithUnitPrefix statMax)
+              (tense "has taken" "took")
+              (showWithUnitPrefix statAverage)
+              (showWithUnitPrefix statStdDev)
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "waiting-worker-count" "waitworkcnt"
+        "statistics about the number of waiting workers"
+     (\tense RunStatistics{..} →
+        let FunctionOfTimeStatistics{..} = runWaitingWorkerStatistics
+        in if timeMax == 0
+          then
+            printf "No worker %s to wait for a workload to become available."
+              (tense "has had" "ever had")
+          else if timeMin == 0
+            then
+              printf "On average, %.1f +/ - %.1f (std. dev) workers %s waiting for a workload at any given time;  never more than %i."
+                timeAverage
+                timeStdDev
+                (tense "have been" "were")
+                timeMax
+            else
+              printf "On average, %.1f +/ - %.1f (std. dev) workers %s waiting for a workload at any given time;  never more than %i nor fewer than %i."
+                timeAverage
+                timeStdDev
+                (tense "have been" "were")
+                timeMax
+                timeMin
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "available-workload-count" "avlwldcnt"
+        "This option will cause statistics about the number of available workloads to be printed to standard error after the program terminates."
+     (\tense RunStatistics{..} →
+        let FunctionOfTimeStatistics{..} = runAvailableWorkloadStatistics
+        in if timeMax == 0
+            then
+              printf "No workload %s to wait for an available worker."
+                (tense "has had" "ever had")
+            else if timeMin == 0
+              then
+                printf "On average, %.1f +/ - %.1f (std. dev) workloads %s waiting for a worker at any given time;  never more than %i."
+                  timeAverage
+                  timeStdDev
+                  (tense "have been" "were")
+                  timeMax
+              else
+                printf "On average, %.1f +/ - %.1f (std. dev) workloads %s waiting for a worker at any given time;  never more than %i nor fewer than %i."
+                  timeAverage
+                  timeStdDev
+                  (tense "have been" "were")
+                  timeMax
+                  timeMin
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "instant-workload-request-rate" "instworkreq"
+        "statistics about the (roughly) instantaneous rate at which workloads were requested by finished workers  (obtained via exponential smoothing over a time scale of one second)"
+     (\tense RunStatistics{..} →
+        let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadRequestRateStatistics
+        in printf "On average, the instantanenous rate at which workloads %s being requested %s %.1f +/ - %.1f (std. dev) requests per second;  the rate %s below %.1f nor %s above %.1f."
+          (tense "are" "were")
+          (tense "is" "was")
+          timeAverage
+          timeStdDev
+          (tense "has never fallen" "never fell")
+          timeMin
+          (tense "risen" "rose")
+          timeMax
+     )
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "instant-workload-steal-times" "instwldsteal"
+        "statistics about the (roughly) instantaneous amount of time that it took to steal a workload (obtained via exponential smoothing over a time scale of one second"
+     (\tense RunStatistics{..} →
+        let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadStealTimeStatistics
+        in printf "On average, the instantaneous time to steal a workload %s %sseconds +/ - %sseconds (std. dev);  this time interval %s below %sseconds nor %s above %sseconds."
+          (tense "has been" "was")
+          (showWithUnitPrefix timeAverage)
+          (showWithUnitPrefix timeStdDev)
+          (tense "has never fallen" "never fell")
+          (showWithUnitPrefix timeMin)
+          (tense "risen" "rose")
+          (showWithUnitPrefix timeMax)
+     )
+    ]
+    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  where
+    showWithUnitPrefix :: Real n ⇒ n → String
+    showWithUnitPrefix 0 = "0 "
+    showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
+      where
+        (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
+
+
+----------------------------- Configuration terms ------------------------------
 
 checkpoint_configuration_term :: Term (Maybe CheckpointConfiguration)
 checkpoint_configuration_term =
@@ -1088,44 +1351,85 @@ checkpoint_configuration_term =
             ,   optDoc = "This specifies the time between checkpoints (in seconds, decimals allowed); it is ignored if checkpoint file is not specified."
             }
             ) 60)
-
 logging_configuration_term :: Term LoggingConfiguration
 logging_configuration_term =
     LoggingConfiguration
-    <$> value (flip opt (
-        (optInfo ["l","log-level"])
-        {   optName = "LEVEL"
-        ,   optDoc = "This specifies the upper bound (inclusive) on the importance of the messages that will be logged;  it must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, or EMERGENCY."
-        }
-        ) WARNING)
+    <$> (value . opt WARNING $
+         (optInfo ["l","log-level"])
+         {   optName = "LEVEL"
+         ,   optDoc = "This specifies the upper bound (inclusive) on the importance of the messages that will be logged;  it must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, or EMERGENCY."
+         }
+        )
+    <*> (value . opt Nothing $
+         (optInfo ["log-format"])
+         {   optName = "FORMAT"
+         ,   optDoc = "This specifies the format of logged messages; see the Log Formatting section for more details."
+         }
+        )
 
 statistics_configuration_term :: Term StatisticsConfiguration
 statistics_configuration_term =
-    (\show_all → if show_all then const (StatisticsConfiguration True True True True True True True True True True True) else id)
-    <$> value (flag ((optInfo ["show-all"]) { optDoc ="This option will cause *all* run statistic to be printed to standard error after the program terminates." }))
-    <*> (StatisticsConfiguration
-        <$> value (flag ((optInfo ["show-walltimes"]) { optDoc ="This option will cause the starting, ending, and duration wall time of the run to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-supervisor-occupation"]) { optDoc ="This option will cause the supervisor occupation percentage to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-supervisor-monad-occupation"]) { optDoc ="This option will cause the supervisor monad occupation percentage to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-supervisor-calls"]) { optDoc ="This option will cause the number of supervisor calls and average time per supervisor call to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-worker-occupation"]) { optDoc ="This option will cause the worker occupation percentage to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-worker-wait-times"]) { optDoc ="This option will cause statistics about the worker wait times to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-steal-wait-times"]) { optDoc ="This option will cause statistics about the steal wait times to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-numbers-of-waiting-workers"]) { optDoc ="This option will cause statistics about the number of waiting workers to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-numbers-of-available-workloads"]) { optDoc ="This option will cause statistics about the number of available workloads to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-workload-request-rate"]) { optDoc ="This option will cause statistics about the (roughly) instantaneous rate at which workloads are requested by finished works to be printed to standard error after the program terminates." }))
-        <*> value (flag ((optInfo ["show-workload-steal-time"]) { optDoc ="This option will cause statistics about the (roughly) instantaneous amount of time that it took to steal a workload to be printed to standard error after the program terminates." }))
+    StatisticsConfiguration
+    <$> (value . optAll [] $
+         (optInfo ["s","end-stats"])
+         {   optName = "STATS"
+         ,   optDoc = "A comma-separated list of statistics to be printed to stderr at the end of the run;  you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
+         }
+        )
+    <*> (value . flag $
+         (optInfo ["log-end-stats"])
+         {   optDoc = "If present, then the end-of-run stats are sent to the log instead of stderr."
+         }
+        )
+    <*> (value . optAll [] $
+         (optInfo ["log-stats"])
+         {   optName = "STATS"
+         ,   optDoc = "A comma-separated list of statistics to be regularly logged during the run level;  you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
+         }
+        )
+    <*> (value . opt NOTICE $
+         (optInfo ["log-stats-level"])
+         {   optName = "STATS"
+         ,   optDoc = "The level at which to log the stats."
+         }
+        )
+    <*> (value . opt 60 $
+         (optInfo ["log-stats-interval"])
+         {   optName = "SECONDS"
+         ,   optDoc = "The time between logging statistics (in seconds, decimals allowed); it is ignored if no statistics have been enabled for logging."
+         }
         )
 
 maybe_workload_buffer_size_configuration_term :: Term (Maybe Int)
 maybe_workload_buffer_size_configuration_term =
-    value (opt Nothing ((optInfo ["buffer-size"]) { optName = "SIZE", optDoc = "This option sets the size of the workload buffer, which contains stolen workloads that are held at the supervisor so that if a worker needs a new workload it can be given one immediately rather than having to wait for a new workload to be stolen.  This setting should be large enough that a request for a new workload can always be answered immediately using a workload from the buffer, which is roughly a function of the product of the number of workloads requested per second and the time needed to steal a new workload (both of which are server statistics than you can request to see upon completions).  If you are not having problems with scaling, then you can ignore this option (it defaults to 4)." }))
+    value (opt Nothing ((optInfo ["buffer-size"])
+        { optName = "SIZE"
+        , optDoc = unwords
+            ["This option sets the size of the workload buffer which contains"
+            ,"stolen workloads that are held at the supervisor so that if a"
+            ,"worker needs a new workload it can be given one immediately rather"
+            ,"than having to wait for a new workload to be stolen. This setting"
+            ,"should be large enough that a request for a new workload can"
+            ,"always be answered immediately using a workload from the buffer,"
+            ,"which is roughly a function of the product of the number of"
+            ,"workloads requested per second and the time needed to steal a new"
+            ,"workload (both of which are server statistics than you can request"
+            ,"to see upon completions). If you are not having problems with"
+            ,"scaling, then you can ignore this option (it defaults to 4)."
+            ]
+        }
+    ))
 
 makeSharedConfigurationTerm :: Term tree_configuration → Term (SharedConfiguration tree_configuration)
 makeSharedConfigurationTerm tree_configuration_term =
     SharedConfiguration
         <$> logging_configuration_term
         <*> tree_configuration_term
+
+
+
+
+------------------------------------ Loops -------------------------------------
 
 checkpointLoop ::
     ( RequestQueueMonad m
@@ -1134,27 +1438,61 @@ checkpointLoop ::
 checkpointLoop CheckpointConfiguration{..} = forever $ do
     liftIO $ threadDelay delay
     requestProgressUpdate >>= writeCheckpointFile checkpoint_path
+    noticeM $ "Checkpoint written to " ++ show checkpoint_path
   where
     delay = round $ checkpoint_interval * 1000000
+
+statisticsLoop :: RequestQueueMonad m ⇒ [[Statistic]] → Priority → Float → m α
+statisticsLoop stats level interval = forever $ do
+    liftIO $ threadDelay delay
+    run_statistics ← getCurrentStatistics
+    liftIO $
+        writeStatisticsToLog
+            level
+            pastPerfectTense
+            run_statistics
+            stats
+  where
+    delay = round $ interval * 1000000
 
 controllerLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ SupervisorConfiguration → m ()
-controllerLoop SupervisorConfiguration{..} = do
-    maybe (return ()) setWorkloadBufferSize $ maybe_workload_buffer_size_configuration
-    maybe_checkpoint_thread_id ← maybeForkIO checkpointLoop maybe_checkpoint_configuration
-    case catMaybes
-        [maybe_checkpoint_thread_id
-        ]
-     of [] → return ()
-        thread_ids → liftIO $
-            (forever $ threadDelay 3600000000)
-            `finally`
-            (mapM_ killThread thread_ids)
+controllerLoop SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},..} = do
+    maybe (return ()) setWorkloadBufferSize maybe_workload_buffer_size_configuration
+    maybe (return ()) (void . fork . checkpointLoop) maybe_checkpoint_configuration
+    when (not . null $ log_stats_configuration) $
+        void . fork $ statisticsLoop log_stats_configuration log_stats_level_configuration log_stats_interval_configuration
 
-maybeForkIO :: RequestQueueMonad m ⇒ (α → m ()) → Maybe α → m (Maybe ThreadId)
-maybeForkIO loop = maybe (return Nothing) (liftM Just . fork . loop)
+-------------------------------- Miscellaneous ---------------------------------
+
+default_terminfo :: TermInfo
+default_terminfo = defTI { termDoc = "LogicGrowsOnTrees program" }
+
+dispatchToMainFunction f driver notifyTerminated tree =
+    f   driver
+        (pure ())
+        default_terminfo
+        (const notifyTerminated)
+        (const tree)
+{-# INLINE dispatchToMainFunction #-}
+
+generateStatistics :: Tense → RunStatistics → [[Statistic]] → [(String,String)]
+generateStatistics tense run_statistics =
+    map (
+        statisticLongName
+        &&&
+        (\(statisticApplication → apply) → apply tense run_statistics)
+    )
+    .
+    nub
+    .
+    concat
+
+pastPerfectTense, pastTense :: Tense
+pastPerfectTense x _ = x
+pastTense _ x = x
 
 removeFileIfExists :: FilePath → IO ()
 removeFileIfExists path =
@@ -1163,146 +1501,15 @@ removeFileIfExists path =
         (\_ → return ())
         (removeFile path)
 
-showStatistics :: MonadIO m ⇒ StatisticsConfiguration → RunStatistics → m ()
-showStatistics StatisticsConfiguration{..} RunStatistics{..} = liftIO $ do
-    let total_time :: Double
-        total_time = realToFrac runWallTime
-    when show_wall_times $
-        hPutStrLn stderr $
-            printf "Run started at %s, ended at %s, and took %sseconds.\n"
-                (show runStartTime)
-                (show runEndTime)
-                (showWithUnitPrefix total_time)
-    hPutStr stderr $
-        case (show_supervisor_occupation,show_supervisor_monad_occupation) of
-            (True,False) → printf "Supervior was occupied for %.2f%% of the run.\n\n" (runSupervisorOccupation*100)
-            (False,True) → printf "Supervisor ran inside the SupervisorMonad for %.2f%% of the run.\n\n" (runSupervisorMonadOccupation*100)
-            (True,True) → printf "Supervior was occupied for %.2f%% of the run, of which %.2f%% was spent inside the SupervisorMonad.\n\n" (runSupervisorOccupation*100) (runSupervisorOccupation/runSupervisorMonadOccupation*100)
-            _ → ""
-    when show_supervisor_calls $
-        hPutStrLn stderr $
-            printf "%i calls were made into the supervisor monad, and each took an average of %sseconds.\n"
-                runNumberOfCalls
-                (showWithUnitPrefix runAverageTimePerCall)
-    when show_worker_occupation $
-        hPutStrLn stderr $
-            printf "Workers were occupied %.2f%% of the time on average.\n"
-                (runWorkerOccupation*100)
-    when show_worker_wait_times $ do
-        let FunctionOfTimeStatistics{..} = runWorkerWaitTimes
-        hPutStrLn stderr $
-          if timeCount == 0
-            then
-              "At no point did a worker receive a new workload after finishing a workload."
-            else
-              if timeMax == 0
-                then
-                  printf "Workers completed their task and obtained a new workload %i times and never had to wait to receive the new workload."
-                    timeCount
-                else
-                  printf
-                    (unlines
-                        ["Workers completed their task and obtained a new workload %i times with an average of one every %sseconds or %.1g enqueues/second."
-                        ,"The minimum waiting time was %sseconds, and the maximum waiting time was %sseconds."
-                        ,"On average, a worker had to wait %sseconds +/- %sseconds (std. dev) for a new workload."
-                        ]
-                    )
-                    timeCount
-                    (showWithUnitPrefix $ total_time / fromIntegral timeCount)
-                    (fromIntegral timeCount / total_time)
-                    (showWithUnitPrefix timeMin)
-                    (showWithUnitPrefix timeMax)
-                    (showWithUnitPrefix timeAverage)
-                    (showWithUnitPrefix timeStdDev)
-    when show_steal_wait_times $ do
-        let IndependentMeasurementsStatistics{..} = runStealWaitTimes
-        hPutStrLn stderr $
-          if statCount == 0
-            then
-              "No workloads were stolen."
-            else
-              printf
-                (unlines
-                    ["Workloads were stolen %i times with an average of %sseconds between each steal or %.1g steals/second."
-                    ,"The minimum waiting time for a steal was %sseconds, and the maximum waiting time was %sseconds."
-                    ,"On average, it took %sseconds +/- %sseconds (std. dev) to steal a workload."
-                    ]
-                )
-                statCount
-                (showWithUnitPrefix $ total_time / fromIntegral statCount)
-                (fromIntegral statCount / total_time)
-                (showWithUnitPrefix statMin)
-                (showWithUnitPrefix statMax)
-                (showWithUnitPrefix statAverage)
-                (showWithUnitPrefix statStdDev)
-    when show_numbers_of_waiting_workers $ do
-        let FunctionOfTimeStatistics{..} = runWaitingWorkerStatistics
-        hPutStrLn stderr $
-          if timeMax == 0
-            then
-              printf "No worker ever had to wait for a workload to become available.\n"
-            else if timeMin == 0
-              then
-                printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never more than %i.\n"
-                  timeAverage
-                  timeStdDev
-                  timeMax
-              else
-                printf "On average, %.1f +/ - %.1f (std. dev) workers were waiting at any given time;  never more than %i nor fewer than %i.\n"
-                  timeAverage
-                  timeStdDev
-                  timeMax
-                  timeMin
-    when show_numbers_of_available_workloads $ do
-        let FunctionOfTimeStatistics{..} = runAvailableWorkloadStatistics
-        hPutStrLn stderr $
-          if timeMax == 0
-            then
-              printf "No workload ever had to wait for an available worker.\n"
-            else if timeMin == 0
-              then
-                printf "On average, %.1f +/ - %.1f (std. dev) workloads were waiting for a worker at any given time;  never more than %i.\n"
-                  timeAverage
-                  timeStdDev
-                  timeMax
-              else
-                printf "On average, %.1f +/ - %.1f (std. dev) workloads were waiting for a worker at any given time;  never more than %i nor fewer than %i.\n"
-                  timeAverage
-                  timeStdDev
-                  timeMax
-                  timeMin
-    when show_instantaneous_workload_request_rates $ do
-        let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadRequestRateStatistics
-        hPutStrLn stderr $
-            printf
-                (unlines
-                    ["On average, the instantanenous rate at which workloads were being requested was %.1f +/ - %.1f (std. dev) requests per second;  the rate never fell below %.1f nor rose above %.1f."
-                    ,"This value was obtained by exponentially smoothing the request data over a time scale of one second."
-                    ]
-                )
-                timeAverage
-                timeStdDev
-                timeMin
-                timeMax
-    when show_instantaneous_workload_steal_times $ do
-        let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadStealTimeStatistics
-        hPutStrLn stderr $
-            printf
-                (unlines
-                    ["On average, the instantaneous time to steal a workload was %sseconds +/ - %sseconds (std. dev);  this time interval never fell below %sseconds nor rose above %sseconds."
-                    ,"This value was obtained by exponentially smoothing the request data over a time scale of one second."
-                    ]
-                )
-                (showWithUnitPrefix timeAverage)
-                (showWithUnitPrefix timeStdDev)
-                (showWithUnitPrefix timeMin)
-                (showWithUnitPrefix timeMax)
-  where
-    showWithUnitPrefix :: Real n ⇒ n → String
-    showWithUnitPrefix 0 = "0 "
-    showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
-      where
-        (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
+writeStatisticsToLog :: Priority → Tense → RunStatistics → [[Statistic]] → IO ()
+writeStatisticsToLog level =
+    mapM_ (\(name,output) →
+        logM ("LogicGrowsOnTrees.Parallel.Main." ++ name)
+             level
+             output
+    )
+    .**
+    generateStatistics
 
 writeCheckpointFile :: (Serialize ip, MonadIO m) ⇒ FilePath → ip → m ()
 writeCheckpointFile checkpoint_path checkpoint = do
