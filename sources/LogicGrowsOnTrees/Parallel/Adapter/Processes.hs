@@ -23,6 +23,8 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     , fork
     , getCurrentProgressAsync
     , getCurrentProgress
+    , getCurrentStatisticsAsync
+    , getCurrentStatistics
     , getNumberOfWorkersAsync
     , getNumberOfWorkers
     , requestProgressUpdateAsync
