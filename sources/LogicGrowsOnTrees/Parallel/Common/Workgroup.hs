@@ -215,7 +215,7 @@ runWorkgroup exploration_mode initial_inner_state constructCallbacks starting_pr
             asks sendWorkloadStealRequestTo >>= liftInner . forM_ worker_ids
         receiveCurrentProgress = receiveProgress request_queue
         sendWorkloadToWorker = \workload worker_id → do
-            infoM $ "Activating worker " ++ show worker_id ++ " with workload " ++ show workload
+            infoM $ "Activating worker " ++ show worker_id
             asks sendWorkloadTo >>= liftInner . ($ workload) . ($ worker_id)
             bumpWorkerRemovalPriority worker_id
     forkControllerThread request_queue controller
