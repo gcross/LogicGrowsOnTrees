@@ -1455,7 +1455,7 @@ checkpointLoop CheckpointConfiguration{..} = go False
                 return False
             ) `catch` (\(e::SomeException) → do
                 (if alerted_since_last_failure then infoM else errorM) $
-                    "Failed writing checkpoint with error: " ++ show e
+                    "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
                 return True
             )
         liftIO $ threadDelay delay
