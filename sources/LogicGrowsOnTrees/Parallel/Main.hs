@@ -120,12 +120,15 @@ import Data.Monoid (Monoid(..))
 import Data.Ord (comparing)
 import Data.Prefix.Units (FormatMode(FormatSiAll),formatValue,unitName)
 import Data.Serialize
+import Data.Time.Clock (getCurrentTime)
+import Data.Time.Format (formatTime)
 
 import System.Console.CmdTheLine
 import System.Directory (doesFileExist,removeFile,renameFile)
 import System.Environment (getProgName)
-import System.IO (hFlush,hPutStrLn,stderr,stdout)
+import System.IO (IOMode(AppendMode),hFlush,hPutStrLn,stderr,stdout,withFile)
 import System.IO.Error (isDoesNotExistError)
+import System.Locale (defaultTimeLocale)
 import qualified System.Log.Logger as Logger
 import System.Log.Formatter (simpleLogFormatter)
 import System.Log.Handler (setFormatter)
@@ -181,6 +184,11 @@ data CheckpointConfiguration = CheckpointConfiguration
     ,   checkpoint_interval :: Float
     } deriving (Eq,Show)
 
+data TickConfiguration = TickConfiguration
+    {   tick_path :: FilePath
+    ,   tick_interval :: Float
+    } deriving (Eq,Show)
+
 data LoggingConfiguration = LoggingConfiguration
     {   log_level :: Priority
     ,   maybe_log_format :: Maybe String
@@ -200,6 +208,7 @@ data StatisticsConfiguration = StatisticsConfiguration
 
 data SupervisorConfiguration = SupervisorConfiguration
     {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
+    ,   maybe_tick_configuration :: Maybe TickConfiguration
     ,   maybe_workload_buffer_size_configuration :: Maybe Int
     ,   statistics_configuration :: StatisticsConfiguration
     }
@@ -791,6 +800,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
     supervisor_configuration_term =
         SupervisorConfiguration
             <$> checkpoint_configuration_term
+            <*> tick_configuration_term
             <*> maybe_workload_buffer_size_configuration_term
             <*> statistics_configuration_term
     program_info = program_info_
@@ -1361,6 +1371,33 @@ checkpoint_configuration_term =
                 ]
             }
             ) 60)
+
+tick_configuration_term :: Term (Maybe TickConfiguration)
+tick_configuration_term =
+    maybe (const Nothing) (Just .* TickConfiguration)
+        <$> value (flip opt (
+            (optInfo ["tick-file"])
+            {   optName = "FILEPATH"
+            ,   optDoc = unwords
+                ["This enables regularly writing to the given file a 'tick'"
+                ,"line with the time, date, and current number of workers; this"
+                ,"is useful if you want to measure the amount of computation"
+                ,"time spent by the run if there will be a varying number of"
+                ,"workers and/or if the run will be stopped and started."
+                ]
+            }
+            ) Nothing)
+        <*> value (flip opt (
+            (optInfo ["tick-interval"])
+            {   optName = "SECONDS"
+            ,   optDoc = unwords
+                ["This specifies the time between ticks (in seconds, with a"
+                ,"mandatory decimal point required by cmdtheline); it is"
+                ,"ignored if the tick file has not been specified."
+                ]
+            }
+            ) 60)
+
 logging_configuration_term :: Term LoggingConfiguration
 logging_configuration_term =
     LoggingConfiguration
@@ -1461,6 +1498,27 @@ checkpointLoop CheckpointConfiguration{..} = go False
         liftIO $ threadDelay delay
         go new_alerted_since_last_failure
 
+tickLoop ::
+    ( RequestQueueMonad m
+    , Serialize (ProgressFor (ExplorationModeFor m))
+    ) ⇒ TickConfiguration → m ()
+tickLoop TickConfiguration{..} = (forever $ do
+    number_of_workers ← getNumberOfWorkers
+    liftIO $ do
+        getCurrentTime
+            >>=
+            withFile tick_path AppendMode
+            .
+            flip hPutStrLn
+            .
+            formatTime defaultTimeLocale ("%F %X " ++ show number_of_workers)
+        threadDelay delay
+  ) `catch` (\(e::SomeException) →
+    errorM $ "Failed writing tick to \"" ++ tick_path ++ "\" with error \"" ++ show e ++ "\";  no more attempts will be made."
+  )
+  where
+    delay = round $ tick_interval * 1000000
+
 statisticsLoop :: RequestQueueMonad m ⇒ [[Statistic]] → Priority → Float → m α
 statisticsLoop stats level interval = forever $ do
     liftIO $ threadDelay delay
@@ -1481,6 +1539,7 @@ controllerLoop ::
 controllerLoop SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},..} = do
     maybe (return ()) setWorkloadBufferSize maybe_workload_buffer_size_configuration
     maybe (return ()) (void . fork . checkpointLoop) maybe_checkpoint_configuration
+    maybe (return ()) (void . fork . tickLoop) maybe_tick_configuration
     when (not . null $ log_stats_configuration) $
         void . fork $ statisticsLoop log_stats_configuration log_stats_level_configuration log_stats_interval_configuration
 
