@@ -1436,9 +1436,6 @@ makeSharedConfigurationTerm tree_configuration_term =
         <$> logging_configuration_term
         <*> tree_configuration_term
 
-
-
-
 ------------------------------------ Loops -------------------------------------
 
 checkpointLoop ::
