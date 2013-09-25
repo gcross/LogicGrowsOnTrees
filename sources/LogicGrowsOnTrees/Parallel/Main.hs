@@ -152,7 +152,7 @@ import LogicGrowsOnTrees.Parallel.Purity
 ----------------------------------- Loggers ------------------------------------
 --------------------------------------------------------------------------------
 
-deriveLoggers "Logger" [NOTICE]
+deriveLoggers "Logger" [INFO]
 
 --------------------------------------------------------------------------------
 ------------------------------------ Types -------------------------------------
@@ -820,13 +820,13 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
     constructTree = constructTree_ . tree_configuration
     getStartingProgress shared_configuration SupervisorConfiguration{..} =
         case maybe_checkpoint_configuration of
-            Nothing → (noticeM "Checkpointing is NOT enabled") >> return initial_progress
+            Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
             Just CheckpointConfiguration{..} → do
-                noticeM $ "Checkpointing enabled"
-                noticeM $ "Checkpoint file is " ++ checkpoint_path
-                noticeM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
+                infoM $ "Checkpointing enabled"
+                infoM $ "Checkpoint file is " ++ checkpoint_path
+                infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
                 ifM (doesFileExist checkpoint_path)
-                    (noticeM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
+                    (infoM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
                     (return initial_progress)
       where
         initial_progress = initialProgress . constructExplorationMode $ shared_configuration
@@ -835,7 +835,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
             Nothing → doEndOfRun
             Just CheckpointConfiguration{checkpoint_path} →
                 do doEndOfRun
-                   noticeM "Deleting any remaining checkpoint file"
+                   infoM "Deleting any remaining checkpoint file"
                    removeFileIfExists checkpoint_path
                 `finally`
                 case runTerminationReason of
@@ -1438,7 +1438,7 @@ checkpointLoop ::
 checkpointLoop CheckpointConfiguration{..} = forever $ do
     liftIO $ threadDelay delay
     requestProgressUpdate >>= writeCheckpointFile checkpoint_path
-    noticeM $ "Checkpoint written to " ++ show checkpoint_path
+    infoM $ "Checkpoint written to " ++ show checkpoint_path
   where
     delay = round $ checkpoint_interval * 1000000
 
@@ -1516,7 +1516,7 @@ writeStatisticsToLog level =
 
 writeCheckpointFile :: (Serialize ip, MonadIO m) ⇒ FilePath → ip → m ()
 writeCheckpointFile checkpoint_path checkpoint = do
-    noticeM $ "Writing checkpoint file"
+    infoM $ "Writing checkpoint file"
     liftIO $
         (do writeFile checkpoint_temp_path (encodeLazy checkpoint)
             renameFile checkpoint_temp_path checkpoint_path
