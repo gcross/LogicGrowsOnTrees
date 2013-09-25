@@ -152,7 +152,7 @@ import LogicGrowsOnTrees.Parallel.Purity
 ----------------------------------- Loggers ------------------------------------
 --------------------------------------------------------------------------------
 
-deriveLoggers "Logger" [INFO,NOTICE]
+deriveLoggers "Logger" [NOTICE]
 
 --------------------------------------------------------------------------------
 ------------------------------------ Types -------------------------------------
@@ -820,7 +820,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
     constructTree = constructTree_ . tree_configuration
     getStartingProgress shared_configuration SupervisorConfiguration{..} =
         case maybe_checkpoint_configuration of
-            Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
+            Nothing → (noticeM "Checkpointing is NOT enabled") >> return initial_progress
             Just CheckpointConfiguration{..} → do
                 noticeM $ "Checkpointing enabled"
                 noticeM $ "Checkpoint file is " ++ checkpoint_path
