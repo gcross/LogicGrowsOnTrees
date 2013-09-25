@@ -96,13 +96,14 @@ module LogicGrowsOnTrees.Parallel.Main
     , mainParser
     ) where
 
-import Prelude hiding (readFile,writeFile)
+import Prelude hiding (catch,readFile,writeFile)
 
 import Control.Applicative ((<$>),(<*>),pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (ThreadId,threadDelay)
-import Control.Exception (finally,handleJust,onException)
+import Control.Exception (SomeException,finally,handleJust,onException)
 import Control.Monad (forM_,forever,liftM,mplus,when,unless,void)
+import Control.Monad.CatchIO (catch)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Tools (ifM)
 
@@ -152,7 +153,7 @@ import LogicGrowsOnTrees.Parallel.Purity
 ----------------------------------- Loggers ------------------------------------
 --------------------------------------------------------------------------------
 
-deriveLoggers "Logger" [INFO]
+deriveLoggers "Logger" [INFO,NOTICE,ERROR]
 
 --------------------------------------------------------------------------------
 ------------------------------------ Types -------------------------------------
@@ -1435,12 +1436,22 @@ checkpointLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ CheckpointConfiguration → m α
-checkpointLoop CheckpointConfiguration{..} = forever $ do
-    liftIO $ threadDelay delay
-    requestProgressUpdate >>= writeCheckpointFile checkpoint_path
-    infoM $ "Checkpoint written to " ++ show checkpoint_path
+checkpointLoop CheckpointConfiguration{..} = go False
   where
     delay = round $ checkpoint_interval * 1000000
+
+    go alerted_since_last_failure = do
+        liftIO $ threadDelay delay
+        (do requestProgressUpdate >>= writeCheckpointFile checkpoint_path
+            infoM $ "Checkpoint written to " ++ show checkpoint_path
+            when alerted_since_last_failure $
+                noticeM "The problem with the checkpoint has been resolved."
+            return False
+         ) `catch` (\(e::SomeException) → do
+            (if alerted_since_last_failure then infoM else errorM) $
+                "Failed writing checkpoint with error: " ++ show e
+            return True
+         ) >>= go
 
 statisticsLoop :: RequestQueueMonad m ⇒ [[Statistic]] → Priority → Float → m α
 statisticsLoop stats level interval = forever $ do
