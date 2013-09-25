@@ -102,7 +102,7 @@ import Control.Applicative ((<$>),(<*>),pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (ThreadId,threadDelay)
 import Control.Exception (finally,handleJust,onException)
-import Control.Monad (forever,liftM,mplus,when,void)
+import Control.Monad (forM_,forever,liftM,mplus,when,unless,void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Tools (ifM)
 
@@ -1497,19 +1497,22 @@ pastTense _ x = x
 removeFileIfExists :: FilePath → IO ()
 removeFileIfExists path =
     handleJust
-        (\e → if isDoesNotExistError e then Nothing else Just ())
+        (\e → if isDoesNotExistError e then Just () else Nothing)
         (\_ → return ())
         (removeFile path)
 
 writeStatisticsToLog :: Priority → Tense → RunStatistics → [[Statistic]] → IO ()
 writeStatisticsToLog level =
-    mapM_ (\(name,output) →
-        logM "LogicGrowsOnTrees.Parallel.Main"
-             level
-             (name ++ ": " ++ output)
+    (\outputs →
+        unless (null outputs) $ do
+            logIt "=== BEGIN STATISTICS ==="
+            forM_ outputs $ \(name,output) → logIt (name ++ ": " ++ output)
+            logIt "=== END STATISTICS ==="
     )
     .**
     generateStatistics
+  where
+    logIt = logM "LogicGrowsOnTrees.Parallel.Main" level
 
 writeCheckpointFile :: (Serialize ip, MonadIO m) ⇒ FilePath → ip → m ()
 writeCheckpointFile checkpoint_path checkpoint = do
