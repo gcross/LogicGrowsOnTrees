@@ -1447,17 +1447,19 @@ checkpointLoop CheckpointConfiguration{..} = go False
     delay = round $ checkpoint_interval * 1000000
 
     go alerted_since_last_failure = do
+        new_alerted_since_last_failure ←
+            (do requestProgressUpdate >>= writeCheckpointFile checkpoint_path
+                infoM $ "Checkpoint written to " ++ show checkpoint_path
+                when alerted_since_last_failure $
+                    noticeM "The problem with the checkpoint has been resolved."
+                return False
+            ) `catch` (\(e::SomeException) → do
+                (if alerted_since_last_failure then infoM else errorM) $
+                    "Failed writing checkpoint with error: " ++ show e
+                return True
+            )
         liftIO $ threadDelay delay
-        (do requestProgressUpdate >>= writeCheckpointFile checkpoint_path
-            infoM $ "Checkpoint written to " ++ show checkpoint_path
-            when alerted_since_last_failure $
-                noticeM "The problem with the checkpoint has been resolved."
-            return False
-         ) `catch` (\(e::SomeException) → do
-            (if alerted_since_last_failure then infoM else errorM) $
-                "Failed writing checkpoint with error: " ++ show e
-            return True
-         ) >>= go
+        go new_alerted_since_last_failure
 
 statisticsLoop :: RequestQueueMonad m ⇒ [[Statistic]] → Priority → Float → m α
 statisticsLoop stats level interval = forever $ do
