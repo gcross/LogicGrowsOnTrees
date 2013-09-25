@@ -1343,13 +1343,22 @@ checkpoint_configuration_term =
         <$> value (flip opt (
             (optInfo ["c","checkpoint-file"])
             {   optName = "FILEPATH"
-            ,   optDoc = "This enables periodic checkpointing with the given path specifying the location of the checkpoint file;  if the file already exists then it will be loaded as the initial starting point for the search."
+            ,   optDoc = unwords
+                ["This enables periodic checkpointing with the given path"
+                ,"specifying the location of the checkpoint file;  if the file"
+                ,"already exists then it will be loaded as the initial starting"
+                ,"point for the search."
+                ]
             }
             ) Nothing)
         <*> value (flip opt (
             (optInfo ["i","checkpoint-interval"])
             {   optName = "SECONDS"
-            ,   optDoc = "This specifies the time between checkpoints (in seconds, decimals allowed); it is ignored if checkpoint file is not specified."
+            ,   optDoc = unwords
+                ["This specifies the time between checkpoints (in seconds, with"
+                ,"a mandatory decimal point required by cmdtheline); it is"
+                ,"ignored if checkpoint file has not been specified."
+                ]
             }
             ) 60)
 logging_configuration_term :: Term LoggingConfiguration
