@@ -86,7 +86,10 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Path
-import LogicGrowsOnTrees.Parallel.Common.RequestQueue hiding (setWorkloadBufferSize)
+import LogicGrowsOnTrees.Parallel.Common.RequestQueue hiding
+    (addWorkerCountWatcher
+    ,setWorkloadBufferSize
+    )
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
 import LogicGrowsOnTrees.Utils.Handle (send,receive)
 import LogicGrowsOnTrees.Utils.PerfectTree
@@ -1453,6 +1456,28 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
+        ,testCase "worker count watchers" $ do -- {{{
+            SupervisorOutcome{..} ←
+                runUnrestrictedSupervisor AllMode ignore_supervisor_actions $ do
+                    worker_count_ref ← liftIO $ newIORef (0,0)
+                    addWorkerCountWatcher $ \old new → writeIORef worker_count_ref (old,new)
+                    addWorker 1
+                    liftIO $ readIORef worker_count_ref >>= (@?= (0,1))
+                    addWorker 2
+                    liftIO $ readIORef worker_count_ref >>= (@?= (1,2))
+                    removeWorker 1
+                    liftIO $ readIORef worker_count_ref >>= (@?= (2,1))
+                    addWorker 1
+                    liftIO $ readIORef worker_count_ref >>= (@?= (1,2))
+                    worker_count_ref_2 ← liftIO $ newIORef (0,0)
+                    addWorkerCountWatcher $ \old new → writeIORef worker_count_ref_2 (old,new)
+                    addWorker 3
+                    liftIO $ readIORef worker_count_ref >>= (@?= (2,3))
+                    liftIO $ readIORef worker_count_ref_2 >>= (@?= (2,3))
+                    abortSupervisor
+            supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
+            supervisorRemainingWorkers @?= [1,2,3::Int]
+         -- }}}
         ]
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Parallel.Common.Worker" -- {{{
@@ -1841,7 +1866,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testProperty "LogicGrowsOnTrees.Utils.Handle" $ \(x::UUID) → morallyDubiousIOProperty $
+    ,testProperty "LogicGrowsOnTrees.Utils.Handle" $ \(x::UUID) → morallyDubiousIOProperty $ -- {{{
         bracket
             (getTemporaryDirectory >>= flip openBinaryTempFile "test-handles")
             (\(filepath,handle) → do
@@ -1854,5 +1879,6 @@ tests = -- {{{
                 y ← receive handle
                 return (x == y)
             )
+     -- }}}
     ]
 -- }}}
