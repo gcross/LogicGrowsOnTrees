@@ -17,7 +17,9 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
       driver
     -- * Controller
     , ProcessesControllerMonad
+    , WorkerCountWatcher
     , abort
+    , addWorkerCountWatcher
     , changeNumberOfWorkersAsync
     , changeNumberOfWorkers
     , fork
