@@ -44,11 +44,9 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , SupervisorProgram(..)
     , SupervisorTerminationReason(..)
     , SupervisorTerminationReasonFor
-    , WorkerCountWatcher
     -- * Functions
     -- ** Worker interaction
     , addWorker
-    , addWorkerCountWatcher
     , performGlobalProgressUpdate
     , receiveProgressUpdate
     , receiveStolenWorkload
@@ -114,7 +112,6 @@ import LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
     , SupervisorTerminationReason(..)
     , SupervisorTerminationReasonFor
     , SupervisorWorkerIdConstraint
-    , WorkerCountWatcher
     , current_time
     , liftContextToAbort
     , liftUserToAbort
@@ -226,16 +223,6 @@ addWorker ::
     worker_id →
     SupervisorMonad exploration_mode worker_id m ()
 addWorker = wrapIntoSupervisorMonad . Implementation.addWorker
-
-{-| Adds a worker count watcher, which is a function that will be called every
-    time a worker is added or removed.
- -}
-addWorkerCountWatcher ::
-    ( SupervisorMonadConstraint m
-    ) ⇒
-    WorkerCountWatcher →
-    SupervisorMonad exploration_mode worker_id m ()
-addWorkerCountWatcher = wrapIntoSupervisorMonad . Implementation.addWorkerCountWatcher
 
 {-| Request that a global progress update be performed;  the supervisor will
     send progress update requests to all workers, and when it has received a

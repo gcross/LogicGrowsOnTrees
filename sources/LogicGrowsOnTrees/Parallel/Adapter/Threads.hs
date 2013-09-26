@@ -27,9 +27,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
       driver
     -- * Controller
     , ThreadsControllerMonad
-    , WorkerCountWatcher
     , abort
-    , addWorkerCountWatcher
     , changeNumberOfWorkersAsync
     , changeNumberOfWorkers
     , changeNumberOfWorkersToMatchCapabilities

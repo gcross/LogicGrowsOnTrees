@@ -31,11 +31,9 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
     , SupervisorTerminationReasonFor
     , SupervisorWorkerIdConstraint
     , IndependentMeasurementsStatistics(..)
-    , WorkerCountWatcher
     , abortSupervisor
     , abortSupervisorWithReason
     , addWorker
-    , addWorkerCountWatcher
     , changeSupervisorOccupiedStatus
     , current_time
     , getCurrentProgress
@@ -71,7 +69,7 @@ import Control.Lens.Internal.Zoom (Zoomed)
 import Control.Lens.Lens ((<%=),(<<%=),(<<.=),(%%=),(<<.=),Lens')
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Zoom (Zoom(..))
-import Control.Monad ((>=>),liftM,liftM2,mapM_,mplus,unless,void,when)
+import Control.Monad ((>=>),liftM,liftM2,mplus,unless,void,when)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
@@ -322,12 +320,6 @@ data SupervisorConstants exploration_mode worker_id m = SupervisorConstants -- {
 $( makeLenses ''SupervisorConstants )
 -- }}}
 
-{-| A function that is invoked when the number of workers has changed;  the
-    first parameter is the old number of workers ans the second parameter is the
-    new number of workers.
- -}
-type WorkerCountWatcher = Word → Word → IO ()
-
 data SupervisorState exploration_mode worker_id = -- {{{
     SupervisorState
     {   _waiting_workers_or_available_workloads :: !(Either (Map worker_id (Maybe UTCTime)) (Set Workload))
@@ -354,7 +346,6 @@ data SupervisorState exploration_mode worker_id = -- {{{
     ,   _time_spent_in_supervisor_monad :: !NominalDiffTime
     ,   _workload_buffer_size :: !Int
     ,   _number_of_calls :: !Int
-    ,   _worker_count_watchers :: [WorkerCountWatcher]
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -534,21 +525,10 @@ addWorker :: -- {{{
 addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     infoM $ "Adding worker " ++ show worker_id
     validateWorkerNotKnown "adding worker" worker_id
-    old_worker_count ←
-        liftM fromIntegral $ known_workers %%= (Set.size &&& Set.insert worker_id)
-    use worker_count_watchers >>=
-        mapM_ (liftIO . ($ (old_worker_count,old_worker_count+1)) . uncurry)
+    known_workers %= Set.insert worker_id
     start_time ← view current_time
     worker_occupation_statistics %= Map.insert worker_id (OccupationStatistics start_time start_time 0 False)
     tryToObtainWorkloadFor True worker_id
--- }}}
-
-addWorkerCountWatcher :: -- {{{
-    ( SupervisorMonadConstraint m
-    ) ⇒
-    WorkerCountWatcher →
-    ContextMonad exploration_mode worker_id m ()
-addWorkerCountWatcher = (worker_count_watchers %=) . (:)
 -- }}}
 
 beginWorkerOccupied :: -- {{{
@@ -1252,10 +1232,7 @@ retireWorker :: -- {{{
     worker_id →
     ContextMonad exploration_mode worker_id m ()
 retireWorker worker_id = do
-    old_worker_count ←
-        liftM fromIntegral $ known_workers %%= (Set.size &&& Set.delete worker_id)
-    use worker_count_watchers >>=
-        mapM_ (liftIO . ($ (old_worker_count,old_worker_count-1)) . uncurry)
+    known_workers %= Set.delete worker_id
     retired_occupation_statistics ←
         worker_occupation_statistics %%= (fromJust . Map.lookup worker_id &&& Map.delete worker_id)
         >>=
@@ -1332,7 +1309,6 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
             ,   _time_spent_in_supervisor_monad = 0
             ,   _workload_buffer_size = 4
             ,   _number_of_calls = 0
-            ,   _worker_count_watchers = []
             }
         )
     .

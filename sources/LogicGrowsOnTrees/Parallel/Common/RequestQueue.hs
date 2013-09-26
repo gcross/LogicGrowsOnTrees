@@ -29,7 +29,6 @@ module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     , Request
     , RequestQueue(..)
     , RequestQueueReader
-    , WorkerCountWatcher
     -- * Functions
     -- ** Synchronized requests
     , getCurrentProgress
@@ -71,7 +70,6 @@ import Control.Monad.Trans.Reader (ReaderT(..),ask)
 import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,readIORef,newIORef)
 import Data.List (delete)
-import Data.Word (Word)
 
 import qualified LogicGrowsOnTrees.Parallel.Common.Supervisor as Supervisor
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
@@ -79,7 +77,6 @@ import LogicGrowsOnTrees.Parallel.Common.Supervisor
     ,SupervisorFullConstraint
     ,SupervisorMonad
     ,SupervisorProgram(..)
-    ,WorkerCountWatcher
     )
 import LogicGrowsOnTrees.Parallel.ExplorationMode
 
@@ -91,10 +88,6 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 class (HasExplorationMode m, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()
-    {-| Adds a worker count watcher, a function that is called whenever a worker
-        is added or removed.
-     -}
-    addWorkerCountWatcher :: (Word → Word → IO ()) → m ()
     {-| Fork a new thread running in this monad;  all controller threads are automnatically killed when the run is finished. -}
     fork :: m () → m ThreadId
     {-| Request the current progress, invoking the given callback with the result;  see 'getCurrentProgress' for the synchronous version. -}
@@ -133,7 +126,6 @@ instance HasExplorationMode (RequestQueueReader exploration_mode worker_id m) wh
 
 instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader exploration_mode worker_id m) where
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
-    addWorkerCountWatcher = (ask >>=) . enqueueRequest . Supervisor.addWorkerCountWatcher
     fork m = ask >>= flip forkControllerThread' m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
     getCurrentStatisticsAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentStatistics
