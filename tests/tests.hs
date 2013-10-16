@@ -1096,7 +1096,7 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testCase "processPendingRequests" $ do
+        ,testCase "processPendingRequests" $ do -- {{{
             mvar ← newEmptyMVar
             RunOutcome{..} ← Threads.exploreTreeIO (Threads.setNumberOfWorkers 2) $
                 let go = processPendingRequests >> liftIO (tryTakeMVar mvar) >>= maybe go return
@@ -1106,6 +1106,7 @@ tests = -- {{{
                 Completed () → return ()
                 Failure _ message → error message
             return ()
+         -- }}}
         ]
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Parallel.Common.RequestQueue" -- {{{
@@ -1841,7 +1842,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testProperty "LogicGrowsOnTrees.Utils.Handle" $ \(x::UUID) → morallyDubiousIOProperty $
+    ,testProperty "LogicGrowsOnTrees.Utils.Handle" $ \(x::UUID) → morallyDubiousIOProperty $ -- {{{
         bracket
             (getTemporaryDirectory >>= flip openBinaryTempFile "test-handles")
             (\(filepath,handle) → do
@@ -1854,5 +1855,6 @@ tests = -- {{{
                 y ← receive handle
                 return (x == y)
             )
+    -- }}}
     ]
 -- }}}
