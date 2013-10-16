@@ -32,7 +32,10 @@ N=19 on a local cluster:
 The above was obtained by running a job, which counts the number of solutions,
 three times for each number of workers and problem size, and then taking the
 shortest time of each set of three*; the maximum number of workers for this
-experiment (128) was limited by the size of the cluster.
+experiment (256) was limited by the size of the cluster.  From the above plot we
+see that scaling is generally good with the exception of the N=18 case for 128
+workers and above, which is not necessarily a big deal since the total running
+time is under 10 seconds.
 
 \* All of the data points for each value of N were usually within a small
 percentage of one another, save for (oddly) the *left*-most data point
