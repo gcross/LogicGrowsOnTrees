@@ -61,7 +61,7 @@ import Control.Concurrent (ThreadId,forkIO,killThread)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,tryReadTChan,writeTChan)
-import Control.Exception (BlockedIndefinitelyOnMVar(..),catch,finally)
+import Control.Exception (BlockedIndefinitelyOnMVar(..),catch,finally,mask)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad ((>=>),join,liftM,liftM3)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -305,10 +305,8 @@ forkControllerThread' ::
     m' ThreadId
 forkControllerThread' request_queue controller = liftIO $ do
     start_signal ← newEmptyMVar
-    rec thread_id ←
-            forkIO
-            $
-            (takeMVar start_signal >> runReaderT controller request_queue)
+    rec thread_id ← forkIO . mask $ \restore →
+            (restore $ takeMVar start_signal >> runReaderT controller request_queue)
             `finally`
             (atomicModifyIORef (controllerThreads request_queue) (delete thread_id &&& const ()))
     atomicModifyIORef (controllerThreads request_queue) ((thread_id:) &&& const ())
