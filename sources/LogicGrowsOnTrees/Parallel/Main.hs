@@ -101,8 +101,7 @@ import Prelude hiding (catch,readFile,writeFile)
 import Control.Applicative ((<$>),(<*>),pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (ThreadId,threadDelay)
-import Control.Concurrent.MVar (MVar,newEmptyMVar,putMVar,takeMVar)
-import Control.Exception (SomeException,bracketOnError,finally,handleJust,onException)
+import Control.Exception (SomeException,finally,handleJust,onException)
 import Control.Monad (forM_,forever,liftM,mplus,when,unless,void)
 import Control.Monad.CatchIO (catch)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -113,28 +112,20 @@ import Data.Char (toLower)
 import Data.Composition ((.*),(.**))
 import Data.Derive.Serialize
 import Data.DeriveTH
-import qualified Data.Foldable as Fold
 import Data.Function (on)
 import Data.Functor.Identity (Identity)
-import Data.IORef (newIORef,readIORef,writeIORef)
 import Data.List (find,intercalate,nub)
 import Data.List.Split (splitOn)
-import Data.Maybe (isJust)
 import Data.Monoid (Monoid(..))
 import Data.Ord (comparing)
 import Data.Prefix.Units (FormatMode(FormatSiAll),formatValue,unitName)
-import Data.Sequence (Seq,(|>))
 import Data.Serialize
-import Data.Time.Clock (UTCTime,getCurrentTime)
-import Data.Time.Format (formatTime)
-import Data.Word (Word)
 
 import System.Console.CmdTheLine
 import System.Directory (doesFileExist,removeFile,renameFile)
 import System.Environment (getProgName)
-import System.IO (IOMode(AppendMode),hFlush,hPutStrLn,stderr,stdout,withFile)
+import System.IO (hFlush,hPutStrLn,stderr,stdout)
 import System.IO.Error (isDoesNotExistError)
-import System.Locale (defaultTimeLocale)
 import qualified System.Log.Logger as Logger
 import System.Log.Formatter (simpleLogFormatter)
 import System.Log.Handler (setFormatter)
@@ -185,10 +176,9 @@ instance Ord Statistic where
 
 -------------------------------- Configuration ---------------------------------
 
-data CheckpointAndTickConfiguration = CheckpointAndTickConfiguration
-    {   maybe_checkpoint_path :: Maybe FilePath
-    ,   maybe_timeline_path :: Maybe FilePath
-    ,   interval :: Float
+data CheckpointConfiguration = CheckpointConfiguration
+    {   checkpoint_path :: FilePath
+    ,   checkpoint_interval :: Float
     } deriving (Eq,Show)
 
 data LoggingConfiguration = LoggingConfiguration
@@ -209,7 +199,7 @@ data StatisticsConfiguration = StatisticsConfiguration
     }
 
 data SupervisorConfiguration = SupervisorConfiguration
-    {   checkpoint_configuration :: CheckpointAndTickConfiguration
+    {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
     ,   maybe_workload_buffer_size_configuration :: Maybe Int
     ,   statistics_configuration :: StatisticsConfiguration
     }
@@ -1031,10 +1021,7 @@ genericMain ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_user constructTree_ = do
-    timeline_var ← liftIO newEmptyMVar
-    let notifyTerminated = notifyTerminated_main timeline_var
-        constructController = constructController_ timeline_var
+genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_ constructTree_ =
     run DriverParameters{..}
   where
     constructExplorationMode = constructExplorationMode_ . tree_configuration
@@ -1070,28 +1057,22 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                 updateGlobalLogger rootLoggerName $ setHandlers [handler]
         updateGlobalLogger rootLoggerName (setLevel log_level)
     constructTree = constructTree_ . tree_configuration
-    getStartingProgress shared_configuration SupervisorConfiguration{checkpoint_configuration=CheckpointAndTickConfiguration{..},..} =
-        case maybe_checkpoint_path of
+    getStartingProgress shared_configuration SupervisorConfiguration{..} =
+        case maybe_checkpoint_configuration of
             Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
-            Just checkpoint_path → do
+            Just CheckpointConfiguration{..} → do
                 infoM $ "Checkpointing enabled"
                 infoM $ "Checkpoint file is " ++ checkpoint_path
-                infoM $ "Checkpoint interval is " ++ show interval ++ " seconds"
+                infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
                 ifM (doesFileExist checkpoint_path)
                     (infoM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
                     (return initial_progress)
       where
         initial_progress = initialProgress . constructExplorationMode $ shared_configuration
-    notifyTerminated_main timeline_var SharedConfiguration{..} SupervisorConfiguration{checkpoint_configuration=CheckpointAndTickConfiguration{..},..} run_outcome@RunOutcome{..} = do
-        case maybe_timeline_path of
-            Nothing → return ()
-            Just timeline_path → do
-                current_time ← getCurrentTime
-                (start_time,last_time,start_count,intervals) ← takeMVar timeline_var
-                writeTimeline timeline_path $ intervals |> (start_time,current_time,start_count)
-        case maybe_checkpoint_path of
+    notifyTerminated SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} =
+        case maybe_checkpoint_configuration of
             Nothing → doEndOfRun
-            Just checkpoint_path →
+            Just CheckpointConfiguration{checkpoint_path} →
                 do doEndOfRun
                    infoM "Deleting any remaining checkpoint file"
                    removeFileIfExists checkpoint_path
@@ -1117,9 +1098,9 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                         $
                         end_stats_configuration
             hFlush stderr
-            notifyTerminated_user tree_configuration run_outcome
+            notifyTerminated_ tree_configuration run_outcome
 
-    constructController_ timeline_var = const (controllerLoop timeline_var)
+    constructController = const controllerLoop
 {-# INLINE genericMain #-}
 
 --------------------------------------------------------------------------------
@@ -1358,43 +1339,30 @@ statistics =
 
 ----------------------------- Configuration terms ------------------------------
 
-checkpoint_configuration_term :: Term CheckpointAndTickConfiguration
+checkpoint_configuration_term :: Term (Maybe CheckpointConfiguration)
 checkpoint_configuration_term =
-    CheckpointAndTickConfiguration
-    <$> value (flip opt (
-        (optInfo ["c","checkpoint-file"])
-        {   optName = "FILEPATH"
-        ,   optDoc = unwords
-            ["This enables periodic checkpointing with the given path"
-            ,"specifying the location of the checkpoint file;  if the file"
-            ,"already exists then it will be loaded as the initial starting"
-            ,"point for the search."
-            ]
-        }
-        ) Nothing)
-    <*> value (flip opt (
-        (optInfo ["timeline-file"])
-        {   optName = "FILEPATH"
-        ,   optDoc = unwords
-            ["This causes information about the number of workers over time to"
-            ,"be appended to the given file;  each line has a starting time, an"
-            ,"ending time, and the number of workers present during the time"
-            ,"interval."
-            ]
-        }
-        ) Nothing)
-    <*> value (flip opt (
-        (optInfo ["i","checkpoint-interval","timeline-interval","interval"])
-        {   optName = "SECONDS"
-        ,   optDoc = unwords
-            ["This specifies the time between checkpoints and/or writes to the"
-            ,"timeline file, depending on which is enabled; the time must be"
-            ,"specified in seconds with a mandatory decimal point.  If neither"
-            ,"the checkpoint nor the timeline files are set then this option is"
-            ,"ignored."
-            ]
-        }
-        ) 60)
+    maybe (const Nothing) (Just .* CheckpointConfiguration)
+        <$> value (flip opt (
+            (optInfo ["c","checkpoint-file"])
+            {   optName = "FILEPATH"
+            ,   optDoc = unwords
+                ["This enables periodic checkpointing with the given path"
+                ,"specifying the location of the checkpoint file;  if the file"
+                ,"already exists then it will be loaded as the initial starting"
+                ,"point for the search."
+                ]
+            }
+            ) Nothing)
+        <*> value (flip opt (
+            (optInfo ["i","checkpoint-interval"])
+            {   optName = "SECONDS"
+            ,   optDoc = unwords
+                ["This specifies the time between checkpoints (in seconds, with"
+                ,"a mandatory decimal point required by cmdtheline); it is"
+                ,"ignored if checkpoint file has not been specified."
+                ]
+            }
+            ) 60)
 logging_configuration_term :: Term LoggingConfiguration
 logging_configuration_term =
     LoggingConfiguration
@@ -1472,104 +1440,28 @@ makeSharedConfigurationTerm tree_configuration_term =
 
 ------------------------------------ Loops -------------------------------------
 
-writeTimeline :: FilePath → Seq (UTCTime,UTCTime,Int) → IO ()
-writeTimeline timeline_path final_intervals =
-    withFile timeline_path AppendMode $ \handle →
-        Fold.forM_ final_intervals $ \(start_time,end_time,count) →
-            hPutStrLn handle . unwords $
-                [formatDateTime start_time
-                ,formatDateTime end_time
-                ,show count
-                ]
-  where
-    formatDateTime = formatTime defaultTimeLocale datetime_format 
-    datetime_format = "%F:%T"
-
-type TimelineVar = MVar (UTCTime,UTCTime,Int,Seq (UTCTime,UTCTime,Int))
-    
-checkpointAndTickLoop ::
+checkpointLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
-    ) ⇒
-    TimelineVar →
-    CheckpointAndTickConfiguration →
-    m α
-checkpointAndTickLoop timeline_var CheckpointAndTickConfiguration{..} = do
-    initial_time ← liftIO getCurrentTime
-    initial_count ← getNumberOfWorkers
-    liftIO $ putMVar timeline_var (initial_time,initial_time,initial_count,mempty)
+    ) ⇒ CheckpointConfiguration → m α
+checkpointLoop CheckpointConfiguration{..} = go False
+  where
+    delay = round $ checkpoint_interval * 1000000
 
-    when (isJust maybe_timeline_path) . void $
-        fork . forever $ do
-            (start_time,last_time,start_count,intervals) ← liftIO $ takeMVar timeline_var
-            current_count ← getNumberOfWorkers
-            liftIO $ do
-                current_time ← getCurrentTime
-                putMVar timeline_var $
-                    if start_count == current_count
-                        then
-                            (start_time
-                            ,current_time
-                            ,start_count
-                            ,intervals
-                            )
-                        else
-                            (last_time
-                            ,current_time
-                            ,current_count
-                            ,intervals |> (start_time,last_time,start_count)
-                                       |> (last_time,current_time,max start_count current_count)
-                            )
-                threadDelay 1000000
-
-    alerted_checkpoint_ref ← liftIO $ newIORef False
-    alerted_timeline_ref ← liftIO $ newIORef False
-
-    let delay = round $ interval * 1000000
-
-    forever $ do
-        alerted_checkpoint ← liftIO $ readIORef alerted_checkpoint_ref
-        flip (maybe $ return ()) maybe_checkpoint_path $ \checkpoint_path →
-            (do requestProgressUpdate >>= liftIO . writeCheckpointFile checkpoint_path
+    go alerted_since_last_failure = do
+        new_alerted_since_last_failure ←
+            (do requestProgressUpdate >>= writeCheckpointFile checkpoint_path
                 infoM $ "Checkpoint written to " ++ show checkpoint_path
-                when alerted_checkpoint $
+                when alerted_since_last_failure $
                     noticeM "The problem with the checkpoint has been resolved."
-                liftIO $ writeIORef alerted_checkpoint_ref False
+                return False
             ) `catch` (\(e::SomeException) → do
-                (if alerted_checkpoint then infoM else errorM) $
+                (if alerted_since_last_failure then infoM else errorM) $
                     "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
-                liftIO $ writeIORef alerted_checkpoint_ref True
+                return True
             )
-        flip (maybe $ return ()) maybe_timeline_path $ \timeline_path → do
-            alerted_timeline ← liftIO $ readIORef alerted_timeline_ref
-            if not alerted_checkpoint
-                then (if alerted_timeline then infoM else errorM) $
-                    "Will not write timeline as the checkpoint was not successfully written."
-                else do
-                    current_time ← liftIO getCurrentTime
-                    current_count ← getNumberOfWorkers
-                    liftIO $
-                        (bracketOnError
-                            (takeMVar timeline_var)
-                            (putMVar timeline_var)
-                            (\(start_time,last_time,start_count,intervals) → do
-                                writeTimeline timeline_path $
-                                    if current_count == start_count
-                                    then intervals |> (start_time,current_time,start_count)
-                                    else intervals |> (start_time,last_time,start_count)
-                                                   |> (last_time,current_time,max start_count current_count)
-                                infoM $ "Timeline written to " ++ show timeline_path
-                                putMVar timeline_var (current_time,current_time,current_count,mempty)
-                                when alerted_timeline $
-                                    noticeM "The problem with the timeline has been resolved."
-                                writeIORef alerted_checkpoint_ref False
-                            )
-                        ) `catch` (\(e::SomeException) → do
-                            (if alerted_timeline then infoM else errorM) $
-                                "Failed writing timeline to \"" ++ timeline_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
-                            writeIORef alerted_timeline_ref True
-                        )
         liftIO $ threadDelay delay
+        go new_alerted_since_last_failure
 
 statisticsLoop :: RequestQueueMonad m ⇒ [[Statistic]] → Priority → Float → m α
 statisticsLoop stats level interval = forever $ do
@@ -1587,21 +1479,10 @@ statisticsLoop stats level interval = forever $ do
 controllerLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
-    ) ⇒
-    TimelineVar →
-    SupervisorConfiguration →
-    m ()
-controllerLoop timeline_var SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},checkpoint_configuration=checkpoint_configuration@CheckpointAndTickConfiguration{..},..} = do
+    ) ⇒ SupervisorConfiguration → m ()
+controllerLoop SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},..} = do
     maybe (return ()) setWorkloadBufferSize maybe_workload_buffer_size_configuration
-    case (maybe_checkpoint_path,maybe_timeline_path) of
-        (Nothing,Nothing) → return ()
-        _ → void
-            .
-            fork
-            .
-            checkpointAndTickLoop timeline_var
-            $
-            checkpoint_configuration
+    maybe (return ()) (void . fork . checkpointLoop) maybe_checkpoint_configuration
     when (not . null $ log_stats_configuration) $
         void . fork $ statisticsLoop log_stats_configuration log_stats_level_configuration log_stats_interval_configuration
 
