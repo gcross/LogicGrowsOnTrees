@@ -21,6 +21,7 @@ import Control.Concurrent
 import Control.Exception
 import Control.Lens (_1,_2,(%=),(<+=),use)
 import Control.Monad
+import qualified Control.Monad.CatchIO as CatchIO
 import Control.Monad.IO.Class
 import Control.Monad.Operational (ProgramViewT(..),view)
 import Control.Monad.Trans.Class (MonadTrans(..))
@@ -1106,6 +1107,25 @@ tests = -- {{{
                 Completed () → return ()
                 Failure _ message → error message
             return ()
+         -- }}}
+        ,testCase "threads are killed" $ do -- {{{
+            exception_1_mvar ← newEmptyMVar
+            exception_2_mvar ← newEmptyMVar
+            _ ← Threads.exploreTree
+                ((do _ ← Threads.fork $
+                        (do Threads.setNumberOfWorkers 1
+                            liftIO . forever $ threadDelay 1000000
+                        )
+                        `CatchIO.catch`
+                        (\(x::AsyncException) → liftIO $ putMVar exception_2_mvar x)
+                     liftIO . forever $ threadDelay 1000000
+                 )
+                 `CatchIO.catch`
+                 (\(x::AsyncException) → liftIO $ putMVar exception_1_mvar x)
+                )
+                (return ())
+            takeMVar exception_1_mvar >>= (@?= ThreadKilled)
+            takeMVar exception_2_mvar >>= (@?= ThreadKilled)
          -- }}}
         ]
      -- }}}

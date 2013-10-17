@@ -688,6 +688,7 @@ Test-Suite tests
         hslogger-template == 2.0.*,
         HUnit == 1.2.*,
         lens >= 3.8 && < 3.10,
+        MonadCatchIO-transformers == 0.3.*,
         operational == 0.2.*,
         random == 1.0.*,
         QuickCheck >= 2.4 && < 2.7,
