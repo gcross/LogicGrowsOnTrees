@@ -745,126 +745,6 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
 mainForExploreTreeImpureUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) . ImpureAtopIO
 {-# INLINE mainForExploreTreeImpureUntilFoundUsingPush #-}
 
----------------------------- Generic main function -----------------------------
-
-{-| This is just like the previous functions, except that it is generalized over
-    all tree purities and exploration modes.  (In fact, the specialized
-    functions are just wrappers around this function.)
- -}
-genericMain ::
-    ( MonadIO result_monad
-    , ResultFor exploration_mode ~ result
-    , Serialize (ProgressFor exploration_mode)
-    ) ⇒
-    (tree_configuration → ExplorationMode exploration_mode)
-        {-^ a function that constructs the exploration mode given the tree
-            configuration; note that the constructor that this function returns
-            is restricted by the value of the exploration_mode type variable
-         -} →
-    Purity m n {-^ the purity of the tree -} →
-    Driver
-        result_monad
-        (SharedConfiguration tree_configuration)
-        SupervisorConfiguration
-        m n
-        exploration_mode
-        {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
-    (tree_configuration → RunOutcomeFor exploration_mode → IO ())
-        {-^ a callback that will be invoked with the outcome of the run and the
-            tree configuration information; note that if the run was 'Completed'
-            then the checkpoint file will be deleted if this function finishes
-            successfully
-         -} →
-    (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
-    result_monad ()
-genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_ constructTree_ =
-    run DriverParameters{..}
-  where
-    constructExplorationMode = constructExplorationMode_ . tree_configuration
-    shared_configuration_term = makeSharedConfigurationTerm tree_configuration_term
-    supervisor_configuration_term =
-        SupervisorConfiguration
-            <$> checkpoint_configuration_term
-            <*> maybe_workload_buffer_size_configuration_term
-            <*> statistics_configuration_term
-    program_info = program_info_
-        { man = man program_info_
-                ++
-                [S "Log Formatting"
-                ,P "The following are the variables you can use in the format string:"
-                ,I "$msg" "The actual log message"
-                ,I "$loggername" "The name of the logger"
-                ,I "$prio" "The priority level of the message"
-                ,I "$tid" "The thread ID"
-                ,I "$pid" "Process ID (Not available on windows)"
-                ,I "$time" "The current time"
-                ,I "$utcTime" "The current time in UTC Time"
-                ]
-                ++
-                [S "Statistics",P "Each statistic has a long-form name and an abbreviated name (in parentheses) shown below; you may use either when specifying it"]
-                ++
-                map (I <$> (printf "%s (%s)" <$> statisticLongName <*> statisticShortName) <*> statisticDescription) statistics
-        }
-    initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} = do
-        case maybe_log_format of
-            Nothing → return ()
-            Just log_format → do
-                handler ← flip setFormatter (simpleLogFormatter log_format) <$> streamHandler stdout log_level
-                updateGlobalLogger rootLoggerName $ setHandlers [handler]
-        updateGlobalLogger rootLoggerName (setLevel log_level)
-    constructTree = constructTree_ . tree_configuration
-    getStartingProgress shared_configuration SupervisorConfiguration{..} =
-        case maybe_checkpoint_configuration of
-            Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
-            Just CheckpointConfiguration{..} → do
-                infoM $ "Checkpointing enabled"
-                infoM $ "Checkpoint file is " ++ checkpoint_path
-                infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
-                ifM (doesFileExist checkpoint_path)
-                    (infoM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
-                    (return initial_progress)
-      where
-        initial_progress = initialProgress . constructExplorationMode $ shared_configuration
-    notifyTerminated SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} =
-        case maybe_checkpoint_configuration of
-            Nothing → doEndOfRun
-            Just CheckpointConfiguration{checkpoint_path} →
-                do doEndOfRun
-                   infoM "Deleting any remaining checkpoint file"
-                   removeFileIfExists checkpoint_path
-                `finally`
-                case runTerminationReason of
-                    Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
-                    Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint
-                    _ → return ()
-      where
-        StatisticsConfiguration{..} = statistics_configuration
-        doEndOfRun = do
-            if log_end_stats_configuration
-                then writeStatisticsToLog
-                        log_stats_level_configuration
-                        pastTense
-                        runStatistics
-                        end_stats_configuration
-                else mapM_ (hPutStrLn stderr)
-                        .
-                        map snd
-                        .
-                        generateStatistics pastTense runStatistics
-                        $
-                        end_stats_configuration
-            hFlush stderr
-            notifyTerminated_ tree_configuration run_outcome
-
-    constructController = const controllerLoop
-{-# INLINE genericMain #-}
-
 --------------------------------------------------------------------------------
 -------------------------- Simplified main functions ---------------------------
 --------------------------------------------------------------------------------
@@ -1100,6 +980,128 @@ simpleMainForExploreTreeImpureUntilFoundUsingPush ::
     result_monad ()
 simpleMainForExploreTreeImpureUntilFoundUsingPush = (dispatchToMainFunction .* mainForExploreTreeImpureUntilFoundUsingPush) . const
 {-# INLINE simpleMainForExploreTreeImpureUntilFoundUsingPush #-}
+
+--------------------------------------------------------------------------------
+---------------------------- Generic main function -----------------------------
+--------------------------------------------------------------------------------
+
+{-| This is just like the previous functions, except that it is generalized over
+    all tree purities and exploration modes.  (In fact, the specialized
+    functions are just wrappers around this function.)
+ -}
+genericMain ::
+    ( MonadIO result_monad
+    , ResultFor exploration_mode ~ result
+    , Serialize (ProgressFor exploration_mode)
+    ) ⇒
+    (tree_configuration → ExplorationMode exploration_mode)
+        {-^ a function that constructs the exploration mode given the tree
+            configuration; note that the constructor that this function returns
+            is restricted by the value of the exploration_mode type variable
+         -} →
+    Purity m n {-^ the purity of the tree -} →
+    Driver
+        result_monad
+        (SharedConfiguration tree_configuration)
+        SupervisorConfiguration
+        m n
+        exploration_mode
+        {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    TermInfo
+        {-^ information about the program; should look something like the following:
+
+                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
+         -} →
+    (tree_configuration → RunOutcomeFor exploration_mode → IO ())
+        {-^ a callback that will be invoked with the outcome of the run and the
+            tree configuration information; note that if the run was 'Completed'
+            then the checkpoint file will be deleted if this function finishes
+            successfully
+         -} →
+    (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
+    result_monad ()
+genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_ constructTree_ =
+    run DriverParameters{..}
+  where
+    constructExplorationMode = constructExplorationMode_ . tree_configuration
+    shared_configuration_term = makeSharedConfigurationTerm tree_configuration_term
+    supervisor_configuration_term =
+        SupervisorConfiguration
+            <$> checkpoint_configuration_term
+            <*> maybe_workload_buffer_size_configuration_term
+            <*> statistics_configuration_term
+    program_info = program_info_
+        { man = man program_info_
+                ++
+                [S "Log Formatting"
+                ,P "The following are the variables you can use in the format string:"
+                ,I "$msg" "The actual log message"
+                ,I "$loggername" "The name of the logger"
+                ,I "$prio" "The priority level of the message"
+                ,I "$tid" "The thread ID"
+                ,I "$pid" "Process ID (Not available on windows)"
+                ,I "$time" "The current time"
+                ,I "$utcTime" "The current time in UTC Time"
+                ]
+                ++
+                [S "Statistics",P "Each statistic has a long-form name and an abbreviated name (in parentheses) shown below; you may use either when specifying it"]
+                ++
+                map (I <$> (printf "%s (%s)" <$> statisticLongName <*> statisticShortName) <*> statisticDescription) statistics
+        }
+    initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} = do
+        case maybe_log_format of
+            Nothing → return ()
+            Just log_format → do
+                handler ← flip setFormatter (simpleLogFormatter log_format) <$> streamHandler stdout log_level
+                updateGlobalLogger rootLoggerName $ setHandlers [handler]
+        updateGlobalLogger rootLoggerName (setLevel log_level)
+    constructTree = constructTree_ . tree_configuration
+    getStartingProgress shared_configuration SupervisorConfiguration{..} =
+        case maybe_checkpoint_configuration of
+            Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
+            Just CheckpointConfiguration{..} → do
+                infoM $ "Checkpointing enabled"
+                infoM $ "Checkpoint file is " ++ checkpoint_path
+                infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
+                ifM (doesFileExist checkpoint_path)
+                    (infoM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
+                    (return initial_progress)
+      where
+        initial_progress = initialProgress . constructExplorationMode $ shared_configuration
+    notifyTerminated SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} =
+        case maybe_checkpoint_configuration of
+            Nothing → doEndOfRun
+            Just CheckpointConfiguration{checkpoint_path} →
+                do doEndOfRun
+                   infoM "Deleting any remaining checkpoint file"
+                   removeFileIfExists checkpoint_path
+                `finally`
+                case runTerminationReason of
+                    Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
+                    Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint
+                    _ → return ()
+      where
+        StatisticsConfiguration{..} = statistics_configuration
+        doEndOfRun = do
+            if log_end_stats_configuration
+                then writeStatisticsToLog
+                        log_stats_level_configuration
+                        pastTense
+                        runStatistics
+                        end_stats_configuration
+                else mapM_ (hPutStrLn stderr)
+                        .
+                        map snd
+                        .
+                        generateStatistics pastTense runStatistics
+                        $
+                        end_stats_configuration
+            hFlush stderr
+            notifyTerminated_ tree_configuration run_outcome
+
+    constructController = const controllerLoop
+{-# INLINE genericMain #-}
 
 --------------------------------------------------------------------------------
 ------------------------------ Utility functions -------------------------------
