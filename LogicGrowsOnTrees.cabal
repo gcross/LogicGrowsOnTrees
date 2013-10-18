@@ -700,6 +700,7 @@ Test-Suite tests
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
         test-framework-smallcheck == 0.2.*,
+        time == 1.4.*,
         transformers >= 0.2 && < 0.4,
         uuid == 1.2.*,
         void == 0.6.*

@@ -29,6 +29,7 @@ import Control.Monad.Trans.State (StateT,evalStateT)
 import Control.Monad.Trans.Writer
 
 import Data.Bits
+import Data.Time.Clock (diffUTCTime,getCurrentTime)
 import Data.Composition ((.*))
 import Data.Function
 import Data.Functor.Identity
@@ -72,7 +73,7 @@ import Test.QuickCheck.Gen
 import Test.QuickCheck.Instances ()
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
-import Test.QuickCheck.Property hiding ((.&.),(==>))
+import Test.QuickCheck.Property hiding ((.&.),(==>),abort)
 import Test.SmallCheck ((==>))
 import Test.SmallCheck.Series (Serial(..))
 import Test.SmallCheck.Drivers as Small (test)
@@ -1130,7 +1131,85 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Parallel.Common.RequestQueue" -- {{{
-        [testCase "kills all controller threads" $ do -- {{{
+        [testCase "CPU time tracker" $ do -- {{{
+            quit_var ← newEmptyMVar
+            time_1_actual_ref ← newIORef 0
+            time_2_expected_ref ← newIORef 0
+            time_2_actual_ref ← newIORef 0
+            time_3_expected_ref ← newIORef 0
+            time_3_actual_ref ← newIORef 0
+            time_4_expected_ref ← newIORef 0
+            time_4_actual_ref ← newIORef 0
+            time_5_expected_ref ← newIORef 0
+            time_5_actual_ref ← newIORef 0
+            tracker ← newCPUTimeTracker 0.01
+            _ ← flip Threads.exploreTreeIO (liftIO $ takeMVar quit_var) $ do
+                startCPUTimeTracker tracker
+                startCPUTimeTracker tracker
+                current_time_1 ← liftIO $ getCurrentTime
+                liftIO $ getCurrentCPUTime tracker >>= writeIORef time_1_actual_ref
+
+                Workgroup.setNumberOfWorkers 1
+                liftIO $ threadDelay 10000
+                current_time_2 ← liftIO $ getCurrentTime
+                let diff_time_12 = current_time_2 `diffUTCTime` current_time_1
+                liftIO $ do
+                    getCurrentCPUTime tracker >>= writeIORef time_2_actual_ref
+                    writeIORef time_2_expected_ref $ 0.01 + diff_time_12
+
+                Workgroup.setNumberOfWorkers 2
+                liftIO $ threadDelay 30000
+                current_time_3 ← liftIO $ getCurrentTime
+                let diff_time_23 = current_time_3 `diffUTCTime` current_time_2
+                liftIO $ do
+                    getCurrentCPUTime tracker >>= writeIORef time_3_actual_ref
+                    writeIORef time_3_expected_ref $ 0.01 + diff_time_12 + 2*diff_time_23
+
+                Workgroup.setNumberOfWorkers 3
+                liftIO $ threadDelay 50000
+                current_time_4 ← liftIO $ getCurrentTime
+                let diff_time_34 = current_time_4 `diffUTCTime` current_time_3
+                liftIO $ do
+                    getCurrentCPUTime tracker >>= writeIORef time_4_actual_ref
+                    writeIORef time_4_expected_ref $ 0.01 + diff_time_12 + 2*diff_time_23 + 3*diff_time_34
+
+                Workgroup.setNumberOfWorkers 1
+                liftIO $ threadDelay 70000
+                current_time_5 ← liftIO $ getCurrentTime
+                let diff_time_45 = current_time_5 `diffUTCTime` current_time_4
+                liftIO $ do
+                    getCurrentCPUTime tracker >>= writeIORef time_5_actual_ref
+                    writeIORef time_5_expected_ref $ 0.01 + diff_time_12 + 2*diff_time_23 + 3*diff_time_34 + diff_time_45
+
+                abort
+            putMVar quit_var ()
+            time_1_actual ← readIORef time_1_actual_ref
+            time_2_expected ← readIORef time_2_expected_ref
+            time_2_actual ← readIORef time_2_actual_ref
+            time_3_expected ← readIORef time_3_expected_ref
+            time_3_actual ← readIORef time_3_actual_ref
+            time_4_expected ← readIORef time_4_expected_ref
+            time_4_actual ← readIORef time_4_actual_ref
+            time_5_expected ← readIORef time_5_expected_ref
+            time_5_actual ← readIORef time_5_actual_ref
+            assertEqual
+                ("1: " ++ (show               1) ++ " vs. " ++ (show time_1_actual))
+                0.01
+                time_1_actual
+            assertBool
+                ("2: " ++ (show time_2_expected) ++ " vs. " ++ (show time_2_actual))
+                (abs (time_2_expected-time_2_actual) / (abs time_2_expected + abs time_2_actual) * 2 < 0.01)
+            assertBool
+                ("3: " ++ (show time_3_expected) ++ " vs. " ++ (show time_3_actual))
+                (abs (time_3_expected-time_3_actual) / (abs time_3_expected + abs time_3_actual) * 2 < 0.01)
+            assertBool
+                ("4: " ++ (show time_4_expected) ++ " vs. " ++ (show time_4_actual))
+                (abs (time_4_expected-time_4_actual) / (abs time_4_expected + abs time_4_actual) * 2 < 0.01)
+            assertBool
+                ("5: " ++ (show time_5_expected) ++ " vs. " ++ (show time_5_actual))
+                (abs (time_5_expected-time_5_actual) / (abs time_5_expected + abs time_5_actual) * 2 < 0.01)
+         -- }}}
+        ,testCase "kills all controller threads" $ do -- {{{
             starts@[a,b,c,d] ← replicateM 4 newEmptyMVar
             vars@[w,x,y,z] ← replicateM 4 newEmptyMVar
             request_queue ← newRequestQueue
@@ -1505,6 +1584,8 @@ tests = -- {{{
                 liftIO $ readIORef count_2_ref >>= (@?= 1)
                 abortSupervisor
              :: ∀ α. SupervisorMonad (AllMode ()) Int IO α)
+            readIORef count_1_ref >>= (@?= 0)
+            readIORef count_2_ref >>= (@?= 0)
             return ()
          -- }}}
         ]

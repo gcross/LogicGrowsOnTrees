@@ -2,6 +2,7 @@
 {-# LANGUAGE DoRec #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -50,27 +51,34 @@ module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     -- ** Controller threads
     , forkControllerThread
     , killControllerThreads
+    -- ** CPU time tracking
+    , CPUTimeTracker
+    , newCPUTimeTracker
+    , startCPUTimeTracker
+    , getCurrentCPUTime
     -- ** Miscellaneous
     , getQuantityAsync
     ) where
 
 import Prelude hiding (catch)
 
-import Control.Applicative (liftA2)
+import Control.Applicative ((<$>),(<*>),liftA2)
 import Control.Arrow ((&&&))
 import Control.Concurrent (ThreadId,forkIO,killThread)
 import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,tryReadTChan,writeTChan)
+import Control.Concurrent.STM.TVar (TVar,modifyTVar',newTVarIO,readTVar,writeTVar)
 import Control.Exception (BlockedIndefinitelyOnMVar(..),catch,finally,mask)
 import Control.Monad.CatchIO (MonadCatchIO)
-import Control.Monad ((>=>),join,liftM,liftM3)
+import Control.Monad ((>=>),join,liftM,liftM3,unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,readIORef,newIORef)
 import Data.List (delete)
+import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime,getCurrentTime)
 
 import qualified LogicGrowsOnTrees.Parallel.Common.Supervisor as Supervisor
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
@@ -338,7 +346,53 @@ killControllerThreads ::
     m' ()
 killControllerThreads = liftIO . readIORef . controllerThreads >=> liftIO . mapM_ killThread
 
----------------------------------- Miscellaneous ----------------------------------
+------------------------------ CPU time tracking -------------------------------
+
+{-| A data structure that tracks the amount of CPU time that has been used. -}
+data CPUTimeTracker = CPUTimeTracker
+    {   trackerStarted :: IORef Bool
+    ,   trackerLastTime :: TVar (Maybe (UTCTime,Int))
+    ,   trackerTotalTime :: TVar NominalDiffTime
+    }
+
+{-| Creates a new CPU time tracker, which should be equal to the amount of total
+    time used so far if we are continuing a previous run and zero otherwise.
+ -}
+newCPUTimeTracker :: NominalDiffTime → IO CPUTimeTracker
+newCPUTimeTracker initial_cpu_time =
+    CPUTimeTracker
+        <$> newIORef False
+        <*> newTVarIO Nothing
+        <*> newTVarIO initial_cpu_time
+
+computeAdditionalTime current_time (last_time,last_number_of_workers) =
+    (current_time `diffUTCTime` last_time) * fromIntegral last_number_of_workers
+
+{-| Starts the CPU time tracker;  it detects when it has already been started so
+    if you attempt to start it more than once then all subsequent attempts will
+    be ignored.
+ -}
+startCPUTimeTracker :: RequestQueueMonad m ⇒ CPUTimeTracker → m ()
+startCPUTimeTracker CPUTimeTracker{..} = do
+    already_started ← liftIO $ atomicModifyIORef trackerStarted (const True &&& id)
+    unless already_started . addWorkerCountListener $ \current_number_of_workers → do
+        current_time ← getCurrentTime
+        atomically $ do
+            maybe_last ← readTVar trackerLastTime
+            flip (maybe (return ())) maybe_last $ \last →
+                modifyTVar' trackerTotalTime (+ computeAdditionalTime current_time last)
+            writeTVar trackerLastTime $ Just (current_time,current_number_of_workers)
+
+{-| Gets the current CPI time. -}
+getCurrentCPUTime :: CPUTimeTracker → IO NominalDiffTime
+getCurrentCPUTime CPUTimeTracker{..} = do
+    current_time ← getCurrentTime
+    atomically $ do
+        old_total_time ← readTVar trackerTotalTime
+        maybe_last ← readTVar trackerLastTime
+        return $ old_total_time + maybe 0 (computeAdditionalTime current_time) maybe_last
+
+-------------------------------- Miscellaneous ---------------------------------
 
 {-| Submits a 'Request' to the supervisor and invokes the given callback with the
     result when it is available.  (This function is used by
