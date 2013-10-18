@@ -58,6 +58,7 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , removeWorkerIfPresent
     -- ** Supervisor interaction
     , abortSupervisor
+    , addWorkerCountListener
     , beginSupervisorOccupied
     , disableSupervisorDebugMode
     , enableSupervisorDebugMode
@@ -344,6 +345,13 @@ removeWorkerIfPresent = wrapIntoSupervisorMonad . Implementation.removeWorkerIfP
 {-| Aborts the supervisor. -}
 abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ SupervisorMonad exploration_mode worker_id m α
 abortSupervisor = wrapIntoSupervisorMonad Implementation.abortSupervisor
+
+{-| Submits a function to be called whenever the number of workers changes; the
+    given function will be also called immediately with the current number of
+    workers.
+ -}
+addWorkerCountListener :: SupervisorMonadConstraint m ⇒ (Int → IO ()) → SupervisorMonad exploration_mode worker_id m ()
+addWorkerCountListener = wrapIntoSupervisorMonad . Implementation.addWorkerCountListener
 
 {-| Signals that the supervisor has begun processing an event. -}
 beginSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()

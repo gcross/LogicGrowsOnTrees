@@ -31,6 +31,7 @@ module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     , RequestQueueReader
     -- * Functions
     -- ** Synchronized requests
+    , addWorkerCountListener
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
@@ -88,6 +89,11 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 class (HasExplorationMode m, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()
+    {-| Submits a function to be called whenever the number of workers changes;
+        the given function will be also called immediately with the current
+        number of workers.
+     -}
+    addWorkerCountListenerAsync :: (Int → IO ()) → IO () → m ()
     {-| Fork a new thread running in this monad;  all controller threads are automnatically killed when the run is finished. -}
     fork :: m () → m ThreadId
     {-| Request the current progress, invoking the given callback with the result;  see 'getCurrentProgress' for the synchronous version. -}
@@ -126,6 +132,7 @@ instance HasExplorationMode (RequestQueueReader exploration_mode worker_id m) wh
 
 instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader exploration_mode worker_id m) where
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
+    addWorkerCountListenerAsync listener callback = ask >>= enqueueRequest (Supervisor.addWorkerCountListener listener >> liftIO callback)
     fork m = ask >>= flip forkControllerThread' m
     getCurrentProgressAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentProgress
     getCurrentStatisticsAsync = (ask >>=) . getQuantityAsync Supervisor.getCurrentStatistics
@@ -145,6 +152,10 @@ instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueue
 --------------------------------------------------------------------------------
 
 ------------------------------ Synchronized requests ------------------------------
+
+{-| Like 'addWorkerCountListenerAsync', but blocks until the listener has been added. -}
+addWorkerCountListener :: RequestQueueMonad m ⇒ (Int → IO ()) → m ()
+addWorkerCountListener listener = syncAsync (\callback → addWorkerCountListenerAsync listener (callback ()))
 
 {-| Like 'getCurrentProgressAsync', but blocks until the result is ready. -}
 getCurrentProgress :: RequestQueueMonad m ⇒ m (ProgressFor (ExplorationModeFor m))

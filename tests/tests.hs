@@ -87,7 +87,7 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..))
 import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Path
-import LogicGrowsOnTrees.Parallel.Common.RequestQueue hiding (setWorkloadBufferSize)
+import LogicGrowsOnTrees.Parallel.Common.RequestQueue hiding (addWorkerCountListener,setWorkloadBufferSize)
 import LogicGrowsOnTrees.Parallel.Common.Supervisor
 import LogicGrowsOnTrees.Utils.Handle (send,receive)
 import LogicGrowsOnTrees.Utils.PerfectTree
@@ -1473,6 +1473,39 @@ tests = -- {{{
                 ]
              -- }}}
             ]
+         -- }}}
+        ,testCase "worker count listener" $ do -- {{{
+            count_1_ref ← newIORef (-1)
+            count_2_ref ← newIORef (-1)
+            _ ← runUnrestrictedSupervisor AllMode ignore_supervisor_actions $ (do
+                addWorkerCountListener $ writeIORef count_1_ref
+                liftIO $ readIORef count_1_ref >>= (@?= 0)
+                addWorker (0::Int)
+                liftIO $ readIORef count_1_ref >>= (@?= 1)
+                addWorkerCountListener $ writeIORef count_2_ref
+                liftIO $ readIORef count_2_ref >>= (@?= 1)
+                addWorker 1
+                liftIO $ readIORef count_1_ref >>= (@?= 2)
+                liftIO $ readIORef count_2_ref >>= (@?= 2)
+                removeWorker 0
+                liftIO $ readIORef count_1_ref >>= (@?= 1)
+                liftIO $ readIORef count_2_ref >>= (@?= 1)
+                addWorker 2
+                liftIO $ readIORef count_1_ref >>= (@?= 2)
+                liftIO $ readIORef count_2_ref >>= (@?= 2)
+                receiveStolenWorkload 1 . Just $
+                    StolenWorkload
+                        (ProgressUpdate
+                            (Progress (ChoicePoint Unexplored Unexplored) ())
+                            (Workload (Seq.fromList [ChoiceStep LeftBranch]) Unexplored)
+                        )
+                        (Workload (Seq.fromList [ChoiceStep RightBranch]) Unexplored)
+                receiveWorkerFinishedAndRemoved 1 (Progress (ChoicePoint Explored Unexplored) ())
+                liftIO $ readIORef count_1_ref >>= (@?= 1)
+                liftIO $ readIORef count_2_ref >>= (@?= 1)
+                abortSupervisor
+             :: ∀ α. SupervisorMonad (AllMode ()) Int IO α)
+            return ()
          -- }}}
         ]
      -- }}}

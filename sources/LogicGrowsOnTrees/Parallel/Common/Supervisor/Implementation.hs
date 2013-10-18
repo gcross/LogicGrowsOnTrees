@@ -34,6 +34,7 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
     , abortSupervisor
     , abortSupervisorWithReason
     , addWorker
+    , addWorkerCountListener
     , changeSupervisorOccupiedStatus
     , current_time
     , getCurrentProgress
@@ -346,6 +347,7 @@ data SupervisorState exploration_mode worker_id = -- {{{
     ,   _time_spent_in_supervisor_monad :: !NominalDiffTime
     ,   _workload_buffer_size :: !Int
     ,   _number_of_calls :: !Int
+    ,   _worker_count_listeners :: [Int → IO ()]
     }
 $( makeLenses ''SupervisorState )
 -- }}}
@@ -494,12 +496,13 @@ abortSupervisorWithReason ::  -- {{{
     SupervisorFullConstraint worker_id m ⇒
     SupervisorTerminationReasonFor exploration_mode worker_id →
     AbortMonad exploration_mode worker_id m α
-abortSupervisorWithReason reason = AbortMonad $
-    (SupervisorOutcome
+abortSupervisorWithReason reason = AbortMonad $ do
+    lift $ notifyWorkerCountListeners 0
+    SupervisorOutcome
         <$> (return reason)
         <*>  getCurrentStatistics'
         <*> (Set.toList <$> use known_workers)
-    ) >>= abort
+     >>= abort
 -- }}}
 
 addPointToExponentiallyDecayingSum :: UTCTime → ExponentiallyDecayingSum → ExponentiallyDecayingSum -- {{{
@@ -525,10 +528,19 @@ addWorker :: -- {{{
 addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     infoM $ "Adding worker " ++ show worker_id
     validateWorkerNotKnown "adding worker" worker_id
-    known_workers %= Set.insert worker_id
+    Set.size <$> (known_workers <%= Set.insert worker_id) >>= notifyWorkerCountListeners
     start_time ← view current_time
     worker_occupation_statistics %= Map.insert worker_id (OccupationStatistics start_time start_time 0 False)
     tryToObtainWorkloadFor True worker_id
+-- }}}
+
+addWorkerCountListener :: -- {{{
+    SupervisorMonadConstraint m ⇒
+    (Int → IO ()) →
+    ContextMonad exploration_mode worker_id m ()
+addWorkerCountListener listener = do
+    worker_count_listeners %= (listener:)
+    getNumberOfWorkers >>= liftIO . listener
 -- }}}
 
 beginWorkerOccupied :: -- {{{
@@ -835,7 +847,8 @@ finishWithResult :: -- {{{
     ) ⇒
     FinalResultFor exploration_mode →
     InsideAbortMonad exploration_mode worker_id m α
-finishWithResult final_value =
+finishWithResult final_value = do
+    lift $ notifyWorkerCountListeners 0
     SupervisorOutcome
         <$> (return $ SupervisorCompleted final_value)
         <*> (lift getCurrentStatistics)
@@ -1019,6 +1032,14 @@ localWithinContext f m = do
         m
     put new_state
     return result
+-- }}}
+
+notifyWorkerCountListeners :: -- {{{
+    SupervisorMonadConstraint m ⇒
+    Int →
+    ContextMonad exploration_mode worker_id m ()
+notifyWorkerCountListeners number_of_workers =
+    use worker_count_listeners >>= liftIO . mapM_ ($ number_of_workers) 
 -- }}}
 
 performGlobalProgressUpdate :: -- {{{
@@ -1232,7 +1253,7 @@ retireWorker :: -- {{{
     worker_id →
     ContextMonad exploration_mode worker_id m ()
 retireWorker worker_id = do
-    known_workers %= Set.delete worker_id
+    Set.size <$> (known_workers <%= Set.delete worker_id) >>= notifyWorkerCountListeners
     retired_occupation_statistics ←
         worker_occupation_statistics %%= (fromJust . Map.lookup worker_id &&& Map.delete worker_id)
         >>=
@@ -1309,6 +1330,7 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
             ,   _time_spent_in_supervisor_monad = 0
             ,   _workload_buffer_size = 4
             ,   _number_of_calls = 0
+            ,   _worker_count_listeners = []
             }
         )
     .
