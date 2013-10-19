@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -106,6 +105,9 @@ import Control.Monad (forM_,forever,join,liftM,liftM2,mplus,when,unless,void)
 import Control.Monad.CatchIO (catch)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Tools (ifM)
+import qualified Control.Monad.Trans.State.Strict as State
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.State.Strict (evalStateT)
 
 import Data.ByteString.Lazy (readFile,writeFile)
 import Data.Char (toLower)
@@ -179,7 +181,7 @@ instance Ord Statistic where
 -------------------------------- Configuration ---------------------------------
 
 data CheckpointConfiguration = CheckpointConfiguration
-    {   checkpoint_path :: FilePath
+    {   maybe_checkpoint_path :: Maybe FilePath
     ,   checkpoint_interval :: Float
     } deriving (Eq,Show)
 
@@ -201,7 +203,7 @@ data StatisticsConfiguration = StatisticsConfiguration
     }
 
 data SupervisorConfiguration = SupervisorConfiguration
-    {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
+    {   checkpoint_configuration :: CheckpointConfiguration
     ,   maybe_workload_buffer_size_configuration :: Maybe Int
     ,   statistics_configuration :: StatisticsConfiguration
     ,   show_cpu_time :: Bool
@@ -1068,13 +1070,17 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                 updateGlobalLogger rootLoggerName $ setHandlers [handler]
         updateGlobalLogger rootLoggerName (setLevel log_level)
     constructTree = constructTree_ . tree_configuration
-    getStartingProgress_ tracker_ref shared_configuration SupervisorConfiguration{..} =
-        case maybe_checkpoint_configuration of
+    getStartingProgress_
+        tracker_ref
+        shared_configuration
+        SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
+     = do
+        case maybe_checkpoint_path of
             Nothing → do
                 infoM "Checkpointing is NOT enabled"
                 newCPUTimeTracker 0 >>= writeIORef tracker_ref
                 return initial_progress
-            Just CheckpointConfiguration{..} → do
+            Just checkpoint_path → do
                 infoM $ "Checkpointing enabled"
                 infoM $ "Checkpoint file is " ++ checkpoint_path
                 infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
@@ -1087,11 +1093,16 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                     (newCPUTimeTracker 0 >>= writeIORef tracker_ref >> return initial_progress)
       where
         initial_progress = initialProgress . constructExplorationMode $ shared_configuration
-    notifyTerminated_main tracker_ref SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} = do
+    notifyTerminated_main
+        tracker_ref
+        SharedConfiguration{..}
+        SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
+        run_outcome@RunOutcome{..}
+     = do
         cpu_time ← readIORef tracker_ref >>= getCurrentCPUTime
-        case maybe_checkpoint_configuration of
+        case maybe_checkpoint_path of
             Nothing → doEndOfRun cpu_time
-            Just CheckpointConfiguration{checkpoint_path} →
+            Just checkpoint_path →
                 do doEndOfRun cpu_time
                    infoM "Deleting any remaining checkpoint file"
                    removeFileIfExists checkpoint_path
@@ -1352,9 +1363,9 @@ statistics =
 
 ----------------------------- Configuration terms ------------------------------
 
-checkpoint_configuration_term :: Term (Maybe CheckpointConfiguration)
+checkpoint_configuration_term :: Term CheckpointConfiguration
 checkpoint_configuration_term =
-    maybe (const Nothing) (Just .* CheckpointConfiguration)
+    CheckpointConfiguration
         <$> value (flip opt (
             (optInfo ["c","checkpoint-file"])
             {   optName = "FILEPATH"
@@ -1367,12 +1378,17 @@ checkpoint_configuration_term =
             }
             ) Nothing)
         <*> value (flip opt (
-            (optInfo ["i","checkpoint-interval"])
+            (optInfo ["i","interval"])
             {   optName = "SECONDS"
             ,   optDoc = unwords
-                ["This specifies the time between checkpoints (in seconds, with"
-                ,"a mandatory decimal point required by cmdtheline); it is"
-                ,"ignored if checkpoint file has not been specified."
+                ["If checkpointing is enabled, this specifies how often a"
+                ,"checkpoint will be written;  if checkpointing is not enabled,"
+                ,"then it sets how often a global progress update is performed"
+                ,"(which matters when workers will join and leave during the"
+                ,"run so that their partial progress is not lost).  This"
+                ,"quantity is given in seconds, and not only may it be"
+                ,"fractional but in fact a decimal point is required as"
+                ,"otherwise the argument parser gets confused."
                 ]
             }
             ) 60)
@@ -1464,27 +1480,28 @@ checkpointLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ CPUTimeTracker → CheckpointConfiguration → m α
-checkpointLoop tracker CheckpointConfiguration{..} = go False
-  where
-    delay = round $ checkpoint_interval * 1000000
-
-    go alerted_since_last_failure = do
-        new_alerted_since_last_failure ←
+checkpointLoop tracker CheckpointConfiguration{..} =
+    case maybe_checkpoint_path of
+        Nothing → forever $ requestProgressUpdate >> delay
+        Just checkpoint_path → flip evalStateT False . forever $
+            -- state carries around whether an alert has been issued since the
+            -- last problem occurred
             (do join $
                     liftM2 (liftIO .* writeCheckpointFile checkpoint_path)
-                        requestProgressUpdate
+                        (lift requestProgressUpdate)
                         (liftIO (getCurrentCPUTime tracker))
                 infoM $ "Checkpoint written to " ++ show checkpoint_path
-                when alerted_since_last_failure $
-                    noticeM "The problem with the checkpoint has been resolved."
-                return False
+                State.get >>= (flip when $ noticeM "The problem with the checkpoint has been resolved.")
+                State.put False
             ) `catch` (\(e::SomeException) → do
-                (if alerted_since_last_failure then infoM else errorM) $
-                    "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
-                return True
+                let message = "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
+                ifM State.get (infoM message) (errorM message)
+                State.put True
             )
-        liftIO $ threadDelay delay
-        go new_alerted_since_last_failure
+  where
+    delay = liftIO . threadDelay $ amount
+      where
+        amount = round $ checkpoint_interval * 1000000
 
 statisticsLoop :: RequestQueueMonad m ⇒ [[Statistic]] → Priority → Float → m α
 statisticsLoop stats level interval = forever $ do
@@ -1504,10 +1521,10 @@ controllerLoop ::
     , Serialize (ProgressFor (ExplorationModeFor m))
     ) ⇒ IORef CPUTimeTracker → SupervisorConfiguration → m ()
 controllerLoop tracker_ref SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},..} = do
-    tracker ← liftIO . readIORef $ tracker_ref 
+    tracker ← liftIO . readIORef $ tracker_ref
     startCPUTimeTracker tracker
     maybe (return ()) setWorkloadBufferSize maybe_workload_buffer_size_configuration
-    maybe (return ()) (void . fork . checkpointLoop tracker) maybe_checkpoint_configuration
+    void . fork $ checkpointLoop tracker checkpoint_configuration
     when (not . null $ log_stats_configuration) $
         void . fork $ statisticsLoop log_stats_configuration log_stats_level_configuration log_stats_interval_configuration
 
