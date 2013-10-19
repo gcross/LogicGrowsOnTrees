@@ -102,7 +102,7 @@ import Control.Applicative ((<$>),(<*>),pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (ThreadId,threadDelay)
 import Control.Exception (SomeException,finally,handleJust,onException)
-import Control.Monad (forM_,forever,liftM,mplus,when,unless,void)
+import Control.Monad (forM_,forever,join,liftM,liftM2,mplus,when,unless,void)
 import Control.Monad.CatchIO (catch)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Tools (ifM)
@@ -114,12 +114,14 @@ import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Function (on)
 import Data.Functor.Identity (Identity)
+import Data.IORef (IORef,newIORef,readIORef,writeIORef)
 import Data.List (find,intercalate,nub)
 import Data.List.Split (splitOn)
 import Data.Monoid (Monoid(..))
 import Data.Ord (comparing)
 import Data.Prefix.Units (FormatMode(FormatSiAll),formatValue,unitName)
 import Data.Serialize
+import Data.Time.Clock (NominalDiffTime)
 
 import System.Console.CmdTheLine
 import System.Directory (doesFileExist,removeFile,renameFile)
@@ -202,6 +204,7 @@ data SupervisorConfiguration = SupervisorConfiguration
     {   maybe_checkpoint_configuration :: Maybe CheckpointConfiguration
     ,   maybe_workload_buffer_size_configuration :: Maybe Int
     ,   statistics_configuration :: StatisticsConfiguration
+    ,   show_cpu_time :: Bool
     }
 
 data SharedConfiguration tree_configuration = SharedConfiguration
@@ -209,6 +212,9 @@ data SharedConfiguration tree_configuration = SharedConfiguration
     ,   tree_configuration :: tree_configuration
     } deriving (Eq,Show)
 $( derive makeSerialize ''SharedConfiguration )
+
+data ProgressAndCPUTime progress = ProgressAndCPUTime progress Rational
+$( derive makeSerialize ''ProgressAndCPUTime )
 
 --------------------------------- Driver types ---------------------------------
 
@@ -1021,7 +1027,11 @@ genericMain ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_ constructTree_ =
+genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_user constructTree_ = do
+    tracker_ref ← liftIO . newIORef $ error "tracker was not set"
+    let constructController = constructController_ tracker_ref
+        notifyTerminated = notifyTerminated_main tracker_ref
+        getStartingProgress = getStartingProgress_ tracker_ref
     run DriverParameters{..}
   where
     constructExplorationMode = constructExplorationMode_ . tree_configuration
@@ -1031,6 +1041,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
             <$> checkpoint_configuration_term
             <*> maybe_workload_buffer_size_configuration_term
             <*> statistics_configuration_term
+            <*> show_cpu_time_term
     program_info = program_info_
         { man = man program_info_
                 ++
@@ -1057,33 +1068,42 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                 updateGlobalLogger rootLoggerName $ setHandlers [handler]
         updateGlobalLogger rootLoggerName (setLevel log_level)
     constructTree = constructTree_ . tree_configuration
-    getStartingProgress shared_configuration SupervisorConfiguration{..} =
+    getStartingProgress_ tracker_ref shared_configuration SupervisorConfiguration{..} =
         case maybe_checkpoint_configuration of
-            Nothing → (infoM "Checkpointing is NOT enabled") >> return initial_progress
+            Nothing → do
+                infoM "Checkpointing is NOT enabled"
+                newCPUTimeTracker 0 >>= writeIORef tracker_ref
+                return initial_progress
             Just CheckpointConfiguration{..} → do
                 infoM $ "Checkpointing enabled"
                 infoM $ "Checkpoint file is " ++ checkpoint_path
                 infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
                 ifM (doesFileExist checkpoint_path)
-                    (infoM "Loading existing checkpoint file" >> either error id . decodeLazy <$> readFile checkpoint_path)
-                    (return initial_progress)
+                    (do infoM "Loading existing checkpoint file"
+                        ProgressAndCPUTime progress initial_cpu_time ← either error id . decodeLazy <$> readFile checkpoint_path
+                        newCPUTimeTracker (realToFrac initial_cpu_time) >>= writeIORef tracker_ref
+                        return progress
+                    )
+                    (newCPUTimeTracker 0 >>= writeIORef tracker_ref >> return initial_progress)
       where
         initial_progress = initialProgress . constructExplorationMode $ shared_configuration
-    notifyTerminated SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} =
+    notifyTerminated_main tracker_ref SharedConfiguration{..} SupervisorConfiguration{..} run_outcome@RunOutcome{..} = do
+        cpu_time ← readIORef tracker_ref >>= getCurrentCPUTime
         case maybe_checkpoint_configuration of
-            Nothing → doEndOfRun
+            Nothing → doEndOfRun cpu_time
             Just CheckpointConfiguration{checkpoint_path} →
-                do doEndOfRun
+                do doEndOfRun cpu_time
                    infoM "Deleting any remaining checkpoint file"
                    removeFileIfExists checkpoint_path
                 `finally`
-                case runTerminationReason of
-                    Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint
-                    Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint
+                do 
+                   case runTerminationReason of
+                    Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint cpu_time
+                    Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint cpu_time
                     _ → return ()
       where
         StatisticsConfiguration{..} = statistics_configuration
-        doEndOfRun = do
+        doEndOfRun cpu_time = do
             if log_end_stats_configuration
                 then writeStatisticsToLog
                         log_stats_level_configuration
@@ -1097,10 +1117,11 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
                         generateStatistics pastTense runStatistics
                         $
                         end_stats_configuration
+            when show_cpu_time . hPutStrLn stderr $
+                "Total CPU time used was " ++ showWithUnitPrefix cpu_time ++ "seconds."
             hFlush stderr
-            notifyTerminated_ tree_configuration run_outcome
-
-    constructController = const controllerLoop
+            notifyTerminated_user tree_configuration run_outcome
+    constructController_ = const . controllerLoop
 {-# INLINE genericMain #-}
 
 --------------------------------------------------------------------------------
@@ -1328,14 +1349,6 @@ statistics =
           (showWithUnitPrefix timeMax)
      )
     ]
-    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-  where
-    showWithUnitPrefix :: Real n ⇒ n → String
-    showWithUnitPrefix 0 = "0 "
-    showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
-      where
-        (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
-
 
 ----------------------------- Configuration terms ------------------------------
 
@@ -1378,6 +1391,13 @@ logging_configuration_term =
          ,   optDoc = "This specifies the format of logged messages; see the Log Formatting section for more details."
          }
         )
+
+show_cpu_time_term :: Term Bool
+show_cpu_time_term =
+    value . flag $
+        (optInfo ["show-cpu-time"])
+        {   optDoc = "Print the total CPU time when the run finishes."
+        }
 
 statistics_configuration_term :: Term StatisticsConfiguration
 statistics_configuration_term =
@@ -1443,14 +1463,17 @@ makeSharedConfigurationTerm tree_configuration_term =
 checkpointLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
-    ) ⇒ CheckpointConfiguration → m α
-checkpointLoop CheckpointConfiguration{..} = go False
+    ) ⇒ CPUTimeTracker → CheckpointConfiguration → m α
+checkpointLoop tracker CheckpointConfiguration{..} = go False
   where
     delay = round $ checkpoint_interval * 1000000
 
     go alerted_since_last_failure = do
         new_alerted_since_last_failure ←
-            (do requestProgressUpdate >>= writeCheckpointFile checkpoint_path
+            (do join $
+                    liftM2 (liftIO .* writeCheckpointFile checkpoint_path)
+                        requestProgressUpdate
+                        (liftIO (getCurrentCPUTime tracker))
                 infoM $ "Checkpoint written to " ++ show checkpoint_path
                 when alerted_since_last_failure $
                     noticeM "The problem with the checkpoint has been resolved."
@@ -1479,10 +1502,12 @@ statisticsLoop stats level interval = forever $ do
 controllerLoop ::
     ( RequestQueueMonad m
     , Serialize (ProgressFor (ExplorationModeFor m))
-    ) ⇒ SupervisorConfiguration → m ()
-controllerLoop SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},..} = do
+    ) ⇒ IORef CPUTimeTracker → SupervisorConfiguration → m ()
+controllerLoop tracker_ref SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},..} = do
+    tracker ← liftIO . readIORef $ tracker_ref 
+    startCPUTimeTracker tracker
     maybe (return ()) setWorkloadBufferSize maybe_workload_buffer_size_configuration
-    maybe (return ()) (void . fork . checkpointLoop) maybe_checkpoint_configuration
+    maybe (return ()) (void . fork . checkpointLoop tracker) maybe_checkpoint_configuration
     when (not . null $ log_stats_configuration) $
         void . fork $ statisticsLoop log_stats_configuration log_stats_level_configuration log_stats_interval_configuration
 
@@ -1522,6 +1547,12 @@ removeFileIfExists path =
         (\_ → return ())
         (removeFile path)
 
+showWithUnitPrefix :: Real n ⇒ n → String
+showWithUnitPrefix 0 = "0 "
+showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
+  where
+    (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
+
 writeStatisticsToLog :: Priority → Tense → RunStatistics → [[Statistic]] → IO ()
 writeStatisticsToLog level =
     (\outputs →
@@ -1535,11 +1566,11 @@ writeStatisticsToLog level =
   where
     logIt = logM "LogicGrowsOnTrees.Parallel.Main" level
 
-writeCheckpointFile :: (Serialize ip, MonadIO m) ⇒ FilePath → ip → m ()
-writeCheckpointFile checkpoint_path checkpoint = do
+writeCheckpointFile :: (Serialize ip, MonadIO m) ⇒ FilePath → ip → NominalDiffTime → m ()
+writeCheckpointFile checkpoint_path checkpoint cpu_time = do
     infoM $ "Writing checkpoint file"
     liftIO $
-        (do writeFile checkpoint_temp_path (encodeLazy checkpoint)
+        (do writeFile checkpoint_temp_path . encodeLazy $ ProgressAndCPUTime checkpoint (toRational cpu_time)
             renameFile checkpoint_temp_path checkpoint_path
         ) `onException` (
             removeFileIfExists checkpoint_temp_path
