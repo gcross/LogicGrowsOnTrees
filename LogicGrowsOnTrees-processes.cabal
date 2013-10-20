@@ -30,7 +30,7 @@ Library
         LogicGrowsOnTrees == 1.0.*,
         base > 4 && < 5,
         bytestring >= 0.9 && < 0.11,
-        cereal == 0.3.*,
+        cereal >= 0.3 && < 0.5,
         cmdtheline == 0.2.*,
         containers >= 0.4 && < 0.6,
         filepath == 1.3.*,
@@ -67,7 +67,7 @@ Executable count-all-nqueens-solutions
         LogicGrowsOnTrees-processes,
         LogicGrowsOnTrees == 1.0.*,
         base > 4 && < 5,
-        cereal == 0.3.*,
+        cereal >= 0.3 && < 0.5,
         cmdtheline == 0.2.*
     if flag(examples)
         Buildable: True
@@ -85,7 +85,7 @@ Executable count-all-trivial-tree-leaves
         LogicGrowsOnTrees-processes,
         LogicGrowsOnTrees == 1.0.*,
         base > 4 && < 5,
-        cereal == 0.3.*,
+        cereal >= 0.3 && < 0.5,
         cmdtheline == 0.2.*
     if flag(examples)
         Buildable: True
@@ -96,6 +96,18 @@ Executable count-all-trivial-tree-leaves
     if flag(pattern-warnings)
         GHC-Options: -fwarn-incomplete-patterns
 
+Benchmark benchmark
+    Type: exitcode-stdio-1.0
+    Main-is: benchmark.hs
+    Hs-source-dirs: benchmarks
+    Build-depends:
+        LogicGrowsOnTrees-processes,
+        LogicGrowsOnTrees == 1.0.*,
+        base > 4 && < 5,
+        criterion >= 0.6 && < 0.9
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
 Test-Suite tests
     Type: exitcode-stdio-1.0
     Main-is: tests.hs
@@ -104,7 +116,7 @@ Test-Suite tests
         LogicGrowsOnTrees-processes,
         LogicGrowsOnTrees == 1.0.*,
         base > 4 && < 5,
-        cereal == 0.3.*,
+        cereal >= 0.3 && < 0.5,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
         HUnit == 1.2.*,
