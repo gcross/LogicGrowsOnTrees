@@ -939,7 +939,9 @@ getNumberOfWorkers = liftM Set.size . use $ known_workers
 -- }}}
 
 getOccupationFraction :: RetiredOccupationStatistics → Float -- {{{
-getOccupationFraction = realToFrac . liftA2 (/) (^.occupied_time) (^.total_time)
+getOccupationFraction statistics
+  | statistics ^. total_time == 0 = 0
+  | otherwise = realToFrac . liftA2 (/) (^.occupied_time) (^.total_time) $ statistics
 -- }}}
 
 getWorkerDepth :: -- {{{
