@@ -1198,7 +1198,7 @@ tests = -- {{{
                 time_1_actual
             assertBool
                 ("2: " ++ (show time_2_expected) ++ " vs. " ++ (show time_2_actual))
-                (abs (time_2_expected-time_2_actual) / (abs time_2_expected + abs time_2_actual) * 2 < 0.01)
+                (abs (time_2_expected-time_2_actual) / (abs time_2_expected + abs time_2_actual) * 2 < 0.1)
             assertBool
                 ("3: " ++ (show time_3_expected) ++ " vs. " ++ (show time_3_actual))
                 (abs (time_3_expected-time_3_actual) / (abs time_3_expected + abs time_3_actual) * 2 < 0.01)
