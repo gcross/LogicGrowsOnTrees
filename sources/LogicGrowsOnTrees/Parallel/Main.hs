@@ -92,6 +92,7 @@ module LogicGrowsOnTrees.Parallel.Main
     , simpleMainForExploreTreeImpureUntilFoundUsingPush
     -- * Utility functions
     , extractRunOutcomeFromSupervisorOutcome
+    , mainMan
     , mainParser
     ) where
 
@@ -1045,24 +1046,7 @@ genericMain constructExplorationMode_ purity (Driver run) tree_configuration_ter
             <*> maybe_workload_buffer_size_configuration_term
             <*> statistics_configuration_term
             <*> show_cpu_time_term
-    program_info = program_info_
-        { man = man program_info_
-                ++
-                [S "Log Formatting"
-                ,P "The following are the variables you can use in the format string:"
-                ,I "$msg" "The actual log message"
-                ,I "$loggername" "The name of the logger"
-                ,I "$prio" "The priority level of the message"
-                ,I "$tid" "The thread ID"
-                ,I "$pid" "Process ID (Not available on windows)"
-                ,I "$time" "The current time"
-                ,I "$utcTime" "The current time in UTC Time"
-                ]
-                ++
-                [S "Statistics",P "Each statistic has a long-form name and an abbreviated name (in parentheses) shown below; you may use either when specifying it"]
-                ++
-                map (I <$> (printf "%s (%s)" <$> statisticLongName <*> statisticShortName) <*> statisticDescription) statistics
-        }
+    program_info = program_info_ { man = mainMan }
     initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} = do
         case maybe_log_format of
             Nothing → return ()
@@ -1154,6 +1138,30 @@ extractRunOutcomeFromSupervisorOutcome SupervisorOutcome{..} = RunOutcome{..}
             SupervisorFailure remainig_progress worker_id message →
                 Failure remainig_progress $ "Worker " ++ show worker_id ++ " failed with message: " ++ message
     runStatistics = supervisorRunStatistics
+
+{-| The additional entries in the manual explaining log format strings and
+    statistics. If you are not using the "Main" term info then you should add
+    'mainMan' to your term information as otherwise the documentation will be
+    incomplete; in particular when using 'execChoice' you will want to use this
+    for each of the modes that corresponds to the supervisor (as logging and
+    statistics are only on the supervisor).
+ -}
+mainMan :: [ManBlock]
+mainMan =
+    [S "Log Formatting"
+    ,P "The following are the variables you can use in the format string:"
+    ,I "$msg" "The actual log message"
+    ,I "$loggername" "The name of the logger"
+    ,I "$prio" "The priority level of the message"
+    ,I "$tid" "The thread ID"
+    ,I "$pid" "Process ID (Not available on windows)"
+    ,I "$time" "The current time"
+    ,I "$utcTime" "The current time in UTC Time"
+    ]
+    ++
+    [S "Statistics",P "Each statistic has a long-form name and an abbreviated name (in parentheses) shown below; you may use either when specifying it"]
+    ++
+    map (I <$> (printf "%s (%s)" <$> statisticLongName <*> statisticShortName) <*> statisticDescription) statistics
 
 {-| Parse the command line options using the given term and term info (the
     latter of which has the program name added to it);  if successful return the
