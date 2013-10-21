@@ -100,7 +100,7 @@ import Prelude hiding (catch,readFile,writeFile)
 import Control.Applicative ((<$>),(<*>),pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (ThreadId,threadDelay)
-import Control.Exception (SomeException,finally,handleJust,onException)
+import Control.Exception (AsyncException,SomeException,finally,fromException,handleJust,onException)
 import Control.Monad (forM_,forever,join,liftM,liftM2,mplus,when,unless,void)
 import Control.Monad.CatchIO (catch)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -119,6 +119,7 @@ import Data.Functor.Identity (Identity)
 import Data.IORef (IORef,newIORef,readIORef,writeIORef)
 import Data.List (find,intercalate,nub)
 import Data.List.Split (splitOn)
+import Data.Maybe (isJust)
 import Data.Monoid (Monoid(..))
 import Data.Ord (comparing)
 import Data.Prefix.Units (FormatMode(FormatSiAll),formatValue,unitName)
@@ -1493,10 +1494,11 @@ checkpointLoop tracker CheckpointConfiguration{..} =
                 infoM $ "Checkpoint written to " ++ show checkpoint_path
                 State.get >>= (flip when $ noticeM "The problem with the checkpoint has been resolved.")
                 State.put False
-            ) `catch` (\(e::SomeException) → do
-                let message = "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
-                ifM State.get (infoM message) (errorM message)
-                State.put True
+            ) `catch` (\(e::SomeException) →
+                unless (isJust . (fromException :: SomeException → Maybe AsyncException) $ e) $ do
+                    let message = "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
+                    ifM State.get (infoM message) (errorM message)
+                    State.put True
             )
   where
     delay = liftIO . threadDelay $ amount
