@@ -1218,6 +1218,26 @@ statistics =
           (showWithUnitPrefix runAverageTimePerCall)
      )
     -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    ,Statistic "worker-count" "workcnt"
+        "statistics about the number of participating workers"
+     (\tense RunStatistics{..} →
+        let FunctionOfTimeStatistics{..} = runWorkerCountStatistics
+        in if timeMax == 0
+          then
+              "No workers participated in this run."
+          else if timeMin == 0
+            then
+              printf "On average there were %.1f +/ - %.1f (std. dev) workers participating in the run;  never more than %i."
+                timeAverage
+                timeStdDev
+                timeMax
+            else
+              printf "On average there were %.1f +/ - %.1f (std. dev) workers participating in the run;  never more than %i nor fewer than %i."
+                timeAverage
+                timeStdDev
+                timeMax
+                timeMin
+     )    -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     ,Statistic "worker-occupation" "workocc"
         "the average percentage of the time that the workers were occupied"
      (\tense RunStatistics{..} →

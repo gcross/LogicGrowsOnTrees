@@ -246,6 +246,7 @@ data RunStatistics = -- {{{
     ,   runSupervisorMonadOccupation :: !Float {-^ the fraction of the time the supervisor spent processing events while inside the 'SupervisorMonad' -}
     ,   runNumberOfCalls :: !Int {-^ the number of calls made to functions in "LogicGrowsOnTrees.Parallel.Common.Supervisor" -}
     ,   runAverageTimePerCall :: !Float {-^ the average amount of time per call made to functions in "LogicGrowsOnTrees.Parallel.Common.Supervisor" -}
+    ,   runWorkerCountStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the number of workers waiting for a workload -}
     ,   runWorkerOccupation :: !Float {-^ the fraction of the total time that workers were occupied -}
     ,   runWorkerWaitTimes :: !(FunctionOfTimeStatistics NominalDiffTime) {-^ statistics for how long it took for workers to obtain a workload -}
     ,   runStealWaitTimes :: !IndependentMeasurementsStatistics {-^ statistics for the time needed to steal a workload from a worker -}
@@ -332,6 +333,7 @@ data SupervisorState exploration_mode worker_id = -- {{{
     ,   _current_progress :: !(ProgressFor exploration_mode)
     ,   _debug_mode :: !Bool
     ,   _supervisor_occupation_statistics :: !OccupationStatistics
+    ,   _worker_count_statistics :: !(StepFunctionOfTime Int)
     ,   _worker_occupation_statistics :: !(Map worker_id OccupationStatistics)
     ,   _retired_worker_occupation_statistics :: !(Map worker_id RetiredOccupationStatistics)
     ,   _worker_wait_time_statistics :: !(InterpolatedFunctionOfTime NominalDiffTime)
@@ -896,6 +898,11 @@ getCurrentStatistics' = do
         use time_spent_in_supervisor_monad
     runNumberOfCalls ← use number_of_calls
     let runAverageTimePerCall = runSupervisorMonadOccupation / fromIntegral runNumberOfCalls
+    runWorkerCountStatistics ←
+        extractFunctionOfTimeStatisticsWithFinalPoint
+            runStartTime
+            (Set.size <$> use known_workers)
+            (use worker_count_statistics)
     runWorkerOccupation ←
         getOccupationFraction . mconcat . Map.elems
         <$>
@@ -1040,7 +1047,8 @@ notifyWorkerCountListeners :: -- {{{
     SupervisorMonadConstraint m ⇒
     Int →
     ContextMonad exploration_mode worker_id m ()
-notifyWorkerCountListeners number_of_workers =
+notifyWorkerCountListeners number_of_workers = do
+    updateFunctionOfTimeUsingLens worker_count_statistics number_of_workers
     use worker_count_listeners >>= liftIO . mapM_ ($ number_of_workers) 
 -- }}}
 
@@ -1323,6 +1331,7 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
             ,   _steal_request_matcher_queue = mempty
             ,   _steal_request_failures = 0
             ,   _workload_steal_time_statistics = mempty
+            ,   _worker_count_statistics = initialStepFunctionForStartingTime start_time
             ,   _waiting_worker_count_statistics = initialStepFunctionForStartingTime start_time
             ,   _available_workload_count_statistics = initialStepFunctionForStartingTime start_time
             ,   _instantaneous_workload_request_rate = ExponentiallyDecayingSum start_time 0
