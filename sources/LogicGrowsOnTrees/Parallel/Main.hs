@@ -1227,12 +1227,12 @@ statistics =
               "No workers participated in this run."
           else if timeMin == 0
             then
-              printf "On average there were %.1f +/ - %.1f (std. dev) workers participating in the run;  never more than %i."
+              printf "On average there were %.1f +/- %.1f (std. dev) workers participating in the run; never more than %i."
                 timeAverage
                 timeStdDev
                 timeMax
             else
-              printf "On average there were %.1f +/ - %.1f (std. dev) workers participating in the run;  never more than %i nor fewer than %i."
+              printf "On average there were %.1f +/- %.1f (std. dev) workers participating in the run; never more than %i nor fewer than %i."
                 timeAverage
                 timeStdDev
                 timeMax
@@ -1264,7 +1264,7 @@ statistics =
                   timeCount
               else
                 printf (
-                  intercalate ","
+                  intercalate "\n"
                     ["Workers %scompleted their task and obtained a new workload %i times with an average of one every %sseconds or %.1g enqueues/second."
                     ,"The minimum waiting time %s %sseconds, and the maximum waiting time %s %sseconds."
                     ,"On average, a worker %shad to wait %sseconds +/- %sseconds (std. dev) for a new workload."
@@ -1276,9 +1276,9 @@ statistics =
                   (fromIntegral timeCount / total_time)
                   (tense "has been" "was")
                   (showWithUnitPrefix timeMin)
+                  (showWithUnitPrefix timeMax)
                   (tense "has been" "was")
                   (tense "has " "")
-                  (showWithUnitPrefix timeMax)
                   (showWithUnitPrefix timeAverage)
                   (showWithUnitPrefix timeStdDev)
      )
@@ -1294,7 +1294,7 @@ statistics =
                 (tense "have been" "were")
           else
             printf (
-              intercalate ","
+              intercalate "\n"
                 ["Workloads %s stolen %i times with an average of %sseconds between each steal or %.1g steals/second."
                 ,"The minimum waiting time for a steal %s %sseconds, and the maximum waiting time hasbeen %sseconds."
                 ,"On average, it %s %sseconds +/- %sseconds (std. dev) to steal a workload."
@@ -1322,13 +1322,13 @@ statistics =
               (tense "has had" "ever had")
           else if timeMin == 0
             then
-              printf "On average, %.1f +/ - %.1f (std. dev) workers %s waiting for a workload at any given time;  never more than %i."
+              printf "On average, %.1f +/- %.1f (std. dev) workers %s waiting for a workload at any given time; never more than %i."
                 timeAverage
                 timeStdDev
                 (tense "have been" "were")
                 timeMax
             else
-              printf "On average, %.1f +/ - %.1f (std. dev) workers %s waiting for a workload at any given time;  never more than %i nor fewer than %i."
+              printf "On average, %.1f +/- %.1f (std. dev) workers %s waiting for a workload at any given time; never more than %i nor fewer than %i."
                 timeAverage
                 timeStdDev
                 (tense "have been" "were")
@@ -1346,13 +1346,13 @@ statistics =
                 (tense "has had" "ever had")
             else if timeMin == 0
               then
-                printf "On average, %.1f +/ - %.1f (std. dev) workloads %s waiting for a worker at any given time;  never more than %i."
+                printf "On average, %.1f +/- %.1f (std. dev) workloads %s waiting for a worker at any given time; never more than %i."
                   timeAverage
                   timeStdDev
                   (tense "have been" "were")
                   timeMax
               else
-                printf "On average, %.1f +/ - %.1f (std. dev) workloads %s waiting for a worker at any given time;  never more than %i nor fewer than %i."
+                printf "On average, %.1f +/- %.1f (std. dev) workloads %s waiting for a worker at any given time; never more than %i nor fewer than %i."
                   timeAverage
                   timeStdDev
                   (tense "have been" "were")
@@ -1364,7 +1364,7 @@ statistics =
         "statistics about the (roughly) instantaneous rate at which workloads were requested by finished workers  (obtained via exponential smoothing over a time scale of one second)"
      (\tense RunStatistics{..} →
         let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadRequestRateStatistics
-        in printf "On average, the instantanenous rate at which workloads %s being requested %s %.1f +/ - %.1f (std. dev) requests per second;  the rate %s below %.1f nor %s above %.1f."
+        in printf "On average, the instantanenous rate at which workloads %s being requested %s %.1f +/- %.1f (std. dev) requests per second; the rate %s below %.1f nor %s above %.1f."
           (tense "are" "were")
           (tense "is" "was")
           timeAverage
@@ -1379,7 +1379,7 @@ statistics =
         "statistics about the (roughly) instantaneous amount of time that it took to steal a workload (obtained via exponential smoothing over a time scale of one second"
      (\tense RunStatistics{..} →
         let FunctionOfTimeStatistics{..} = runInstantaneousWorkloadStealTimeStatistics
-        in printf "On average, the instantaneous time to steal a workload %s %sseconds +/ - %sseconds (std. dev);  this time interval %s below %sseconds nor %s above %sseconds."
+        in printf "On average, the instantaneous time to steal a workload %s %sseconds +/- %sseconds (std. dev); this time interval %s below %sseconds nor %s above %sseconds."
           (tense "has been" "was")
           (showWithUnitPrefix timeAverage)
           (showWithUnitPrefix timeStdDev)
@@ -1400,7 +1400,7 @@ checkpoint_configuration_term =
             {   optName = "FILEPATH"
             ,   optDoc = unwords
                 ["This enables periodic checkpointing with the given path"
-                ,"specifying the location of the checkpoint file;  if the file"
+                ,"specifying the location of the checkpoint file; if the file"
                 ,"already exists then it will be loaded as the initial starting"
                 ,"point for the search."
                 ]
@@ -1411,7 +1411,7 @@ checkpoint_configuration_term =
             {   optName = "SECONDS"
             ,   optDoc = unwords
                 ["If checkpointing is enabled, this specifies how often a"
-                ,"checkpoint will be written;  if checkpointing is not enabled,"
+                ,"checkpoint will be written; if checkpointing is not enabled,"
                 ,"then it sets how often a global progress update is performed"
                 ,"(which matters when workers will join and leave during the"
                 ,"run so that their partial progress is not lost).  This"
@@ -1427,7 +1427,7 @@ logging_configuration_term =
     <$> (value . opt WARNING $
          (optInfo ["l","log-level"])
          {   optName = "LEVEL"
-         ,   optDoc = "This specifies the upper bound (inclusive) on the importance of the messages that will be logged;  it must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, or EMERGENCY."
+         ,   optDoc = "This specifies the upper bound (inclusive) on the importance of the messages that will be logged; it must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, or EMERGENCY."
          }
         )
     <*> (value . opt Nothing $
@@ -1450,7 +1450,7 @@ statistics_configuration_term =
     <$> (value . optAll [] $
          (optInfo ["s","end-stats"])
          {   optName = "STATS"
-         ,   optDoc = "A comma-separated list of statistics to be printed to stderr at the end of the run;  you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
+         ,   optDoc = "A comma-separated list of statistics to be printed to stderr at the end of the run; you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
          }
         )
     <*> (value . flag $
@@ -1461,7 +1461,7 @@ statistics_configuration_term =
     <*> (value . optAll [] $
          (optInfo ["log-stats"])
          {   optName = "STATS"
-         ,   optDoc = "A comma-separated list of statistics to be regularly logged during the run level;  you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
+         ,   optDoc = "A comma-separated list of statistics to be regularly logged during the run level; you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
          }
         )
     <*> (value . opt NOTICE $
@@ -1524,7 +1524,7 @@ checkpointLoop tracker CheckpointConfiguration{..} =
                 State.put False
             ) `catch` (\(e::SomeException) →
                 unless (isJust . (fromException :: SomeException → Maybe AsyncException) $ e) $ do
-                    let message = "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\";  will keep retrying in case the problem gets resolved."
+                    let message = "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\"; will keep retrying in case the problem gets resolved."
                     ifM State.get (infoM message) (errorM message)
                     State.put True
             )
