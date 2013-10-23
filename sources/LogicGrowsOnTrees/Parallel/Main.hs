@@ -1276,8 +1276,8 @@ statistics =
                   (fromIntegral timeCount / total_time)
                   (tense "has been" "was")
                   (showWithUnitPrefix timeMin)
-                  (showWithUnitPrefix timeMax)
                   (tense "has been" "was")
+                  (showWithUnitPrefix timeMax)
                   (tense "has " "")
                   (showWithUnitPrefix timeAverage)
                   (showWithUnitPrefix timeStdDev)
@@ -1296,7 +1296,7 @@ statistics =
             printf (
               intercalate "\n"
                 ["Workloads %s stolen %i times with an average of %sseconds between each steal or %.1g steals/second."
-                ,"The minimum waiting time for a steal %s %sseconds, and the maximum waiting time hasbeen %sseconds."
+                ,"The minimum waiting time for a steal %s %sseconds, and the maximum waiting time %s %sseconds."
                 ,"On average, it %s %sseconds +/- %sseconds (std. dev) to steal a workload."
                 ]
             )
@@ -1306,6 +1306,7 @@ statistics =
               (fromIntegral statCount / total_time)
               (tense "has been" "was")
               (showWithUnitPrefix statMin)
+              (tense "has been" "was")
               (showWithUnitPrefix statMax)
               (tense "has taken" "took")
               (showWithUnitPrefix statAverage)
