@@ -34,6 +34,7 @@ module LogicGrowsOnTrees.Checkpoint
     , checkpointFromContext
     , checkpointFromCursor
     , checkpointFromExplorationState
+    , checkpointFromReversedList
     , checkpointFromSequence
     , checkpointFromInitialPath
     , checkpointFromUnexploredPath
@@ -193,7 +194,7 @@ data CheckpointDifferential =
 {-| Like 'CheckpointCursor', but each step keeps track of the subtree for the
     alternative branch in case we backtrack to it.
  -}
-type Context m α = Seq (ContextStep m α)
+type Context m α = [ContextStep m α]
 
 {-| Like 'CheckpointDifferential', but left branches include the subtree for the
     right branch; the right branches do not need this information because we
@@ -227,7 +228,7 @@ type ExplorationState = ExplorationTState Identity
 
 {-| Constructs the initial 'ExplorationTState' for the given tree. -}
 initialExplorationState :: Checkpoint → TreeT m α → ExplorationTState m α
-initialExplorationState = ExplorationTState Seq.empty
+initialExplorationState = ExplorationTState mempty
 
 --------------------------------------------------------------------------------
 ----------------------------- Utility functions --------------------------------
@@ -239,7 +240,7 @@ initialExplorationState = ExplorationTState Seq.empty
     at your current location and the subcheckpoint at your location.
  -}
 checkpointFromContext :: Context m α → Checkpoint → Checkpoint
-checkpointFromContext = checkpointFromSequence $
+checkpointFromContext = checkpointFromReversedList $
     \step → case step of
         CacheContextStep cache → CachePoint cache
         LeftBranchContextStep right_checkpoint _ → flip ChoicePoint right_checkpoint
@@ -270,20 +271,34 @@ checkpointFromExplorationState ExplorationTState{..} =
     with @Explored@, which both shrinks the size of the checkpoint as well as
     making it /much/ easier to determine if it is equivalent to 'Explored'. 
  -}
+checkpointFromReversedList ::
+    (α → (Checkpoint → Checkpoint)) →
+    [α] →
+    Checkpoint →
+    Checkpoint
+checkpointFromReversedList _ [] = id
+checkpointFromReversedList processStep (step:rest) =
+    checkpointFromReversedList processStep rest
+    .
+    simplifyCheckpointRoot
+    .
+    processStep step
+
+{-| The same as 'checkpointFromReversedList', but where the cursor is specified
+    as a (non-reversed) 'Seq' rather than a list.
+ -}
 checkpointFromSequence ::
     (α → (Checkpoint → Checkpoint)) →
     Seq α →
     Checkpoint →
     Checkpoint
-checkpointFromSequence processStep sequence =
-    case viewr sequence of
-        EmptyR → id
-        rest :> step →
-            checkpointFromSequence processStep rest
-            .
-            simplifyCheckpointRoot
-            .
-            processStep step
+checkpointFromSequence _ (viewr → EmptyR) = id
+checkpointFromSequence processStep (viewr → rest :> step) =
+    checkpointFromSequence processStep rest
+    .
+    simplifyCheckpointRoot
+    .
+    processStep step
 
 {-| Constructs a full checkpoint given the path to where you are currently
     searching and the subcheckpoint at your location, assuming that we have no
@@ -326,7 +341,7 @@ simplifyCheckpoint checkpoint = checkpoint
     does not contain any information about the branches not taken.)
  -}
 pathFromContext :: Context m α → Path
-pathFromContext = fmap pathStepFromContextStep
+pathFromContext = Seq.fromList . map pathStepFromContextStep . reverse
 
 {-| Computes the path to the current location in the checkpoint as given by the
     cursor.  (Note that this is a lossy conversation because the resulting path
@@ -413,14 +428,14 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
                 (Nothing, moveUpContext)
                 (\x → (Nothing, Just $
                     ExplorationTState
-                        (context |> CacheContextStep (encode x))
+                        (CacheContextStep (encode x):context)
                         Unexplored
                         (TreeT . k $ x)
                 ))
         Choice left right :>>= k → return
             (Nothing, Just $
                 ExplorationTState
-                    (context |> LeftBranchContextStep Unexplored (right >>= TreeT . k))
+                    (LeftBranchContextStep Unexplored (right >>= TreeT . k):context)
                     Unexplored
                     (left >>= TreeT . k)
             )
@@ -429,7 +444,7 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
         Cache _ :>>= k → return
             (Nothing, Just $
                 ExplorationTState
-                    (context |> CacheContextStep cache)
+                    (CacheContextStep cache:context)
                     rest_checkpoint
                     (either error (TreeT . k) . decode $ cache)
             )
@@ -439,7 +454,7 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
         Choice left right :>>= k → return
             (Nothing, Just $
                 ExplorationTState
-                    (context |> LeftBranchContextStep right_checkpoint (right >>= TreeT . k))
+                    (LeftBranchContextStep right_checkpoint (right >>= TreeT . k):context)
                     left_checkpoint
                     (left >>= TreeT . k)
             )
@@ -448,15 +463,14 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
     getView = viewT . unwrapTreeT $ tree
     moveUpContext = go context
       where
-        go context = case viewr context of
-            EmptyR → Nothing
-            rest_context :> LeftBranchContextStep right_checkpoint right_tree →
-                Just (ExplorationTState
-                        (rest_context |> RightBranchContextStep)
-                        right_checkpoint
-                        right_tree
-                     )
-            rest_context :> _ → go rest_context
+        go [] = Nothing
+        go (LeftBranchContextStep right_checkpoint right_tree:rest_context) =
+            Just (ExplorationTState
+                    (RightBranchContextStep:rest_context)
+                    right_checkpoint
+                    right_tree
+                 )
+        go (_:rest_context) = go rest_context
 {-# INLINE stepThroughTreeTStartingFromCheckpoint #-}
 
 --------------------------------------------------------------------------------

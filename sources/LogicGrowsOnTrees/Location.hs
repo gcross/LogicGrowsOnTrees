@@ -211,16 +211,14 @@ applyContextToLocation ::
     Location {-^ the location within the full tree obtained by following the path
                  to the subtree and then the path indicated by the context
               -}
-applyContextToLocation context =
-    case viewl context of
-        EmptyL → id
-        step :< rest →
-            applyContextToLocation rest
-            .
-            case step of
-                CacheContextStep _ → id
-                LeftBranchContextStep _ _ → leftBranchOf
-                RightBranchContextStep → rightBranchOf
+applyContextToLocation [] = id
+applyContextToLocation (step:rest) =
+    applyContextToLocation rest
+    .
+    case step of
+        CacheContextStep _ → id
+        LeftBranchContextStep _ _ → leftBranchOf
+        RightBranchContextStep → rightBranchOf
 
 {-| Append a path to a location's path. -}
 applyPathToLocation ::

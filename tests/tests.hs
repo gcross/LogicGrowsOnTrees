@@ -666,22 +666,22 @@ tests = -- {{{
     ,testGroup "LogicGrowsOnTrees.Checkpoint" -- {{{
         [testGroup "contextFromCheckpoint" -- {{{
             [testProperty "cache" $ \(checkpoint :: Checkpoint) (i :: Int) → -- {{{
-                checkpointFromContext (Seq.singleton (CacheContextStep (encode i))) checkpoint
+                checkpointFromContext [CacheContextStep (encode i)] checkpoint
                 ==
                 (simplifyCheckpointRoot $ CachePoint (encode i) checkpoint)
              -- }}}
             ,testProperty "left branch" $ \(inner_checkpoint :: Checkpoint) (other_tree :: Tree [()]) (other_checkpoint :: Checkpoint) → -- {{{
-                (checkpointFromContext (Seq.singleton (LeftBranchContextStep other_checkpoint other_tree)) inner_checkpoint)
+                (checkpointFromContext [LeftBranchContextStep other_checkpoint other_tree] inner_checkpoint)
                 ==
                 (simplifyCheckpointRoot $ ChoicePoint inner_checkpoint other_checkpoint)
              -- }}}
             ,testProperty "right branch" $ \(checkpoint :: Checkpoint) → -- {{{
-                checkpointFromContext (Seq.singleton RightBranchContextStep) checkpoint
+                checkpointFromContext [RightBranchContextStep] checkpoint
                 ==
                 (simplifyCheckpointRoot $ ChoicePoint Explored checkpoint)
              -- }}}
             ,testProperty "empty" $ \(checkpoint :: Checkpoint) → -- {{{
-                checkpointFromContext Seq.empty checkpoint == checkpoint
+                checkpointFromContext [] checkpoint == checkpoint
              -- }}}
             ]
          -- }}}

@@ -517,22 +517,20 @@ tryStealWorkload ::
     CheckpointCursor →
     Context m α →
     Maybe (CheckpointCursor,Context m α,Workload)
-tryStealWorkload initial_path = go
+tryStealWorkload initial_path cursor context = go cursor (reverse context)
   where
-    go cursor context =
-        case viewl context of
-            EmptyL → Nothing
-            CacheContextStep cache :< rest_context →
-                go (cursor |> CachePointD cache) rest_context
-            LeftBranchContextStep other_checkpoint _ :< rest_context →
-                Just (cursor |> ChoicePointD LeftBranch Unexplored
-                     ,rest_context
-                     ,Workload
-                        ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
-                        other_checkpoint
-                     )
-            RightBranchContextStep :< rest_context →
-                go (cursor |> ChoicePointD RightBranch Explored) rest_context
+    go cursor [] = Nothing
+    go cursor (CacheContextStep cache:rest_context) =
+        go (cursor |> CachePointD cache) rest_context
+    go cursor (RightBranchContextStep:rest_context) =
+        go (cursor |> ChoicePointD RightBranch Explored) rest_context
+    go cursor (LeftBranchContextStep other_checkpoint _:rest_context) =
+        Just (cursor |> ChoicePointD LeftBranch Unexplored
+             ,reverse rest_context
+             ,Workload
+                ((initial_path >< pathFromCursor cursor) |> ChoiceStep RightBranch)
+                other_checkpoint
+             )
 
 workloadFromSetting ::
     Path →
