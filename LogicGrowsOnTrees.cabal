@@ -702,7 +702,7 @@ Test-Suite tests
         test-framework-smallcheck == 0.2.*,
         time == 1.4.*,
         transformers >= 0.2 && < 0.4,
-        uuid == 1.2.*,
+        uuid >= 1.2 && < 1.4,
         void == 0.6.*
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing -with-rtsopts=-M256M
