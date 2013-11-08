@@ -491,6 +491,7 @@ exploreTreeStartingFromCheckpoint ::
     Tree α →
     α
 exploreTreeStartingFromCheckpoint = runIdentity .* exploreTreeTStartingFromCheckpoint
+{-# INLINE exploreTreeStartingFromCheckpoint #-}
 
 {-| Explores the remaining nodes in an impure tree, starting from the
     given checkpoint, and sums over all the results in the leaves.
