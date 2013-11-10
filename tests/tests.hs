@@ -1943,7 +1943,6 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testGroup "walkThroughTreeT" -- {{{
             [testCase "cache step" $ do -- {{{
                 let (transformed_tree,log) =
                         runWriter . sendTreeTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
@@ -1952,6 +1951,7 @@ tests = -- {{{
                 (runWriter . exploreTreeT $ transformed_tree) @?= ([24],[])
              -- }}}
             ,testCase "choice step" $ do -- {{{
+        ,testGroup "sendTreeTDownPath" -- {{{
                 let (transformed_tree,log) =
                         runWriter . sendTreeTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
                             lift (tell [1])
