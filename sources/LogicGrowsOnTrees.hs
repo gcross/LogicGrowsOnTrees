@@ -18,7 +18,6 @@ module LogicGrowsOnTrees
     -- * Explorable class features
     -- $type-classes
     , MonadExplorable(..)
-    , MonadExplorableTrans(..)
     -- * Functions
     -- $functions
 
@@ -167,28 +166,6 @@ class MonadPlus m ⇒ MonadExplorable m where
     processPendingRequests :: m ()
     processPendingRequests = return ()
 
-{-| This class is like 'MonadExplorable', but it is designed to work with monad
-    stacks;  at minimum 'runAndCacheMaybe' needs to be defined.
- -}
-class (MonadPlus m, Monad (NestedMonad m)) ⇒ MonadExplorableTrans m where
-    {-| The next layer down in the monad transformer stack. -}
-    type NestedMonad m :: * → *
-
-    {-| Runs the given action in the nested monad and caches the result. -}
-    runAndCache :: Serialize x ⇒ (NestedMonad m) x → m x
-    runAndCache = runAndCacheMaybe . liftM Just
-
-    {-| Runs the given action in the nested monad and then does the equivalent
-        of feeding it into 'guard', caching the result.
-     -}
-    runAndCacheGuard :: (NestedMonad m) Bool → m ()
-    runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
-
-    {-| Runs the given action in the nested monad;  if it returns 'Nothing',
-        then it acts like 'mzero',  if it returns 'Just x', then it caches the
-        result.
-     -}
-    runAndCacheMaybe :: Serialize x ⇒ (NestedMonad m) (Maybe x) → m x
 
 --------------------------------------------------------------------------------
 ---------------------------------- Instances -----------------------------------
@@ -206,11 +183,8 @@ instance Eq α ⇒ Eq (Tree α) where
         e x y = case (view x, view y) of
             (Return x, Return y) → x == y
             (Null :>>= _, Null :>>= _) → True
-            (Cache cx :>>= kx, Cache cy :>>= ky) →
-                case (runIdentity cx, runIdentity cy) of
-                    (Nothing, Nothing) → True
-                    (Just x, Just y) → e (kx x) (ky y)
-                    _ → False
+            (Cache Nothing :>>= _, Cache Nothing :>>= _) → True
+            (Cache (Just x) :>>= kx, Cache (Just y) :>>= ky) → e (kx x) (ky y)
             (Choice (TreeT ax) (TreeT bx) :>>= kx, Choice (TreeT ay) (TreeT by) :>>= ky) →
                 e (ax >>= kx) (ay >>= ky) && e (bx >>= kx) (by >>= ky)
             (ProcessPendingRequests :>>= kx,ProcessPendingRequests :>>= ky) → e (kx ()) (ky ())
@@ -236,11 +210,6 @@ instance MonadExplorable [] where
 instance Monad m ⇒ MonadExplorable (ListT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadExplorable' instance, this instance does no caching. -}
-instance Monad m ⇒ MonadExplorableTrans (ListT m) where
-    type NestedMonad (ListT m) = m
-    runAndCacheMaybe = lift >=> maybe mzero return
-
 {-| This instance performs no caching but is provided to make it easier to test
     running a tree using the 'Maybe' monad.
  -}
@@ -253,22 +222,11 @@ instance MonadExplorable Maybe where
 instance Monad m ⇒ MonadExplorable (MaybeT m) where
     cacheMaybe = maybe mzero return
 
-{-| Like the 'MonadExplorable' instance, this instance does no caching. -}
-instance Monad m ⇒ MonadExplorableTrans (MaybeT m) where
-    type NestedMonad (MaybeT m) = m
-    runAndCacheMaybe = lift >=> maybe mzero return
-
 instance Monad m ⇒ MonadExplorable (TreeT m) where
-    cache = runAndCache . return
-    cacheGuard = runAndCacheGuard . return
-    cacheMaybe = runAndCacheMaybe . return
+    cache = cacheMaybe . Just
+    cacheGuard x = cacheMaybe $ if x then Just () else Nothing
+    cacheMaybe = TreeT . singleton . Cache
     processPendingRequests = TreeT . singleton $ ProcessPendingRequests
-
-instance Monad m ⇒ MonadExplorableTrans (TreeT m) where
-    type NestedMonad (TreeT m) = m
-    runAndCache = runAndCacheMaybe . liftM Just
-    runAndCacheGuard = runAndCacheMaybe . liftM (\x → if x then Just () else Nothing)
-    runAndCacheMaybe = TreeT . singleton . Cache
 
 instance MonadTrans TreeT where
     lift = TreeT . lift
@@ -286,10 +244,8 @@ instance Show α ⇒ Show (Tree α) where
             Return x → show x
             Null :>>= _ → "<NULL> >>= (...)"
             ProcessPendingRequests :>>= k → "<PPR> >>= " ++ (s . k $ ())
-            Cache c :>>= k →
-                case runIdentity c of
-                    Nothing → "NullCache"
-                    Just x → "Cache[" ++ (show . encode $ x) ++ "] >>= " ++ (s (k x))
+            Cache Nothing :>>= _ → "NullCache"
+            Cache (Just x) :>>= k → "Cache[" ++ (show . encode $ x) ++ "] >>= " ++ (s (k x))
             Choice (TreeT a) (TreeT b) :>>= k → "(" ++ (s (a >>= k)) ++ ") | (" ++ (s (b >>= k)) ++ ")"
 
 
@@ -326,7 +282,8 @@ exploreTree ::
 exploreTree v =
     case view (unwrapTreeT v) of
         Return !x → x
-        Cache mx :>>= k → maybe mempty (exploreTree . TreeT . k) (runIdentity mx)
+        Cache Nothing :>>= _ → mempty
+        Cache (Just x) :>>= k → exploreTree . TreeT . k $ x
         Choice left right :>>= k →
             let !x = exploreTree $ left >>= TreeT . k
                 !y = exploreTree $ right >>= TreeT . k
@@ -346,7 +303,8 @@ exploreTreeT ::
 exploreTreeT = viewT . unwrapTreeT >=> \view →
     case view of
         Return !x → return x
-        Cache mx :>>= k → mx >>= maybe (return mempty) (exploreTreeT . TreeT . k)
+        Cache Nothing :>>= _ → return mempty
+        Cache (Just x) :>>= k → exploreTreeT . TreeT . k $ x
         Choice left right :>>= k →
             liftM2 (\(!x) (!y) → let !xy = mappend x y in xy)
                 (exploreTreeT $ left >>= TreeT . k)
@@ -365,7 +323,8 @@ exploreTreeTAndIgnoreResults ::
 exploreTreeTAndIgnoreResults = viewT . unwrapTreeT >=> \view →
     case view of
         Return _ → return ()
-        Cache mx :>>= k → mx >>= maybe (return ()) (exploreTreeTAndIgnoreResults . TreeT . k)
+        Cache Nothing :>>= _ → return ()
+        Cache (Just x) :>>= k → exploreTreeTAndIgnoreResults . TreeT . k $ x
         Choice left right :>>= k → do
             exploreTreeTAndIgnoreResults $ left >>= TreeT . k
             exploreTreeTAndIgnoreResults $ right >>= TreeT . k
@@ -385,7 +344,8 @@ exploreTreeUntilFirst ::
 exploreTreeUntilFirst v =
     case view (unwrapTreeT v) of
         Return x → Just x
-        Cache mx :>>= k → maybe Nothing (exploreTreeUntilFirst . TreeT . k) (runIdentity mx)
+        Cache Nothing :>>= _ → Nothing
+        Cache (Just x) :>>= k → exploreTreeUntilFirst . TreeT . k $ x
         Choice left right :>>= k →
             let x = exploreTreeUntilFirst $ left >>= TreeT . k
                 y = exploreTreeUntilFirst $ right >>= TreeT . k
@@ -404,7 +364,8 @@ exploreTreeTUntilFirst ::
 exploreTreeTUntilFirst = viewT . unwrapTreeT >=> \view →
     case view of
         Return !x → return (Just x)
-        Cache mx :>>= k → mx >>= maybe (return Nothing) (exploreTreeTUntilFirst . TreeT . k)
+        Cache Nothing :>>= _ → return Nothing
+        Cache (Just x) :>>= k → exploreTreeTUntilFirst . TreeT . k $ x
         Choice left right :>>= k → do
             x ← exploreTreeTUntilFirst $ left >>= TreeT . k
             if isJust x
@@ -444,10 +405,8 @@ exploreTreeUntilFound ::
 exploreTreeUntilFound f v =
     case view (unwrapTreeT v) of
         Return x → (x,f x)
-        Cache mx :>>= k →
-            maybe (mempty,False) (exploreTreeUntilFound f . TreeT . k)
-            $
-            runIdentity mx
+        Cache Nothing :>>= _ → (mempty,False)
+        Cache (Just x) :>>= k → exploreTreeUntilFound f . TreeT . k $ x
         Choice left right :>>= k →
             let x@(xr,xf) = exploreTreeUntilFound f $ left >>= TreeT . k
                 (yr,yf) = exploreTreeUntilFound f $ right >>= TreeT . k
@@ -472,10 +431,8 @@ exploreTreeTUntilFound ::
 exploreTreeTUntilFound f = viewT . unwrapTreeT >=> \view →
     case view of
         Return x → return (x,f x)
-        Cache mx :>>= k →
-            mx
-            >>=
-            maybe (return (mempty,False)) (exploreTreeTUntilFound f . TreeT . k)
+        Cache Nothing :>>= _ → return (mempty,False)
+        Cache (Just x) :>>= k → exploreTreeTUntilFound f . TreeT . k $ x
         Choice left right :>>= k → do
             x@(xr,xf) ← exploreTreeTUntilFound f $ left >>= TreeT . k
             if xf
@@ -538,8 +495,7 @@ endowTree ::
 endowTree tree =
     case view . unwrapTreeT $ tree of
         Return x → return x
-        Cache mx :>>= k →
-            cacheMaybe (runIdentity mx) >>= endowTree . TreeT . k
+        Cache x :>>= k → cacheMaybe x >>= endowTree . TreeT . k
         Choice left right :>>= k →
             mplus
                 (endowTree left >>= endowTree . TreeT . k)
@@ -569,7 +525,7 @@ does all the heavy lifting of turning them into a monad.
     exceptional cases).
  -}
 data TreeTInstruction m α where
-    Cache :: Serialize α ⇒ m (Maybe α) → TreeTInstruction m α
+    Cache :: Serialize α ⇒ Maybe α → TreeTInstruction m α
     Choice :: TreeT m α → TreeT m α → TreeTInstruction m α
     Null :: TreeTInstruction m α
     ProcessPendingRequests :: TreeTInstruction m ()

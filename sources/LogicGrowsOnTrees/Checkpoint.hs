@@ -423,15 +423,15 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
         Return x → return (Just x, moveUpContext)
         Null :>>= _ → return (Nothing, moveUpContext)
         ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
-        Cache mx :>>= k →
-            mx >>= return . maybe
-                (Nothing, moveUpContext)
-                (\x → (Nothing, Just $
+        Cache Nothing :>>= _ → return (Nothing, moveUpContext)
+        Cache (Just x) :>>= k → return $
+            (Nothing
+            ,Just $
                     ExplorationTState
                         (CacheContextStep (encode x):context)
                         Unexplored
                         (TreeT . k $ x)
-                ))
+             )
         Choice left right :>>= k → return
             (Nothing, Just $
                 ExplorationTState

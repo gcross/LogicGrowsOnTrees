@@ -151,12 +151,6 @@ instance MonadPlus m ⇒ MonadPlus (LocatableT m) where
     LocatableT left `mplus` LocatableT right = LocatableT . ReaderT $
         \branch → (runReaderT left (leftBranchOf branch)) `mplus` (runReaderT right (rightBranchOf branch))
 
-instance MonadExplorableTrans m ⇒ MonadExplorableTrans (LocatableT m) where
-    type NestedMonad (LocatableT m) = NestedMonad m
-    runAndCache = LocatableT . lift . runAndCache
-    runAndCacheGuard = LocatableT . lift . runAndCacheGuard
-    runAndCacheMaybe = LocatableT . lift . runAndCacheMaybe
-
 instance MonadPlus m ⇒ Monoid (LocatableT m α) where
     mempty = mzero
     mappend = mplus
@@ -173,12 +167,6 @@ newtype LocatableTreeT m α = LocatableTreeT { unwrapLocatableTreeT :: Locatable
 
 instance MonadTrans LocatableTreeT where
     lift = LocatableTreeT . lift . lift
-
-instance Monad m ⇒ MonadExplorableTrans (LocatableTreeT m) where
-    type NestedMonad (LocatableTreeT m) = m
-    runAndCache = LocatableTreeT . runAndCache
-    runAndCacheGuard = LocatableTreeT . runAndCacheGuard
-    runAndCacheMaybe = LocatableTreeT . runAndCacheMaybe
 
 --------------------------------------------------------------------------------
 ---------------------------------- Functions -----------------------------------
@@ -308,7 +296,8 @@ sendTreeTDownLocation (Location label) = go root
             Return _ → throw TreeEndedBeforeEndOfWalk
             Null :>>= _ → throw TreeEndedBeforeEndOfWalk
             ProcessPendingRequests :>>= k → go parent . TreeT . k $ ()
-            Cache mx :>>= k → mx >>= maybe (throw TreeEndedBeforeEndOfWalk) (go parent . TreeT . k)
+            Cache Nothing :>>= _ → throw TreeEndedBeforeEndOfWalk
+            Cache (Just x) :>>= k → go parent . TreeT . k $ x
             Choice left right :>>= k →
                 if parent > label
                 then
@@ -368,7 +357,8 @@ exploreTreeTWithLocationsStartingAt label =
     viewT . unwrapTreeT >=> \view →
     case view of
         Return x → return [Solution label x]
-        Cache mx :>>= k → mx >>= maybe (return []) (exploreTreeTWithLocationsStartingAt label . TreeT . k)
+        Cache Nothing :>>= _ → return []
+        Cache (Just x) :>>= k → exploreTreeTWithLocationsStartingAt label . TreeT . k $ x
         Choice left right :>>= k →
             liftM2 (++)
                 (exploreTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeT . k)

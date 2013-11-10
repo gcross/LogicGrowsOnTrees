@@ -379,7 +379,7 @@ randomCheckpointForTree (TreeT tree) = go1 tree
         ,(1,return (mempty,Unexplored))
         ,(3,go2 tree)
         ]
-    go2 (view → Cache (Identity (Just x)) :>>= k) =
+    go2 (view → Cache (Just x) :>>= k) =
         fmap (second $ CachePoint (encode x)) (go1 (k x))
     go2 (view → Choice (TreeT x) (TreeT y) :>>= k) =
         liftM2 (\(left_result,left) (right_result,right) →
@@ -432,7 +432,7 @@ randomNullTreeWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1
 randomPathForTree :: Tree α → Gen Path -- {{{
 randomPathForTree (TreeT tree) = go tree
   where
-    go (view → Cache (Identity (Just x)) :>>= k) = oneof
+    go (view → Cache (Just x) :>>= k) = oneof
         [return Seq.empty
         ,fmap (CacheStep (encode x) <|) (go (k x))
         ]
@@ -1943,15 +1943,8 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-            [testCase "cache step" $ do -- {{{
-                let (transformed_tree,log) =
-                        runWriter . sendTreeTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
-                            runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
-                log @?= []
-                (runWriter . exploreTreeT $ transformed_tree) @?= ([24],[])
-             -- }}}
-            ,testCase "choice step" $ do -- {{{
         ,testGroup "sendTreeTDownPath" -- {{{
+            [testCase "choice step" $ do -- {{{
                 let (transformed_tree,log) =
                         runWriter . sendTreeTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
                             lift (tell [1])
