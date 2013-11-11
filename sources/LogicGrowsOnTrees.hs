@@ -539,7 +539,9 @@ instance Functor TreeF where
 {-| This is a convenience function for unwrapping a pure value in 'FreeT'. -}
 runFree :: FreeT f Identity α → FreeF f α (FreeT f Identity α)
 runFree = runIdentity . runFreeT
+{-# INLINEABLE runFree #-}
 
 {-| This a convenience function that wraps a 'TreeF' into a 'TreeT'. -}
 singleton :: Monad m ⇒ TreeF α → TreeT m α
 singleton = TreeT . liftF
+{-# INLINEABLE singleton #-}
