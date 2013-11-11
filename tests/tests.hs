@@ -22,8 +22,8 @@ import Control.Exception
 import Control.Lens (_1,_2,(%=),(<+=),use)
 import Control.Monad
 import qualified Control.Monad.CatchIO as CatchIO
+import qualified Control.Monad.Trans.Free as F
 import Control.Monad.IO.Class
-import Control.Monad.Operational (ProgramViewT(..),view)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.State (StateT,evalStateT)
 import Control.Monad.Trans.Writer
@@ -379,13 +379,13 @@ randomCheckpointForTree (TreeT tree) = go1 tree
         ,(1,return (mempty,Unexplored))
         ,(3,go2 tree)
         ]
-    go2 (view → Cache (Just x) :>>= k) =
+    go2 (runFree → F.Free (Cache (Just x) k)) =
         fmap (second $ CachePoint (encode x)) (go1 (k x))
-    go2 (view → Choice (TreeT x) (TreeT y) :>>= k) =
+    go2 (runFree → F.Free (Choice x y))=
         liftM2 (\(left_result,left) (right_result,right) →
             (left_result `mappend` right_result, ChoicePoint left right)
-        ) (go1 (x >>= k)) (go1 (y >>= k))
-    go2 (view → ProcessPendingRequests :>>= k) = go2 (k ())
+        ) (go1 x) (go1 y)
+    go2 (runFree → F.Free (ProcessPendingRequests x)) = go2 x
     go2 tree = elements [(exploreTree (TreeT tree),Explored),(mempty,Unexplored)]
 -- }}}
 
@@ -432,16 +432,16 @@ randomNullTreeWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1
 randomPathForTree :: Tree α → Gen Path -- {{{
 randomPathForTree (TreeT tree) = go tree
   where
-    go (view → Cache (Just x) :>>= k) = oneof
+    go (runFree → F.Free (Cache (Just x) k)) = oneof
         [return Seq.empty
         ,fmap (CacheStep (encode x) <|) (go (k x))
         ]
-    go (view → Choice (TreeT x) (TreeT y) :>>= k) = oneof
+    go (runFree → F.Free (Choice x y)) = oneof
         [return Seq.empty
-        ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
-        ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
+        ,fmap (ChoiceStep LeftBranch <|) (go x)
+        ,fmap (ChoiceStep RightBranch <|) (go y)
         ]
-    go (view → ProcessPendingRequests :>>= k) = go (k ())
+    go (runFree → F.Free (ProcessPendingRequests x)) = go x
     go _ = return Seq.empty
 -- }}}
 

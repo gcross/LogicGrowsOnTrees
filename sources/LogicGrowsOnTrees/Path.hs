@@ -19,7 +19,7 @@ module LogicGrowsOnTrees.Path
     ) where
 
 import Control.Exception (Exception(),throw)
-import Control.Monad.Operational (ProgramViewT(..),viewT)
+import Control.Monad.Trans.Free (FreeF(..),runFreeT)
 
 import Data.ByteString (ByteString)
 import Data.Derive.Serialize
@@ -116,18 +116,18 @@ sendTreeTDownPath path tree =
     case viewl path of
         EmptyL → return tree
         step :< tail → do
-            view ← viewT . unwrapTreeT $ tree
+            view ← runFreeT . unwrapTreeT $ tree
             case (view,step) of
-                (Return _,_) →
+                (Pure _,_) →
                     throw TreeEndedBeforeEndOfWalk
-                (Null :>>= _,_) →
+                (Free Null,_) →
                     throw TreeEndedBeforeEndOfWalk
-                (Cache _ :>>= k,CacheStep cache) →
+                (Free (Cache _ k),CacheStep cache) →
                     sendTreeTDownPath tail $ either error (TreeT . k) (decode cache)
-                (Choice left _ :>>= k,ChoiceStep LeftBranch) →
-                    sendTreeTDownPath tail (left >>= TreeT . k)
-                (Choice _ right :>>= k,ChoiceStep RightBranch) →
-                    sendTreeTDownPath tail (right >>= TreeT . k)
-                (ProcessPendingRequests :>>= k,_) →
-                    sendTreeTDownPath path (TreeT . k $ ())
+                (Free (Choice left _),ChoiceStep LeftBranch) →
+                    sendTreeTDownPath tail . TreeT $ left
+                (Free (Choice _ right),ChoiceStep RightBranch) →
+                    sendTreeTDownPath tail . TreeT $ right
+                (Free (ProcessPendingRequests x),_) →
+                    sendTreeTDownPath path . TreeT $ x
                 _ → throw PastTreeIsInconsistentWithPresentTree

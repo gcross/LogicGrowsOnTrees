@@ -57,8 +57,8 @@ import Control.Applicative (Alternative(..),Applicative(..))
 import Control.Exception (throw)
 import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Operational (ProgramViewT(..),viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Free (FreeF(..),FreeT(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
 import Data.Composition
@@ -292,22 +292,16 @@ sendTreeTDownLocation (Location label) = go root
     go parent tree
       | parent == label = return tree
       | otherwise =
-          (viewT . unwrapTreeT) tree >>= \view → case view of
-            Return _ → throw TreeEndedBeforeEndOfWalk
-            Null :>>= _ → throw TreeEndedBeforeEndOfWalk
-            ProcessPendingRequests :>>= k → go parent . TreeT . k $ ()
-            Cache Nothing :>>= _ → throw TreeEndedBeforeEndOfWalk
-            Cache (Just x) :>>= k → go parent . TreeT . k $ x
-            Choice left right :>>= k →
+          (runFreeT . unwrapTreeT) tree >>= \view → case view of
+            Pure _ → throw TreeEndedBeforeEndOfWalk
+            Free Null → throw TreeEndedBeforeEndOfWalk
+            Free (ProcessPendingRequests x) → go parent . TreeT $ x
+            Free (Cache Nothing _) → throw TreeEndedBeforeEndOfWalk
+            Free (Cache (Just x) k) → go parent . TreeT . k $ x
+            Free (Choice left right)→
                 if parent > label
-                then
-                    go
-                        (fromJust . leftChild $ parent)
-                        (left >>= TreeT . k)
-                else
-                    go
-                        (fromJust . rightChild $ parent)
-                        (right >>= TreeT . k)
+                then go (fromJust . leftChild $ parent) . TreeT $ left
+                else go (fromJust . rightChild $ parent) . TreeT $ right
 
 {-| Converts a list (or other 'Foldable') of solutions to a 'Map' from
     'Location's to results.
@@ -354,17 +348,17 @@ exploreTreeWithLocationsStartingAt = runIdentity .* exploreTreeTWithLocationsSta
 {-| Like 'exploreTreeWithLocationsStartingAt' but for an impure trees. -}
 exploreTreeTWithLocationsStartingAt :: Monad m ⇒ Location → TreeT m α → m [Solution α]
 exploreTreeTWithLocationsStartingAt label =
-    viewT . unwrapTreeT >=> \view →
+    runFreeT . unwrapTreeT >=> \view →
     case view of
-        Return x → return [Solution label x]
-        Cache Nothing :>>= _ → return []
-        Cache (Just x) :>>= k → exploreTreeTWithLocationsStartingAt label . TreeT . k $ x
-        Choice left right :>>= k →
+        Pure x → return [Solution label x]
+        Free (Cache Nothing _) → return []
+        Free (Cache (Just x) k) → exploreTreeTWithLocationsStartingAt label . TreeT . k $ x
+        Free (Choice left right) →
             liftM2 (++)
-                (exploreTreeTWithLocationsStartingAt (leftBranchOf label) $ left >>= TreeT . k)
-                (exploreTreeTWithLocationsStartingAt (rightBranchOf label) $ right >>= TreeT . k)
-        Null :>>= _ → return []
-        ProcessPendingRequests :>>= k → exploreTreeTWithLocationsStartingAt label . TreeT . k $ ()
+                (exploreTreeTWithLocationsStartingAt (leftBranchOf label) . TreeT $ left)
+                (exploreTreeTWithLocationsStartingAt (rightBranchOf label) . TreeT $ right)
+        Free Null → return []
+        Free (ProcessPendingRequests x) → exploreTreeTWithLocationsStartingAt label . TreeT $ x
 
 {-| Explores all the nodes in a 'LocatableTree' until a result (i.e., a leaf) has
     been found; if a result has been found then it is returned wrapped in
