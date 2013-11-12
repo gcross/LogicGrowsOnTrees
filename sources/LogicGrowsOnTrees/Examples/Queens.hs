@@ -265,7 +265,7 @@ nqueensUsingBitsSolutions n =
        !value
      = do
         column ← allFrom . goGetOpenings 0 $
-            occupied_columns .|. 
+            occupied_columns .|.
             occupied_negative_diagonals .|.
             occupied_positive_diagonals
         let column_bit = bit (fromIntegral column)
