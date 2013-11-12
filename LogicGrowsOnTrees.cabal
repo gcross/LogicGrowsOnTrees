@@ -718,6 +718,17 @@ Benchmark tree-versus-list-nqueens-with-list-at-bottom
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing
 
+Benchmark tree-versus-list-bind
+    Type: exitcode-stdio-1.0
+    Main-is: tree-versus-list-bind.hs
+    Hs-source-dirs: benchmarks
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        criterion >= 0.6 && < 0.9
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
 Test-Suite tests
     Type: exitcode-stdio-1.0
     Main-is: tests.hs
