@@ -617,6 +617,17 @@ Executable tutorial-13
     else
         GHC-Options: -threaded
 
+Benchmark tree-versus-list-lopsided-tree
+    Type: exitcode-stdio-1.0
+    Main-is: tree-versus-list-lopsided-tree.hs
+    Hs-source-dirs: benchmarks
+    Build-depends:
+        LogicGrowsOnTrees,
+        base > 4 && < 5,
+        criterion >= 0.6 && < 0.9
+    if flag(warnings)
+        GHC-Options: -Wall -fno-warn-name-shadowing
+
 Benchmark tree-versus-list-null-tree
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-null-tree.hs
