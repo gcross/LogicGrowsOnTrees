@@ -322,13 +322,13 @@ nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . A
 {-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensCount :: Word → Tree WordSum #-}
 
-{-| Like 'nqueensSolutions', but uses List at the bottom instead of C . -}
+{-| Like 'nqueensSolutions', but uses List at the bottom instead of C. -}
 nqueensWithListAtBottomSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
 nqueensWithListAtBottomSolutions n = nqueensWithListAtBottomGeneric (++) multiplySolution [] n
 {-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → Tree NQueensSolution #-}
 
-{-| Like 'nqueensCount', but uses List at the bottom instead of C . -}
+{-| Like 'nqueensCount', but uses List at the bottom instead of C. -}
 nqueensWithListAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensWithListAtBottomCount = nqueensWithListAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensWithListAtBottomCount :: Word → [WordSum] #-}
