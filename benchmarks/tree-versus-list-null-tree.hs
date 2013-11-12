@@ -17,8 +17,6 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode (ExplorationMode(AllMode))
 import LogicGrowsOnTrees.Parallel.Main
 import LogicGrowsOnTrees.Parallel.Purity (Purity(Pure))
 
-import Debug.Trace
-
 nullPerfectTree :: MonadPlus m ⇒ Word → m WordSum
 nullPerfectTree depth
   | depth == 0 = mzero
@@ -29,13 +27,27 @@ main = defaultMain
     [bench "list" $ nf (getWordSum . mconcat . nullPerfectTree) depth
     ,bench "tree" $ nf (getWordSum . exploreTree . nullPerfectTree) depth
     ,bench "tree w/ checkpointing" $ nf (getWordSum . exploreTreeStartingFromCheckpoint Unexplored . nullPerfectTree) depth
-    ,bench "tree using worker" $ exploreTreeGeneric AllMode Pure (nullPerfectTree depth :: Tree WordSum)
-    ,bench "tree using single thread (direct)" $ Threads.exploreTree (setNumberOfWorkers 1) (nullPerfectTree depth :: Tree WordSum)
-    ,bench "tree using single thread (main)" $
+    ,bench "tree using worker" $ doWorker depth
+    ,bench "tree using single thread (direct)" $ doThreadDirect depth
+    ,bench "tree using single thread (main)" $ doThreadMain depth
+    ]
+  where
+    depth = 15
+
+    -- These need to be here because otherwise nullPerfectTree depth only gets
+    -- evaluated once, which distorts the benchmark.
+
+    doWorker depth = exploreTreeGeneric AllMode Pure (nullPerfectTree depth :: Tree WordSum)
+    {-# NOINLINE doWorker #-}
+
+    doThreadDirect depth = Threads.exploreTree (setNumberOfWorkers 1) (nullPerfectTree depth :: Tree WordSum)
+    {-# NOINLINE doThreadDirect #-}
+
+    doThreadMain depth =
         withArgs ["-n1"] $
             simpleMainForExploreTree
                 Threads.driver
                 (const $ return ())
                 (nullPerfectTree depth :: Tree WordSum)
-    ]
-  where depth = 15
+    {-# NOINLINE doThreadMain #-}
+

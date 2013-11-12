@@ -15,6 +15,12 @@ main = defaultMain
     [bench "list of Sum" $ nf (getWordSum . mconcat . nqueensWithListAtBottomCount) n
     ,bench "tree" $ nf (getWordSum . exploreTree . nqueensWithListAtBottomCount) n
     ,bench "tree w/ checkpointing" $ nf (getWordSum . exploreTreeStartingFromCheckpoint Unexplored . nqueensWithListAtBottomCount) n
-    ,bench "tree using worker" $ exploreTreeGeneric AllMode Pure (nqueensWithListAtBottomCount n)
+    ,bench "tree using worker" $ doWorker n
     ]
-  where n = 12
+  where
+    n = 12
+
+    -- This needs to be here because otherwise nqueensWithListAtBottomCount n
+    -- only gets evaluated once, which distorts the benchmark.
+    doWorker n = exploreTreeGeneric AllMode Pure (nqueensWithListAtBottomCount n)
+    {-# NOINLINE doWorker #-}
