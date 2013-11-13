@@ -34,6 +34,10 @@ module LogicGrowsOnTrees.Examples.Queens
     ,nqueensWithListAtBottomGeneric
     ,nqueensWithListAtBottomSolutions
     ,nqueensWithListAtBottomCount
+    -- ** With nothing at the bottom (instead of C or a List)
+    ,nqueensWithNothingAtBottomGeneric
+    ,nqueensWithNothingAtBottomSolutions
+    ,nqueensWithNothingAtBottomCount
     -- * Board size command argument
     , BoardSize(..)
     , makeBoardSizeTermAtPosition
@@ -62,6 +66,7 @@ import LogicGrowsOnTrees.Examples.Queens.Advanced
     ,multiplySolution
     ,nqueensGeneric
     ,nqueensWithListAtBottomGeneric
+    ,nqueensWithNothingAtBottomGeneric
     )
 import LogicGrowsOnTrees.Utils.Word_
 import LogicGrowsOnTrees.Utils.WordSum
@@ -333,4 +338,16 @@ nqueensWithListAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
 nqueensWithListAtBottomCount = nqueensWithListAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensWithListAtBottomCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensWithListAtBottomCount :: Word → Tree WordSum #-}
+
+{-| Like 'nqueensSolutions', but uses List at the bottom instead of C. -}
+nqueensWithNothingAtBottomSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
+nqueensWithNothingAtBottomSolutions n = nqueensWithNothingAtBottomGeneric (++) multiplySolution [] n
+{-# SPECIALIZE nqueensWithNothingAtBottomSolutions :: Word → NQueensSolutions #-}
+{-# SPECIALIZE nqueensWithNothingAtBottomSolutions :: Word → Tree NQueensSolution #-}
+
+{-| Like 'nqueensCount', but uses List at the bottom instead of C. -}
+nqueensWithNothingAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
+nqueensWithNothingAtBottomCount = nqueensWithNothingAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+{-# SPECIALIZE nqueensWithNothingAtBottomCount :: Word → [WordSum] #-}
+{-# SPECIALIZE nqueensWithNothingAtBottomCount :: Word → Tree WordSum #-}
 
