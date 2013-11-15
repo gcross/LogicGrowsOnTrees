@@ -283,6 +283,16 @@ perform an additional step to filter out all the ones that don't satisfy the
 constraint.
 
 
+What is the overhead of using LogicGrowsOnTrees?
+================================================
+
+It costs between 3.5 and 5 times as much time to use LogicGrowsOnTrees with a
+single worker thread as it does to use the List monad. Fortunately, it is
+possible to eliminate most of this if you can switch to using the List monad
+when you get near the bottom of the tree. For example, my optimized n-queens
+solver switches to a loop in C when fewer than eleven queens remain to be
+placed.
+
 Why Haskell?
 ============
 
