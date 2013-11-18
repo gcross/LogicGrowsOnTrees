@@ -784,7 +784,7 @@ Test-Suite tests
         random == 1.0.*,
         QuickCheck >= 2.4 && < 2.7,
         quickcheck-instances >= 0.3.1 && < 0.4,
-        smallcheck == 1.0.*,
+        smallcheck >= 1.0 && < 1.2,
         stm >= 2.3 && < 2.5,
         test-framework >= 0.6 && < 0.9,
         test-framework-hunit >= 0.2 && < 0.4,
