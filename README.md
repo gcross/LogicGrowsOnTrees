@@ -286,12 +286,16 @@ constraint.
 What is the overhead of using LogicGrowsOnTrees?
 ================================================
 
-It costs between 3.5 and 5 times as much time to use LogicGrowsOnTrees with a
-single worker thread as it does to use the List monad. Fortunately, it is
+It costs approximately 3.5 to 5 times as much time to use LogicGrowsOnTrees with
+a single worker thread as it does to use the List monad. Fortunately, it is
 possible to eliminate most of this if you can switch to using the List monad
-when you get near the bottom of the tree. For example, my optimized n-queens
-solver switches to a loop in C when fewer than eleven queens remain to be
-placed.
+near the bottom of the tree. For example, my optimized n-queens solver switches
+to a loop in C when fewer than eleven queens remain to be placed. This is not
+``cheating'' for two reasons: first, because the hard part is the
+symmetry-breaking code, which would have been difficult to implement and test in
+C due to its complexity, and second, because one can't rewrite all the code
+in C because then one would lose access to the automatic checkpointing and
+parallelization features.
 
 Why Haskell?
 ============
