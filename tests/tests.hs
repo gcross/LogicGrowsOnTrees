@@ -22,8 +22,8 @@ import Control.Exception
 import Control.Lens (_1,_2,(%=),(<+=),use)
 import Control.Monad
 import qualified Control.Monad.CatchIO as CatchIO
-import qualified Control.Monad.Trans.Free as F
 import Control.Monad.IO.Class
+import Control.Monad.Operational (ProgramViewT(..),view)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.State (StateT,evalStateT)
 import Control.Monad.Trans.Writer
@@ -379,13 +379,13 @@ randomCheckpointForTree (TreeT tree) = go1 tree
         ,(1,return (mempty,Unexplored))
         ,(3,go2 tree)
         ]
-    go2 (runFree → F.Free (Cache (Just x) k)) =
+    go2 (view → Cache (Identity (Just x)) :>>= k) =
         fmap (second $ CachePoint (encode x)) (go1 (k x))
-    go2 (runFree → F.Free (Choice x y))=
+    go2 (view → Choice (TreeT x) (TreeT y) :>>= k) =
         liftM2 (\(left_result,left) (right_result,right) →
             (left_result `mappend` right_result, ChoicePoint left right)
-        ) (go1 x) (go1 y)
-    go2 (runFree → F.Free (ProcessPendingRequests x)) = go2 x
+        ) (go1 (x >>= k)) (go1 (y >>= k))
+    go2 (view → ProcessPendingRequests :>>= k) = go2 (k ())
     go2 tree = elements [(exploreTree (TreeT tree),Explored),(mempty,Unexplored)]
 -- }}}
 
@@ -432,16 +432,16 @@ randomNullTreeWithHooks = fmap (($ 0) . curry) . sized $ \n → evalStateT (arb1
 randomPathForTree :: Tree α → Gen Path -- {{{
 randomPathForTree (TreeT tree) = go tree
   where
-    go (runFree → F.Free (Cache (Just x) k)) = oneof
+    go (view → Cache (Identity (Just x)) :>>= k) = oneof
         [return Seq.empty
         ,fmap (CacheStep (encode x) <|) (go (k x))
         ]
-    go (runFree → F.Free (Choice x y)) = oneof
+    go (view → Choice (TreeT x) (TreeT y) :>>= k) = oneof
         [return Seq.empty
-        ,fmap (ChoiceStep LeftBranch <|) (go x)
-        ,fmap (ChoiceStep RightBranch <|) (go y)
+        ,fmap (ChoiceStep LeftBranch <|) (go (x >>= k))
+        ,fmap (ChoiceStep RightBranch <|) (go (y >>= k))
         ]
-    go (runFree → F.Free (ProcessPendingRequests x)) = go x
+    go (view → ProcessPendingRequests :>>= k) = go (k ())
     go _ = return Seq.empty
 -- }}}
 
@@ -1944,7 +1944,14 @@ tests = -- {{{
             ]
          -- }}}
         ,testGroup "sendTreeTDownPath" -- {{{
-            [testCase "choice step" $ do -- {{{
+            [testCase "cache step" $ do -- {{{
+                let (transformed_tree,log) =
+                        runWriter . sendTreeTDownPath (Seq.singleton (CacheStep . encode $ [24 :: Int])) $ do
+                            runAndCache (tell [1] >> return [42 :: Int] :: Writer [Int] [Int])
+                log @?= []
+                (runWriter . exploreTreeT $ transformed_tree) @?= ([24],[])
+             -- }}}
+            ,testCase "choice step" $ do -- {{{
                 let (transformed_tree,log) =
                         runWriter . sendTreeTDownPath (Seq.singleton (ChoiceStep RightBranch)) $ do
                             lift (tell [1])

@@ -63,7 +63,7 @@ module LogicGrowsOnTrees.Checkpoint
 
 import Control.Exception (Exception(),throw)
 import Control.Monad ((>=>))
-import Control.Monad.Trans.Free (FreeF(..),FreeT(..))
+import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
 import Data.Composition
@@ -420,28 +420,28 @@ stepThroughTreeTStartingFromCheckpoint ::
 stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tree) = case checkpoint of
     Explored → return (Nothing, moveUpContext)
     Unexplored → getView >>= \view → case view of
-        Pure x → return (Just x, moveUpContext)
-        Free Null → return (Nothing, moveUpContext)
-        Free (ProcessPendingRequests x) → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT x))
-        Free (Cache Nothing _) → return (Nothing, moveUpContext)
-        Free (Cache (Just x) k) → return $
-            (Nothing
-            ,Just $
+        Return x → return (Just x, moveUpContext)
+        Null :>>= _ → return (Nothing, moveUpContext)
+        ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
+        Cache mx :>>= k →
+            mx >>= return . maybe
+                (Nothing, moveUpContext)
+                (\x → (Nothing, Just $
                     ExplorationTState
                         (CacheContextStep (encode x):context)
                         Unexplored
                         (TreeT . k $ x)
-             )
-        Free (Choice left right) → return
+                ))
+        Choice left right :>>= k → return
             (Nothing, Just $
                 ExplorationTState
-                    (LeftBranchContextStep Unexplored (TreeT right):context)
+                    (LeftBranchContextStep Unexplored (right >>= TreeT . k):context)
                     Unexplored
-                    (TreeT left)
+                    (left >>= TreeT . k)
             )
     CachePoint cache rest_checkpoint → getView >>= \view → case view of
-        Free (ProcessPendingRequests x) → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT x))
-        Free (Cache _ k) → return
+        ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
+        Cache _ :>>= k → return
             (Nothing, Just $
                 ExplorationTState
                     (CacheContextStep cache:context)
@@ -450,17 +450,17 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
             )
         _ → throw PastTreeIsInconsistentWithPresentTree
     ChoicePoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
-        Free (ProcessPendingRequests x) → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT x))
-        Free (Choice left right) → return
+        ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
+        Choice left right :>>= k → return
             (Nothing, Just $
                 ExplorationTState
-                    (LeftBranchContextStep right_checkpoint (TreeT right):context)
+                    (LeftBranchContextStep right_checkpoint (right >>= TreeT . k):context)
                     left_checkpoint
-                    (TreeT left)
+                    (left >>= TreeT . k)
             )
         _ → throw PastTreeIsInconsistentWithPresentTree
   where
-    getView = runFreeT . unwrapTreeT $ tree
+    getView = viewT . unwrapTreeT $ tree
     moveUpContext = go context
       where
         go [] = Nothing
