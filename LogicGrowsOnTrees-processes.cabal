@@ -27,7 +27,7 @@ Source-Repository this
 
 Library
     Build-depends:
-        LogicGrowsOnTrees == 1.0.*,
+        LogicGrowsOnTrees >= 1.0 && < 1.2,
         base > 4 && < 5,
         bytestring >= 0.9 && < 0.11,
         cereal >= 0.3 && < 0.5,
@@ -65,7 +65,7 @@ Executable count-all-nqueens-solutions
     Hs-source-dirs: examples
     Build-depends:
         LogicGrowsOnTrees-processes,
-        LogicGrowsOnTrees == 1.0.*,
+        LogicGrowsOnTrees >= 1.0 && < 1.2,
         base > 4 && < 5,
         cereal >= 0.3 && < 0.5,
         cmdtheline == 0.2.*
@@ -83,7 +83,7 @@ Executable count-all-trivial-tree-leaves
     Hs-source-dirs: examples
     Build-depends:
         LogicGrowsOnTrees-processes,
-        LogicGrowsOnTrees == 1.0.*,
+        LogicGrowsOnTrees >= 1.0 && < 1.2,
         base > 4 && < 5,
         cereal >= 0.3 && < 0.5,
         cmdtheline == 0.2.*
@@ -102,7 +102,7 @@ Benchmark benchmark
     Hs-source-dirs: benchmarks
     Build-depends:
         LogicGrowsOnTrees-processes,
-        LogicGrowsOnTrees == 1.0.*,
+        LogicGrowsOnTrees >= 1.0 && < 1.2,
         base > 4 && < 5,
         criterion >= 0.6 && < 0.9
     if flag(warnings)
@@ -114,7 +114,7 @@ Test-Suite tests
     Hs-source-dirs: tests
     Build-depends:
         LogicGrowsOnTrees-processes,
-        LogicGrowsOnTrees == 1.0.*,
+        LogicGrowsOnTrees >= 1.0 && < 1.2,
         base > 4 && < 5,
         cereal >= 0.3 && < 0.5,
         hslogger == 1.2.*,
