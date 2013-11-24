@@ -286,7 +286,7 @@ constraint.
 What is the overhead of using LogicGrowsOnTrees?
 ================================================
 
-It costs approximately 3.5 to 5 times as much time to use LogicGrowsOnTrees with
+It costs approximately up to twice as much time to use LogicGrowsOnTrees with
 a single worker thread as it does to use the List monad. Fortunately, it is
 possible to eliminate most of this if you can switch to using the List monad
 near the bottom of the tree. For example, my optimized n-queens solver switches
