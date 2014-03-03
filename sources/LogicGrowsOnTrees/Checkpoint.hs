@@ -72,7 +72,7 @@ import Data.Derive.Serialize
 import Data.DeriveTH
 import Data.Functor.Identity (Identity,runIdentity)
 import Data.Monoid ((<>),Monoid(..))
-import Data.Sequence ((|>),Seq,viewr,ViewR(..))
+import Data.Sequence (Seq,viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
 import Data.Typeable (Typeable)

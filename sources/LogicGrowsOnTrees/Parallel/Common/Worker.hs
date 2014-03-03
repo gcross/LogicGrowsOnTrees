@@ -58,7 +58,7 @@ import qualified Data.IVar as IVar
 import Data.IVar (IVar)
 import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>),Monoid(..))
-import Data.Sequence ((|>),(><),viewl,ViewL(..))
+import Data.Sequence ((|>),(><))
 import Data.Serialize
 import qualified Data.Sequence as Seq
 import Data.Void (Void,absurd)
