@@ -210,7 +210,7 @@ Source-Repository head
 Source-Repository this
     Type:     git
     Location: git://github.com/gcross/LogicGrowsOnTrees.git
-    Tag:      1.0.0.0.1
+    Tag:      1.1
 
 Library
     Build-depends:
