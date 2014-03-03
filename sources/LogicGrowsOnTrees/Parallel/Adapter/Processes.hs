@@ -33,7 +33,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     , setNumberOfWorkers
     , setWorkloadBufferSize
     -- * Outcome types
-    , RunOutcome(..)
+    , RunOutcome
     , RunStatistics(..)
     , TerminationReason(..)
     -- * Generic runner functions
@@ -50,18 +50,17 @@ import Prelude hiding (catch)
 
 import Control.Applicative ((<$>),(<*>),Applicative,liftA2)
 import Control.Arrow (second)
-import Control.Concurrent (ThreadId,forkIO,getNumCapabilities,killThread)
+import Control.Concurrent (forkIO)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),SomeException,catch,catchJust,fromException)
-import Control.Monad (forever,liftM2,unless,void)
+import Control.Monad (forever,liftM2)
 import Control.Monad.CatchIO (MonadCatchIO)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict (get,modify)
 
 import qualified Data.Foldable as Fold
-import Data.Function (fix)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Data.Maybe (fromJust,fromMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
 import Data.Serialize (Serialize)
 
@@ -72,17 +71,14 @@ import System.FilePath ((</>))
 import System.IO (Handle,hGetLine,stdin,stdout)
 import System.IO.Error (isEOFError)
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(DEBUG,INFO,ERROR))
+import System.Log.Logger (Priority(DEBUG,ERROR))
 import System.Log.Logger.TH
 import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),ProcessHandle,createProcess,interruptProcessGroupOf)
 
-import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
-import LogicGrowsOnTrees.Checkpoint
+import LogicGrowsOnTrees (TreeT)
 import LogicGrowsOnTrees.Parallel.Common.Message
-import qualified LogicGrowsOnTrees.Parallel.Common.Process as Process
-import LogicGrowsOnTrees.Parallel.Common.Process
+import LogicGrowsOnTrees.Parallel.Common.Process (runWorker,runWorkerUsingHandles)
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue
-import LogicGrowsOnTrees.Parallel.Common.Worker
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
 import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Main
@@ -97,13 +93,12 @@ import LogicGrowsOnTrees.Parallel.Main
 import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Utils.Handle
 import LogicGrowsOnTrees.Utils.Word_
-import LogicGrowsOnTrees.Workload
 
 --------------------------------------------------------------------------------
 ----------------------------------- Loggers ------------------------------------
 --------------------------------------------------------------------------------
 
-deriveLoggers "Logger" [DEBUG,INFO,ERROR]
+deriveLoggers "Logger" [DEBUG,ERROR]
 
 --------------------------------------------------------------------------------
 ------------------------------------ Driver ------------------------------------
@@ -200,7 +195,6 @@ runSupervisor
     starting_progress
     (C controller)
  = do
-    request_queue ← newRequestQueue
     runWorkgroup
         exploration_mode
         mempty
@@ -241,7 +235,7 @@ runSupervisor
                         sendConfigurationTo write_handle
                     modify . IntMap.insert worker_id $ Worker{..}
 
-                destroyWorker worker_id worker_is_active = do
+                destroyWorker worker_id _ = do
                     debugM $ "Sending QuitWorker to " ++ show worker_id ++ "..."
                     get >>=
                         liftIO
