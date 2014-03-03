@@ -1114,7 +1114,7 @@ nqueensWithListAtBottomSearch updateValue_ finalizeValue initial_value size init
                 (occupied_positive_diagonals `rotateL` 1)
             )
     go2 :: α → NQueensSearchState → [m β]
-    go2 !value !s@(NQueensSearchState
+    go2 !value !(NQueensSearchState
                     number_of_queens_remaining
                     row
                     occupied_rows
@@ -1165,7 +1165,7 @@ nqueensWithNothingAtBottomSearch updateValue_ finalizeValue initial_value size i
     go initial_value initial_search_state
   where
     updateValue = updateValue_ . convertSolutionToWord
-    go !value !s@(NQueensSearchState
+    go !value !(NQueensSearchState
                     number_of_queens_remaining
                     row
                     occupied_rows
