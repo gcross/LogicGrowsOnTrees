@@ -1220,7 +1220,7 @@ statistics =
     -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     ,Statistic "worker-count" "workcnt"
         "statistics about the number of participating workers"
-     (\tense RunStatistics{..} →
+     (\_ RunStatistics{..} →
         let FunctionOfTimeStatistics{..} = runWorkerCountStatistics
         in if timeMax == 0
           then

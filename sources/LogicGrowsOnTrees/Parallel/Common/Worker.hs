@@ -519,7 +519,7 @@ tryStealWorkload ::
     Maybe (CheckpointCursor,Context m α,Workload)
 tryStealWorkload initial_path cursor context = go cursor (reverse context)
   where
-    go cursor [] = Nothing
+    go _ [] = Nothing
     go cursor (CacheContextStep cache:rest_context) =
         go (cursor |> CachePointD cache) rest_context
     go cursor (RightBranchContextStep:rest_context) =
