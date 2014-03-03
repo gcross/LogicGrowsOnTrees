@@ -13,7 +13,7 @@ unsigned int LogicGrowsOnTrees_Queens_count_solutions(
     void (*popValue)(),
     void (*finalizeValue)()
 ) {
-    if(occupied_rows & 1 != 0) {
+    if(occupied_rows & 1) {
         return
             LogicGrowsOnTrees_Queens_count_solutions(
                 size,
@@ -34,7 +34,7 @@ unsigned int LogicGrowsOnTrees_Queens_count_solutions(
         column = 0;
     uint64_t blocked = occupied_columns | occupied_negative_diagonals | occupied_positive_diagonals;
     for(column = 0; column < size; ++column, column_bit <<= 1) {
-        if((column_bit & blocked) == 0) {
+        if(!(column_bit & blocked)) {
             #ifdef __GNUC__
             if(__builtin_expect(pushValue != NULL,0)) {
             #else
