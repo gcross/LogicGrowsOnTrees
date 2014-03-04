@@ -1,5 +1,5 @@
 Name:                LogicGrowsOnTrees
-Version:             1.1
+Version:             1.1.0.1
 License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
@@ -210,7 +210,7 @@ Source-Repository head
 Source-Repository this
     Type:     git
     Location: git://github.com/gcross/LogicGrowsOnTrees.git
-    Tag:      1.1
+    Tag:      1.1.0.1
 
 Library
     Build-depends:
@@ -227,7 +227,7 @@ Library
         directory >= 1.1 && < 1.3,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
-        lens >= 3.8 && < 3.11,
+        lens >= 3.8 && < 4.1,
         MonadCatchIO-transformers == 0.3.*,
         monoid-statistics == 0.3.*,
         mtl == 2.1.*,
@@ -778,7 +778,7 @@ Test-Suite tests
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
         HUnit == 1.2.*,
-        lens >= 3.8 && < 3.11,
+        lens >= 3.8 && < 4.1,
         MonadCatchIO-transformers == 0.3.*,
         operational == 0.2.*,
         random == 1.0.*,
