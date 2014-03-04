@@ -1,3 +1,10 @@
+Version 1.0.0.2
+===============
+
+* Added some examples and benchmarks files that I had forgotten to put in the
+  repository.
+
+
 Version 1.0.0.1
 ===============
 
