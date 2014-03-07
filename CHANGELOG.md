@@ -6,6 +6,9 @@ version 1.1.0.2
 
 * Added the documentation files to the Hackage source distribution.
 
+* Deleted some no longer relevant advice on building the tests (as the version
+  dependency of test-framework-quickcheck was finally bumped).
+
 
 version 1.1.0.1
 ===============
