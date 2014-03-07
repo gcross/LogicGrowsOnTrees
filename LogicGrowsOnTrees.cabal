@@ -199,7 +199,12 @@ Description:
     @LogicGrowsOnTrees.Parallel.Common.*@ modules are primarily
     geared towards people writing their own adapter.
 
-Extra-source-files: c-sources/queens.c
+Extra-source-files:
+    c-sources/queens.c
+    CHANGELOG.md
+    README.md
+    TUTORIAL.md
+    USERS_GUIDE.md
 
 Bug-reports: https://github.com/gcross/LogicGrowsOnTrees/issues
 

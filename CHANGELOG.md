@@ -4,6 +4,8 @@ version 1.1.0.2
 * Tweaked the test suite to resolve minor problems when running on Windows and
   older GHCs.
 
+* Added the documentation files to the Hackage source distribution.
+
 
 version 1.1.0.1
 ===============
