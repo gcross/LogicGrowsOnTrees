@@ -73,7 +73,7 @@ import Test.QuickCheck.Gen
 import Test.QuickCheck.Instances ()
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
-import Test.QuickCheck.Property hiding ((.&.),(==>),abort)
+import Test.QuickCheck.Property (morallyDubiousIOProperty)
 import Test.SmallCheck ((==>))
 import Test.SmallCheck.Series (Serial(..))
 import Test.SmallCheck.Drivers as Small (test)
