@@ -1,3 +1,16 @@
+version 1.1.0.2
+===============
+
+* Tweaked the test suite to resolve minor problems when running on Windows and
+  older GHCs.
+
+
+version 1.1.0.1
+===============
+
+* Bumped lens version dependency.
+
+
 Version 1.1
 ===========
 
