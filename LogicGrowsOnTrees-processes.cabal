@@ -13,6 +13,8 @@ Description:
     multiple processes for parallelism; see the module documentation for more
     details.
 
+Extra-source-files: CHANGELOG.md
+
 Bug-reports: https://github.com/gcross/LogicGrowsOnTrees-processes/issues
 
 Source-Repository head
@@ -23,7 +25,6 @@ Source-Repository this
     Type:     git
     Location: git://github.com/gcross/LogicGrowsOnTrees-processes.git
     Tag:      1.0.0.2
-
 
 Library
     Build-depends:
