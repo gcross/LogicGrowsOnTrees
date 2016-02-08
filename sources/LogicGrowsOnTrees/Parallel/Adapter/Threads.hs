@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -263,7 +264,7 @@ exploreTreeT ::
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) result) {-^ the outcome of the run -}
-exploreTreeT = flip exploreTreeTStartingFrom mempty
+exploreTreeT runner controller tree = exploreTreeTStartingFrom runner mempty controller tree
 
 {-| Like 'exploreTreeT', but with a starting progress. -}
 exploreTreeTStartingFrom ::
@@ -318,7 +319,7 @@ exploreTreeTUntilFirst ::
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
-exploreTreeTUntilFirst = flip exploreTreeTUntilFirstStartingFrom mempty
+exploreTreeTUntilFirst runner controller tree = exploreTreeTUntilFirstStartingFrom runner mempty controller tree
 
 {-| Like 'exploreTreeTUntilFirst', but with a starting progress. -}
 exploreTreeTUntilFirstStartingFrom ::

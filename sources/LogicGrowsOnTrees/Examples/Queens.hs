@@ -45,7 +45,7 @@ module LogicGrowsOnTrees.Examples.Queens
 
 import Control.Monad (MonadPlus,guard,liftM)
 
-import Data.Bits ((.|.),(.&.),bit,bitSize,shiftL,shiftR)
+import Data.Bits ((.|.),(.&.),bit,finiteBitSize,shiftL,shiftR)
 import Data.Functor ((<$>))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -146,7 +146,7 @@ nqueens_correct_counts = IntMap.fromDistinctAscList $
     ,(16,14772512)
     ,(17,95815104)
     ,(18,666090624)
-    ] ++ if bitSize (undefined :: Int) < 64 then [] else
+    ] ++ if finiteBitSize (undefined :: Int) < 64 then [] else
     [(19,4968057848)
     ,(20,39029188884)
     ,(21,314666222712)

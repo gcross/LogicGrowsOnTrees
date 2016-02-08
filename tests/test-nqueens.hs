@@ -320,7 +320,7 @@ tests = -- {{{
                           sort
                         )
                         .
-                        multiplySolution n NoSymmetries
+                        (multiplySolution n NoSymmetries :: NQueensSolution → [NQueensSolution])
                         $
                         extractExteriorFromSolution n 1 solution
                 | n ← [2..11]

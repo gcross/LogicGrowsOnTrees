@@ -1,12 +1,15 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE DoRec #-}
+{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
+
 
 {-| To understand the purpose of this module, it helps to know that there are
     two main loops running in the supervisor. The first loop runs inside the
@@ -324,7 +327,7 @@ forkControllerThread' ::
     m' ThreadId
 forkControllerThread' request_queue controller = liftIO $ do
     start_signal ← newEmptyMVar
-    rec thread_id ← forkIO . mask $ \restore →
+    rec thread_id ← forkIO . mask $ \(restore :: ∀ α. IO α → IO α)→
             (restore $ takeMVar start_signal >> runReaderT controller request_queue)
             `finally`
             (atomicModifyIORef (controllerThreads request_queue) (delete thread_id &&& const ()))

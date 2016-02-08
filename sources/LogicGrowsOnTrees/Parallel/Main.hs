@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -1599,7 +1600,7 @@ showWithUnitPrefix :: Real n ⇒ n → String
 showWithUnitPrefix 0 = "0 "
 showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
   where
-    (x_scaled :: Float,Just unit) = formatValue (Left FormatSiAll) . realToFrac $ x
+    (x_scaled :: Float,Just unit) = formatValue FormatSiAll . realToFrac $ x
 
 writeStatisticsToLog :: Priority → Tense → RunStatistics → [[Statistic]] → IO ()
 writeStatisticsToLog level =

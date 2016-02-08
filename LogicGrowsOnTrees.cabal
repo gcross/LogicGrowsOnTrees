@@ -223,8 +223,8 @@ Library
         AbortT-mtl == 1.0.*,
         base > 4 && < 5,
         bytestring >= 0.9 && < 0.11,
-        cereal >= 0.3 && < 0.5,
-        cmdtheline == 0.2.*,
+        cereal >= 0.3 && < 0.6,
+        cmdtheline >= 0.2 && < 0.4,
         composition >= 0.2 && < 1.1,
         containers >= 0.4 && < 0.6,
         data-ivar == 0.30.*,
@@ -232,22 +232,22 @@ Library
         directory >= 1.1 && < 1.3,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
-        lens >= 3.8 && < 4.1,
+        lens >= 3.8 && < 4.14,
         MonadCatchIO-transformers == 0.3.*,
         monoid-statistics == 0.3.*,
-        mtl == 2.1.*,
-        multiset == 0.2.*,
+        mtl >= 2.1 && < 2.3,
+        multiset >= 0.2 && < 0.4,
         old-locale == 1.0.*,
         operational == 0.2.*,
-        prefix-units == 0.1.*,
+        prefix-units == 0.2.*,
         pretty == 1.1.*,
         PSQueue == 1.1.*,
         sequential-index == 0.2.*,
         split == 0.2.*,
         stm >= 2.3 && < 2.5,
-        time == 1.4.*,
-        transformers >= 0.2 && < 0.4,
-        void == 0.6.*,
+        time >= 1.4 && < 1.6,
+        transformers >= 0.2 && < 0.5,
+        void >= 0.6 && < 0.8,
         yjtools >= 0.9.7 && < 0.10
     Exposed-modules:
         LogicGrowsOnTrees
@@ -320,7 +320,7 @@ Executable readme-full
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*,
+        cmdtheline >= 0.2 && < 0.4,
         containers >= 0.4 && < 0.6
     if flag(examples)
         Buildable: True
@@ -337,7 +337,7 @@ Executable count-all-nqueens-solutions
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*
+        cmdtheline >= 0.2 && < 0.4
     if flag(examples)
         Buildable: True
     else
@@ -353,7 +353,7 @@ Executable print-all-nqueens-solutions
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*,
+        cmdtheline >= 0.2 && < 0.4,
         containers >= 0.4 && < 0.6
     if flag(examples)
         Buildable: True
@@ -370,7 +370,7 @@ Executable print-an-nqueens-solution
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*,
+        cmdtheline >= 0.2 && < 0.4,
         containers >= 0.4 && < 0.6
     if flag(examples)
         Buildable: True
@@ -387,7 +387,7 @@ Executable print-some-nqueens-solutions-using-pull
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*,
+        cmdtheline >= 0.2 && < 0.4,
         containers >= 0.4 && < 0.6
     if flag(examples)
         Buildable: True
@@ -404,7 +404,7 @@ Executable print-some-nqueens-solutions-using-push
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*,
+        cmdtheline >= 0.2 && < 0.4,
         containers >= 0.4 && < 0.6
     if flag(examples)
         Buildable: True
@@ -421,8 +421,8 @@ Executable count-all-trivial-tree-leaves
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cereal >= 0.3 && < 0.5,
-        cmdtheline == 0.2.*
+        cereal >= 0.3 && < 0.6,
+        cmdtheline >= 0.2 && < 0.4
     if flag(examples)
         Buildable: True
     else
@@ -519,7 +519,7 @@ Executable tutorial-7
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        transformers >= 0.2 && < 0.4
+        transformers >= 0.2 && < 0.5
     if flag(tutorial)
         Buildable: True
     else
@@ -535,7 +535,7 @@ Executable tutorial-8
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        transformers >= 0.2 && < 0.4
+        transformers >= 0.2 && < 0.5
     if flag(tutorial)
         Buildable: True
     else
@@ -596,7 +596,7 @@ Executable tutorial-12
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*
+        cmdtheline >= 0.2 && < 0.4
     if flag(tutorial)
         Buildable: True
     else
@@ -612,7 +612,7 @@ Executable tutorial-13
     Build-depends:
         LogicGrowsOnTrees,
         base > 4 && < 5,
-        cmdtheline == 0.2.*
+        cmdtheline >= 0.2 && < 0.4
     if flag(tutorial)
         Buildable: True
     else
@@ -775,19 +775,19 @@ Test-Suite tests
         LogicGrowsOnTrees,
         base > 4 && < 5,
         bytestring >= 0.9 && < 0.11,
-        cereal >= 0.3 && < 0.5,
+        cereal >= 0.3 && < 0.6,
         composition >= 0.2 && < 1.1,
         containers >= 0.4 && < 0.6,
         data-ivar == 0.30.*,
         directory >= 1.1 && < 1.3,
         hslogger == 1.2.*,
         hslogger-template == 2.0.*,
-        HUnit == 1.2.*,
-        lens >= 3.8 && < 4.1,
+        HUnit >= 1.2 && < 1.4,
+        lens >= 3.8 && < 4.14,
         MonadCatchIO-transformers == 0.3.*,
         operational == 0.2.*,
-        random == 1.0.*,
-        QuickCheck >= 2.4 && < 2.7,
+        random >= 1.0 && < 1.2,
+        QuickCheck >= 2.4 && < 2.9,
         quickcheck-instances >= 0.3.1 && < 0.4,
         smallcheck >= 1.0 && < 1.2,
         stm >= 2.3 && < 2.5,
@@ -795,10 +795,10 @@ Test-Suite tests
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
         test-framework-smallcheck == 0.2.*,
-        time == 1.4.*,
-        transformers >= 0.2 && < 0.4,
+        time >= 1.4 && < 1.6,
+        transformers >= 0.2 && < 0.5,
         uuid >= 1.2 && < 1.4,
-        void == 0.6.*
+        void >= 0.6 && < 0.8
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing -with-rtsopts=-M512M
     else
@@ -812,11 +812,11 @@ Test-Suite test-nqueens
         LogicGrowsOnTrees,
         base > 4 && < 5,
         containers >= 0.4 && < 0.6,
-        HUnit == 1.2.*,
-        QuickCheck >= 2.4 && < 2.7,
+        HUnit >= 1.2 && < 1.4,
+        QuickCheck >= 2.4 && < 2.9,
         test-framework >= 0.6 && < 0.9,
         test-framework-hunit >= 0.2 && < 0.4,
         test-framework-quickcheck2 >= 0.2 && < 0.4,
-        transformers >= 0.2 && < 0.4
+        transformers >= 0.2 && < 0.5
     if flag(warnings)
         GHC-Options: -Wall -fno-warn-name-shadowing

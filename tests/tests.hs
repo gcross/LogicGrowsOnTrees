@@ -67,13 +67,13 @@ import Test.Framework
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
 import qualified Test.Framework.Providers.SmallCheck as Small
-import Test.HUnit hiding (Test,Path)
+import Test.HUnit hiding (Location,Path,Test)
 import Test.QuickCheck.Arbitrary hiding ((><))
-import Test.QuickCheck.Gen
+import Test.QuickCheck.Gen hiding (shuffle)
 import Test.QuickCheck.Instances ()
 import Test.QuickCheck.Modifiers
 import Test.QuickCheck.Monadic
-import Test.QuickCheck.Property (morallyDubiousIOProperty)
+import Test.QuickCheck.Property (ioProperty)
 import Test.SmallCheck ((==>))
 import Test.SmallCheck.Series (Serial(..))
 import Test.SmallCheck.Drivers as Small (test)
@@ -775,14 +775,14 @@ tests = -- {{{
         ]
      -- }}}
     ,testGroup "LogicGrowsOnTrees.Examples" -- {{{
-        [testProperty name $ do
-            number_of_colors ← choose (2,5)
-            number_of_countries ← choose (3,7)
-            neighbor_probability ← choose (0,1::Float)
+        [testProperty name . ioProperty $ do
+            number_of_colors ← randomRIO (2,5)
+            number_of_countries ← randomRIO (3,7)
+            neighbor_probability ← randomRIO (0,1::Float)
             neighbors ← fmap (concat . concat) $
                 forM [1..number_of_countries] $ \x →
                     forM [x+1..number_of_countries] $ \y → do
-                        outcome ← choose (0,1)
+                        outcome ← randomRIO (0,1)
                         return $
                             if outcome > neighbor_probability
                                 then [(x,y),(y,x)]
@@ -792,21 +792,20 @@ tests = -- {{{
                         number_of_colors
                         number_of_countries
                         (\x y → (x,y) `elem` neighbors)
-            morallyDubiousIOProperty $ do
-                forM_ solutions $ \solution →
+            forM_ solutions $ \solution →
+                forM_ solution $ \(country_1,color_1) →
+                    forM_ solution $ \(country_2,color_2) →
+                        when ((country_1,country_2) `elem` neighbors) $
+                            assertBool "neighbors have different colors" $ color_1 /= color_2
+            let correct_count = sum $ do
+                    solution ← zip [1..] <$> replicateM (fromIntegral number_of_countries) [1..number_of_colors]
                     forM_ solution $ \(country_1,color_1) →
                         forM_ solution $ \(country_2,color_2) →
                             when ((country_1,country_2) `elem` neighbors) $
-                                assertBool "neighbors have different colors" $ color_1 /= color_2
-                let correct_count = sum $ do
-                        solution ← zip [1..] <$> replicateM (fromIntegral number_of_countries) [1..number_of_colors]
-                        forM_ solution $ \(country_1,color_1) →
-                            forM_ solution $ \(country_2,color_2) →
-                                when ((country_1,country_2) `elem` neighbors) $
-                                    guard $ color_1 /= color_2
-                        return 1
-                computeCount number_of_colors solutions @?= correct_count
-                return True
+                                guard $ color_1 /= color_2
+                    return 1
+            computeCount number_of_colors solutions @?= correct_count
+            return True
         | (name,computeSolutions,computeCount) ←
             [("coloringSolutions",coloringSolutions,curry (fromIntegral . length . snd))
             ,("coloringUniqueSolutions",coloringUniqueSolutions,
@@ -963,7 +962,7 @@ tests = -- {{{
                 -- }}}
             in
             [testGroup "AllMode" $ -- {{{
-                let runTest generateNoise = randomUniqueTreeWithHooks >>= \constructTree → morallyDubiousIOProperty $ do
+                let runTest generateNoise = randomUniqueTreeWithHooks >>= \constructTree → return . unsafePerformIO $ do
                         cleared_flags_mvar ← newMVar mempty
                         request_queue ← newChan
                         progresses_ref ← newIORef []
@@ -987,7 +986,7 @@ tests = -- {{{
               ]
              -- }}}
             ,testGroup "FirstMode" $ -- {{{
-                let runTest generator generateNoise = generator >>= \constructTree → morallyDubiousIOProperty $ do
+                let runTest generator generateNoise = generator >>= \constructTree → return . unsafePerformIO $ do
                         cleared_flags_mvar ← newMVar mempty
                         request_queue ← newChan
                         progresses_ref ← newIORef []
@@ -1019,7 +1018,7 @@ tests = -- {{{
                    ]
              -- }}}
             ,testGroup "FoundModeUsingPull" $ -- {{{
-                let runTest generator generateNoise = generator >>= \constructTree → morallyDubiousIOProperty $ do
+                let runTest generator generateNoise = generator >>= \constructTree → return . unsafePerformIO $ do
                         let tree = constructTree (const $ return ())
                         all_results ← exploreTreeT tree
                         number_of_results_to_find ← randomRIO (1,2*IntSet.size all_results)
@@ -1058,7 +1057,7 @@ tests = -- {{{
                    ]
              -- }}}
             ,testGroup "FoundModeUsingPush" $ -- {{{
-                let runTest generator generateNoise = generator >>= \constructTree → morallyDubiousIOProperty $ do
+                let runTest generator generateNoise = generator >>= \constructTree → return . unsafePerformIO $ do
                         let tree = constructTree (const $ return ())
                         all_results ← exploreTreeT tree
                         number_of_results_to_find ← randomRIO (1,2*IntSet.size all_results)
@@ -1312,9 +1311,8 @@ tests = -- {{{
                                 then return [worker_id]
                                 else return []
                         ) >>= shuffle
-                    let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove 
-    
-                    monadicIO . run $ do
+                    let worker_ids_left = Set.toAscList $ Set.fromList worker_ids_to_add `Set.difference` Set.fromList worker_ids_to_remove
+                    return . unsafePerformIO $ do
                         (maybe_workload_ref,actions_1) ← addAcceptOneWorkloadAction bad_test_supervisor_actions
                         (broadcast_ids_list_ref,actions_2) ← addAppendWorkloadStealBroadcastIdsAction actions_1
                         SupervisorOutcome{..} ← runUnrestrictedSupervisor AllMode actions_2 $ do
@@ -1324,9 +1322,10 @@ tests = -- {{{
                             mapM_ removeWorker worker_ids_to_remove
                             abortSupervisor
                         supervisorTerminationReason @?= SupervisorAborted (Progress Unexplored ())
-                        sort supervisorRemainingWorkers @?= worker_ids_left 
+                        sort supervisorRemainingWorkers @?= worker_ids_left
                         readIORef maybe_workload_ref >>= (@?= Just (head worker_ids_to_add,entire_workload))
                         readIORef broadcast_ids_list_ref >>= (@?= if (null . tail) worker_ids_to_add then [] else [[head worker_ids_to_add]])
+                        return True
                  -- }}}
                 ]
              -- }}}
@@ -1391,7 +1390,7 @@ tests = -- {{{
                 number_of_inactive_workers ← choose (0,10)
                 let active_workers = [0..number_of_active_workers-1]
                     inactive_workers = [101..101+number_of_inactive_workers-1]
-                monadicIO . run $ do
+                return . unsafePerformIO $ do
                     (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
                     (broadcast_ids_list_ref,actions2) ← addAppendProgressBroadcastIdsAction actions1
                     (workload_steal_ids_ref,actions3) ← addSetWorkloadStealBroadcastIdsAction actions2
@@ -1414,6 +1413,7 @@ tests = -- {{{
                     supervisorRemainingWorkers @?= inactive_workers
                     readIORef broadcast_ids_list_ref >>= (@?= [active_workers])
                     readIORef maybe_progress_ref >>= (@?= Just progress)
+                    return True
              -- }}}
             ,testCase "request and receive Just progress update when one worker present" $ do -- {{{
                 (maybe_progress_ref,actions1) ← addReceiveCurrentProgressAction bad_test_supervisor_actions
@@ -1879,7 +1879,7 @@ tests = -- {{{
              -- }}}
             ]
          -- }}}
-        ,testProperty "exploreTreeUntilFirst" $ \(tree :: Tree String) → morallyDubiousIOProperty $ do -- {{{
+        ,testProperty "exploreTreeUntilFirst" $ \(tree :: Tree String) → ioProperty $ do -- {{{
             termination_reason ← exploreTreeGeneric FirstMode Pure tree
             case termination_reason of
                 WorkerFinished maybe_final_progress → return $ (progressResult <$> maybe_final_progress) == exploreTreeUntilFirst tree
@@ -1976,7 +1976,7 @@ tests = -- {{{
          -- }}}
         ]
      -- }}}
-    ,testProperty "LogicGrowsOnTrees.Utils.Handle" $ \(x::UUID) → morallyDubiousIOProperty $ -- {{{
+    ,testProperty "LogicGrowsOnTrees.Utils.Handle" $ \(x::UUID) → ioProperty $ -- {{{
         bracket
             (getTemporaryDirectory >>= flip openBinaryTempFile "test-handles")
             (\(filepath,handle) → do

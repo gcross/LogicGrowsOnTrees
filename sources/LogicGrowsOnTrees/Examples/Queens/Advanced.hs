@@ -89,7 +89,7 @@ import Data.Function (on)
 import Data.IORef (modifyIORef,newIORef,readIORef,writeIORef)
 import Data.List (sort)
 import Data.Maybe (fromJust)
-import Data.Typeable (Typeable(..),cast)
+import Data.Typeable (Typeable,cast,typeOf)
 import Data.Word (Word,Word64)
 
 import Foreign.C.Types (CUInt(..))
