@@ -13,10 +13,13 @@ Bug-reports: https://github.com/gcross/LogicGrowsOnTrees/issues
 
 Library
   build-depends:       base
+                     , bytestring
                      , cereal
+                     , containers
                      , operational
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
+                     , LogicGrowsOnTrees.Path
   HS-source-dirs:      sources
   GHC-Options:         -Werror=incomplete-patterns
                        -Werror=missing-fields
