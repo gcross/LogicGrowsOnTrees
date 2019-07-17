@@ -1,0 +1,23 @@
+Name:                LogicGrowsOnTrees
+Version:             2.0
+License:             BSD3
+License-file:        LICENSE
+Author:              Gregory Crosswhite
+Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
+Synopsis:            a parallel implementation of logic programming using distributed tree exploration
+Cabal-version:       >=1.10
+Build-type:          Simple
+Category:            Control, Distributed Computing, Logic, Parallelism
+
+Bug-reports: https://github.com/gcross/LogicGrowsOnTrees/issues
+
+Library
+  build-depends:       base
+                     , cereal
+                     , operational
+                     , transformers
+  exposed-modules:     LogicGrowsOnTrees
+  HS-source-dirs:      sources
+  GHC-Options:         -Werror=incomplete-patterns
+                       -Werror=missing-fields
+                       -Werror=missing-methods
