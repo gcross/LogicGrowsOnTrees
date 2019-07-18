@@ -29,3 +29,4 @@ Library
   GHC-Options:         -Werror=incomplete-patterns
                        -Werror=missing-fields
                        -Werror=missing-methods
+  Default-Language:    Haskell2010
