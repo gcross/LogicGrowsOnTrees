@@ -16,9 +16,11 @@ Library
                      , bytestring
                      , cereal
                      , containers
+                     , flow
                      , operational
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
+                     , LogicGrowsOnTrees.Checkpoint
                      , LogicGrowsOnTrees.Path
   HS-source-dirs:      sources
   GHC-Options:         -Werror=incomplete-patterns
