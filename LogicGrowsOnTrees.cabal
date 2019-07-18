@@ -24,6 +24,7 @@ Library
                      , LogicGrowsOnTrees.Checkpoint
                      , LogicGrowsOnTrees.Location
                      , LogicGrowsOnTrees.Path
+                     , LogicGrowsOnTrees.Utils.WordSum
                      , LogicGrowsOnTrees.Workload
   HS-source-dirs:      sources
   GHC-Options:         -Werror=incomplete-patterns
