@@ -22,6 +22,7 @@ Library
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
                      , LogicGrowsOnTrees.Checkpoint
+                     , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
                      , LogicGrowsOnTrees.Path
                      , LogicGrowsOnTrees.Utils.WordSum
