@@ -26,6 +26,8 @@ Library
                      , LogicGrowsOnTrees.Examples.Queens
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
+                     , LogicGrowsOnTrees.Parallel.ExplorationMode
+                     , LogicGrowsOnTrees.Parallel.Purity
                      , LogicGrowsOnTrees.Path
                      , LogicGrowsOnTrees.Utils.WordSum
                      , LogicGrowsOnTrees.Workload
