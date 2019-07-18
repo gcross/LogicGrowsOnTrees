@@ -23,9 +23,11 @@ module LogicGrowsOnTrees.Workload
     ) where
 
 import Control.Monad ((>=>))
+
 import Data.Function (on)
 import Data.Monoid (Monoid(..))
 import qualified Data.Sequence as Seq
+import Data.Serialize (Serialize)
 
 import GHC.Generics (Generic)
 
@@ -46,6 +48,8 @@ data Workload = Workload
     {   workloadPath :: Path
     ,   workloadCheckpoint :: Checkpoint
     } deriving (Eq,Generic,Show)
+
+instance Serialize Workload where
 
 {-| Workloads are ordered first by their depth (the length of the 'Path'
     component), second by the value of the 'Path' component itself, and finally

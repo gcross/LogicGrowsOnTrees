@@ -17,6 +17,8 @@ Library
                      , cereal
                      , containers
                      , flow
+                     , hslogger
+                     , hslogger-template
                      , operational
                      , optparse-applicative
                      , sequential-index
@@ -26,6 +28,7 @@ Library
                      , LogicGrowsOnTrees.Examples.Queens
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
+                     , LogicGrowsOnTrees.Parallel.Common.Worker
                      , LogicGrowsOnTrees.Parallel.ExplorationMode
                      , LogicGrowsOnTrees.Parallel.Purity
                      , LogicGrowsOnTrees.Path

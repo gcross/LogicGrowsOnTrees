@@ -2,5 +2,6 @@ flags: {}
 packages:
 - .
 extra-deps:
+- hslogger-template-2.0.4
 - sequential-index-0.2.0.1
 resolver: lts-13.28
