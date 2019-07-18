@@ -18,9 +18,11 @@ Library
                      , containers
                      , flow
                      , operational
+                     , sequential-index
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
                      , LogicGrowsOnTrees.Checkpoint
+                     , LogicGrowsOnTrees.Location
                      , LogicGrowsOnTrees.Path
                      , LogicGrowsOnTrees.Workload
   HS-source-dirs:      sources
