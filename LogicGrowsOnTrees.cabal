@@ -22,6 +22,7 @@ Library
   exposed-modules:     LogicGrowsOnTrees
                      , LogicGrowsOnTrees.Checkpoint
                      , LogicGrowsOnTrees.Path
+                     , LogicGrowsOnTrees.Workload
   HS-source-dirs:      sources
   GHC-Options:         -Werror=incomplete-patterns
                        -Werror=missing-fields
