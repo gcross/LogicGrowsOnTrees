@@ -28,10 +28,12 @@ Library
                      , LogicGrowsOnTrees.Examples.Queens
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
+                     , LogicGrowsOnTrees.Parallel.Common.Message
                      , LogicGrowsOnTrees.Parallel.Common.Worker
                      , LogicGrowsOnTrees.Parallel.ExplorationMode
                      , LogicGrowsOnTrees.Parallel.Purity
                      , LogicGrowsOnTrees.Path
+                     , LogicGrowsOnTrees.Utils.Handle
                      , LogicGrowsOnTrees.Utils.WordSum
                      , LogicGrowsOnTrees.Workload
   HS-source-dirs:      sources
