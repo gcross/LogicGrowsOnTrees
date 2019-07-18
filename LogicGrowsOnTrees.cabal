@@ -18,10 +18,12 @@ Library
                      , containers
                      , flow
                      , operational
+                     , optparse-applicative
                      , sequential-index
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
                      , LogicGrowsOnTrees.Checkpoint
+                     , LogicGrowsOnTrees.Examples.Queens
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
                      , LogicGrowsOnTrees.Path
