@@ -19,9 +19,13 @@ Library
                      , flow
                      , hslogger
                      , hslogger-template
+                     , lens
+                     , multiset
+                     , mtl
                      , operational
                      , optparse-applicative
                      , sequential-index
+                     , time
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
                      , LogicGrowsOnTrees.Checkpoint
@@ -36,6 +40,7 @@ Library
                      , LogicGrowsOnTrees.Utils.Handle
                      , LogicGrowsOnTrees.Utils.WordSum
                      , LogicGrowsOnTrees.Workload
+  Other-modules:       LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
   HS-source-dirs:      sources
   GHC-Options:         -Werror=incomplete-patterns
                        -Werror=missing-fields
