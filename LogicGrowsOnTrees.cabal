@@ -33,6 +33,7 @@ Library
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
                      , LogicGrowsOnTrees.Parallel.Common.Message
+                     , LogicGrowsOnTrees.Parallel.Common.Supervisor
                      , LogicGrowsOnTrees.Parallel.Common.Worker
                      , LogicGrowsOnTrees.Parallel.ExplorationMode
                      , LogicGrowsOnTrees.Parallel.Purity
