@@ -25,6 +25,7 @@ Library
                      , operational
                      , optparse-applicative
                      , sequential-index
+                     , stm
                      , time
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
@@ -33,6 +34,7 @@ Library
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
                      , LogicGrowsOnTrees.Parallel.Common.Message
+                     , LogicGrowsOnTrees.Parallel.Common.RequestQueue
                      , LogicGrowsOnTrees.Parallel.Common.Supervisor
                      , LogicGrowsOnTrees.Parallel.Common.Worker
                      , LogicGrowsOnTrees.Parallel.ExplorationMode
