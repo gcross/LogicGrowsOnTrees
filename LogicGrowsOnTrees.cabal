@@ -34,6 +34,7 @@ Library
                      , transformers
   exposed-modules:     LogicGrowsOnTrees
                      , LogicGrowsOnTrees.Checkpoint
+                     , LogicGrowsOnTrees.Examples.MapColoring
                      , LogicGrowsOnTrees.Examples.Queens
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
