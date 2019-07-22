@@ -50,6 +50,7 @@ Library
                      , LogicGrowsOnTrees.Parallel.Purity
                      , LogicGrowsOnTrees.Path
                      , LogicGrowsOnTrees.Utils.Handle
+                     , LogicGrowsOnTrees.Utils.PerfectTree
                      , LogicGrowsOnTrees.Utils.WordSum
                      , LogicGrowsOnTrees.Workload
   Other-modules:       LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
