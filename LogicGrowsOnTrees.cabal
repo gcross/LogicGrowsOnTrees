@@ -37,6 +37,7 @@ Library
                      , LogicGrowsOnTrees.Examples.Queens
                      , LogicGrowsOnTrees.Examples.Queens.Advanced
                      , LogicGrowsOnTrees.Location
+                     , LogicGrowsOnTrees.Parallel.Adapter.Threads
                      , LogicGrowsOnTrees.Parallel.Common.Message
                      , LogicGrowsOnTrees.Parallel.Common.Process
                      , LogicGrowsOnTrees.Parallel.Common.RequestQueue

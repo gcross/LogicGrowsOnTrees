@@ -37,8 +37,8 @@ module LogicGrowsOnTrees.Parallel.Main
     , RunOutcome(..)
     , RunOutcomeFor
     , RunStatistics(..)
-    , ParserinationReason(..)
-    , ParserinationReasonFor
+    , TerminationReason(..)
+    , TerminationReasonFor
     -- * Main functions
     -- $main
 
@@ -281,7 +281,7 @@ data DriverParameters
         {-| configuration information specific to the supervisor -}
     ,   supervisor_configuration_parser :: Parser supervisor_configuration
         {-| program information;  should at a minimum put a brief description of the program in the 'termDoc' field -}
-    ,   program_info :: ∀ α. InfoMod α → InfoMod α
+    ,   program_info :: ∀ α. InfoMod α
         {-| action that initializes the global state of each process --- that
             is, once for each running instance of the executable, which
             depending on the adapter might be a supervisor, a worker, or both
@@ -298,7 +298,7 @@ data DriverParameters
         {-| the purity of the constructed tree -}
     ,   purity :: Purity m n
         {-| construct the controller, which runs in the supervisor and handles things like periodic checkpointing -}
-    ,   constructController :: tree_configuration → supervisor_configuration → controller_monad exploration_mode ()
+    ,   constructController :: supervisor_configuration → controller_monad exploration_mode ()
     }
 
 -------------------------------- Outcome types ---------------------------------
@@ -308,14 +308,14 @@ data RunOutcome progress final_result = RunOutcome
     {   {-| statistics gathered during the run, useful if the system is not scaling with the number of workers as it should -}
         runStatistics :: RunStatistics
         {-| the reason why the run terminated -}
-    ,   runTerminationReason :: ParserinationReason progress final_result
+    ,   runTerminationReason :: TerminationReason progress final_result
     } deriving (Eq,Show)
 
 {-| A convenient type alias for the type of 'RunOutcome' associated with the given exploration mode. -}
 type RunOutcomeFor exploration_mode = RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
 
 {-| A type that represents the reason why a run terminated. -}
-data ParserinationReason progress final_result =
+data TerminationReason progress final_result =
     {-| the run was aborted with the given progress -}
     Aborted progress
     {-| the run completed with the given final result -}
@@ -325,7 +325,7 @@ data ParserinationReason progress final_result =
   deriving (Eq,Show)
 
 {-| A convenient type alias for the type of 'TerminationReason' associated with the given exploration mode. -}
-type ParserinationReasonFor exploration_mode = ParserinationReason (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
+type TerminationReasonFor exploration_mode = TerminationReason (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
 
 --------------------------------------------------------------------------------
 ------------------------------------ Readers -----------------------------------
@@ -401,7 +401,7 @@ mainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -424,7 +424,7 @@ mainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad tree_configuration SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -448,7 +448,7 @@ mainForExploreTreeImpure ::
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad tree_configuration SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -485,7 +485,7 @@ mainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -506,7 +506,7 @@ mainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad tree_configuration SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -528,7 +528,7 @@ mainForExploreTreeImpureUntilFirst ::
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad tree_configuration SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -598,7 +598,7 @@ mainForExploreTreeUntilFoundUsingPull ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -623,7 +623,7 @@ mainForExploreTreeIOUntilFoundUsingPull ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -649,7 +649,7 @@ mainForExploreTreeImpureUntilFoundUsingPull ::
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -700,7 +700,7 @@ mainForExploreTreeUntilFoundUsingPush ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -725,7 +725,7 @@ mainForExploreTreeIOUntilFoundUsingPush ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -751,7 +751,7 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -1041,7 +1041,7 @@ genericMain ::
         exploration_mode
         {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α → InfoMod α)
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -1137,7 +1137,7 @@ genericMain
     , constructExplorationMode = constructExplorationMode
     , constructTree = constructTree
     , purity = purity
-    , constructController = const . controllerLoop $ tracker_ref
+    , constructController = controllerLoop tracker_ref
     }
 {-# INLINE genericMain #-}
 
@@ -1186,19 +1186,6 @@ mainMan =
     ++
     map (I <$> (printf "%s (%s)" <$> statisticLongName <*> statisticShortName) <*> statisticDescription) statistics
  -}
-
-{-| Parse the command line options using the given term and term info (the
-    latter of which has the program name added to it);  if successful return the
-    result, otherwise throw an exception.
- -}
-{-
-mainParser :: Parser α → (∀ α. InfoMod α → InfoMod α) → IO α
-mainParser parser info_mod =
-    (if null (termName term_info)
-        then getProgName >>= \progname → return $ term_info {termName = progname}
-        else return term_info
-    ) >>= exec . (parser,)
--}
 
 --------------------------------------------------------------------------------
 ----------------------------------- Internal -----------------------------------
@@ -1599,7 +1586,7 @@ forwardSimpleToMainFunction ::
     (
         Driver result_monad () SupervisorConfiguration m n exploration_mode →
         Parser () →
-        (∀ α. InfoMod α → InfoMod α) →
+        (∀ α. InfoMod α) →
         (() → RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode) → IO ()) →
         (() → TreeT m (ResultFor exploration_mode)) →
         result_monad ()
