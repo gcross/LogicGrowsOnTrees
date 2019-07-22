@@ -2,6 +2,7 @@ flags: {}
 packages:
 - .
 extra-deps:
+- PSQueue-1.1.0.1
 - hslogger-template-2.0.4
 - sequential-index-0.2.0.1
 resolver: lts-13.28

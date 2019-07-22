@@ -16,6 +16,7 @@ Library
                      , bytestring
                      , cereal
                      , containers
+                     , directory
                      , flow
                      , hslogger
                      , hslogger-template
@@ -24,7 +25,10 @@ Library
                      , mtl
                      , operational
                      , optparse-applicative
+                     , prefix-units
+                     , PSQueue
                      , sequential-index
+                     , split
                      , stm
                      , time
                      , transformers
@@ -38,7 +42,9 @@ Library
                      , LogicGrowsOnTrees.Parallel.Common.RequestQueue
                      , LogicGrowsOnTrees.Parallel.Common.Supervisor
                      , LogicGrowsOnTrees.Parallel.Common.Worker
+                     , LogicGrowsOnTrees.Parallel.Common.Workgroup
                      , LogicGrowsOnTrees.Parallel.ExplorationMode
+                     , LogicGrowsOnTrees.Parallel.Main
                      , LogicGrowsOnTrees.Parallel.Purity
                      , LogicGrowsOnTrees.Path
                      , LogicGrowsOnTrees.Utils.Handle

@@ -163,7 +163,8 @@ instance Monoid Checkpoint where
 data Progress α = Progress
     {   progressCheckpoint :: Checkpoint
     ,   progressResult :: α
-    } deriving (Eq,Functor,Show)
+    } deriving (Eq,Functor,Generic,Show)
+instance Serialize α ⇒ Serialize (Progress α)
 
 instance Semigroup α ⇒ Semigroup (Progress α) where
   Progress c1 r1 <> Progress c2 r2 = Progress (c1 <> c2) (r1 <> r2)
