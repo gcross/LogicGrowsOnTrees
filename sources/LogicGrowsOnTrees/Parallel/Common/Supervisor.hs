@@ -78,10 +78,12 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , runTestSupervisorStartingFrom
     ) where
 
+import Prelude hiding (fail)
 
 import Control.Applicative (Applicative)
 import Control.Lens.Setter ((.~),(+=))
 import Control.Monad (forever)
+import Control.Monad.Fail (MonadFail(fail))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
@@ -139,6 +141,9 @@ newtype SupervisorMonad exploration_mode worker_id m α =
     SupervisorMonad {
         unwrapSupervisorMonad :: AbortMonad exploration_mode worker_id m α
     } deriving (Applicative,Functor,Monad,MonadIO)
+
+instance MonadFail m ⇒ MonadFail (SupervisorMonad exploration_mode worker_id m) where
+    fail = lift . fail
 
 instance MonadTrans (SupervisorMonad exploration_mode worker_id) where
     lift = SupervisorMonad . lift . lift . lift
@@ -519,6 +524,7 @@ should not be used
  -}
 runTestSupervisor ::
     ( MonadIO m
+    , MonadFail m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
@@ -533,6 +539,7 @@ runTestSupervisor exploration_mode callbacks =
 {-| Like 'runTestSupervisor' but starting from the given progress. -}
 runTestSupervisorStartingFrom ::
     ( MonadIO m
+    , MonadFail m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
