@@ -36,6 +36,7 @@ import Control.Lens.Getter (use)
 import Control.Lens.Lens ((<<%=))
 import Control.Lens.Setter ((.=),(%=))
 import Control.Monad (forM_,replicateM_,void)
+import Control.Monad.Catch (MonadCatch,MonadMask,MonadThrow)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.State.Class (MonadState)
@@ -137,7 +138,18 @@ type WorkgroupStateMonad inner_state = StateT WorkgroupState (ReaderT (Workgroup
 type WorkgroupMonad inner_state exploration_mode = SupervisorMonad exploration_mode WorkerId (WorkgroupStateMonad inner_state)
 
 {-| This is the monad in which the workgroup controller will run. -}
-newtype WorkgroupControllerMonad inner_state exploration_mode α = C { unwrapC :: RequestQueueReader exploration_mode WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadIO,RequestQueueMonad)
+newtype WorkgroupControllerMonad inner_state exploration_mode α =
+    C { unwrapC :: RequestQueueReader exploration_mode WorkerId (WorkgroupStateMonad inner_state) α }
+  deriving
+    ( Applicative
+    , Functor
+    , Monad
+    , MonadCatch
+    , MonadIO
+    , MonadMask
+    , MonadThrow
+    , RequestQueueMonad
+    )
 
 instance HasExplorationMode (WorkgroupControllerMonad inner_state exploration_mode) where
     type ExplorationModeFor (WorkgroupControllerMonad inner_state exploration_mode) = exploration_mode

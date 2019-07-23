@@ -91,6 +91,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
 import Control.Applicative (Applicative,(<$>),(<*>))
 import Control.Concurrent (getNumCapabilities,killThread)
 import Control.Monad (when)
+import Control.Monad.Catch (MonadCatch,MonadMask,MonadThrow)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict (get,modify)
 
@@ -191,7 +192,17 @@ driver = Driver $ \DriverParameters{..} → do
 {-| This is the monad in which the thread controller will run. -}
 newtype ThreadsControllerMonad exploration_mode α =
     C (WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor exploration_mode))) exploration_mode α)
-  deriving (Applicative,Functor,Monad,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
+  deriving
+    ( Applicative
+    , Functor
+    , Monad
+    , MonadCatch
+    , MonadIO
+    , MonadMask
+    , MonadThrow
+    , RequestQueueMonad
+    , WorkgroupRequestQueueMonad
+    )
 
 instance HasExplorationMode (ThreadsControllerMonad exploration_mode) where
     type ExplorationModeFor (ThreadsControllerMonad exploration_mode) = exploration_mode
