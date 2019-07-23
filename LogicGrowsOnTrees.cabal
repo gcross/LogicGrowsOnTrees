@@ -17,6 +17,7 @@ Library
                      , cereal
                      , containers
                      , directory
+                     , exceptions
                      , flow
                      , hslogger
                      , hslogger-template
@@ -32,6 +33,14 @@ Library
                      , stm
                      , time
                      , transformers
+
+                     , HUnit
+                     , QuickCheck
+                     , quickcheck-instances
+                     , random
+                     , smallcheck
+                     , test-framework
+                     , uuid
   exposed-modules:     LogicGrowsOnTrees
                      , LogicGrowsOnTrees.Checkpoint
                      , LogicGrowsOnTrees.Examples.MapColoring
@@ -49,6 +58,7 @@ Library
                      , LogicGrowsOnTrees.Parallel.Main
                      , LogicGrowsOnTrees.Parallel.Purity
                      , LogicGrowsOnTrees.Path
+                     , LogicGrowsOnTrees.Testing
                      , LogicGrowsOnTrees.Utils.Handle
                      , LogicGrowsOnTrees.Utils.PerfectTree
                      , LogicGrowsOnTrees.Utils.WordSum
@@ -58,4 +68,56 @@ Library
   GHC-Options:         -Werror=incomplete-patterns
                        -Werror=missing-fields
                        -Werror=missing-methods
+  Default-Language:    Haskell2010
+
+Test-Suite test-helpers
+    Type: exitcode-stdio-1.0
+    Main-is: test-helpers.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , exceptions
+                     , hslogger
+                     , QuickCheck
+                     , quickcheck-instances
+                     , test-framework
+                     , test-framework-quickcheck2
+  Default-Language:    Haskell2010
+
+Test-Suite test-LogicGrowsOnTrees
+    Type: exitcode-stdio-1.0
+    Main-is: test-LogicGrowsOnTrees.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , hslogger
+                     , HUnit
+                     , QuickCheck
+                     , quickcheck-instances
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+                     , transformers
+  Default-Language:    Haskell2010
+
+Test-Suite test-LogicGrowsOnTrees-Checkpoint
+    Type: exitcode-stdio-1.0
+    Main-is: test-LogicGrowsOnTrees-Checkpoint.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , cereal
+                     , containers
+                     , exceptions
+                     , hslogger
+                     , HUnit
+                     , lens
+                     , QuickCheck
+                     , quickcheck-instances
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+                     , uuid
   Default-Language:    Haskell2010
