@@ -152,3 +152,20 @@ Test-Suite test-Location
                      , test-framework
                      , test-framework-quickcheck2
   Default-Language:    Haskell2010
+
+Test-Suite test-Utils
+    Type: exitcode-stdio-1.0
+    Main-is: test-Utils.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , directory
+                     , hslogger
+                     , QuickCheck
+                     , quickcheck-instances
+                     , smallcheck
+                     , test-framework
+                     , test-framework-quickcheck2
+                     , test-framework-smallcheck
+                     , uuid
+  Default-Language:    Haskell2010
