@@ -115,9 +115,9 @@ instance Serialize Checkpoint where
 {-| Simplifies the root of the checkpoint by replacing
 
     * @Choicepoint Unexplored Unexplored@ with @Unexplored@;
-    
+
     * @Choicepoint Explored Explored@ with @Explored@; and
-    
+
     * @CachePoint _ Explored@ with @Explored@.
  -}
 simplifyCheckpointRoot :: Checkpoint → Checkpoint
