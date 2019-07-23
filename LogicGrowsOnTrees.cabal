@@ -102,9 +102,9 @@ Test-Suite test-LogicGrowsOnTrees
                      , transformers
   Default-Language:    Haskell2010
 
-Test-Suite test-LogicGrowsOnTrees-Checkpoint
+Test-Suite test-Checkpoint
     Type: exitcode-stdio-1.0
-    Main-is: test-LogicGrowsOnTrees-Checkpoint.hs
+    Main-is: test-Checkpoint.hs
     Hs-source-dirs: tests
     Build-depends:     LogicGrowsOnTrees
                      , base
@@ -122,9 +122,9 @@ Test-Suite test-LogicGrowsOnTrees-Checkpoint
                      , uuid
   Default-Language:    Haskell2010
 
-Test-Suite test-LogicGrowsOnTrees-Examples
+Test-Suite test-Examples
     Type: exitcode-stdio-1.0
-    Main-is: test-LogicGrowsOnTrees-Examples.hs
+    Main-is: test-Examples.hs
     Hs-source-dirs: tests
     Build-depends:     LogicGrowsOnTrees
                      , base
@@ -139,9 +139,9 @@ Test-Suite test-LogicGrowsOnTrees-Examples
                      , test-framework-quickcheck2
   Default-Language:    Haskell2010
 
-Test-Suite test-LogicGrowsOnTrees-Location
+Test-Suite test-Location
     Type: exitcode-stdio-1.0
-    Main-is: test-LogicGrowsOnTrees-Location.hs
+    Main-is: test-Location.hs
     Hs-source-dirs: tests
     Build-depends:     LogicGrowsOnTrees
                      , base
