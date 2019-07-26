@@ -246,6 +246,25 @@ Test-Suite test-Supervisor
                      , uuid
   Default-Language:    Haskell2010
 
+Test-Suite test-Threads
+    Type: exitcode-stdio-1.0
+    Main-is: test-Threads.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , exceptions
+                     , hslogger
+                     , hslogger-template
+                     , HUnit
+                     , random
+                     , QuickCheck
+                     , quickcheck-instances
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+  Default-Language:    Haskell2010
+
 Test-Suite test-Worker
     Type: exitcode-stdio-1.0
     Main-is: test-Worker.hs
