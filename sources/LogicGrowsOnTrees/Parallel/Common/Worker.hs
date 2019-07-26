@@ -295,9 +295,11 @@ forkWorkerThread
                     debugM "Worker thread received workload steal."
                     case tryStealWorkload initial_path cursor context of
                         Nothing → do
+                            debugM "No workload is available to steal."
                             liftIO $ submitMaybeWorkload Nothing
                             loop2 result cursor exploration_state rest_requests
                         Just (new_cursor,new_context,workload) → do
+                            debugM "Returning workload to supervisor."
                             liftIO . submitMaybeWorkload . Just $
                                 StolenWorkload
                                     (computeProgressUpdate exploration_mode result initial_path new_cursor new_context checkpoint)
