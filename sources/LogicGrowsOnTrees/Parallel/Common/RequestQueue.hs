@@ -378,15 +378,17 @@ computeAdditionalTime current_time (last_time,last_number_of_workers) =
     be ignored.
  -}
 startCPUTimeTracker :: RequestQueueMonad m ⇒ CPUTimeTracker → m ()
-startCPUTimeTracker CPUTimeTracker{..} = do
-    already_started ← liftIO $ atomicModifyIORef trackerStarted (const True &&& id)
-    unless already_started . addWorkerCountListener $ \current_number_of_workers → do
+startCPUTimeTracker CPUTimeTracker{..} =
+    (liftIO $ atomicModifyIORef trackerStarted (const True &&& id))
+    >>=
+    flip unless (addWorkerCountListener $ \current_number_of_workers → do
         current_time ← getCurrentTime
         atomically $ do
-            maybe_last ← readTVar trackerLastTime
-            flip (maybe (return ())) maybe_last $ \last →
-                modifyTVar' trackerTotalTime (+ computeAdditionalTime current_time last)
+            readTVar trackerLastTime >>= maybe
+                (pure ())
+                (\last → modifyTVar' trackerTotalTime (+ computeAdditionalTime current_time last))
             writeTVar trackerLastTime $ Just (current_time,current_number_of_workers)
+    )
 
 {-| Gets the current CPI time. -}
 getCurrentCPUTime :: CPUTimeTracker → IO NominalDiffTime
