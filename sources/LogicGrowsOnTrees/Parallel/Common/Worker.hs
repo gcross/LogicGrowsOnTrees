@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -43,7 +44,7 @@ module LogicGrowsOnTrees.Parallel.Common.Worker
 
 import Prelude hiding (catch)
 
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&),(>>>))
 import Control.Concurrent (forkIO,ThreadId,yield)
 import Control.Concurrent.MVar (MVar,newEmptyMVar,putMVar,takeMVar)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catch,fromException)
@@ -273,8 +274,7 @@ forkWorkerThread
     --                to phase 2;  otherwise (the most common case), skip to
     --                phase 3.
         loop1 (!result) cursor exploration_state =
-            liftIO (readIORef pending_requests_ref) >>= \pending_requests →
-            case pending_requests of
+            liftIO (readIORef pending_requests_ref) >>= \case
                 [] → loop3 result cursor exploration_state
                 _ → debugM "Worker thread's request queue is non-empty."
                     >> (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
@@ -372,10 +372,11 @@ forkWorkerThread
                 initialExplorationState initial_checkpoint
             )
             `catch`
-            (\e → case fromException e of
-                Just ThreadKilled → return WorkerAborted
-                Just UserInterrupt → return WorkerAborted
-                _ → return $ WorkerFailed (show e)
+            (fromException >>> \case
+                Just ThreadKilled → WorkerAborted
+                Just UserInterrupt → WorkerAborted
+                e → WorkerFailed (show e)
+             >>> pure
             )
         debugM $ "Worker thread has terminated with reason " ++
             case termination_reason of
