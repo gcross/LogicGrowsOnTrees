@@ -582,6 +582,9 @@ deactivateWorker ::
     worker_id →
     AbortMonad exploration_mode worker_id m ()
 deactivateWorker reenqueue_workload worker_id = do
+    debugM $ printf "Deactivating worker %s (with%s workload)"
+                (show worker_id)
+                (if reenqueue_workload then "" else "out")
     pending_steal ← workers_pending_workload_steal %%= (Set.member worker_id &&& Set.delete worker_id)
     when pending_steal $ steal_request_failures += 1
     dequeueWorkerForSteal worker_id
@@ -1080,6 +1083,7 @@ retireWorker ::
     worker_id →
     AbortMonad exploration_mode worker_id m ()
 retireWorker worker_id = do
+    debugM $ "Retiring worker " ++ show worker_id
     Set.size <$> (known_workers <%= Set.delete worker_id) >>= notifyWorkerCountListeners
     retired_occupation_statistics ←
         worker_occupation_statistics %%= (fromJust . Map.lookup worker_id &&& Map.delete worker_id)
@@ -1096,6 +1100,7 @@ retireAndDeactivateWorker ::
     worker_id →
     AbortMonad exploration_mode worker_id m ()
 retireAndDeactivateWorker worker_id = do
+    debugM $ "Retiring and deactivating worker " ++ show worker_id
     retireWorker worker_id
     (Map.member worker_id <$> use active_workers) >>= bool
         (waiting_workers_or_available_workloads %%=
