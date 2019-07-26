@@ -158,11 +158,16 @@ instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state explor
     changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
         old_number_of_workers ← numberOfWorkers
         let new_number_of_workers = computeNewNumberOfWorkers old_number_of_workers
+        infoM $ printf "Changing number of workers from %i to %i"
+                    old_number_of_workers
+                    new_number_of_workers
         case new_number_of_workers `compare` old_number_of_workers of
             GT → replicateM_ (fromIntegral $ new_number_of_workers - old_number_of_workers) hireAWorker
             LT → replicateM_ (fromIntegral $ old_number_of_workers - new_number_of_workers) fireAWorker
             EQ → return ()
-        infoM $ printf "Number of workers has been changed from %i to %i" old_number_of_workers new_number_of_workers
+        infoM $ printf "Number of workers has been successfully changed from %i to %i"
+                    old_number_of_workers
+                    new_number_of_workers
         liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
      )
 
