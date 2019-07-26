@@ -78,7 +78,7 @@ import Data.IntMap (IntMap)
 import Data.List (inits)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (fromJust,fromMaybe,isJust,isNothing)
+import Data.Maybe (fromJust,fromMaybe,isNothing)
 import Data.Monoid ((<>),Monoid(..))
 import qualified Data.MultiSet as MultiSet
 import Data.MultiSet (MultiSet)
@@ -1097,13 +1097,13 @@ retireAndDeactivateWorker ::
     AbortMonad exploration_mode worker_id m ()
 retireAndDeactivateWorker worker_id = do
     retireWorker worker_id
-    (isJust . Map.lookup worker_id <$> use active_workers) >>= bool
-        (deactivateWorker True worker_id)
+    (Map.member worker_id <$> use active_workers) >>= bool
         (waiting_workers_or_available_workloads %%=
             either (pred . Map.size &&& Left . Map.delete worker_id)
                    (error $ "worker " ++ show worker_id ++ " is inactive but was not in the waiting queue")
          >>= updateFunctionOfTimeUsingLens waiting_worker_count_statistics
         )
+        (deactivateWorker True worker_id)
 
 runSupervisorStartingFrom ::
     ( MonadIO m
