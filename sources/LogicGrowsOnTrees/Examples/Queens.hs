@@ -56,11 +56,12 @@ import Options.Applicative (Parser,ReadM,argument,eitherReader,help,metavar)
 import Text.Read (readMaybe)
 import Text.Printf (printf)
 
-import LogicGrowsOnTrees (Tree,allFrom,exploreTree) -- exploreTree added so that haddock will link to it
+import LogicGrowsOnTrees (Tree,allFrom) -- exploreTree added so that haddock will link to it
 import qualified LogicGrowsOnTrees.Examples.Queens.Advanced as Advanced
 import LogicGrowsOnTrees.Examples.Queens.Advanced
     (NQueensSolution
     ,NQueensSolutions
+    ,Updater(..)
     ,multiplySolution
     ,nqueensGeneric
     ,nqueensWithListAtBottomGeneric
@@ -290,7 +291,7 @@ functions, see the "LogicGrowsOnTrees.Examples.Queens.Advanced" module.
 
 {-| Generates the solutions to the n-queens problem with the given board size. -}
 nqueensSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
+nqueensSolutions n = nqueensGeneric (StateUpdater (++)) multiplySolution [] n
 {-# SPECIALIZE nqueensSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensSolutions :: Word → Tree NQueensSolution #-}
 
@@ -299,31 +300,31 @@ nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
     done by the 'exploreTree' (and related) functions.
  -}
 nqueensCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+nqueensCount = nqueensGeneric CountUpdater (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensCount :: Word → Tree WordSum #-}
 
 {-| Like 'nqueensSolutions', but uses List at the bottom instead of C. -}
 nqueensWithListAtBottomSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensWithListAtBottomSolutions n = nqueensWithListAtBottomGeneric (++) multiplySolution [] n
+nqueensWithListAtBottomSolutions n = nqueensWithListAtBottomGeneric (StateUpdater (++)) multiplySolution [] n
 {-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Like 'nqueensCount', but uses List at the bottom instead of C. -}
 nqueensWithListAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensWithListAtBottomCount = nqueensWithListAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+nqueensWithListAtBottomCount = nqueensWithListAtBottomGeneric CountUpdater (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensWithListAtBottomCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensWithListAtBottomCount :: Word → Tree WordSum #-}
 
 {-| Like 'nqueensSolutions', but uses List at the bottom instead of C. -}
 nqueensWithNothingAtBottomSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensWithNothingAtBottomSolutions n = nqueensWithNothingAtBottomGeneric (++) multiplySolution [] n
+nqueensWithNothingAtBottomSolutions n = nqueensWithNothingAtBottomGeneric (StateUpdater (++)) multiplySolution [] n
 {-# SPECIALIZE nqueensWithNothingAtBottomSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensWithNothingAtBottomSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Like 'nqueensCount', but uses List at the bottom instead of C. -}
 nqueensWithNothingAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensWithNothingAtBottomCount = nqueensWithNothingAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+nqueensWithNothingAtBottomCount = nqueensWithNothingAtBottomGeneric CountUpdater (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensWithNothingAtBottomCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensWithNothingAtBottomCount :: Word → Tree WordSum #-}
 

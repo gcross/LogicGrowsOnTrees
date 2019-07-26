@@ -65,6 +65,7 @@ Library
                      , LogicGrowsOnTrees.Workload
   Other-modules:       LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
   HS-source-dirs:      sources
+  C-Sources:           c-sources/queens.c
   GHC-Options:         -Werror=incomplete-patterns
                        -Werror=missing-fields
                        -Werror=missing-methods
@@ -188,3 +189,17 @@ Test-Suite test-Path
                      , test-framework-quickcheck2
                      , transformers
   Default-Language:    Haskell2010
+
+Test-Suite test-nqueens
+    Type: exitcode-stdio-1.0
+    Main-is: test-nqueens.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , HUnit
+                     , QuickCheck
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+                     , transformers
