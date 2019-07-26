@@ -45,7 +45,8 @@ import Data.UUID (UUID)
 import Text.Printf
 
 import Test.Framework (Test,testGroup)
-import Test.HUnit (assertBool,assertEqual)
+import Test.HUnit (Assertion,assertBool,assertEqual)
+import Test.QuickCheck (Testable)
 import Test.QuickCheck.Arbitrary hiding ((><))
 import Test.QuickCheck.Gen hiding (shuffle)
 import Test.QuickCheck.Instances ()
@@ -513,3 +514,9 @@ endless_tree = endless_tree `mplus` endless_tree
 
 dontTestGroup :: String → [Test] → Test
 dontTestGroup name = const $ testGroup name []
+
+dontTestCase ∷ String → Assertion → Test
+dontTestCase name = const $ testGroup name []
+
+dontTestProperty ∷ Testable α ⇒ String → α → Test
+dontTestProperty name = const $ testGroup name []
