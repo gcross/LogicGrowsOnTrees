@@ -33,7 +33,6 @@ Library
                      , stm
                      , time
                      , transformers
-
                      , HUnit
                      , QuickCheck
                      , quickcheck-instances
@@ -69,6 +68,27 @@ Library
   GHC-Options:         -Werror=incomplete-patterns
                        -Werror=missing-fields
                        -Werror=missing-methods
+  Default-Language:    Haskell2010
+
+Test-Suite tests
+    Type: exitcode-stdio-1.0
+    Main-is: tests.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , exceptions
+                     , hslogger
+                     , HUnit
+                     , random
+                     , QuickCheck
+                     , quickcheck-instances
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+                     , time
+                     , uuid
+                     , void
   Default-Language:    Haskell2010
 
 Test-Suite test-helpers
@@ -208,6 +228,27 @@ Test-Suite test-RequestQueue
                      , time
   Default-Language:    Haskell2010
 
+Test-Suite test-Worker
+    Type: exitcode-stdio-1.0
+    Main-is: test-Worker.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , exceptions
+                     , hslogger
+                     , hslogger-template
+                     , HUnit
+                     , QuickCheck
+                     , quickcheck-instances
+                     , random
+                     , stm
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+                     , void
+  Default-Language:    Haskell2010
+
 Test-Suite test-nqueens
     Type: exitcode-stdio-1.0
     Main-is: test-nqueens.hs
@@ -221,3 +262,5 @@ Test-Suite test-nqueens
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , transformers
+  Default-Language:    Haskell2010
+
