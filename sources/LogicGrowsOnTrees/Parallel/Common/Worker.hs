@@ -285,7 +285,7 @@ forkWorkerThread
             case requests of
                 [] → liftIO yield >> loop3 result cursor exploration_state
                 AbortRequested:_ → do
-                    debugM "Worker theread received abort request."
+                    debugM "Worker thread received abort request."
                     return WorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     debugM "Worker thread received progress update request."
