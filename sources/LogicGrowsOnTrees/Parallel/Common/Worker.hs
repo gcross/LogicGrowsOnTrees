@@ -42,8 +42,6 @@ module LogicGrowsOnTrees.Parallel.Common.Worker
     , exploreTreeGeneric
     ) where
 
-import Prelude hiding (catch)
-
 import Control.Arrow ((&&&),(>>>))
 import Control.Concurrent (forkIO,ThreadId,yield)
 import Control.Concurrent.MVar (MVar,newEmptyMVar,putMVar,takeMVar)
