@@ -274,9 +274,9 @@ forkWorkerThread
         loop1 (!result) cursor exploration_state =
             liftIO (readIORef pending_requests_ref) >>= \case
                 [] → loop3 result cursor exploration_state
-                _ → debugM "Worker thread's request queue is non-empty."
-                    >> (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
-                    >>= loop2 result cursor exploration_state
+                _ → do debugM "Worker thread's request queue is non-empty."
+                       (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
+                           >>= loop2 result cursor exploration_state
 
     -- LOOP PHASE 2:  Process all pending requests.
         loop2 result cursor exploration_state@(ExplorationTState context checkpoint tree) requests =
