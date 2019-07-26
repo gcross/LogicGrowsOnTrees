@@ -70,27 +70,6 @@ Library
                        -Werror=missing-methods
   Default-Language:    Haskell2010
 
-Test-Suite tests
-    Type: exitcode-stdio-1.0
-    Main-is: tests.hs
-    Hs-source-dirs: tests
-    Build-depends:     LogicGrowsOnTrees
-                     , base
-                     , containers
-                     , exceptions
-                     , hslogger
-                     , HUnit
-                     , random
-                     , QuickCheck
-                     , quickcheck-instances
-                     , test-framework
-                     , test-framework-hunit
-                     , test-framework-quickcheck2
-                     , time
-                     , uuid
-                     , void
-  Default-Language:    Haskell2010
-
 Test-Suite test-helpers
     Type: exitcode-stdio-1.0
     Main-is: test-helpers.hs
@@ -272,14 +251,12 @@ Test-Suite test-Worker
     Build-depends:     LogicGrowsOnTrees
                      , base
                      , containers
-                     , exceptions
                      , hslogger
                      , hslogger-template
                      , HUnit
+                     , random
                      , QuickCheck
                      , quickcheck-instances
-                     , random
-                     , stm
                      , test-framework
                      , test-framework-hunit
                      , test-framework-quickcheck2
