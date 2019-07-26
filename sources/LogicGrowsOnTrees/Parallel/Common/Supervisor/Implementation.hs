@@ -990,7 +990,7 @@ receiveWorkerFinishedWithRemovalFlag ::
     worker_id →
     WorkerFinishedProgressFor exploration_mode →
     AbortMonad exploration_mode worker_id m ()
-receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinished " ++ show worker_id) $ do
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinishedWithRemovalFlag " ++ show worker_id ++ " " ++ show remove_worker) $ do
     infoM $ if remove_worker
         then "Worker " ++ show worker_id ++ " finished and removed."
         else "Worker " ++ show worker_id ++ " finished."
@@ -1022,12 +1022,12 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = po
             active_worker_ids ← Map.keys . Map.delete worker_id <$> use active_workers
             unless (null active_worker_ids) . throw $
                 ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
-            _ ← finishWithResult final_value
+            finishWithResult final_value
+        _ → do
             deactivateWorker False worker_id
             unless remove_worker $ do
                 endWorkerOccupied worker_id
                 tryToObtainWorkloadFor False worker_id
-        _ → errorM $ "Worker " ++ show worker_id ++ " finished but had not fully explored its subtree."
 
 retireManyOccupationStatistics ::
     ( Functor f

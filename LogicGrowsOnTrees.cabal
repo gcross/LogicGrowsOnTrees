@@ -228,6 +228,24 @@ Test-Suite test-RequestQueue
                      , time
   Default-Language:    Haskell2010
 
+Test-Suite test-Supervisor
+    Type: exitcode-stdio-1.0
+    Main-is: test-Supervisor.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , hslogger
+                     , hslogger-template
+                     , HUnit
+                     , QuickCheck
+                     , quickcheck-instances
+                     , test-framework
+                     , test-framework-hunit
+                     , test-framework-quickcheck2
+                     , uuid
+  Default-Language:    Haskell2010
+
 Test-Suite test-Worker
     Type: exitcode-stdio-1.0
     Main-is: test-Worker.hs
