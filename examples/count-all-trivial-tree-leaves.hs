@@ -8,8 +8,6 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
 import LogicGrowsOnTrees.Utils.PerfectTree
 import LogicGrowsOnTrees.Utils.WordSum
 
-
-
 main :: IO ()
 main =
     mainForExploreTree
