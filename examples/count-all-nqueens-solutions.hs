@@ -1,6 +1,6 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
-import Options.Applicative (argument,auto,fullDesc,help,metavar,progDesc)
+import Options.Applicative (fullDesc,progDesc)
 
 import LogicGrowsOnTrees.Parallel.Main
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
@@ -12,11 +12,7 @@ main :: IO ()
 main =
     mainForExploreTree
         driver
-        (argument auto $ mconcat
-            [ help "size of the board"
-            , metavar "SIZE"
-            ]
-        )
+        board_size_parser
         (fullDesc <> progDesc "count the number of n-queens solutions for a given board size")
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of

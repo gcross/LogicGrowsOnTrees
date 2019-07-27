@@ -14,7 +14,7 @@ main :: IO ()
 main =
     mainForExploreTree
         driver
-        boardSizeArgument
+        board_size_parser
         (fullDesc <> progDesc "print all the n-queens solutions for a given board size")
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of

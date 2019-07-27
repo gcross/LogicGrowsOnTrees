@@ -39,7 +39,7 @@ module LogicGrowsOnTrees.Examples.Queens
     ,nqueensWithNothingAtBottomSolutions
     ,nqueensWithNothingAtBottomCount
     -- * Board size command argument
-    , boardSizeArgument
+    , board_size_parser
     ) where
 
 import Control.Monad (MonadPlus,(>=>),guard,liftM)
@@ -74,8 +74,8 @@ import LogicGrowsOnTrees.Utils.WordSum
 --------------------------------------------------------------------------------
 
 {-| The argument for specifying the board size. -}
-boardSizeArgument ∷ Parser Word
-boardSizeArgument =
+board_size_parser ∷ Parser Word
+board_size_parser =
    argument argumentReader $ metavar "BOARD_SIZE" <> help "board size"
   where
       argumentReader ∷ ReadM Word
