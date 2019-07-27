@@ -77,6 +77,8 @@ Executable readme-simple
                      , base
                      , containers
                      , optparse-applicative
+    Default-Language:  Haskell2010
+
 
 Executable readme-full
     Main-is: readme-full.hs
@@ -85,6 +87,7 @@ Executable readme-full
                      , base
                      , containers
                      , optparse-applicative
+    Default-Language:  Haskell2010
 
 Test-Suite test-helpers
     Type: exitcode-stdio-1.0
@@ -99,7 +102,7 @@ Test-Suite test-helpers
                      , quickcheck-instances
                      , test-framework
                      , test-framework-quickcheck2
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-LogicGrowsOnTrees
     Type: exitcode-stdio-1.0
@@ -116,7 +119,7 @@ Test-Suite test-LogicGrowsOnTrees
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , transformers
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Checkpoint
     Type: exitcode-stdio-1.0
@@ -136,7 +139,7 @@ Test-Suite test-Checkpoint
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , uuid
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Examples
     Type: exitcode-stdio-1.0
@@ -153,7 +156,7 @@ Test-Suite test-Examples
                      , test-framework
                      , test-framework-hunit
                      , test-framework-quickcheck2
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Location
     Type: exitcode-stdio-1.0
@@ -167,7 +170,7 @@ Test-Suite test-Location
                      , stm
                      , test-framework
                      , test-framework-quickcheck2
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Utils
     Type: exitcode-stdio-1.0
@@ -184,7 +187,7 @@ Test-Suite test-Utils
                      , test-framework-quickcheck2
                      , test-framework-smallcheck
                      , uuid
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Path
     Type: exitcode-stdio-1.0
@@ -203,7 +206,7 @@ Test-Suite test-Path
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , transformers
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-RequestQueue
     Type: exitcode-stdio-1.0
@@ -221,7 +224,7 @@ Test-Suite test-RequestQueue
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , time
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Supervisor
     Type: exitcode-stdio-1.0
@@ -239,7 +242,7 @@ Test-Suite test-Supervisor
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , uuid
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Threads
     Type: exitcode-stdio-1.0
@@ -258,7 +261,7 @@ Test-Suite test-Threads
                      , test-framework
                      , test-framework-hunit
                      , test-framework-quickcheck2
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-Worker
     Type: exitcode-stdio-1.0
@@ -277,7 +280,7 @@ Test-Suite test-Worker
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , void
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
 Test-Suite test-nqueens
     Type: exitcode-stdio-1.0
@@ -292,5 +295,5 @@ Test-Suite test-nqueens
                      , test-framework-hunit
                      , test-framework-quickcheck2
                      , transformers
-  Default-Language:    Haskell2010
+    Default-Language:  Haskell2010
 
