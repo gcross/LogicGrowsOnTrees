@@ -88,7 +88,7 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , runExplorer
     ) where
 
-import Control.Applicative (Applicative,(<$>),(<*>))
+import Control.Applicative (Applicative,(<$>),(<*>),(<**>))
 import Control.Concurrent (getNumCapabilities,killThread)
 import Control.Monad (when)
 import Control.Monad.Catch (MonadCatch,MonadMask,MonadThrow)
@@ -107,6 +107,7 @@ import Options.Applicative
     ( auto
     , execParser
     , help
+    , helper
     , info
     , long
     , option
@@ -153,9 +154,13 @@ driver :: Driver IO shared_configuration supervisor_configuration m n exploratio
 driver = Driver $ \DriverParameters{..} → do
     (tree_configuration,supervisor_configuration,number_of_threads) ← execParser $
         info
-            ((,,) <$> tree_configuration_parser
-                  <*> supervisor_configuration_parser
-                  <*> number_of_threads_parser
+            (
+                ((,,) <$> tree_configuration_parser
+                      <*> supervisor_configuration_parser
+                      <*> number_of_threads_parser
+                )
+                <**>
+                helper
             )
             program_info
     initializeGlobalState supervisor_configuration
