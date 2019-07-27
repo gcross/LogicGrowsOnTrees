@@ -76,7 +76,7 @@ Library
 
 Executable readme-simple
     Main-is: readme-simple.hs
-    Hs-source-dirs: examples
+    Hs-source-dirs:    examples
     Build-depends:     LogicGrowsOnTrees
                      , base
                      , containers
@@ -86,7 +86,7 @@ Executable readme-simple
 
 Executable readme-full
     Main-is: readme-full.hs
-    Hs-source-dirs: examples
+    Hs-source-dirs:    examples
     Build-depends:     LogicGrowsOnTrees
                      , base
                      , containers
@@ -96,7 +96,7 @@ Executable readme-full
 
 Executable count-all-nqueens-solutions
     Main-is: count-all-nqueens-solutions.hs
-    Hs-source-dirs: examples
+    Hs-source-dirs:    examples
     Build-depends:     LogicGrowsOnTrees
                      , base
                      , optparse-applicative
