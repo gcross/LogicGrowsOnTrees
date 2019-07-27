@@ -184,7 +184,17 @@ driver = Driver $ \DriverParameters{..} → do
     number_of_threads_parser = option auto $ mconcat
         [ short 'n'
         , long "number-of-threads"
-        , help "The number of worker threads to spawn."
+        , help $ mconcat
+              ["The number of worker threads to spawn. Make sure that there are "
+              ,"enough capabilities available so that they can actually run in "
+              ,"parallel by either passing in +RTS -N{x} -RTS at run time or "
+              ,"passing in --with-rtsopts=-N{x} at compile time. If {x} is not "
+              ,"present, then it defaults to the number of processors. If there "
+              ,"are other things running on your computer then the number of "
+              ,"workers should be less than the number of processors or else "
+              ,"they will fight with the other processes and performance will "
+              ,"be lost."
+              ]
         , value 1
         , showDefault
         ]
