@@ -84,13 +84,21 @@ Executable readme-simple
     GHC-options:       -threaded
     Default-Language:  Haskell2010
 
-
 Executable readme-full
     Main-is: readme-full.hs
     Hs-source-dirs: examples
     Build-depends:     LogicGrowsOnTrees
                      , base
                      , containers
+                     , optparse-applicative
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
+
+Executable count-all-nqueens-solutions
+    Main-is: count-all-nqueens-solutions.hs
+    Hs-source-dirs: examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base
                      , optparse-applicative
     GHC-options:       -threaded
     Default-Language:  Haskell2010
