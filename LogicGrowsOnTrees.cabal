@@ -70,6 +70,14 @@ Library
                        -Werror=missing-methods
   Default-Language:    Haskell2010
 
+Executable readme-simple
+    Main-is: readme-simple.hs
+    Hs-source-dirs: examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , optparse-applicative
+
 Test-Suite test-helpers
     Type: exitcode-stdio-1.0
     Main-is: test-helpers.hs
