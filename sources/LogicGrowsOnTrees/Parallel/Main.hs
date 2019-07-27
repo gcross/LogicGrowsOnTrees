@@ -138,6 +138,7 @@ import Options.Applicative
     , option
     , short
     , showDefault
+    , str
     , switch
     , value
     )
@@ -401,11 +402,7 @@ mainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -485,11 +482,7 @@ mainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -506,11 +499,7 @@ mainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad tree_configuration SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -528,11 +517,7 @@ mainForExploreTreeImpureUntilFirst ::
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad tree_configuration SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -598,11 +583,7 @@ mainForExploreTreeUntilFoundUsingPull ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -623,11 +604,7 @@ mainForExploreTreeIOUntilFoundUsingPull ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -649,11 +626,7 @@ mainForExploreTreeImpureUntilFoundUsingPull ::
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -700,11 +673,7 @@ mainForExploreTreeUntilFoundUsingPush ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -725,11 +694,7 @@ mainForExploreTreeIOUntilFoundUsingPush ::
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -751,11 +716,7 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    (∀ α. InfoMod α)
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -793,6 +754,7 @@ in (the leaves of) the tree.
 simpleMainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad () SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -809,6 +771,7 @@ simpleMainForExploreTree = forwardSimpleToMainFunction mainForExploreTree
 simpleMainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     Driver result_monad () SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -826,6 +789,7 @@ simpleMainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad () SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -846,6 +810,7 @@ For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#first"
 simpleMainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad () SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -860,6 +825,7 @@ simpleMainForExploreTreeUntilFirst = forwardSimpleToMainFunction mainForExploreT
 simpleMainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
     Driver result_monad () SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -875,6 +841,7 @@ simpleMainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad () SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -903,6 +870,7 @@ simpleMainForExploreTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad () SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -910,6 +878,7 @@ simpleMainForExploreTreeUntilFoundUsingPull ::
          -} →
     Tree result {-^ the tree to explore -} →
     result_monad ()
+
 simpleMainForExploreTreeUntilFoundUsingPull = forwardSimpleToMainFunction . mainForExploreTreeUntilFoundUsingPull . const
 {-# INLINE simpleMainForExploreTreeUntilFoundUsingPull #-}
 
@@ -920,6 +889,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad () SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -937,7 +907,8 @@ simpleMainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad () SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (not that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -964,12 +935,12 @@ simpleMainForExploreTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad () SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
             deleted if this function finishes successfully
          -} →
-
     Tree result {-^ the tree to explore -} →
     result_monad ()
 simpleMainForExploreTreeUntilFoundUsingPush condition =
@@ -984,6 +955,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     Driver result_monad () SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -1002,6 +974,7 @@ simpleMainForExploreTreeImpureUntilFoundUsingPush ::
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
     Driver result_monad () SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -1409,7 +1382,7 @@ statistics =
 checkpoint_configuration_parser :: Parser CheckpointConfiguration
 checkpoint_configuration_parser =
     CheckpointConfiguration
-        <$> (option (Just <$> auto) $ mconcat
+        <$> (option (Just <$> str) $ mconcat
                 [ short 'c'
                 , long "checkpoint-file"
                 , metavar "FILEPATH"
@@ -1592,14 +1565,15 @@ forwardSimpleToMainFunction ::
         result_monad ()
     ) →
     Driver result_monad () SupervisorConfiguration m n exploration_mode →
+    (∀ α. InfoMod α) →
     (RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode) → IO ()) →
     (TreeT m (ResultFor exploration_mode)) →
     result_monad ()
-forwardSimpleToMainFunction mainFunction driver notifyTerminated tree =
+forwardSimpleToMainFunction mainFunction driver program_info notifyTerminated tree =
     mainFunction
         driver
         (pure ())
-        mempty
+        program_info
         (const notifyTerminated)
         (const tree)
 {-# INLINE forwardSimpleToMainFunction #-}
