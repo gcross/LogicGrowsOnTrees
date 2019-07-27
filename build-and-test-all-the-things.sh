@@ -1,2 +1,2 @@
 #!/bin/sh
-stack build `cat examples/targets.lst` `cat tests/targets.lst`
+stack build `cat tests/targets.lst` `cat examples/targets.lst` `cat tutorial/targets.lst`
