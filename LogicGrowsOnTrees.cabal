@@ -113,6 +113,15 @@ Executable print-all-nqueens-solutions
     GHC-options:       -threaded
     Default-Language:  Haskell2010
 
+Executable print-an-nqueens-solution
+    Main-is: print-an-nqueens-solution.hs
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , optparse-applicative
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
+
 Executable count-all-trivial-tree-leaves
     Main-is: count-all-trivial-tree-leaves.hs
     Hs-source-dirs:    examples
