@@ -132,6 +132,16 @@ Executable print-some-nqueens-solutions-using-pull
     GHC-options:       -threaded
     Default-Language:  Haskell2010
 
+Executable print-some-nqueens-solutions-using-push
+    Main-is: print-some-nqueens-solutions-using-push.hs
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base
+                     , containers
+                     , optparse-applicative
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
+
 Executable count-all-trivial-tree-leaves
     Main-is: count-all-trivial-tree-leaves.hs
     Hs-source-dirs:    examples
