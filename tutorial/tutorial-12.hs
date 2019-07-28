@@ -11,7 +11,7 @@ main =
         driver
         board_size_parser
         (fullDesc <> progDesc
-            "tutorial-11 - count the number of n-queens solutions for a given board size")
+            "tutorial-12 - count the number of n-queens solutions for a given board size")
         (\board_size (RunOutcome _ termination_reason) -> do
             case termination_reason of
                 Aborted _ -> error "search aborted"

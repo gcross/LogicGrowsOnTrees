@@ -40,6 +40,6 @@ main = setNumCapabilities 2 >> go mempty
         Completed (WordSum count) -> do
             putStrLn $ "Found " ++ show count ++ " solutions."
             exitSuccess
-        Failure _ message -> do
+        Failure progress message -> do
             putStrLn $ "Failed: " ++ message
             exitFailure
