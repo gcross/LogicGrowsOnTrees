@@ -1,11 +1,16 @@
-import Control.Monad
+import Control.Monad (guard)
 import qualified Data.IntSet as IntSet
-import Options.Applicative (argument,auto,fullDesc,help,metavar,progDesc)
+import Options.Applicative (argument, auto, fullDesc, help, metavar, progDesc)
+import Text.Printf (printf)
 
-import LogicGrowsOnTrees
+import LogicGrowsOnTrees (Tree, allFrom)
 import LogicGrowsOnTrees.Parallel.Main
-import LogicGrowsOnTrees.Parallel.Adapter.Threads
-import LogicGrowsOnTrees.Utils.WordSum
+  ( RunOutcome(..)
+  , TerminationReason(..)
+  , mainForExploreTree
+  )
+import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
+import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 
 -- Code that counts all the solutions for a given input board size.
 nqueensCount :: Word -> Tree WordSum
@@ -69,12 +74,12 @@ main =
         )
 
         -- Function that processes the result of the run.
-        (\n (RunOutcome _ termination_reason) -> do
+        (\n (RunOutcome _ termination_reason) -> putStrLn $
             case termination_reason of
-                Aborted _ -> error "search aborted"
-                Completed (WordSum count) -> putStrLn $
-                    "for a size " ++ show n ++ " board, found " ++ show count ++ " solutions"
-                Failure _ message -> error $ "error: " ++ message
+                Aborted _ -> "Search aborted."
+                Completed (WordSum count) ->
+                    printf "For a size %i board, found %i solutions." n count
+                Failure _ message -> "Error: " ++ message
         )
 
         -- The logic program that generates the tree to explore.

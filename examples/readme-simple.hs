@@ -1,21 +1,26 @@
-import Control.Monad
+import Control.Monad (guard)
 import qualified Data.IntSet as IntSet
+import Options.Applicative (fullDesc, header, progDesc)
+import Text.Printf (printf)
 
-import Options.Applicative (fullDesc,header,progDesc)
-
-import LogicGrowsOnTrees
+import LogicGrowsOnTrees (Tree, allFrom)
 import LogicGrowsOnTrees.Parallel.Main
-import LogicGrowsOnTrees.Parallel.Adapter.Threads
-import LogicGrowsOnTrees.Utils.WordSum
+  ( RunOutcome(..)
+  , TerminationReason(..)
+  , simpleMainForExploreTree
+  )
+import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
+import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 
 -- Code that counts all the solutions for a given input board size.
+nqueensCount :: Int -> Tree WordSum
 nqueensCount 0 = error "board size must be positive"
-nqueensCount n =
+nqueensCount board_size =
     -- Start with...
-    go n -- ...n queens left...
+    go board_size -- ...board_size queens left...
        0 -- ... at row zero...
-       -- ... with all columns available ...
-       (IntSet.fromDistinctAscList [0..fromIntegral n-1])
+       (IntSet.fromDistinctAscList [0..fromIntegral board_size-1])
+         -- ... with all columns available ...
        IntSet.empty -- ... with no occupied negative diagonals...
        IntSet.empty -- ... with no occupied positive diagonals.
   where
@@ -23,7 +28,7 @@ nqueensCount n =
     go 0 _ _ _ _ = pure (WordSum 1)
 
     -- We are still placing queens.
-    go n
+    go number_of_queens_left
        row
        available_columns
        occupied_negative_diagonals
@@ -41,12 +46,13 @@ nqueensCount n =
         guard $ IntSet.notMember positive_diagonal occupied_positive_diagonals
 
         -- This spot is good!  Place a queen here and move on to the next row.
-        go (n-1)
+        go (number_of_queens_left-1)
            (row+1)
            (IntSet.delete column available_columns)
            (IntSet.insert negative_diagonal occupied_negative_diagonals)
            (IntSet.insert positive_diagonal occupied_positive_diagonals)
 
+main :: IO ()
 main =
     -- Explore the tree generated (implicitly) by nqueensCount in parallel.
     simpleMainForExploreTree
@@ -61,11 +67,12 @@ main =
             ])
 
         -- Function that processes the result of the run.
-        (\(RunOutcome _ termination_reason) -> do
+        (\(RunOutcome _ termination_reason) -> putStrLn $
             case termination_reason of
-                Aborted _ -> error "search aborted"
-                Completed (WordSum count) -> putStrLn $ "found " ++ show count ++ " solutions"
-                Failure _ message -> error $ "error: " ++ message
+                Aborted _ -> "Search aborted."
+                Completed (WordSum count) ->
+                    printf "For a 10x10 board, found %i solutions." count
+                Failure _ message -> "Error: " ++ message
         )
 
         -- The logic program that generates the tree to explore.
