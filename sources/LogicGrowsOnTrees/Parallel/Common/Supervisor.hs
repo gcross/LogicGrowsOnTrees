@@ -8,6 +8,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -81,8 +82,10 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
 import Prelude hiding (fail)
 
 import Control.Applicative (Applicative)
+import Control.Exception (AsyncException)
 import Control.Lens.Setter ((.~),(+=))
 import Control.Monad (forever)
+import Control.Monad.Catch (MonadCatch(catch),MonadMask,MonadThrow)
 import Control.Monad.Fail (MonadFail(fail))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
@@ -140,7 +143,7 @@ deriveLoggers "Logger" [DEBUG]
 newtype SupervisorMonad exploration_mode worker_id m α =
     SupervisorMonad {
         unwrapSupervisorMonad :: AbortMonad exploration_mode worker_id m α
-    } deriving (Applicative,Functor,Monad,MonadIO)
+    } deriving (Applicative,Functor,Monad,MonadCatch,MonadIO,MonadMask,MonadThrow)
 
 instance MonadFail m ⇒ MonadFail (SupervisorMonad exploration_mode worker_id m) where
     fail = lift . fail
@@ -456,7 +459,8 @@ setSupervisorDebugMode = wrapAbortIntoSupervisorMonad . Implementation.setSuperv
     and program.
  -}
 runSupervisor ::
-    ( MonadIO m
+    ( MonadCatch m
+    , MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
@@ -467,7 +471,8 @@ runSupervisor exploration_mode = runSupervisorStartingFrom exploration_mode (ini
 
 {-| Like 'runSupervisor' but starting from the given progress. -}
 runSupervisorStartingFrom ::
-    ( MonadIO m
+    ( MonadCatch m
+    , MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
@@ -484,7 +489,8 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
 
 {-| Converts a supervisor program into an infinite loop in the 'SupervisorMonad'. -}
 runSupervisorProgram ::
-    ( MonadIO m
+    ( MonadCatch m
+    , MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     SupervisorProgram exploration_mode worker_id m →
@@ -509,6 +515,8 @@ runSupervisorProgram program =
                     processRequest request
          )
         TestProgram run → run >> abortSupervisor
+    `catch`
+    (\(_ :: AsyncException) → abortSupervisor)
 
 ---------------------------- Testing the supervisor ----------------------------
 
@@ -523,8 +531,9 @@ should not be used
            testing purposes;  see 'SupervisorProgram' for details.
  -}
 runTestSupervisor ::
-    ( MonadIO m
+    ( MonadCatch m
     , MonadFail m
+    , MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
@@ -538,7 +547,8 @@ runTestSupervisor exploration_mode callbacks =
 
 {-| Like 'runTestSupervisor' but starting from the given progress. -}
 runTestSupervisorStartingFrom ::
-    ( MonadIO m
+    ( MonadCatch m
+    , MonadIO m
     , MonadFail m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
