@@ -8,6 +8,203 @@ Synopsis:            a parallel implementation of logic programming using distri
 Cabal-version:       >=1.10
 Build-type:          Simple
 Category:            Control, Distributed Computing, Logic, Parallelism
+Description:
+    NOTE:  In addition to the following package description, see
+    .
+    * <http://github.com/gcross/LogicGrowsOnTrees/blob/master/TUTORIAL.md TUTORIAL.md>
+     for a tutorial,
+    .
+    * <http://github.com/gcross/LogicGrowsOnTrees/blob/master/USERS_GUIDE.md USERS_GUIDE.md>
+     for a user's guide that provides more information about
+     how to use this package, and
+    .
+    * <http://github.com/gcross/LogicGrowsOnTrees/blob/master/README.md README.md>
+     for an FAQ.
+    .
+    You can think of this package in two equivalent ways. First, you can think
+    of it as an implementation of logic programming that is designed to be
+    parellelized using workers that have no memory shared between them (hence,
+    \"distributed\"). Second, you can think of this package as providing
+    infrastructure for exploring a tree in parallel. The connection between
+    these two perspectives is that logic programming involves making
+    nondeterministic choices, and each such choice is equivalent to a branch
+    point in a tree representing the search space of the logic program. In the
+    rest of the reference documentation we will focus on the tree perspective
+    simply because a lot of the functionality makes the most sense from the
+    perspective of working with trees, but one is always free to ignore this and
+    simply write a logic program using the standard approach of using
+    'MonadPlus' to indicate choice and failure, and the 'Tree' implementation of
+    this typeclass will take care of the details of turning your logic program
+    into tree. (If you are not familiar with this approach, then see
+    <http://github.com/gcross/LogicGrowsOnTrees/blob/master/TUTORIAL.md
+    TUTORIAL.md>.)
+    .
+    To use this package, you first write a function that builds a tree (say, by
+    using logic programming); the "LogicGrowsOnTrees" module provides
+    functionality to assist in this. You may have your function either return a
+    generic 'MonadPlus' or 'MonadExplorable' (where the latter lets you cache
+    expensive intermediate calculations so that they do not have to be performed
+    again if this path is re-explored later), or you may have it return a 'Tree'
+    (or one of its impure friends) directly. You can then test your tree using
+    the visting functions in the "LogicGrowsOnTrees" module.
+    .
+    WARNING: If you need something like state in your tree, then you should
+    stack the state monad (or whatever else you want) /on top/ of 'Tree' rather
+    than below it. The reason for this is that if you stack the monad below
+    'TreeT', then your monad will be affected by the order in which the tree is
+    explored, which is almost never what you want, in part because if you are
+    not careful then you will break the assumption made by the checkpointing and
+    parallelization infrastructure that it does not matter in what order the
+    tree is explored or even whether some parts are explored twice or not at all
+    in a given run. If side-effects that are not undone by backtracking is
+    indeed what you want, then you need to make sure that your side-effects do
+    not break this assumption; for example, a monad which memoizes a pure
+    function is perfectly fine. By contrast if you are working within the `IO`
+    monad and writing results to a database rather than returning them (and
+    assuming that duplicate results would cause problems) then you need to check
+    to make sure you aren't writing the same result twice, such as by using the
+    "LogicGrowsOnTrees.Location" functionality to identify where you are in the
+    tree so you can query to see if your current location is already listed in
+    the database.
+    .
+    If you want to see examples of generating a tree to solve a problem, then
+    see "LogicGrowsOnTrees.Examples.MapColoring" or
+    "LogicGrowsOnTrees.Examples.Queens" modules, which have some basic examples
+    of using logic programming to find and/or count the number of solutions to a
+    given map coloring problem and a given n-queens problem. The
+    "LogicGrowsOnTrees.Examples.Queens.Advanced" module has my own solution to
+    the n-queens problem where I use symmetry breaking to prune the search tree,
+    cutting the runtime by about a factor of three.
+    .
+    Once your tree has been debugged, you can start taking advantage of the
+    major features of this package. If you are interested in checkpointing, but
+    not parallelization, then you can use the step functions in the
+    "LogicGrowsOnTrees.Checkpoint" module to sequentially explore a tree one
+    node at a time, saving the current checkpoint as often as you desire; at any
+    time the exploration can be aborted and resumed later. Most likely, though,
+    you will be interested in using the parallelization infrastructure rather
+    than just the checkpointing infrastructure. The parallelization
+    infrastructure uses a supervisor/worker model, and is designed such that the
+    logic used to keep track of the workers and the current progress is
+    abstracted away into the "LogicGrowsOnTrees.Parallel.Common.Supervisor"
+    module; one then uses one of the provided adapters (or possibly your own) to
+    connect the abstract model to a particular means of running multiple
+    computations in parallel, such as multiple threads, multiple processes on
+    the same machine, multiple processes on a network, and MPI; the first option
+    is included in this package and the others are provided in separate
+    packages. Parallelization is obtained by stealing workloads from workers;
+    specifically, a selected worker will look back at the (non-frozen) choices
+    it has made so far, pick the first one, freeze it (so that it won't
+    backtrack and try the other branch), and then hand the other branch to the
+    supervisor which will then give it to a waiting worker.
+    .
+    To use the parallelization infrastructure, you have two choices. First, you
+    can opt to use the adapter directly; the exploration functions provided by
+    the adapter are relatively simple (compared to the alternative to be
+    discussed in a moment) and furthermore, they give you maximum control over
+    the adapter, but the downside is that you will have to re-implement features
+    such as regular checkpointing and forwarding information from the command
+    line to the workers yourself. Second, you can use the infrastructure in
+    "LogicGrowsOnTrees.Parallel.Main", which automates most of the process for
+    you, including parsing the command lines, sending information to the
+    workers, determining how many workers (if applicable) to start up, offering
+    the user a command line option to specify whether, where, and how often to
+    checkpoint, etc.; this infrastructure is also completely adapter
+    independent, which means that when switching from one adapter to another all
+    you have to do is change one of the arguments in your call to the main
+    function you are using in "LogicGrowsOnTrees.Parallel.Main". The downside is
+    that the call to use this functionality is a bit more complex than the call
+    to use a particular adapter precisely because of its generality.
+    .
+    If you want to see examples of using the "LogicGrowsOnTrees.Parallel.Main"
+    module, check out the example executables in the @examples/@ subdirectory of
+    the source distribution.
+    .
+    If you are interested in writing a new adapter, then you have couple of
+    options. First, if your adapter can spawn and destroy workers on demand,
+    then you should look at the "LogicGrowsOnTrees.Parallel.Common.Workgroup"
+    module, as it has infrastructure designed for this case; look at
+    "LogicGrowsOnTrees.Parallel.Adapter.Threads" for an example of using it.
+    Second, if your adapter does not meet this criterion, then you should look
+    at the "LogicGrowsOnTrees.Parallel.Common.Supervisor" module; your adapter
+    will need to run within the 'SupervisorMonad', with its own state contained
+    in its own monad below the 'SupervisorMonad' monad in the stack; for an
+    example, look at the @LogicGrowsOnTrees-network@ module.
+    .
+    NOTE: This package uses the @hslogger@ package for logging; if you set the
+    log level to INFO or DEBUG (either by calling the functions in @hslogger@
+    yourself or by using the @-l@ command line option if you are using `Main`)
+    then many status messages will be printed to the screen (or wherever else
+    the log has been configured to be written).
+    .
+    The modules are organized as follows:
+    .
+        ["LogicGrowsOnTrees"] basic infrastructure for building and exploring trees
+    .
+        ["LogicGrowsOnTrees.Checkpoint"] infrastructure for creating and stepping through checkpoints
+    .
+        ["LogicGrowsOnTrees.Examples.MapColoring"] simple examples of computing all possible colorings of a map
+    .
+        ["LogicGrowsOnTrees.Examples.Queens"] simple examples of solving the n-quees problem
+    .
+        ["LogicGrowsOnTrees.Examples.Queens.Advanced"] a very complicated example of solving the n-queens problem using symmetry breaking
+    .
+        ["LogicGrowsOnTrees.Location"] infrastructure for when you want to have knowledge of your current location within a tree
+    .
+        ["LogicGrowsOnTrees.Parallel.Adapter.Threads"] the threads adapter
+    .
+        ["LogicGrowsOnTrees.Parallel.Common.Message"] common infrastructure for exchanging messages between worker and supervisor
+    .
+        ["LogicGrowsOnTrees.Parallel.Common.Process"] common infrastricture for the case where a worker has specific communications channels for sending and recieving messages; it might seem like this should always be the case, but it is not true for threads, as the supervisor has direct access to the worker thread, nor for MPI which has its own idiosyncratic communication model
+    .
+        ["LogicGrowsOnTrees.Parallel.Common.RequestQueue"] infrastructure for sending requests to the 'SupervisorMonad' from another thread
+    .
+        ["LogicGrowsOnTrees.Parallel.Common.Supervisor"] common infrastructure for keeping track of the state of workers and of the system as a whole, including determining when the run is over
+    .
+        ["LogicGrowsOnTrees.Parallel.Common.Worker"] contains the workhorse of the parallel infrastructure:  a thread that steps through a given workload while continuously polling for requests
+    .
+        ["LogicGrowsOnTrees.Parallel.Common.Workgroup"] common infrastructure for the case where workers can be added and removed from the system on demand
+    .
+        ["LogicGrowsOnTrees.Parallel.ExplorationMode"] specifies the various modes in which the exploration can be done
+    .
+        ["LogicGrowsOnTrees.Parallel.Main"] a unified interface to the various adapters that automates much of the process such as processing the command, forwarding the needed information to the workers, and performing regular checkpointing if requested via a command line argument
+    .
+        ["LogicGrowsOnTrees.Parallel.Purity"] specifies the purity of the tree being explored
+    .
+        ["LogicGrowsOnTrees.Path"] infrastructure for working with paths trough the search tree
+    .
+        ["LogicGrowsOnTrees.Utils.Handle"] a couple of utility functions for exchanging serializable data over handles
+    .
+        ["LogicGrowsOnTrees.Utils.IntSum"] a monoid that contains an 'Int' to be summed over
+    .
+        ["LogicGrowsOnTrees.Utils.PerfectTree"] provides algorithms for generating various simple trees
+    .
+        ["LogicGrowsOnTrees.Utils.WordSum"] a monoid that contains a 'Word' to be summed over
+    .
+        ["LogicGrowsOnTrees.Utils.Word_"] a newtype wrapper that provides an `ArgVal` instance for `Word`
+    .
+        ["LogicGrowsOnTrees.Workload"] infrastructure for working with 'Workload's
+    .
+    Of the above modules, the ones you will be using most often
+    are "LogicGrowsOnTrees" (for building trees), one of the
+    adapter modules (such as
+    "LogicGrowsOnTrees.Parallel.Adapter.Threads"), and possibly
+    "LogicGrowsOnTrees.Parallel.Main". If you are counting the
+    number of solutions, then you will also want to look at
+    "LogicGrowsOnTrees.Utils.WordSum". Finally, if your program
+    takes a 'Word' as a command line argument or option then
+    you might find the "LogicGrowsOnTrees.Utils.Word_" module
+    to be useful. The other modules provide lower-level
+    functionality; in particular the
+    @LogicGrowsOnTrees.Parallel.Common.*@ modules are primarily
+    geared towards people writing their own adapter.
+
+Extra-source-files:
+    c-sources/queens.c
+    CHANGELOG.md
+    README.md
+    TUTORIAL.md
+    USERS_GUIDE.md
 
 Bug-reports: https://github.com/gcross/LogicGrowsOnTrees/issues
 
