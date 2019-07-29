@@ -4,9 +4,11 @@ import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
+main :: IO ()
 main =
     simpleMainForExploreTree
         driver
+        mempty
         (\(RunOutcome _ termination_reason) -> do
             case termination_reason of
                 Aborted _ -> error "search aborted"

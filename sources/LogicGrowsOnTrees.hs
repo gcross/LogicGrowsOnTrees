@@ -56,7 +56,8 @@ import qualified Data.Foldable as Fold
 
 import Data.Functor.Identity (Identity(..),runIdentity)
 import Data.Maybe (isJust)
-import Data.Monoid ((<>),Monoid(..))
+import Data.Monoid (Monoid(..))
+import Data.Semigroup (Semigroup(..))
 import Data.Serialize (Serialize(),encode)
 
 --------------------------------------------------------------------------------
@@ -273,11 +274,14 @@ instance Monad m ⇒ MonadExplorableTrans (TreeT m) where
 instance MonadTrans TreeT where
     lift = TreeT . lift
 
-{-| The 'Monoid' instance acts like the 'MonadPlus' instance. -}
+{-| The 'Semigroup' instance also acts like the 'MonadPlus' instance. -}
+instance Monad m ⇒ Semigroup (TreeT m α) where
+    (<>) = mplus
+    sconcat = msum
+
+{-| The 'Monoid' instance also acts like the 'MonadPlus' instance. -}
 instance Monad m ⇒ Monoid (TreeT m α) where
     mempty = mzero
-    mappend = mplus
-    mconcat = msum
 
 instance Show α ⇒ Show (Tree α) where
     show = s . unwrapTreeT

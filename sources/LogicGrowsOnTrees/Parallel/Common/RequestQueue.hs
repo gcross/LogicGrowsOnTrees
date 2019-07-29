@@ -63,8 +63,6 @@ module LogicGrowsOnTrees.Parallel.Common.RequestQueue
     , getQuantityAsync
     ) where
 
-import Prelude hiding (catch)
-
 import Control.Applicative ((<$>),(<*>),liftA2)
 import Control.Arrow ((&&&))
 import Control.Concurrent (ThreadId,forkIO,killThread)
@@ -73,12 +71,10 @@ import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TChan (TChan,newTChanIO,readTChan,tryReadTChan,writeTChan)
 import Control.Concurrent.STM.TVar (TVar,modifyTVar',newTVarIO,readTVar,writeTVar)
 import Control.Exception (BlockedIndefinitelyOnMVar(..),catch,finally,mask)
-import Control.Monad.CatchIO (MonadCatchIO)
-import Control.Monad ((>=>),join,liftM,liftM3,unless)
+import Control.Monad ((>=>),join,liftM,liftM3,unless,void)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
-import Data.Composition ((.*))
 import Data.IORef (IORef,atomicModifyIORef,readIORef,newIORef)
 import Data.List (delete)
 import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime,getCurrentTime)
@@ -97,7 +93,7 @@ import LogicGrowsOnTrees.Parallel.ExplorationMode
 --------------------------------------------------------------------------------
 
 {-| This class provides the set of supervisor requests common to all adapters. -}
-class (HasExplorationMode m, Functor m, MonadCatchIO m) ⇒ RequestQueueMonad m where
+class (HasExplorationMode m, Functor m, MonadIO m) ⇒ RequestQueueMonad m where
     {-| Abort the supervisor. -}
     abort :: m ()
     {-| Submits a function to be called whenever the number of workers changes;
@@ -141,7 +137,7 @@ type RequestQueueReader exploration_mode worker_id m = ReaderT (RequestQueue exp
 instance HasExplorationMode (RequestQueueReader exploration_mode worker_id m) where
     type ExplorationModeFor (RequestQueueReader exploration_mode worker_id m) = exploration_mode
 
-instance (SupervisorFullConstraint worker_id m, MonadCatchIO m) ⇒ RequestQueueMonad (RequestQueueReader exploration_mode worker_id m) where
+instance (SupervisorFullConstraint worker_id m) ⇒ RequestQueueMonad (RequestQueueReader exploration_mode worker_id m) where
     abort = ask >>= enqueueRequest Supervisor.abortSupervisor
     addWorkerCountListenerAsync listener callback = ask >>= enqueueRequest (Supervisor.addWorkerCountListener listener >> liftIO callback)
     fork m = ask >>= flip forkControllerThread' m
@@ -218,10 +214,14 @@ enqueueRequest ::
     Request exploration_mode worker_id m →
     RequestQueue exploration_mode worker_id m →
     m' ()
-enqueueRequest = flip $
-    (liftIO . atomically)
-    .*
-    (writeTChan . requests)
+enqueueRequest request =
+    liftIO
+    .
+    atomically
+    .
+    flip writeTChan request
+    .
+    requests
 
 {-| Like 'enqueueRequest', but does not return until the request has been run -}
 enqueueRequestAndWait ::
@@ -318,7 +318,8 @@ forkControllerThread ::
     RequestQueue exploration_mode worker_id m {-^ the request queue -} →
     RequestQueueReader exploration_mode worker_id m () {-^ the controller thread -} →
     m' ()
-forkControllerThread = liftM (const ()) .* forkControllerThread'
+forkControllerThread request_queue controller =
+    void $ forkControllerThread' request_queue controller
 
 forkControllerThread' ::
     MonadIO m' ⇒
@@ -327,7 +328,7 @@ forkControllerThread' ::
     m' ThreadId
 forkControllerThread' request_queue controller = liftIO $ do
     start_signal ← newEmptyMVar
-    rec thread_id ← forkIO . mask $ \(restore :: ∀ α. IO α → IO α)→
+    rec thread_id ← forkIO $ mask $ \(restore :: ∀ α. IO α → IO α)→
             (restore $ takeMVar start_signal >> runReaderT controller request_queue)
             `finally`
             (atomicModifyIORef (controllerThreads request_queue) (delete thread_id &&& const ()))
@@ -368,6 +369,7 @@ newCPUTimeTracker initial_cpu_time =
         <*> newTVarIO Nothing
         <*> newTVarIO initial_cpu_time
 
+computeAdditionalTime :: UTCTime → (UTCTime, Int) → NominalDiffTime
 computeAdditionalTime current_time (last_time,last_number_of_workers) =
     (current_time `diffUTCTime` last_time) * fromIntegral last_number_of_workers
 
@@ -376,15 +378,17 @@ computeAdditionalTime current_time (last_time,last_number_of_workers) =
     be ignored.
  -}
 startCPUTimeTracker :: RequestQueueMonad m ⇒ CPUTimeTracker → m ()
-startCPUTimeTracker CPUTimeTracker{..} = do
-    already_started ← liftIO $ atomicModifyIORef trackerStarted (const True &&& id)
-    unless already_started . addWorkerCountListener $ \current_number_of_workers → do
+startCPUTimeTracker CPUTimeTracker{..} =
+    (liftIO $ atomicModifyIORef trackerStarted (const True &&& id))
+    >>=
+    flip unless (addWorkerCountListener $ \current_number_of_workers → do
         current_time ← getCurrentTime
         atomically $ do
-            maybe_last ← readTVar trackerLastTime
-            flip (maybe (return ())) maybe_last $ \last →
-                modifyTVar' trackerTotalTime (+ computeAdditionalTime current_time last)
+            readTVar trackerLastTime >>= maybe
+                (pure ())
+                (\last → modifyTVar' trackerTotalTime (+ computeAdditionalTime current_time last))
             writeTVar trackerLastTime $ Just (current_time,current_number_of_workers)
+    )
 
 {-| Gets the current CPI time. -}
 getCurrentCPUTime :: CPUTimeTracker → IO NominalDiffTime

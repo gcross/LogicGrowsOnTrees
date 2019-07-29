@@ -1,6 +1,6 @@
--- Language extensions {{{
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -15,16 +15,13 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
--- }}}
 
-module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
+module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
     ( AbortMonad()
-    , ContextMonad()
     , FunctionOfTimeStatistics(..)
     , RunStatistics(..)
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
-    , SupervisorMonadConstraint
     , SupervisorOutcome(..)
     , SupervisorOutcomeFor
     , SupervisorTerminationReason(..)
@@ -40,10 +37,7 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
     , getCurrentProgress
     , getCurrentStatistics
     , getNumberOfWorkers
-    , liftContextToAbort
-    , liftUserToAbort
-    , localWithinAbort
-    , localWithinContext
+    , liftUser
     , number_of_calls
     , performGlobalProgressUpdate
     , receiveProgressUpdate
@@ -56,17 +50,15 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation -- {{{
     , setWorkloadBufferSize
     , time_spent_in_supervisor_monad
     , tryGetWaitingWorker
-    ) where -- }}}
+    ) where
 
--- Imports {{{
-import Control.Applicative ((<$>),(<*>),Applicative,liftA2)
 import Control.Arrow ((&&&),first)
 import Control.Category ((>>>))
+import Control.DeepSeq (NFData)
 import Control.Exception (Exception(..),throw)
 import Control.Lens ((&))
 import Control.Lens.Getter ((^.),use,view)
 import Control.Lens.Setter ((.~),(+~),(.=),(%=),(+=))
-import Control.Lens.Internal.Zoom (Zoomed)
 import Control.Lens.Lens ((<%=),(<<%=),(<<.=),(%%=),(<<.=),Lens')
 import Control.Lens.TH (makeLenses)
 import Control.Lens.Zoom (Zoom(..))
@@ -75,26 +67,20 @@ import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Reader (asks)
-import Control.Monad.Tools (ifM,whenM)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Abort (AbortT(..),abort,runAbortT,unwrapAbortT)
-import Control.Monad.Trans.Abort.Instances.MTL ()
+import Control.Monad.Trans.Except (ExceptT,runExceptT,throwE)
 import Control.Monad.Trans.Reader (ReaderT,runReaderT)
-import Control.Monad.Trans.State.Strict (StateT,evalStateT,execState,execStateT,runStateT)
+import Control.Monad.Trans.State.Strict (StateT,evalStateT,execState,execStateT)
 
-import Data.Composition ((.*))
-import Data.Derive.Monoid
-import Data.DeriveTH
+import Data.Bool (bool)
 import qualified Data.Foldable as Fold
 import qualified Data.IntMap as IntMap
 import Data.IntMap (IntMap)
 import Data.List (inits)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (fromJust,fromMaybe,isJust,isNothing)
+import Data.Maybe (fromJust,fromMaybe,isNothing)
 import Data.Monoid ((<>),Monoid(..))
-import Data.Monoid.Statistics (StatMonoid(..))
-import Data.Monoid.Statistics.Numeric (CalcCount(..),CalcMean(..),CalcVariance(..),Min(..),Max(..),Variance(..),calcStddev)
 import qualified Data.MultiSet as MultiSet
 import Data.MultiSet (MultiSet)
 import qualified Data.Set as Set
@@ -105,8 +91,10 @@ import qualified Data.Time.Clock as Clock
 import Data.Time.Clock (NominalDiffTime,UTCTime,diffUTCTime)
 import Data.Word (Word)
 
+import GHC.Generics (Generic)
+
 import qualified System.Log.Logger as Logger
-import System.Log.Logger (Priority(DEBUG,INFO))
+import System.Log.Logger (Priority(DEBUG,INFO,ERROR))
 import System.Log.Logger.TH
 
 import Text.Printf
@@ -117,31 +105,22 @@ import LogicGrowsOnTrees.Path
 import LogicGrowsOnTrees.Parallel.Common.Worker
 import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Workload
--- }}}
 
--- Logging Functions {{{
-deriveLoggers "Logger" [DEBUG,INFO]
--- }}}
+deriveLoggers "Logger" [DEBUG,INFO,ERROR]
 
--- Exceptions {{{
-
--- InconsistencyError {{{
-data InconsistencyError = -- {{{
+data InconsistencyError =
     IncompleteWorkspace Checkpoint
   | OutOfSourcesForNewWorkloads
   | SpaceFullyExploredButSearchNotTerminated
   deriving (Eq,Typeable)
--- }}}
-instance Show InconsistencyError where -- {{{
+
+instance Show InconsistencyError where
     show (IncompleteWorkspace workspace) = "Full workspace is incomplete: " ++ show workspace
     show OutOfSourcesForNewWorkloads = "The search is incomplete but there are no sources of workloads available."
     show SpaceFullyExploredButSearchNotTerminated = "The space has been fully explored but the search was not terminated."
--- }}}
 instance Exception InconsistencyError
--- }}}
 
--- WorkerManagementError {{{
-data WorkerManagementError worker_id = -- {{{
+data WorkerManagementError worker_id =
     ActiveWorkersRemainedAfterSpaceFullyExplored [worker_id]
   | ConflictingWorkloads (Maybe worker_id) Path (Maybe worker_id) Path
   | SpaceFullyExploredButWorkloadsRemain [(Maybe worker_id,Workload)]
@@ -150,8 +129,8 @@ data WorkerManagementError worker_id = -- {{{
   | WorkerNotKnown String worker_id
   | WorkerNotActive String worker_id
   deriving (Eq,Typeable)
- -- }}}
-instance Show worker_id ⇒ Show (WorkerManagementError worker_id) where -- {{{
+
+instance Show worker_id ⇒ Show (WorkerManagementError worker_id) where
     show (ActiveWorkersRemainedAfterSpaceFullyExplored worker_ids) = "Worker ids " ++ show worker_ids ++ " were still active after the space was supposedly fully explored."
     show (ConflictingWorkloads wid1 path1 wid2 path2) =
         "Workload " ++ f wid1 ++ " with initial path " ++ show path1 ++ " conflicts with workload " ++ f wid2 ++ " with initial path " ++ show path2 ++ "."
@@ -163,81 +142,63 @@ instance Show worker_id ⇒ Show (WorkerManagementError worker_id) where -- {{{
     show (WorkerAlreadyHasWorkload worker_id) = "Attempted to send workload to worker id " ++ show worker_id ++ " which is already active."
     show (WorkerNotKnown action worker_id) = "Worker id " ++ show worker_id ++ " not known when " ++ action ++ "."
     show (WorkerNotActive action worker_id) = "Worker id " ++ show worker_id ++ " not active when " ++ action ++ "."
--- }}}
-instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (WorkerManagementError worker_id)
--- }}}
 
--- SupervisorError {{{
-data SupervisorError worker_id = -- {{{
+instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (WorkerManagementError worker_id)
+
+data SupervisorError worker_id =
     SupervisorInconsistencyError InconsistencyError
   | SupervisorWorkerManagementError (WorkerManagementError worker_id)
   deriving (Eq,Typeable)
--- }}}
-instance Show worker_id ⇒ Show (SupervisorError worker_id) where -- {{{
+
+instance Show worker_id ⇒ Show (SupervisorError worker_id) where
     show (SupervisorInconsistencyError e) = show e
     show (SupervisorWorkerManagementError e) = show e
--- }}}
-instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (SupervisorError worker_id) where -- {{{
+
+instance (Eq worker_id, Show worker_id, Typeable worker_id) ⇒ Exception (SupervisorError worker_id) where
     toException (SupervisorInconsistencyError e) = toException e
     toException (SupervisorWorkerManagementError e) = toException e
     fromException e =
         (SupervisorInconsistencyError <$> fromException e)
         `mplus`
         (SupervisorWorkerManagementError <$> fromException e)
--- }}}
--- }}}
 
--- }}}
-
--- Types {{{
-
--- Statistics {{{
-
-data ExponentiallyDecayingSum = ExponentiallyDecayingSum -- {{{
+data ExponentiallyDecayingSum = ExponentiallyDecayingSum
     {   _last_decaying_sum_timestamp :: !UTCTime
     ,   _decaying_sum_value :: !Float
     } deriving (Eq,Show)
 $( makeLenses ''ExponentiallyDecayingSum )
--- }}}
 
-data ExponentiallyWeightedAverage = ExponentiallyWeightedAverage -- {{{
+data ExponentiallyWeightedAverage = ExponentiallyWeightedAverage
     {   _last_average_timestamp :: !UTCTime
     ,   _current_average_value :: !Float
     } deriving (Eq,Show)
 $( makeLenses ''ExponentiallyWeightedAverage )
--- }}}
 
-{-| Statistics for a value obtained by integrating a value that is a function of
-    time --- i.e., a quantity that holds a single value at any given point in
-    time.
- -}
-data FunctionOfTimeStatistics α = FunctionOfTimeStatistics -- {{{
+data FunctionOfTimeStatistics α = FunctionOfTimeStatistics
     {   timeCount :: !Word {-^ the number of points at which the function changed -}
     ,   timeAverage :: !Double {-^ the average value of the function over the time period -}
     ,   timeStdDev :: !Double {-^ the standard deviation of the function over the time period -}
     ,   timeMin :: !α {-^ the minimum value of the function over the time period -}
     ,   timeMax :: !α {-^ the maximum value of the function over the time period -}
-    } deriving (Eq,Show)
--- }}}
+    } deriving (Eq,Generic,Show)
+instance NFData α ⇒ NFData (FunctionOfTimeStatistics α) where
 
-data RetiredOccupationStatistics = RetiredOccupationStatistics -- {{{
+data RetiredOccupationStatistics = RetiredOccupationStatistics
     {   _occupied_time :: !NominalDiffTime
     ,   _total_time :: !NominalDiffTime
     } deriving (Eq,Show)
 $( makeLenses ''RetiredOccupationStatistics )
--- }}}
 
-data OccupationStatistics = OccupationStatistics -- {{{
+data OccupationStatistics = OccupationStatistics
     {   _start_time :: !UTCTime
     ,   _last_occupied_change_time :: !UTCTime
     ,   _total_occupied_time :: !NominalDiffTime
     ,   _is_currently_occupied :: !Bool
     } deriving (Eq,Show)
 $( makeLenses ''OccupationStatistics )
--- }}}
 
 {-| Statistics gathered about the run. -}
-data RunStatistics = -- {{{
+data RunStatistics =
     RunStatistics
     {   runStartTime :: !UTCTime {-^ the start time of the run -}
     ,   runEndTime :: !UTCTime {-^ the end time of the run -}
@@ -254,28 +215,44 @@ data RunStatistics = -- {{{
     ,   runAvailableWorkloadStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the number of available workloads waiting for a worker -}
     ,   runInstantaneousWorkloadRequestRateStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous rate at which workloads were requested (using an exponentially decaying sum) -}
     ,   runInstantaneousWorkloadStealTimeStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous time needed for workloads to be stolen (using an exponentially decaying weighted average) -}
-    } deriving (Eq,Show)
--- }}}
+    } deriving (Eq,Generic,Show)
+instance NFData RunStatistics where
 
 {-| Statistics for a value obtained by collecting a number of independent measurements. -}
-data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics -- {{{
+data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics --
     {   statCount :: {-# UNPACK #-} !Int {-^ the number of measurements -}
     ,   statAverage :: {-# UNPACK #-} !Double {-^ the average value -}
     ,   statStdDev ::  {-# UNPACK #-} !Double {-^ the standard deviation -}
     ,   statMin :: {-# UNPACK #-} !Double {-^ the minimum measurement value -}
     ,   statMax :: {-# UNPACK #-} !Double {-^ the maximum measurement value -}
-    } deriving (Eq,Show)
--- }}}
+    } deriving (Eq,Generic,Show)
+instance NFData IndependentMeasurementsStatistics where
 
-data IndependentMeasurements = IndependentMeasurements -- {{{
-    {   timeDataMin :: {-# UNPACK #-} !Min
-    ,   timeDataMax :: {-# UNPACK #-} !Max
-    ,   timeDataVariance ::  {-# UNPACK #-} !Variance
-    } deriving (Eq,Show)
-$( derive makeMonoid ''IndependentMeasurements )
--- }}}
+data IndependentMeasurements = IndependentMeasurements
+    {   timeDataCount :: {-# UNPACK #-} !Int
+    ,   timeDataMin :: {-# UNPACK #-} !Double
+    ,   timeDataMax :: {-# UNPACK #-} !Double
+    ,   timeDataSum ::  {-# UNPACK #-} !Double
+    ,   timeDataSumSq ::  {-# UNPACK #-} !Double
+    } deriving (Eq,Generic,Show)
+instance NFData IndependentMeasurements where
 
-data FunctionOfTime α = FunctionOfTime -- {{{
+zeroedMeasurements ∷ IndependentMeasurements
+zeroedMeasurements = IndependentMeasurements 0 0 0 0 0
+
+addMeasurement ∷ NominalDiffTime → IndependentMeasurements → IndependentMeasurements
+addMeasurement time IndependentMeasurements{..} =
+    IndependentMeasurements
+      { timeDataCount = timeDataCount + 1
+      , timeDataMin = timeDataMin `min` time_as_double
+      , timeDataMax = timeDataMax `max` time_as_double
+      , timeDataSum = timeDataSum + time_as_double
+      , timeDataSumSq = timeDataSum + time_as_double*time_as_double
+      }
+  where
+    time_as_double = realToFrac time
+
+data FunctionOfTime α = FunctionOfTime
     {   _number_of_samples :: !Word
     ,   _previous_value :: !α
     ,   _previous_time :: !UTCTime
@@ -283,25 +260,21 @@ data FunctionOfTime α = FunctionOfTime -- {{{
     ,   _second_moment :: !Double
     ,   _minimum_value :: !α
     ,   _maximum_value :: !α
-    } deriving (Eq,Show)
+    } deriving (Eq,Generic,Show)
+instance NFData α ⇒ NFData (FunctionOfTime α) where
 $( makeLenses ''FunctionOfTime )
--- }}}
 
-newtype InterpolatedFunctionOfTime α = InterpolatedFunctionOfTime { _interpolated_function_of_time :: FunctionOfTime α } -- {{{
+newtype InterpolatedFunctionOfTime α = InterpolatedFunctionOfTime { _interpolated_function_of_time :: FunctionOfTime α }
 $( makeLenses ''InterpolatedFunctionOfTime )
--- }}}
 
-newtype StepFunctionOfTime α = StepFunctionOfTime { _step_function_of_time :: FunctionOfTime α } -- {{{
+newtype StepFunctionOfTime α = StepFunctionOfTime { _step_function_of_time :: FunctionOfTime α }
 $( makeLenses ''StepFunctionOfTime )
--- }}}
-
--- }}}
 
 {-| Supervisor callbacks provide the means by which the supervisor logic
     communicates to the adapter, usually in order to tell it what it wants to
     say to various workers.
  -}
-data SupervisorCallbacks exploration_mode worker_id m = -- {{{
+data SupervisorCallbacks exploration_mode worker_id m =
     SupervisorCallbacks
     {   {-| send a progress update request to the given workers -}
         broadcastProgressUpdateToWorkers :: [worker_id] → m ()
@@ -312,17 +285,15 @@ data SupervisorCallbacks exploration_mode worker_id m = -- {{{
     ,   {-| send the given workload to the given worker -}
      sendWorkloadToWorker :: Workload → worker_id → m ()
     }
--- }}}
 
-data SupervisorConstants exploration_mode worker_id m = SupervisorConstants -- {{{
+data SupervisorConstants exploration_mode worker_id m = SupervisorConstants
     {   callbacks :: !(SupervisorCallbacks exploration_mode worker_id m)
     ,   _current_time :: UTCTime
     ,   _exploration_mode :: ExplorationMode exploration_mode
     }
 $( makeLenses ''SupervisorConstants )
--- }}}
 
-data SupervisorState exploration_mode worker_id = -- {{{
+data SupervisorState exploration_mode worker_id =
     SupervisorState
     {   _waiting_workers_or_available_workloads :: !(Either (Map worker_id (Maybe UTCTime)) (Set Workload))
     ,   _known_workers :: !(Set worker_id)
@@ -352,10 +323,9 @@ data SupervisorState exploration_mode worker_id = -- {{{
     ,   _worker_count_listeners :: [Int → IO ()]
     }
 $( makeLenses ''SupervisorState )
--- }}}
 
 {-| The reason why the supervisor terminated. -}
-data SupervisorTerminationReason final_result progress worker_id = -- {{{
+data SupervisorTerminationReason final_result progress worker_id =
     {-| the supervisor aborted before finishing;  included is the current progress at the time it aborted -}
     SupervisorAborted progress
     {-| the supervisor completed exploring the tree;  included is the final result -}
@@ -363,12 +333,12 @@ data SupervisorTerminationReason final_result progress worker_id = -- {{{
     {-| the supervisor failed to explore the tree;  included is the worker where the failure occured as well as the message and the current progress at the time of failure -}
   | SupervisorFailure progress worker_id String
   deriving (Eq,Show)
--- }}}
-{-| A convenient type alias for the 'SupervisorTerminationReason' associated with a given exploration mode. -} 
+
+{-| A convenient type alias for the 'SupervisorTerminationReason' associated with a given exploration mode. -}
 type SupervisorTerminationReasonFor exploration_mode = SupervisorTerminationReason (FinalResultFor exploration_mode) (ProgressFor exploration_mode)
 
 {-| The outcome of running the supervisor. -}
-data SupervisorOutcome final_result progress worker_id = -- {{{
+data SupervisorOutcome final_result progress worker_id =
     SupervisorOutcome
     {   {-| the reason the supervisor terminated -}
         supervisorTerminationReason :: SupervisorTerminationReason final_result progress worker_id
@@ -377,156 +347,87 @@ data SupervisorOutcome final_result progress worker_id = -- {{{
         {-| the workers that were present when it finished -}
     ,   supervisorRemainingWorkers :: [worker_id]
     } deriving (Eq,Show)
--- }}}
-{-| A convenient type alias for the 'SupervisorOutcome' associated with a given exploration mode. -} 
-type SupervisorOutcomeFor exploration_mode worker_id = SupervisorOutcome (FinalResultFor exploration_mode) (ProgressFor exploration_mode) worker_id 
 
-type InsideContextMonad exploration_mode worker_id m = -- {{{
-    StateT (SupervisorState exploration_mode worker_id) (
-        ReaderT (SupervisorConstants exploration_mode worker_id m)
-            m
-    )
--- }}}
-newtype ContextMonad exploration_mode worker_id m α = ContextMonad -- {{{
-    { unwrapContextMonad :: InsideContextMonad exploration_mode worker_id m α
-    } deriving (Applicative,Functor,Monad,MonadIO)
--- }}}
+{-| A convenient type alias for the 'SupervisorOutcome' associated with a given exploration mode. -}
+type SupervisorOutcomeFor exploration_mode worker_id = SupervisorOutcome (FinalResultFor exploration_mode) (ProgressFor exploration_mode) worker_id
 
-type InsideAbortMonad exploration_mode worker_id m = -- {{{
-    AbortT
+type AbortMonad exploration_mode worker_id m α =
+    ExceptT
         (SupervisorOutcomeFor exploration_mode worker_id)
-        (ContextMonad exploration_mode worker_id m)
--- }}}
-newtype AbortMonad exploration_mode worker_id m α = AbortMonad -- {{{
-    { unwrapAbortMonad :: InsideAbortMonad exploration_mode worker_id m α
-    } deriving (Applicative,Functor,Monad,MonadIO)
--- }}}
+        (StateT
+            (SupervisorState exploration_mode worker_id)
+            (ReaderT
+                (SupervisorConstants exploration_mode worker_id m)
+                m
+            )
+        )
+        α
 
--- }}}
+liftUser ∷ Monad m ⇒ m α → AbortMonad exploration_mode worker_id m α
+liftUser = lift . lift . lift
 
--- Contraints {{{
+abort ∷ Monad m ⇒ SupervisorOutcomeFor exploration_mode worker_id → AbortMonad exploration_mode worker_id m α
+abort = throwE
+
 type SupervisorReaderConstraint exploration_mode worker_id m m' = MonadReader (SupervisorConstants exploration_mode worker_id m) m'
 type SupervisorStateConstraint exploration_mode worker_id m' = MonadState (SupervisorState exploration_mode worker_id) m'
 
-{-| This is the constraint placed on the monad in which the supervisor is running. -}
-type SupervisorMonadConstraint m = (Functor m, MonadIO m)
 {-| This is the constraint placed on the types that can be used as worker ids. -}
 type SupervisorWorkerIdConstraint worker_id = (Eq worker_id, Ord worker_id, Show worker_id, Typeable worker_id)
-{-| This is just a sum of 'SupervisorMonadConstraint' and the 'SupervisorWorkerIdConstraint'. -}
-type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,SupervisorMonadConstraint m)
--- }}}
+{-| This is just a sum of 'MonadIO' and the 'SupervisorWorkerIdConstraint'. -}
+type SupervisorFullConstraint worker_id m = (SupervisorWorkerIdConstraint worker_id,MonadIO m)
 
--- Classes {{{
-class SpecializationOfFunctionOfTime f α where -- {{{
+class SpecializationOfFunctionOfTime f α where
     zoomFunctionOfTimeWithInterpolator ::
         Monad m ⇒
         ((α → α → α) → StateT (FunctionOfTime α) m β) →
         StateT (f α) m β
--- }}}
--- }}}
 
--- Instances {{{
+instance Semigroup RetiredOccupationStatistics where
+    x <> y = x & (occupied_time +~ y^.occupied_time) & (total_time +~ y^.total_time)
 
-type instance Zoomed (AbortMonad exploration_mode worker_id m) = Zoomed (InsideAbortMonad exploration_mode worker_id m)
-
-type instance Zoomed (ContextMonad exploration_mode worker_id m) = Zoomed (InsideContextMonad exploration_mode worker_id m)
-
-instance Monad m ⇒ MonadReader (SupervisorConstants exploration_mode worker_id m) (AbortMonad exploration_mode worker_id m) where -- {{{
-    ask = AbortMonad ask
-    local f = AbortMonad . local f . unwrapAbortMonad
--- }}}
-
-instance Monad m ⇒ MonadReader (SupervisorConstants exploration_mode worker_id m) (ContextMonad exploration_mode worker_id m) where -- {{{
-    ask = ContextMonad ask
-    local f = ContextMonad . local f . unwrapContextMonad
--- }}}
-
-instance Monad m ⇒ MonadState (SupervisorState exploration_mode worker_id) (AbortMonad exploration_mode worker_id m) where -- {{{
-    get = AbortMonad get
-    put = AbortMonad . put
--- }}}
-
-instance Monad m ⇒ MonadState (SupervisorState exploration_mode worker_id) (ContextMonad exploration_mode worker_id m) where -- {{{
-    get = ContextMonad get
-    put = ContextMonad . put
--- }}}
-
-instance Monoid RetiredOccupationStatistics where -- {{{
+instance Monoid RetiredOccupationStatistics where
     mempty = RetiredOccupationStatistics 0 0
-    mappend x y = x & (occupied_time +~ y^.occupied_time) & (total_time +~ y^.total_time)
--- }}}
 
-instance StatMonoid IndependentMeasurements NominalDiffTime where -- {{{
-    pappend t =
-        IndependentMeasurements
-            <$> (pappend t' . timeDataMin)
-            <*> (pappend t' . timeDataMax)
-            <*> (pappend t' . timeDataVariance)
-      where t' = realToFrac t :: Double
--- }}}
+instance Fractional α ⇒ SpecializationOfFunctionOfTime InterpolatedFunctionOfTime α where
+    zoomFunctionOfTimeWithInterpolator constructAction = zoom interpolated_function_of_time (constructAction $ \x y → (x+y)/2)
 
-instance CalcCount IndependentMeasurements where -- {{{
-    calcCount = calcCount . timeDataVariance
--- }}}
-
-instance CalcMean IndependentMeasurements where -- {{{
-    calcMean = calcMean . timeDataVariance
--- }}}
-
-instance CalcVariance IndependentMeasurements where -- {{{
-    calcVariance = calcVariance . timeDataVariance
-    calcVarianceUnbiased = calcVarianceUnbiased . timeDataVariance
--- }}}
-
-instance Fractional α ⇒ SpecializationOfFunctionOfTime InterpolatedFunctionOfTime α where -- {{{
-    zoomFunctionOfTimeWithInterpolator constructAction = zoom interpolated_function_of_time (constructAction $ ((/2) .* (+)))
--- }}}
-
-instance SpecializationOfFunctionOfTime StepFunctionOfTime α where -- {{{
+instance SpecializationOfFunctionOfTime StepFunctionOfTime α where
     zoomFunctionOfTimeWithInterpolator constructAction = zoom step_function_of_time (constructAction . curry $ fst)
--- }}}
 
--- }}}
-
--- Functions {{{
-
-abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ AbortMonad exploration_mode worker_id m α -- {{{
+abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ AbortMonad exploration_mode worker_id m α
 abortSupervisor = use current_progress >>= abortSupervisorWithReason . SupervisorAborted
--- }}}
 
-abortSupervisorWithReason ::  -- {{{
+abortSupervisorWithReason ::
     SupervisorFullConstraint worker_id m ⇒
     SupervisorTerminationReasonFor exploration_mode worker_id →
     AbortMonad exploration_mode worker_id m α
-abortSupervisorWithReason reason = AbortMonad $ do
-    lift $ notifyWorkerCountListeners 0
+abortSupervisorWithReason reason = do
+    notifyWorkerCountListeners 0
     SupervisorOutcome
         <$> (return reason)
         <*>  getCurrentStatistics'
         <*> (Set.toList <$> use known_workers)
      >>= abort
--- }}}
 
-addPointToExponentiallyDecayingSum :: UTCTime → ExponentiallyDecayingSum → ExponentiallyDecayingSum -- {{{
+addPointToExponentiallyDecayingSum :: UTCTime → ExponentiallyDecayingSum → ExponentiallyDecayingSum
 addPointToExponentiallyDecayingSum current_time = execState $ do
     previous_time ← last_decaying_sum_timestamp <<.= current_time
     decaying_sum_value %= (+ 1) . (* computeExponentialDecayCoefficient previous_time current_time)
--- }}}
 
-addPointToExponentiallyWeightedAverage :: Float → UTCTime → ExponentiallyWeightedAverage → ExponentiallyWeightedAverage -- {{{
+addPointToExponentiallyWeightedAverage :: Float → UTCTime → ExponentiallyWeightedAverage → ExponentiallyWeightedAverage
 addPointToExponentiallyWeightedAverage current_value current_time = execState $ do
     previous_time ← last_average_timestamp <<.= current_time
     let old_value_weight = exp . realToFrac $ (previous_time `diffUTCTime` current_time)
         new_value_weight = 1 - old_value_weight
     current_average_value %= (+ new_value_weight * current_value) . (* old_value_weight)
--- }}}
 
-addWorker :: -- {{{
-    ( SupervisorMonadConstraint m
+addWorker ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     infoM $ "Adding worker " ++ show worker_id
     validateWorkerNotKnown "adding worker" worker_id
@@ -534,27 +435,24 @@ addWorker worker_id = postValidate ("addWorker " ++ show worker_id) $ do
     start_time ← view current_time
     worker_occupation_statistics %= Map.insert worker_id (OccupationStatistics start_time start_time 0 False)
     tryToObtainWorkloadFor True worker_id
--- }}}
 
-addWorkerCountListener :: -- {{{
-    SupervisorMonadConstraint m ⇒
+addWorkerCountListener ::
+    MonadIO m ⇒
     (Int → IO ()) →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 addWorkerCountListener listener = do
     worker_count_listeners %= (listener:)
     getNumberOfWorkers >>= liftIO . listener
--- }}}
 
-beginWorkerOccupied :: -- {{{
-    ( SupervisorMonadConstraint m
+beginWorkerOccupied ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 beginWorkerOccupied = flip changeWorkerOccupiedStatus True
--- }}}
 
-changeOccupiedStatus :: -- {{{
+changeOccupiedStatus ::
     ( Monad m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     ) ⇒
@@ -571,33 +469,30 @@ changeOccupiedStatus getOccupation putOccupation new_occupied_status = do
             last_time ← last_occupied_change_time <<.= current_time
             unless new_occupied_status $ total_occupied_time += (current_time `diffUTCTime` last_time)
         ) >>= putOccupation
--- }}}
 
-changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → ContextMonad exploration_mode worker_id m () -- {{{
+changeSupervisorOccupiedStatus :: MonadIO m ⇒ Bool → AbortMonad exploration_mode worker_id m ()
 changeSupervisorOccupiedStatus =
     changeOccupiedStatus
         (use supervisor_occupation_statistics)
         (supervisor_occupation_statistics .=)
--- }}}
 
-changeWorkerOccupiedStatus :: -- {{{
-    ( SupervisorMonadConstraint m
+changeWorkerOccupiedStatus ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     Bool →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 changeWorkerOccupiedStatus worker_id =
     changeOccupiedStatus
         (fromJust . Map.lookup worker_id <$> use worker_occupation_statistics)
         ((worker_occupation_statistics %=) . Map.insert worker_id)
--- }}}
 
-checkWhetherMoreStealsAreNeeded :: -- {{{
-    ( SupervisorMonadConstraint m
+checkWhetherMoreStealsAreNeeded ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 checkWhetherMoreStealsAreNeeded = do
     (number_of_waiting_workers,number_of_available_workloads) ←
         either (Map.size &&& const 0) (const 0 &&& Set.size)
@@ -651,15 +546,14 @@ checkWhetherMoreStealsAreNeeded = do
         workers_pending_workload_steal %= (Set.union . Set.fromList) workers_to_steal_from
         unless (null workers_to_steal_from) $ do
             infoM $ "Sending workload steal requests to " ++ show workers_to_steal_from
-            asks (callbacks >>> broadcastWorkloadStealToWorkers) >>= liftUserToContext . ($ workers_to_steal_from)
--- }}}
+            asks (callbacks >>> broadcastWorkloadStealToWorkers) >>= liftUser . ($ workers_to_steal_from)
 
-clearPendingProgressUpdate :: -- {{{
-    ( SupervisorMonadConstraint m
+clearPendingProgressUpdate ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 clearPendingProgressUpdate worker_id =
     Set.member worker_id <$> use workers_pending_progress_update >>= flip when
     -- Note, the conditional above is needed to prevent a "misfire" where
@@ -669,15 +563,13 @@ clearPendingProgressUpdate worker_id =
         no_progress_updates_are_pending ← Set.null <$> use workers_pending_progress_update
         when no_progress_updates_are_pending sendCurrentProgressToUser
     )
--- }}}
 
-computeExponentialDecayCoefficient :: UTCTime → UTCTime → Float -- {{{
-computeExponentialDecayCoefficient = (exp . realToFrac) .* diffUTCTime
--- }}}
+computeExponentialDecayCoefficient :: UTCTime → UTCTime → Float
+computeExponentialDecayCoefficient x y = exp . realToFrac $ x `diffUTCTime` y
 
-computeInstantaneousRateFromDecayingSum :: -- {{{
+computeInstantaneousRateFromDecayingSum ::
     ( Functor m'
-    , SupervisorMonadConstraint m
+    , MonadIO m
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     ) ⇒
     ExponentiallyDecayingSum →
@@ -687,16 +579,18 @@ computeInstantaneousRateFromDecayingSum expsum = do
     flip runReaderT expsum $ do
         previous_time ← view last_decaying_sum_timestamp
         (* computeExponentialDecayCoefficient previous_time current_time) <$> view decaying_sum_value
--- }}}
 
-deactivateWorker :: -- {{{
-    ( SupervisorMonadConstraint m
+deactivateWorker ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     Bool →
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 deactivateWorker reenqueue_workload worker_id = do
+    debugM $ printf "Deactivating worker %s (with%s workload)"
+                (show worker_id)
+                (if reenqueue_workload then "" else "out")
     pending_steal ← workers_pending_workload_steal %%= (Set.member worker_id &&& Set.delete worker_id)
     when pending_steal $ steal_request_failures += 1
     dequeueWorkerForSteal worker_id
@@ -711,14 +605,13 @@ deactivateWorker reenqueue_workload worker_id = do
         else active_workers %= Map.delete worker_id
     clearPendingProgressUpdate worker_id
     checkWhetherMoreStealsAreNeeded
--- }}}
 
-dequeueWorkerForSteal :: -- {{{
-    ( SupervisorMonadConstraint m
+dequeueWorkerForSteal ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 dequeueWorkerForSteal worker_id =
     getWorkerDepth worker_id >>= \depth →
         available_workers_for_steal %=
@@ -727,37 +620,34 @@ dequeueWorkerForSteal worker_id =
                           in if Set.null new_queue then Nothing else Just new_queue
                 )
                 depth
--- }}}
 
-endWorkerOccupied :: -- {{{
-    ( SupervisorMonadConstraint m
+endWorkerOccupied ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 endWorkerOccupied = flip changeWorkerOccupiedStatus False
--- }}}
 
-enqueueWorkerForSteal :: -- {{{
-    ( SupervisorMonadConstraint m
+enqueueWorkerForSteal ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 enqueueWorkerForSteal worker_id =
     getWorkerDepth worker_id >>= \depth →
         available_workers_for_steal %=
             IntMap.alter
                 (Just . maybe (Set.singleton worker_id) (Set.insert worker_id))
                 depth
--- }}}
 
-enqueueWorkload :: -- {{{
-    ( SupervisorMonadConstraint m
+enqueueWorkload ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     Workload →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 enqueueWorkload workload =
     use waiting_workers_or_available_workloads
     >>=
@@ -779,13 +669,12 @@ enqueueWorkload workload =
             updateFunctionOfTimeUsingLens available_workload_count_statistics (Set.size available_workloads + 1)
     >>
     checkWhetherMoreStealsAreNeeded
--- }}}
 
-extractFunctionOfTimeStatistics :: -- {{{
+extractFunctionOfTimeStatistics ::
     ( Ord α
     , Real α
-    , SupervisorMonadConstraint m
-    , SupervisorMonadConstraint m'
+    , MonadIO m
+    , MonadIO m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     , SpecializationOfFunctionOfTime f α
     ) ⇒
@@ -803,13 +692,12 @@ extractFunctionOfTimeStatistics start_time getWeightedStatistics = do
             timeMax ← use maximum_value
             return $ FunctionOfTimeStatistics{..}
      )
--- }}}
 
-extractFunctionOfTimeStatisticsWithFinalPoint :: -- {{{
+extractFunctionOfTimeStatisticsWithFinalPoint ::
     ( Ord α
     , Real α
-    , SupervisorMonadConstraint m
-    , SupervisorMonadConstraint m'
+    , MonadIO m
+    , MonadIO m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     , SpecializationOfFunctionOfTime f α
     ) ⇒
@@ -831,35 +719,36 @@ extractFunctionOfTimeStatisticsWithFinalPoint start_time getFinalValue getWeight
             timeMax ← max final_value <$> use maximum_value
             return $ FunctionOfTimeStatistics{..}
      )
--- }}}
 
-extractIndependentMeasurementsStatistics :: IndependentMeasurements → IndependentMeasurementsStatistics -- {{{
-extractIndependentMeasurementsStatistics =
+extractIndependentMeasurementsStatistics :: IndependentMeasurements → IndependentMeasurementsStatistics
+extractIndependentMeasurementsStatistics IndependentMeasurements{..} =
     IndependentMeasurementsStatistics
-        <$>  calcCount
-        <*>  calcMean
-        <*>  calcStddev
-        <*> (calcMin . timeDataMin)
-        <*> (calcMax . timeDataMax)
--- }}}
+        { statCount = timeDataCount
+        , statAverage = average
+        , statStdDev = realToFrac $ sqrt(realToFrac $ timeDataSumSq/countAsDouble - average*average ∷ Double)
+        , statMin = timeDataMin
+        , statMax = timeDataMax
+        }
+  where
+    countAsDouble = fromIntegral timeDataCount
+    average = timeDataSum / countAsDouble
 
-finishWithResult :: -- {{{
-    ( SupervisorMonadConstraint m
+finishWithResult ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     FinalResultFor exploration_mode →
-    InsideAbortMonad exploration_mode worker_id m α
+    AbortMonad exploration_mode worker_id m α
 finishWithResult final_value = do
-    lift $ notifyWorkerCountListeners 0
+    notifyWorkerCountListeners 0
     SupervisorOutcome
         <$> (return $ SupervisorCompleted final_value)
-        <*> (lift getCurrentStatistics)
+        <*> getCurrentStatistics
         <*> (Set.toList <$> use known_workers)
      >>= abort
--- }}}
 
-getCurrentCheckpoint :: -- {{{
-    ( SupervisorMonadConstraint m'
+getCurrentCheckpoint ::
+    ( MonadIO m'
     , SupervisorStateConstraint exploration_mode worker_id m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     ) ⇒ m' Checkpoint
@@ -867,15 +756,13 @@ getCurrentCheckpoint =
     liftM2 checkpointFromIntermediateProgress
         (view exploration_mode)
         (use current_progress)
--- }}}
 
-getCurrentProgress :: SupervisorMonadConstraint m ⇒ ContextMonad exploration_mode worker_id m (ProgressFor exploration_mode) -- {{{
+getCurrentProgress :: MonadIO m ⇒ AbortMonad exploration_mode worker_id m (ProgressFor exploration_mode)
 getCurrentProgress = use current_progress
--- }}}
 
-getCurrentStatistics' :: -- {{{
+getCurrentStatistics' ::
     ( SupervisorFullConstraint worker_id m
-    , SupervisorMonadConstraint m'
+    , MonadIO m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     , SupervisorStateConstraint exploration_mode worker_id m'
     ) ⇒
@@ -935,28 +822,24 @@ getCurrentStatistics' = do
             (use $ instantaneous_workload_steal_time . current_average_value)
             (use instantaneous_workload_steal_time_statistics)
     return RunStatistics{..}
--- }}}
 
-getCurrentStatistics :: SupervisorFullConstraint worker_id m ⇒ ContextMonad exploration_mode worker_id m RunStatistics -- {{{
+getCurrentStatistics :: SupervisorFullConstraint worker_id m ⇒ AbortMonad exploration_mode worker_id m RunStatistics
 getCurrentStatistics = getCurrentStatistics'
--- }}}
 
-getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ ContextMonad exploration_mode worker_id m Int -- {{{
+getNumberOfWorkers :: MonadIO m ⇒ AbortMonad exploration_mode worker_id m Int
 getNumberOfWorkers = liftM Set.size . use $ known_workers
--- }}}
 
-getOccupationFraction :: RetiredOccupationStatistics → Float -- {{{
-getOccupationFraction statistics
-  | statistics ^. total_time == 0 = 0
-  | otherwise = realToFrac . liftA2 (/) (^.occupied_time) (^.total_time) $ statistics
--- }}}
+getOccupationFraction :: RetiredOccupationStatistics → Float
+getOccupationFraction stats
+  | stats^.total_time == 0 = 0
+  | otherwise = realToFrac $ stats^.occupied_time / stats^.total_time
 
-getWorkerDepth :: -- {{{
-    ( SupervisorMonadConstraint m
+getWorkerDepth ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m Int
+    AbortMonad exploration_mode worker_id m Int
 getWorkerDepth worker_id =
     maybe
         (error $ "Attempted to use the depth of inactive worker " ++ show worker_id ++ ".")
@@ -965,9 +848,8 @@ getWorkerDepth worker_id =
     Map.lookup worker_id
     <$>
     use active_workers
--- }}}
 
-initialFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → FunctionOfTime α -- {{{
+initialFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → FunctionOfTime α
 initialFunctionForStartingTimeAndValue starting_time starting_value =
     FunctionOfTime
         0
@@ -977,86 +859,34 @@ initialFunctionForStartingTimeAndValue starting_time starting_value =
         0
         (fromIntegral (maxBound :: Int))
         (fromIntegral (minBound :: Int))
--- }}}
 
-initialInterpolatedFunctionForStartingTime :: Num α ⇒ UTCTime → InterpolatedFunctionOfTime α -- {{{
+initialInterpolatedFunctionForStartingTime :: Num α ⇒ UTCTime → InterpolatedFunctionOfTime α
 initialInterpolatedFunctionForStartingTime = flip initialInterpolatedFunctionForStartingTimeAndValue 0
--- }}}
 
-initialInterpolatedFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → InterpolatedFunctionOfTime α -- {{{
-initialInterpolatedFunctionForStartingTimeAndValue = InterpolatedFunctionOfTime .* initialFunctionForStartingTimeAndValue
--- }}}
+initialInterpolatedFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → InterpolatedFunctionOfTime α
+initialInterpolatedFunctionForStartingTimeAndValue time value =
+    InterpolatedFunctionOfTime $ initialFunctionForStartingTimeAndValue time value
 
-initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionOfTime α -- {{{
+initialStepFunctionForStartingTime :: Num α ⇒ UTCTime → StepFunctionOfTime α
 initialStepFunctionForStartingTime = flip initialStepFunctionForStartingTimeAndValue 0
--- }}}
 
-initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionOfTime α -- {{{
-initialStepFunctionForStartingTimeAndValue = StepFunctionOfTime .* initialFunctionForStartingTimeAndValue
--- }}}
+initialStepFunctionForStartingTimeAndValue :: Num α ⇒ UTCTime → α → StepFunctionOfTime α
+initialStepFunctionForStartingTimeAndValue time value =
+    StepFunctionOfTime $ initialFunctionForStartingTimeAndValue time value
 
-liftContextToAbort :: Monad m ⇒ ContextMonad exploration_mode worker_id m α → AbortMonad exploration_mode worker_id m α -- {{{
-liftContextToAbort = AbortMonad . lift
--- }}}
-
-liftUserToAbort :: Monad m ⇒ m α → AbortMonad exploration_mode worker_id m α -- {{{
-liftUserToAbort = liftContextToAbort . liftUserToContext
--- }}}
-
-liftUserToContext :: Monad m ⇒ m α → ContextMonad exploration_mode worker_id m α -- {{{
-liftUserToContext = ContextMonad . lift . lift
--- }}}
-
-localWithinAbort :: -- {{{
-    MonadReader e m ⇒
-    (e → e) →
-    AbortMonad exploration_mode worker_id m α →
-    AbortMonad exploration_mode worker_id m α
-localWithinAbort f = AbortMonad . AbortT . localWithinContext f . unwrapAbortT . unwrapAbortMonad
--- }}}
-
-localWithinContext :: -- {{{
-    MonadReader e m ⇒
-    (e → e) →
-    ContextMonad exploration_mode worker_id m α →
-    ContextMonad exploration_mode worker_id m α
-localWithinContext f m = do
-    actions ← ask
-    old_state ← get
-    (result,new_state) ←
-        ContextMonad
-        .
-        lift
-        .
-        lift
-        .
-        local f
-        .
-        flip runReaderT actions
-        .
-        flip runStateT old_state
-        .
-        unwrapContextMonad
-        $
-        m
-    put new_state
-    return result
--- }}}
-
-notifyWorkerCountListeners :: -- {{{
-    SupervisorMonadConstraint m ⇒
+notifyWorkerCountListeners ::
+    MonadIO m ⇒
     Int →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 notifyWorkerCountListeners number_of_workers = do
     updateFunctionOfTimeUsingLens worker_count_statistics number_of_workers
     use worker_count_listeners >>= liftIO . mapM_ ($ number_of_workers) 
--- }}}
 
-performGlobalProgressUpdate :: -- {{{
-    ( SupervisorMonadConstraint m
+performGlobalProgressUpdate ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" $ do
     infoM $ "Performing global progress update."
     active_worker_ids ← Map.keysSet <$> use active_workers
@@ -1064,11 +894,10 @@ performGlobalProgressUpdate = postValidate "performGlobalProgressUpdate" $ do
         then sendCurrentProgressToUser
         else do
             workers_pending_progress_update .= active_worker_ids
-            asks (callbacks >>> broadcastProgressUpdateToWorkers) >>= liftUserToContext . ($ Set.toList active_worker_ids)
--- }}}
+            asks (callbacks >>> broadcastProgressUpdateToWorkers) >>= liftUser . ($ Set.toList active_worker_ids)
 
-postValidate :: -- {{{
-    ( SupervisorMonadConstraint m'
+postValidate ::
+    ( MonadIO m'
     , SupervisorFullConstraint worker_id m
     , SupervisorStateConstraint exploration_mode worker_id m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
@@ -1111,67 +940,68 @@ postValidate label action = action >>= \result →
             else throw $ SpaceFullyExploredButWorkloadsRemain workers_and_workloads
     debugM $ " === END VALIDATE === " ++ label
   )) >> return result
--- }}}
 
-receiveProgressUpdate :: -- {{{
-    ( SupervisorMonadConstraint m
+receiveProgressUpdate ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     ProgressUpdateFor exploration_mode →
     AbortMonad exploration_mode worker_id m ()
-receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = AbortMonad . postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") $ do
+receiveProgressUpdate worker_id (ProgressUpdate progress_update remaining_workload) = postValidate ("receiveProgressUpdate " ++ show worker_id ++ " ...") $ do
     infoM $ "Received progress update from " ++ show worker_id
-    lift $ validateWorkerKnownAndActive "receiving progress update" worker_id
+    validateWorkerKnownAndActive "receiving progress update" worker_id
     _ ← updateCurrentProgress progress_update
-    lift $ do
-        is_pending_workload_steal ← Set.member worker_id <$> use workers_pending_workload_steal
-        unless is_pending_workload_steal $ dequeueWorkerForSteal worker_id
-        active_workers %= Map.insert worker_id remaining_workload
-        unless is_pending_workload_steal $ enqueueWorkerForSteal worker_id
-        clearPendingProgressUpdate worker_id
--- }}}
+    is_pending_workload_steal ← Set.member worker_id <$> use workers_pending_workload_steal
+    unless is_pending_workload_steal $ dequeueWorkerForSteal worker_id
+    active_workers %= Map.insert worker_id remaining_workload
+    unless is_pending_workload_steal $ enqueueWorkerForSteal worker_id
+    clearPendingProgressUpdate worker_id
 
-receiveStolenWorkload :: -- {{{
-    ( SupervisorMonadConstraint m
+receiveStolenWorkload ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     Maybe (StolenWorkloadFor exploration_mode) →
     AbortMonad exploration_mode worker_id m ()
-receiveStolenWorkload worker_id maybe_stolen_workload = AbortMonad . postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") $ do
+receiveStolenWorkload worker_id maybe_stolen_workload = postValidate ("receiveStolenWorkload " ++ show worker_id ++ " ...") $ do
     infoM $ "Received stolen workload from " ++ show worker_id
-    lift $ validateWorkerKnownAndActive "receiving stolen workload" worker_id
+    validateWorkerKnownAndActive "receiving stolen workload" worker_id
     workers_pending_workload_steal %= Set.delete worker_id
     case maybe_stolen_workload of
         Nothing → steal_request_failures += 1
         Just (StolenWorkload (ProgressUpdate progress_update remaining_workload) workload) → do
-            lift $
-                (steal_request_matcher_queue %%= fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView)
-                  >>= (timePassedSince >=> liftA2 (>>) ((workload_steal_time_statistics %=) . pappend) updateInstataneousWorkloadStealTime)
+            (
+                steal_request_matcher_queue %%=
+                    fromMaybe (error "Unable to find a request matching this steal!") . MultiSet.minView
+             ) >>= (
+                timePassedSince
+                >=>
+                \time → do
+                    workload_steal_time_statistics %= addMeasurement time
+                    updateInstataneousWorkloadStealTime time
+             )
             _ ← updateCurrentProgress progress_update
-            lift $ do
-                active_workers %= Map.insert worker_id remaining_workload
-                enqueueWorkload workload
-    lift $ do
-        enqueueWorkerForSteal worker_id
-        checkWhetherMoreStealsAreNeeded
--- }}}
+            active_workers %= Map.insert worker_id remaining_workload
+            enqueueWorkload workload
+    enqueueWorkerForSteal worker_id
+    checkWhetherMoreStealsAreNeeded
 
-receiveWorkerFinishedWithRemovalFlag :: -- {{{
-    ( SupervisorMonadConstraint m
+receiveWorkerFinishedWithRemovalFlag ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     Bool →
     worker_id →
     WorkerFinishedProgressFor exploration_mode →
     AbortMonad exploration_mode worker_id m ()
-receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = AbortMonad . postValidate ("receiveWorkerFinished " ++ show worker_id) $ do
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = postValidate ("receiveWorkerFinishedWithRemovalFlag " ++ show worker_id ++ " " ++ show remove_worker) $ do
     infoM $ if remove_worker
         then "Worker " ++ show worker_id ++ " finished and removed."
         else "Worker " ++ show worker_id ++ " finished."
-    lift $ validateWorkerKnownAndActive "the worker was declared finished" worker_id
-    when remove_worker . lift $ retireWorker worker_id
+    validateWorkerKnownAndActive "the worker was declared finished" worker_id
+    when remove_worker $ retireWorker worker_id
     exploration_mode ← view exploration_mode
     (checkpoint,final_value) ←
         case exploration_mode of
@@ -1199,16 +1029,15 @@ receiveWorkerFinishedWithRemovalFlag remove_worker worker_id final_progress = Ab
             unless (null active_worker_ids) . throw $
                 ActiveWorkersRemainedAfterSpaceFullyExplored active_worker_ids
             finishWithResult final_value
-        _ → lift $ do
-                deactivateWorker False worker_id
-                unless remove_worker $ do
-                    endWorkerOccupied worker_id
-                    tryToObtainWorkloadFor False worker_id
--- }}}
+        _ → do
+            deactivateWorker False worker_id
+            unless remove_worker $ do
+                endWorkerOccupied worker_id
+                tryToObtainWorkloadFor False worker_id
 
-retireManyOccupationStatistics :: -- {{{
+retireManyOccupationStatistics ::
     ( Functor f
-    , SupervisorMonadConstraint m
+    , MonadIO m
     , Monad m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     ) ⇒
@@ -1220,49 +1049,47 @@ retireManyOccupationStatistics occupied_statistics =
         & occupied_time .~ (o^.total_occupied_time + if o^.is_currently_occupied then current_time `diffUTCTime` (o^.last_occupied_change_time) else 0)
         & total_time .~ (current_time `diffUTCTime` (o^.start_time))
     ) occupied_statistics
--- }}}
 
-retireOccupationStatistics :: -- {{{
-    ( SupervisorMonadConstraint m
+retireOccupationStatistics ::
+    ( MonadIO m
     , Monad m'
     , SupervisorReaderConstraint exploration_mode worker_id m m'
     ) ⇒
     OccupationStatistics →
     m' RetiredOccupationStatistics
 retireOccupationStatistics = liftM head . retireManyOccupationStatistics . (:[])
--- }}}
 
-removeWorker :: -- {{{
-    ( SupervisorMonadConstraint m
+removeWorker ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 removeWorker worker_id = postValidate ("removeWorker " ++ show worker_id) $ do
     infoM $ "Removing worker " ++ show worker_id
     validateWorkerKnown "removing the worker" worker_id
     retireAndDeactivateWorker worker_id
--- }}}
 
-removeWorkerIfPresent :: -- {{{
-    ( SupervisorMonadConstraint m
+removeWorkerIfPresent ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
-removeWorkerIfPresent worker_id = postValidate ("removeWorker " ++ show worker_id) $ do
-    whenM (Set.member worker_id <$> use known_workers) $ do
+    AbortMonad exploration_mode worker_id m ()
+removeWorkerIfPresent worker_id = postValidate ("removeWorker " ++ show worker_id) $
+    (Set.member worker_id <$> use known_workers) >>= flip when (do
         infoM $ "Removing worker " ++ show worker_id
         retireAndDeactivateWorker worker_id
--- }}}
+    )
 
-retireWorker :: -- {{{
-    ( SupervisorMonadConstraint m
+retireWorker ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 retireWorker worker_id = do
+    debugM $ "Retiring worker " ++ show worker_id
     Set.size <$> (known_workers <%= Set.delete worker_id) >>= notifyWorkerCountListeners
     retired_occupation_statistics ←
         worker_occupation_statistics %%= (fromJust . Map.lookup worker_id &&& Map.delete worker_id)
@@ -1271,27 +1098,26 @@ retireWorker worker_id = do
     retired_worker_occupation_statistics %= Map.alter (
         Just . maybe retired_occupation_statistics (<> retired_occupation_statistics)
      ) worker_id
--- }}}
 
-retireAndDeactivateWorker :: -- {{{
-    ( SupervisorMonadConstraint m
+retireAndDeactivateWorker ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 retireAndDeactivateWorker worker_id = do
+    debugM $ "Retiring and deactivating worker " ++ show worker_id
     retireWorker worker_id
-    ifM (isJust . Map.lookup worker_id <$> use active_workers)
-        (deactivateWorker True worker_id)
+    (Map.member worker_id <$> use active_workers) >>= bool
         (waiting_workers_or_available_workloads %%=
             either (pred . Map.size &&& Left . Map.delete worker_id)
                    (error $ "worker " ++ show worker_id ++ " is inactive but was not in the waiting queue")
          >>= updateFunctionOfTimeUsingLens waiting_worker_count_statistics
         )
--- }}}
+        (deactivateWorker True worker_id)
 
-runSupervisorStartingFrom :: -- {{{
-    ( SupervisorMonadConstraint m
+runSupervisorStartingFrom ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
@@ -1300,6 +1126,8 @@ runSupervisorStartingFrom :: -- {{{
     (∀ α. AbortMonad exploration_mode worker_id m α) →
     m (SupervisorOutcomeFor exploration_mode worker_id)
 runSupervisorStartingFrom exploration_mode starting_progress callbacks program = liftIO Clock.getCurrentTime >>= \start_time →
+    fmap (either id id)
+    .
     flip runReaderT (SupervisorConstants callbacks (error "The current time was not set when entering the Supervisor module.") exploration_mode)
     .
     flip evalStateT
@@ -1330,7 +1158,7 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
             ,   _worker_wait_time_statistics = initialInterpolatedFunctionForStartingTime start_time
             ,   _steal_request_matcher_queue = mempty
             ,   _steal_request_failures = 0
-            ,   _workload_steal_time_statistics = mempty
+            ,   _workload_steal_time_statistics = zeroedMeasurements
             ,   _worker_count_statistics = initialStepFunctionForStartingTime start_time
             ,   _waiting_worker_count_statistics = initialStepFunctionForStartingTime start_time
             ,   _available_workload_count_statistics = initialStepFunctionForStartingTime start_time
@@ -1345,80 +1173,70 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
             }
         )
     .
-    unwrapContextMonad
-    .
-    runAbortT
-    .
-    unwrapAbortMonad
+    runExceptT
     $
     program
--- }}}
 
-sendCurrentProgressToUser :: -- {{{
-    ( SupervisorMonadConstraint m
+sendCurrentProgressToUser ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 sendCurrentProgressToUser = do
     callback ← asks (callbacks >>> receiveCurrentProgress)
     current_progress ← use current_progress
-    liftUserToContext (callback current_progress)
--- }}}
+    liftUser $ callback current_progress
 
-sendWorkloadTo :: -- {{{
-    ( SupervisorMonadConstraint m
+
+sendWorkloadTo ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     Workload →
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 sendWorkloadTo workload worker_id = do
     infoM $ "Sending workload to " ++ show worker_id
-    asks (callbacks >>> sendWorkloadToWorker) >>= liftUserToContext . (\f → f workload worker_id)
+    asks (callbacks >>> sendWorkloadToWorker) >>= liftUser . (\f → f workload worker_id)
     isNothing . Map.lookup worker_id <$> use active_workers
         >>= flip unless (throw $ WorkerAlreadyHasWorkload worker_id)
     active_workers %= Map.insert worker_id workload
     beginWorkerOccupied worker_id
     enqueueWorkerForSteal worker_id
     checkWhetherMoreStealsAreNeeded
--- }}}
 
-setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → ContextMonad exploration_mode worker_id m () -- {{{
+setSupervisorDebugMode :: MonadIO m ⇒ Bool → AbortMonad exploration_mode worker_id m ()
 setSupervisorDebugMode = (debug_mode .=)
--- }}}
 
-setWorkloadBufferSize :: SupervisorMonadConstraint m ⇒ Int → ContextMonad exploration_mode worker_id m () -- {{{
+setWorkloadBufferSize :: MonadIO m ⇒ Int → AbortMonad exploration_mode worker_id m ()
 setWorkloadBufferSize = (workload_buffer_size .=)
--- }}}
 
-timePassedSince :: -- {{{
+timePassedSince ::
     ( Functor m'
-    , SupervisorMonadConstraint m
+    , MonadIO m
     , SupervisorReaderConstraint exploration_mode worker_id m  m'
     ) ⇒
     UTCTime →
     m' NominalDiffTime
 timePassedSince = (<$> view current_time) . flip diffUTCTime
--- }}}
 
-tryGetWaitingWorker :: -- {{{
-    ( SupervisorMonadConstraint m
+tryGetWaitingWorker ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
-    ContextMonad exploration_mode worker_id m (Maybe worker_id)
+    AbortMonad exploration_mode worker_id m (Maybe worker_id)
 tryGetWaitingWorker =
     either (fmap (fst . fst) . Map.minViewWithKey) (const Nothing)
     <$>
     use waiting_workers_or_available_workloads
--- }}}
 
-tryToObtainWorkloadFor :: -- {{{
-    ( SupervisorMonadConstraint m
+tryToObtainWorkloadFor ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     Bool →
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 tryToObtainWorkloadFor is_new_worker worker_id =
     unless is_new_worker updateInstataneousWorkloadRequestRate
     >>
@@ -1447,14 +1265,12 @@ tryToObtainWorkloadFor is_new_worker worker_id =
       | is_new_worker = return Nothing
       | otherwise = Just <$> view current_time
 
--- }}}
-
-updateCurrentProgress :: -- {{{
-    ( SupervisorMonadConstraint m
+updateCurrentProgress ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ProgressFor exploration_mode →
-    InsideAbortMonad exploration_mode worker_id m (ProgressFor exploration_mode)
+    AbortMonad exploration_mode worker_id m (ProgressFor exploration_mode)
 updateCurrentProgress progress = do
     exploration_mode ← view exploration_mode
     case exploration_mode of
@@ -1470,9 +1286,8 @@ updateCurrentProgress progress = do
             if f result
                 then finishWithResult (Right progress)
                 else return progress
--- }}}
 
-updateFunctionOfTime :: -- {{{
+updateFunctionOfTime ::
     ( MonadIO m
     , Real α
     , SpecializationOfFunctionOfTime f α
@@ -1491,80 +1306,70 @@ updateFunctionOfTime value current_time =
     second_moment += weight*interpolated_value*interpolated_value
     minimum_value %= min value
     maximum_value %= max value
--- }}}
 
-updateFunctionOfTimeUsingLens :: -- {{{
+updateFunctionOfTimeUsingLens ::
     ( Real α
-    , SupervisorMonadConstraint m
+    , MonadIO m
     , SpecializationOfFunctionOfTime f α
     ) ⇒
     Lens' (SupervisorState exploration_mode worker_id) (f α) →
     α →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 updateFunctionOfTimeUsingLens field value =
-    view current_time >>= ContextMonad . void . zoom field . updateFunctionOfTime value
--- }}}
+    view current_time >>= void . lift . zoom field . updateFunctionOfTime value
 
-updateInstataneousWorkloadRequestRate :: SupervisorMonadConstraint m ⇒ ContextMonad exploration_mode worker_id m () -- {{{
+updateInstataneousWorkloadRequestRate :: MonadIO m ⇒ AbortMonad exploration_mode worker_id m ()
 updateInstataneousWorkloadRequestRate = do
     current_time ← view current_time
     previous_value ← instantaneous_workload_request_rate %%= ((^.decaying_sum_value) &&& addPointToExponentiallyDecayingSum current_time)
     current_value ← use (instantaneous_workload_request_rate . decaying_sum_value)
     updateFunctionOfTimeUsingLens instantaneous_workload_request_rate_statistics ((current_value + previous_value) / 2)
--- }}}
 
-updateInstataneousWorkloadStealTime :: SupervisorMonadConstraint m ⇒ NominalDiffTime → ContextMonad exploration_mode worker_id m () -- {{{
+updateInstataneousWorkloadStealTime :: MonadIO m ⇒ NominalDiffTime → AbortMonad exploration_mode worker_id m ()
 updateInstataneousWorkloadStealTime (realToFrac → current_value) = do
     current_time ← view current_time
     previous_value ← instantaneous_workload_steal_time %%= ((^.current_average_value) &&& addPointToExponentiallyWeightedAverage current_value current_time)
     current_value ← use (instantaneous_workload_steal_time . current_average_value)
     updateFunctionOfTimeUsingLens instantaneous_workload_steal_time_statistics ((current_value + previous_value) / 2)
--- }}}
 
-validateWorkerKnown :: -- {{{
-    ( SupervisorMonadConstraint m
+validateWorkerKnown ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     String →
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 validateWorkerKnown action worker_id =
     Set.notMember worker_id <$> (use known_workers)
         >>= flip when (throw $ WorkerNotKnown action worker_id)
--- }}}
 
-validateWorkerKnownAndActive :: -- {{{
-    ( SupervisorMonadConstraint m
+validateWorkerKnownAndActive ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     String →
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 validateWorkerKnownAndActive action worker_id = do
     validateWorkerKnown action worker_id
     Set.notMember worker_id <$> (use known_workers)
         >>= flip when (throw $ WorkerNotActive action worker_id)
--- }}}
 
-validateWorkerNotKnown :: -- {{{
-    ( SupervisorMonadConstraint m
+validateWorkerNotKnown ::
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     String →
     worker_id →
-    ContextMonad exploration_mode worker_id m ()
+    AbortMonad exploration_mode worker_id m ()
 validateWorkerNotKnown action worker_id = do
     Set.member worker_id <$> (use known_workers)
         >>= flip when (throw $ WorkerAlreadyKnown action worker_id)
--- }}}
 
-zoomFunctionOfTime :: -- {{{
+zoomFunctionOfTime ::
     ( SpecializationOfFunctionOfTime f α
     , Monad m
     ) ⇒
     StateT (FunctionOfTime α) m β →
     StateT (f α) m β
 zoomFunctionOfTime m = zoomFunctionOfTimeWithInterpolator (const m)
--- }}}
-
--- }}}

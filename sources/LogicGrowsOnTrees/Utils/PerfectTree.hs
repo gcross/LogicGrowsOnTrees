@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -16,25 +17,23 @@ module LogicGrowsOnTrees.Utils.PerfectTree
     -- * Arity and depth parameters
     , Arity(..)
     , ArityAndDepth(..)
-    , makeArityAndDepthTermAtPositions
+    , arity_and_depth_parser
+    , arity_reader
     , formArityAndDepth
     ) where
 
 import Control.Applicative ((<$>),(<*>))
 import Control.Monad (MonadPlus,msum)
 
-import Data.Derive.Serialize
-import Data.DeriveTH
 import Data.List (genericReplicate)
-import Data.Serialize
+import Data.Serialize (Serialize)
 import Data.Word (Word)
 
-import System.Console.CmdTheLine
+import GHC.Generics (Generic)
 
-import Text.PrettyPrint (text)
+import Options.Applicative (Parser, ReadM, argument, auto, help, metavar)
 
 import LogicGrowsOnTrees (Tree)
-import LogicGrowsOnTrees.Utils.Word_
 import LogicGrowsOnTrees.Utils.WordSum
 
 --------------------------------------------------------------------------------
@@ -46,21 +45,11 @@ import LogicGrowsOnTrees.Utils.WordSum
  -}
 newtype Arity = Arity { getArity :: Word } deriving (Eq,Show,Serialize)
 
-instance ArgVal Arity where
-    converter = (parseArity,prettyArity)
-      where
-        (parseWord_,prettyWord_) = converter
-        parseArity =
-            either Left (\(Word_ n) →
-                if n >= 2
-                    then Right . Arity $ n
-                    else Left . text $ "tree arity must be at least 2 (not " ++ show n ++ ")"
-            )
-            .
-            parseWord_
-        prettyArity = prettyWord_ . Word_ . getArity
-instance ArgVal (Maybe Arity) where
-    converter = just
+arity_reader :: ReadM Arity
+arity_reader = auto >>= \n →
+    if n >= 2
+        then pure $ Arity n
+        else fail $ "tree arity must be at least 2 (not " ++ show n ++ ")"
 
 {-| Datatype representing the arity and depth of a tree, used for command line
     argument processing (see 'makeArityAndDepthTermAtPositions').
@@ -68,34 +57,22 @@ instance ArgVal (Maybe Arity) where
 data ArityAndDepth = ArityAndDepth
     {   arity :: !Word
     ,   depth :: !Word
-    } deriving (Eq, Show)
-$( derive makeSerialize ''ArityAndDepth )
+    } deriving (Eq, Generic, Show)
+instance Serialize ArityAndDepth where
 
-{-| Constructs a configuration term that expects the arity and depth to be at
-    the given command line argument positions.
- -}
-makeArityAndDepthTermAtPositions ::
-    Int {-^ the position of the arity parameter in the command line -} →
-    Int {-^ the position of the depth parameter in the command line -} →
-    Term ArityAndDepth
-makeArityAndDepthTermAtPositions arity_position depth_position =
-    formArityAndDepth
-    <$> (required $
-         pos arity_position
-             Nothing
-             posInfo
-               { posName = "ARITY"
-               , posDoc = "tree arity"
-               }
-        )
-    <*> (fmap getWord . required $
-         pos depth_position
-             Nothing
-             posInfo
-               { posName = "DEPTH"
-               , posDoc = "tree depth (depth 0 means 1 level)"
-               }
-        )
+arity_and_depth_parser :: Parser ArityAndDepth
+arity_and_depth_parser =
+    ArityAndDepth
+        <$> (argument auto $ mconcat
+                [ metavar "ARITY"
+                , help "tree arity"
+                ]
+            )
+        <*> (argument auto $ mconcat
+                [ metavar "DEPTH"
+                , help "tree depth"
+                ]
+            )
 
 {-| A convenience function used when you have an value of type 'Arity' for the
     arity of the tree rather than a value of type 'Word' and want to construct

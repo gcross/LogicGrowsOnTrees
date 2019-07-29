@@ -17,8 +17,6 @@ module LogicGrowsOnTrees.Utils.Handle
     , send
     ) where
 
-import Prelude hiding (catch)
-
 import Control.Exception (Exception,catch,throwIO)
 import Control.Monad (unless)
 
@@ -40,6 +38,7 @@ data ConnectionLost = ConnectionLost
 instance Exception ConnectionLost
 
 {-| Replaces EOF 'IOException's with the 'ConnectionLost' exception. -}
+filterEOFExceptions :: IO α → IO α
 filterEOFExceptions = flip catch $
     \e → if isEOFError e || (show . ioeGetErrorType $ e) == "resource vanished"
         then throwIO ConnectionLost

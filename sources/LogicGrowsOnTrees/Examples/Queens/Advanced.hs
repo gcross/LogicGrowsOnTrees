@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -30,6 +31,7 @@ module LogicGrowsOnTrees.Examples.Queens.Advanced
     , NQueensSolutions
     , PositionAndBit
     , PositionAndBitWithReflection
+    , Updater(..)
     -- * Main algorithm
     , nqueensGeneric
     -- ** Using List instead of C at bottom
@@ -82,14 +84,12 @@ module LogicGrowsOnTrees.Examples.Queens.Advanced
 import Control.Applicative ((<$>),liftA2)
 import Control.Arrow ((***))
 import Control.Exception (evaluate)
-import Control.Monad (MonadPlus(..),(>=>),liftM,liftM2,msum)
+import Control.Monad (MonadPlus(..),(>=>),liftM2,msum)
 
 import Data.Bits ((.&.),(.|.),bit,rotateL,rotateR,unsafeShiftL,unsafeShiftR)
 import Data.Function (on)
 import Data.IORef (modifyIORef,newIORef,readIORef,writeIORef)
 import Data.List (sort)
-import Data.Maybe (fromJust)
-import Data.Typeable (Typeable,cast,typeOf)
 import Data.Word (Word,Word64)
 
 import Foreign.C.Types (CUInt(..))
@@ -126,9 +126,23 @@ data PositionAndBit = PositionAndBit {-# UNPACK #-} !Int {-# UNPACK #-} !Word64
  -}
 data PositionAndBitWithReflection = PositionAndBitWithReflection {-# UNPACK #-} !Int {-# UNPACK #-} !Word64  {-# UNPACK #-} !Int {-# UNPACK #-} !Word64
 
+{-| How to update the current state with additional coordinates. -}
+data Updater α β where
+    CountUpdater :: Updater () WordSum {-^ ignore all found coordinates; we are just counting -}
+    StateUpdater :: ([(Word,Word)] → α → α) → Updater α β {-^ use the given function to update the current state -}
+
 --------------------------------------------------------------------------------
 -------------------------------- Main algorithm --------------------------------
 --------------------------------------------------------------------------------
+
+updateValueFor :: Updater α β → [(Word,Word)] → α → α
+updateValueFor CountUpdater = \_ _ → ()
+updateValueFor (StateUpdater updateValue) = updateValue
+{-# INLINE updateValueFor #-}
+
+convertAndUpdateValueFor :: Updater α β → [(Int,Int)] → α → α
+convertAndUpdateValueFor updater = updateValueFor updater . convertSolutionToWord
+{-# INLINE convertAndUpdateValueFor #-}
 
 -- NOTE:  the spaces before 'Typeable' are needed due to a haddock glitch
 {-| Interface to the main algorithm;  note that α and β need to be   'Typeable'
@@ -141,84 +155,78 @@ data PositionAndBitWithReflection = PositionAndBitWithReflection {-# UNPACK #-} 
    assured that it works we can trust it to obtain the correct counts.
  -}
 nqueensGeneric ::
-    (MonadPlus m
-    ,Typeable α
-    ,Typeable β
-    ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solution -} →
+    MonadPlus m ⇒
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (Word → NQueensSymmetry → α → m β) {-^ function that finalizes a partial solution with the given board size and symmetry -} →
     α {-^ initial partial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
-nqueensGeneric updateValue finalizeValueWithSymmetry initial_value 1 =
-    finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
+nqueensGeneric updater finalizeValueWithSymmetry initial_value 1 =
+    finalizeValueWithSymmetry 1 AllSymmetries . updateValueFor updater [(0,0)] $ initial_value
 nqueensGeneric _ _ _ 2 = mzero
 nqueensGeneric _ _ _ 3 = mzero
-nqueensGeneric updateValue finalizeValueWithSymmetry initial_value n =
+nqueensGeneric updater finalizeValueWithSymmetry initial_value n =
     nqueensStart
-        updateValue
+        updater
         break90
         break180
         search
         initial_value
         n
   where
-    break90 = nqueensBreak90 updateValue (finalizeValueWithSymmetry n AllRotations) break90 break180 search
-    break180 = nqueensBreak180 updateValue (finalizeValueWithSymmetry n Rotate180Only) break180 search
-    search value size state = nqueensSearch updateValue (finalizeValueWithSymmetry n NoSymmetries) value size state
+    break90 = nqueensBreak90 updater (finalizeValueWithSymmetry n AllRotations) break90 break180 search
+    break180 = nqueensBreak180 updater (finalizeValueWithSymmetry n Rotate180Only) break180 search
+    search value size state = nqueensSearch updater (finalizeValueWithSymmetry n NoSymmetries) value size state
 {-# INLINE nqueensGeneric #-}
 
 nqueensWithListAtBottomGeneric ::
-    (MonadPlus m
-    ,Typeable α
-    ,Typeable β
-    ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solution -} →
+    MonadPlus m ⇒
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (Word → NQueensSymmetry → α → m β) {-^ function that finalizes a partial solution with the given board size and symmetry -} →
     α {-^ initial partial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
-nqueensWithListAtBottomGeneric updateValue finalizeValueWithSymmetry initial_value 1 =
-    finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
+nqueensWithListAtBottomGeneric updater finalizeValueWithSymmetry initial_value 1 =
+    finalizeValueWithSymmetry 1 AllSymmetries . updateValueFor updater [(0,0)] $ initial_value
 nqueensWithListAtBottomGeneric _ _ _ 2 = mzero
 nqueensWithListAtBottomGeneric _ _ _ 3 = mzero
-nqueensWithListAtBottomGeneric updateValue finalizeValueWithSymmetry initial_value n =
+nqueensWithListAtBottomGeneric updater finalizeValueWithSymmetry initial_value n =
     nqueensStart
-        updateValue
+        updater
         break90
         break180
         search
         initial_value
         n
   where
-    break90 = nqueensBreak90 updateValue (finalizeValueWithSymmetry n AllRotations) break90 break180 search
-    break180 = nqueensBreak180 updateValue (finalizeValueWithSymmetry n Rotate180Only) break180 search
-    search value size state = nqueensWithListAtBottomSearch updateValue (finalizeValueWithSymmetry n NoSymmetries) value size state
+    break90 = nqueensBreak90 updater (finalizeValueWithSymmetry n AllRotations) break90 break180 search
+    break180 = nqueensBreak180 updater (finalizeValueWithSymmetry n Rotate180Only) break180 search
+    search value size state = nqueensWithListAtBottomSearch updater (finalizeValueWithSymmetry n NoSymmetries) value size state
 {-# INLINE nqueensWithListAtBottomGeneric #-}
 
 nqueensWithNothingAtBottomGeneric ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solution -} →
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (Word → NQueensSymmetry → α → m β) {-^ function that finalizes a partial solution with the given board size and symmetry -} →
     α {-^ initial partial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
-nqueensWithNothingAtBottomGeneric updateValue finalizeValueWithSymmetry initial_value 1 =
-    finalizeValueWithSymmetry 1 AllSymmetries . updateValue [(0,0)] $ initial_value
+nqueensWithNothingAtBottomGeneric updater finalizeValueWithSymmetry initial_value 1 =
+    finalizeValueWithSymmetry 1 AllSymmetries . updateValueFor updater [(0,0)] $ initial_value
 nqueensWithNothingAtBottomGeneric _ _ _ 2 = mzero
 nqueensWithNothingAtBottomGeneric _ _ _ 3 = mzero
-nqueensWithNothingAtBottomGeneric updateValue finalizeValueWithSymmetry initial_value n =
+nqueensWithNothingAtBottomGeneric updater finalizeValueWithSymmetry initial_value n =
     nqueensStart
-        updateValue
+        updater
         break90
         break180
         search
         initial_value
         n
   where
-    break90 = nqueensBreak90 updateValue (finalizeValueWithSymmetry n AllRotations) break90 break180 search
-    break180 = nqueensBreak180 updateValue (finalizeValueWithSymmetry n Rotate180Only) break180 search
-    search value size state = nqueensWithNothingAtBottomSearch updateValue (finalizeValueWithSymmetry n NoSymmetries) value size state
+    break90 = nqueensBreak90 updater (finalizeValueWithSymmetry n AllRotations) break90 break180 search
+    break180 = nqueensBreak180 updater (finalizeValueWithSymmetry n Rotate180Only) break180 search
+    search value size state = nqueensWithNothingAtBottomSearch updater (finalizeValueWithSymmetry n NoSymmetries) value size state
 {-# INLINE nqueensWithNothingAtBottomGeneric #-}
 
 --------------------------------------------------------------------------------
@@ -261,7 +269,7 @@ Each function takes callbacks for each symmetry rather than directly calling
 {-| Break the reflection symmetry. -}
 nqueensStart ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → NQueensBreak90State → m β) {-^ function to break the rotational symmetry for the next inner layer -} →
     (α → NQueensBreak180State → m β) {-^ function to break the 180-degree rotational symmetry for the next inner layer -} →
     (α → Int → NQueensSearchState → m β) {-^ function to apply a brute-force search -} →
@@ -269,14 +277,14 @@ nqueensStart ::
     Word {-^ board size -} →
     m β {-^ the final result -}
 nqueensStart
-  !updateValue_
+  !updater
   !break90
   !break180
   !search
   !value
   !n = (preserve90 `mplus` breakTo180) `mplus` (breakAtCorner `mplus` breakAtSides)
   where
-    updateValue = updateValue_ . convertSolutionToWord
+    convertAndUpdateValue = convertAndUpdateValueFor updater
     half_inner_size = fromIntegral $ (n `div` 2) - 1
     last = fromIntegral $ n-1
     inner_last = last-1
@@ -287,7 +295,7 @@ nqueensStart
         let reflected_position = last-position
             occupied_bits = bit position .|. bit reflected_position
         break90
-            (updateValue
+            (convertAndUpdateValue
                 [(position,last)
                 ,(last,reflected_position)
                 ,(reflected_position,0)
@@ -319,7 +327,7 @@ nqueensStart
             bottom_column_bit = bit bottom_column
             left_row_bit = bit left_row
         break180
-            (updateValue
+            (convertAndUpdateValue
                 [(left_row,last)
                 ,(last,bottom_column)
                 ,(right_row,0)
@@ -346,7 +354,7 @@ nqueensStart
             reflected_left_row_bit = bit (last-left_row)
             bottom_column_bit = bit bottom_column
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(last,bottom_column)
                 ,(left_row,last)
                 ,(0,0)
@@ -391,7 +399,7 @@ nqueensStart
             bottom_column_bit = bit bottom_column
             left_row_bit = bit left_row
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(left_row,last)
                 ,(last,bottom_column)
                 ,(right_row,0)
@@ -424,7 +432,7 @@ data NQueensBreak90State = NQueensBreak90State
 {-| Break the 90-degree rotational symmetry at the current layer. -}
 nqueensBreak90 ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     (α → NQueensBreak90State → m β) {-^ function to break the rotational symmetry for the next inner layer -} →
     (α → NQueensBreak180State → m β) {-^ function to break the 180-degree rotational symmetry for the next inner layer -} →
@@ -433,7 +441,7 @@ nqueensBreak90 ::
     NQueensBreak90State {-^ current state -} →
     m β {-^ the final result -}
 nqueensBreak90
-  !updateValue_
+  !updater
   !finalizeValue
   !break90
   !break180
@@ -456,10 +464,10 @@ nqueensBreak90
                     else breakAtSides
         else nextWindow
   | number_of_queens_remaining == 1 && occupied_rows_and_columns .&. 2 == 0 =
-     finalizeValue ([(window_start+1,window_start+1)] `updateValue` value)
+     finalizeValue ([(window_start+1,window_start+1)] `convertAndUpdateValue` value)
   | otherwise = mzero
   where
-    updateValue = updateValue_ . convertSolutionToWord
+    convertAndUpdateValue = convertAndUpdateValueFor updater
     window_end = window_start+window_size-1
     end = window_size-1
     inner_size = window_size-2
@@ -478,7 +486,7 @@ nqueensBreak90
             reflected_position = window_start+reflected_offset+1
             occupied_bits = (offset_bit .|. reflected_offset_bit) `unsafeShiftL` 1
         break90
-            (updateValue
+            (convertAndUpdateValue
                 [(position,window_end)
                 ,(window_end,reflected_position)
                 ,(reflected_position,window_start)
@@ -511,7 +519,7 @@ nqueensBreak90
             left_row_bit = bit left_row
             new_occupied_positive_diagonals = occupied_positive_diagonals .|. top_column_bit .|. right_row_bit .|. ((bottom_column_bit .|. left_row_bit) `rotateR` end)
         break180
-            (updateValue
+            (convertAndUpdateValue
                [(window_start+left_row,window_end)
                ,(window_end,window_start+bottom_column)
                ,(window_start+right_row,window_start)
@@ -537,12 +545,12 @@ nqueensBreak90
         PositionAndBit inner_bottom_column _ ←
             getOpenings inner_size (inner_blocked .|. inner_left_row_bit)
         let left_row = inner_left_row+1
-            bottom_column = inner_bottom_column+1                
+            bottom_column = inner_bottom_column+1
             left_row_bit = bit left_row
             reflected_left_row_bit = bit (end-left_row)
             bottom_column_bit = bit bottom_column
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(window_end,window_start+bottom_column)
                 ,(window_start+left_row,window_end)
                 ,(window_start,window_start)
@@ -596,7 +604,7 @@ nqueensBreak90
             bottom_column_bit = bit bottom_column
             left_row_bit = bit left_row
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(window_start+left_row,window_end)
                 ,(window_end,window_start+bottom_column)
                 ,(window_start+right_row,window_start)
@@ -641,7 +649,7 @@ data NQueensBreak180State = NQueensBreak180State
 {-| Break the 180-degree rotational symmetry at the current layer. -}
 nqueensBreak180 ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     (α → NQueensBreak180State → m β) {-^ function to break the 180-degree rotational symmetry for the next inner layer -} →
     (α → Int → NQueensSearchState → m β) {-^ function to apply a brute-force search -} →
@@ -649,7 +657,7 @@ nqueensBreak180 ::
     NQueensBreak180State {-^ current state -} →
     m β {-^ the final result -}
 nqueensBreak180
-  !updateValue_
+  !updater
   !finalizeValue
   !break180
   !search
@@ -681,10 +689,10 @@ nqueensBreak180
                 then preserve180Vertical `mplus` breakAtVerticalSides
                 else nextWindow
   | number_of_queens_remaining == 1 && (occupied_rows .|. occupied_columns) .&. 2 == 0 =
-     finalizeValue ([(window_start+1,window_start+1)] `updateValue` value)
+     finalizeValue ([(window_start+1,window_start+1)] `convertAndUpdateValue` value)
   | otherwise = mzero
   where
-    updateValue = updateValue_ . convertSolutionToWord
+    convertAndUpdateValue = convertAndUpdateValueFor updater
     end = window_size-1
     end_bit = bit end
     window_end = window_start+end
@@ -736,7 +744,7 @@ nqueensBreak180
             left_row_bit = bit left_row
             reflected_left_row_bit = bit (end-left_row)
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(window_start+left_row,window_end)
                 ,(window_end,window_start+bottom_column)
                 ,(window_start+right_row,window_start)
@@ -769,7 +777,7 @@ nqueensBreak180
             bottom_column = inner_end - (inner_top_column + inner_reflected_bottom_column_offset + 1) + 1
             bottom_column_bit = bit bottom_column
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(window_end,window_start+bottom_column)
                 ,(window_start,window_start+top_column)
                 ]
@@ -802,7 +810,7 @@ nqueensBreak180
             left_row_bit = bit left_row
             reflected_left_row_bit = bit (end-left_row)
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(window_start+left_row,window_end)
                 ,(window_start+right_row,window_start)
                 ]
@@ -825,12 +833,12 @@ nqueensBreak180
         PositionAndBit inner_top_column _ ←
             getOpenings inner_size (inner_horizontal_blocked .|. inner_right_row_bit)
         let right_row = inner_right_row+1
-            top_column = inner_top_column+1                
+            top_column = inner_top_column+1
             right_row_bit = bit right_row
             reflected_right_row_bit = bit (end-right_row)
             top_column_bit = bit top_column
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(window_start,window_start+top_column)
                 ,(window_start+right_row,window_start)
                 ,(window_end,window_end)
@@ -859,7 +867,7 @@ nqueensBreak180
             reflected_right_row_bit = bit (end-right_row)
             bottom_column_bit = bit bottom_column
         search
-            (updateValue
+            (convertAndUpdateValue
                 [(window_end,window_start+bottom_column)
                 ,(window_start+right_row,window_start)
                 ,(window_start,window_end)
@@ -895,7 +903,7 @@ nqueensBreak180
             left_row = inner_end - inner_right_row + 1
             left_row_bit = bit left_row
         break180
-            (updateValue
+            (convertAndUpdateValue
                 [(window_start+left_row,window_end)
                 ,(window_start+right_row,window_start)
                 ,(window_end,window_start+bottom_column)
@@ -925,7 +933,7 @@ nqueensBreak180
             bottom_column = inner_end - inner_top_column + 1
             bottom_column_bit = bit bottom_column
         break180
-            (updateValue
+            (convertAndUpdateValue
                 [(window_end,window_start+bottom_column)
                 ,(window_start,window_start+top_column)
                 ]
@@ -953,7 +961,7 @@ nqueensBreak180
             left_row = inner_end - inner_right_row + 1
             left_row_bit = bit left_row
         break180
-            (updateValue
+            (convertAndUpdateValue
                 [(window_start+left_row,window_end)
                 ,(window_start+right_row,window_start)
                 ]
@@ -1004,20 +1012,17 @@ data NQueensSearchState = NQueensSearchState
 
 {-| Using brute-force to find placements for all of the remaining queens. -}
 nqueensSearch ::
-    (MonadPlus m
-    ,Typeable α
-    ,Typeable β
-    ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    MonadPlus m ⇒
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ partial solution -} →
     Int {-^ board size -} →
     NQueensSearchState {-^ current state -} →
     m β {-^ the final result -}
-nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
+nqueensSearch updater finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
     go initial_value initial_search_state
   where
-    updateValue = updateValue_ . convertSolutionToWord
+    convertAndUpdateValue = convertAndUpdateValueFor updater
     go !value !s@(NQueensSearchState
                     number_of_queens_remaining
                     row
@@ -1028,7 +1033,7 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
                )
       | number_of_queens_remaining <= 10 =
          nqueensCSearch
-            updateValue_
+            updater
             finalizeValue
             value
             size
@@ -1040,7 +1045,7 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
          )
          >>=
          \(PositionAndBit offset offset_bit) → go
-            ([(row,window_start+offset)] `updateValue` value)
+            ([(row,window_start+offset)] `convertAndUpdateValue` value)
             (NQueensSearchState
                 (number_of_queens_remaining-1)
                 (row+1)
@@ -1065,20 +1070,17 @@ nqueensSearch updateValue_ finalizeValue initial_value size initial_search_state
     the List monad instead of C for the bottom of the tree.
  -}
 nqueensWithListAtBottomSearch :: ∀ m α β.
-    (MonadPlus m
-    ,Typeable α
-    ,Typeable β
-    ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    MonadPlus m ⇒
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ partial solution -} →
     Int {-^ board size -} →
     NQueensSearchState {-^ current state -} →
     m β {-^ the final result -}
-nqueensWithListAtBottomSearch updateValue_ finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
+nqueensWithListAtBottomSearch updater finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
     go initial_value initial_search_state
   where
-    updateValue = updateValue_ . convertSolutionToWord
+    convertAndUpdateValue = convertAndUpdateValueFor updater
     go !value !s@(NQueensSearchState
                     number_of_queens_remaining
                     row
@@ -1094,7 +1096,7 @@ nqueensWithListAtBottomSearch updateValue_ finalizeValue initial_value size init
          )
          >>=
          \(PositionAndBit offset offset_bit) → go
-            ([(row,window_start+offset)] `updateValue` value)
+            ([(row,window_start+offset)] `convertAndUpdateValue` value)
             (NQueensSearchState
                 (number_of_queens_remaining-1)
                 (row+1)
@@ -1129,7 +1131,7 @@ nqueensWithListAtBottomSearch updateValue_ finalizeValue initial_value size init
          )
          >>=
          \(PositionAndBit offset offset_bit) → go2
-            ([(row,window_start+offset)] `updateValue` value)
+            ([(row,window_start+offset)] `convertAndUpdateValue` value)
             (NQueensSearchState
                 (number_of_queens_remaining-1)
                 (row+1)
@@ -1155,16 +1157,16 @@ nqueensWithListAtBottomSearch updateValue_ finalizeValue initial_value size init
  -}
 nqueensWithNothingAtBottomSearch ::
     MonadPlus m ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ partial solution -} →
     Int {-^ board size -} →
     NQueensSearchState {-^ current state -} →
     m β {-^ the final result -}
-nqueensWithNothingAtBottomSearch updateValue_ finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
+nqueensWithNothingAtBottomSearch updater finalizeValue initial_value size initial_search_state@(NQueensSearchState _ window_start _ _ _ _) =
     go initial_value initial_search_state
   where
-    updateValue = updateValue_ . convertSolutionToWord
+    convertAndUpdateValue = convertAndUpdateValueFor updater
     go !value !(NQueensSearchState
                     number_of_queens_remaining
                     row
@@ -1180,7 +1182,7 @@ nqueensWithNothingAtBottomSearch updateValue_ finalizeValue initial_value size i
          )
          >>=
          \(PositionAndBit offset offset_bit) → go
-            ([(row,window_start+offset)] `updateValue` value)
+            ([(row,window_start+offset)] `convertAndUpdateValue` value)
             (NQueensSearchState
                 (number_of_queens_remaining-1)
                 (row+1)
@@ -1201,32 +1203,29 @@ nqueensWithNothingAtBottomSearch updateValue_ finalizeValue initial_value size i
             )
 {-# INLINE nqueensWithNothingAtBottomSearch #-}
 
-{-| Interface for directly using the brute-force search approach -} 
+{-| Interface for directly using the brute-force search approach -}
 nqueensBruteForceGeneric ::
-    (MonadPlus m
-    ,Typeable α
-    ,Typeable β
-    ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    MonadPlus m ⇒
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ initial solution -} →
     Word {-^ board size -} →
     m β {-^ the final result -}
-nqueensBruteForceGeneric updateValue finalizeValue initial_value 1 = finalizeValue . updateValue [(0,0)] $ initial_value
+nqueensBruteForceGeneric updater finalizeValue initial_value 1 = finalizeValue . updateValueFor updater [(0,0)] $ initial_value
 nqueensBruteForceGeneric _ _ _ 2 = mzero
 nqueensBruteForceGeneric _ _ _ 3 = mzero
-nqueensBruteForceGeneric updateValue finalizeValue initial_value n = nqueensSearch updateValue finalizeValue initial_value (fromIntegral n) $ NQueensSearchState n 0 0 0 0 0
+nqueensBruteForceGeneric updater finalizeValue initial_value n = nqueensSearch updater finalizeValue initial_value (fromIntegral n) $ NQueensSearchState n 0 0 0 0 0
 {-# INLINE nqueensBruteForceGeneric #-}
 
 {-| Generates the solutions to the n-queens problem with the given board size. -}
 nqueensBruteForceSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensBruteForceSolutions = nqueensBruteForceGeneric (++) return []
+nqueensBruteForceSolutions = nqueensBruteForceGeneric (StateUpdater (++)) return []
 {-# SPECIALIZE nqueensBruteForceSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensBruteForceSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Generates the solution count to the n-queens problem with the given board size. -}
 nqueensBruteForceCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensBruteForceCount = nqueensBruteForceGeneric (const id) (const . return $ WordSum 1) ()
+nqueensBruteForceCount = nqueensBruteForceGeneric CountUpdater (const . return $ WordSum 1) ()
 {-# SPECIALIZE nqueensBruteForceCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensBruteForceCount :: Word → Tree WordSum #-}
 
@@ -1267,11 +1266,8 @@ foreign import ccall "wrapper" mkFinalizeValue :: IO () → IO (FunPtr (IO ()))
  -}
 nqueensCSearch ::
     ∀ α m β.
-    (MonadPlus m
-    ,Typeable α
-    ,Typeable β
-    ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    MonadPlus m ⇒
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ partial solution -} →
     Int {-^ board size -} →
@@ -1279,9 +1275,9 @@ nqueensCSearch ::
     NQueensSearchState {-^ current state -} →
     m β {-^ the final result -}
 nqueensCSearch _ finalizeValue value _ _ NQueensSearchState{s_number_of_queens_remaining=0} = finalizeValue value
-nqueensCSearch updateValue finalizeValue value size window_start NQueensSearchState{..}
-  | typeOf value == typeOf () && typeOf (undefined :: β) == typeOf (undefined :: WordSum) = do
-        Just (WordSum multiplier) ← liftM cast (finalizeValue value)
+nqueensCSearch updater finalizeValue value size window_start NQueensSearchState{..} = case updater of
+    CountUpdater → do
+        multiplier ← getWordSum <$> finalizeValue value
         let number_found =
                 fromIntegral
                 .
@@ -1298,8 +1294,8 @@ nqueensCSearch updateValue finalizeValue value size window_start NQueensSearchSt
                     nullFunPtr
                     nullFunPtr
                     nullFunPtr
-        return . fromJust . cast $ WordSum (multiplier * number_found)
-  | otherwise = unsafePerformIO $ do
+        pure $ WordSum (multiplier * number_found)
+    StateUpdater updateValue → unsafePerformIO $ do
         value_stack_ref ← newIORef [value]
         finalized_values ← newIORef mzero
         push_value_funptr ← mkPushValue $ \row offset → modifyIORef value_stack_ref (\stack@(value:_) → updateValue [(fromIntegral row, fromIntegral window_start + fromIntegral offset)] value:stack)
@@ -1326,35 +1322,32 @@ nqueensCSearch updateValue finalizeValue value size window_start NQueensSearchSt
         freeHaskellFunPtr finalize_value_funptr
         readIORef finalized_values
 
-{-| Interface for directly using the C search approach -} 
+{-| Interface for directly using the C search approach -}
 nqueensCGeneric ::
-    (MonadPlus m
-    ,Typeable α
-    ,Typeable β
-    ) ⇒
-    ([(Word,Word)] → α → α) {-^ function that adds a list of coordinates to the partial solutions -} →
+    MonadPlus m ⇒
+    Updater α β {-^ how to add new partial coordinates to the current solution -} →
     (α → m β) {-^ function that finalizes the partial solution -} →
     α {-^ initial value -} →
     Word {-^ the board size -} →
     m β {-^ the final result -}
-nqueensCGeneric updateValue finalizeValue initial_value 1 =
-    finalizeValue . updateValue [(0,0)] $ initial_value
+nqueensCGeneric updater finalizeValue initial_value 1 =
+    finalizeValue . updateValueFor updater [(0,0)] $ initial_value
 nqueensCGeneric _ _ _ 2 = mzero
 nqueensCGeneric _ _ _ 3 = mzero
-nqueensCGeneric updateValue finalizeValue initial_value n =
-    nqueensCSearch updateValue finalizeValue initial_value (fromIntegral n) 0 $
+nqueensCGeneric updater finalizeValue initial_value n =
+    nqueensCSearch updater finalizeValue initial_value (fromIntegral n) 0 $
         NQueensSearchState n 0 0 0 0 0
 {-# INLINE nqueensCGeneric #-}
 
 {-| Generates the solutions to the n-queens problem with the given board size. -}
 nqueensCSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensCSolutions = nqueensCGeneric (++) return []
+nqueensCSolutions = nqueensCGeneric (StateUpdater (++)) return []
 {-# SPECIALIZE nqueensCSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensCSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Generates the solution count to the n-queens problem with the given board size. -}
 nqueensCCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensCCount = nqueensCGeneric (const id) (const . return $ WordSum 1) ()
+nqueensCCount = nqueensCGeneric CountUpdater (const . return $ WordSum 1) ()
 {-# SPECIALIZE nqueensCCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensCCount :: Word → Tree WordSum #-}
 

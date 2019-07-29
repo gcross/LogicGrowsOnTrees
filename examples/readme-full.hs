@@ -1,22 +1,26 @@
-import Control.Applicative
-import Control.Monad
+import Control.Monad (guard)
 import qualified Data.IntSet as IntSet
-import System.Console.CmdTheLine
+import Options.Applicative (argument, auto, fullDesc, help, metavar, progDesc)
+import Text.Printf (printf)
 
-import LogicGrowsOnTrees
+import LogicGrowsOnTrees (Tree, allFrom)
 import LogicGrowsOnTrees.Parallel.Main
-import LogicGrowsOnTrees.Parallel.Adapter.Threads
-import LogicGrowsOnTrees.Utils.Word_
-import LogicGrowsOnTrees.Utils.WordSum
+  ( RunOutcome(..)
+  , TerminationReason(..)
+  , mainForExploreTree
+  )
+import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
+import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 
 -- Code that counts all the solutions for a given input board size.
+nqueensCount :: Word -> Tree WordSum
 nqueensCount 0 = error "board size must be positive"
-nqueensCount n =
+nqueensCount board_size =
     -- Start with...
-    go n -- ...n queens left...
+    go board_size -- ...n queens left...
        0 -- ... at row zero...
        -- ... with all columns available ...
-       (IntSet.fromDistinctAscList [0..fromIntegral n-1])
+       (IntSet.fromDistinctAscList [0..fromIntegral board_size-1])
        IntSet.empty -- ... with no occupied negative diagonals...
        IntSet.empty -- ... with no occupied positive diagonals.
   where
@@ -48,6 +52,7 @@ nqueensCount n =
            (IntSet.insert negative_diagonal occupied_negative_diagonals)
            (IntSet.insert positive_diagonal occupied_positive_diagonals)
 
+main :: IO ()
 main =
     -- Explore the tree generated (implicitly) by nqueensCount in parallel.
     mainForExploreTree
@@ -55,29 +60,26 @@ main =
         driver
 
         -- Use a single positional required command-line argument to get the board size.
-        (getWord
-         <$>
-         (required
-          $
-          pos 0
-            Nothing
-            posInfo
-              { posName = "BOARD_SIZE"
-              , posDoc = "board size"
-              }
-         )
+        (argument auto $ mconcat
+            [ metavar "BOARD_SIZE"
+            , help "the size of the board"
+            ]
         )
 
         -- Information about the program (for the help screen).
-        (defTI { termDoc = "count the number of n-queens solutions for a given board size" })
+        (mconcat
+            [ fullDesc
+            , progDesc "count the number of n-queens solutions for a given board size"
+            ]
+        )
 
         -- Function that processes the result of the run.
-        (\n (RunOutcome _ termination_reason) -> do
+        (\n (RunOutcome _ termination_reason) -> putStrLn $
             case termination_reason of
-                Aborted _ -> error "search aborted"
-                Completed (WordSum count) -> putStrLn $
-                    "for a size " ++ show n ++ " board, found " ++ show count ++ " solutions"
-                Failure _ message -> error $ "error: " ++ message
+                Aborted _ -> "Search aborted."
+                Completed (WordSum count) ->
+                    printf "For a size %i board, found %i solutions." n count
+                Failure _ message -> "Error: " ++ message
         )
 
         -- The logic program that generates the tree to explore.

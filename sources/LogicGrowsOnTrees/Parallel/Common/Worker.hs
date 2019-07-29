@@ -1,8 +1,10 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -40,28 +42,24 @@ module LogicGrowsOnTrees.Parallel.Common.Worker
     , exploreTreeGeneric
     ) where
 
-import Prelude hiding (catch)
-
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&),(>>>))
 import Control.Concurrent (forkIO,ThreadId,yield)
-import Control.Concurrent.MVar (newEmptyMVar,putMVar,takeMVar)
+import Control.Concurrent.MVar (MVar,newEmptyMVar,putMVar,takeMVar)
+import Control.DeepSeq (NFData)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catch,fromException)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class
 
-import Data.Composition
-import Data.Derive.Serialize
-import Data.DeriveTH
 import Data.Functor ((<$>))
 import Data.IORef (atomicModifyIORef,IORef,newIORef,readIORef)
-import qualified Data.IVar as IVar
-import Data.IVar (IVar)
 import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>),Monoid(..))
 import Data.Sequence ((|>),(><))
 import Data.Serialize
 import qualified Data.Sequence as Seq
 import Data.Void (Void,absurd)
+
+import GHC.Generics (Generic)
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
@@ -89,8 +87,8 @@ import LogicGrowsOnTrees.Workload
 data ProgressUpdate progress = ProgressUpdate
     {   progressUpdateProgress :: progress
     ,   progressUpdateRemainingWorkload :: Workload
-    } deriving (Eq,Show)
-$( derive makeSerialize ''ProgressUpdate )
+    } deriving (Eq,Generic,Show)
+instance Serialize α ⇒ Serialize (ProgressUpdate α) where
 
 {-| A convenient type alias for the type of 'ProgressUpdate' associated with the
     given exploration mode.
@@ -106,8 +104,8 @@ type ProgressUpdateFor exploration_mode = ProgressUpdate (ProgressFor exploratio
 data StolenWorkload progress = StolenWorkload
     {   stolenWorkloadProgressUpdate :: ProgressUpdate progress
     ,   stolenWorkload :: Workload
-    } deriving (Eq,Show)
-$( derive makeSerialize ''StolenWorkload )
+    } deriving (Eq,Generic,Show)
+instance Serialize α ⇒ Serialize (StolenWorkload α) where
 
 {-| A convenient type alias for the type of 'StolenWorkload' associated with the
     the given exploration mode.
@@ -143,7 +141,7 @@ data WorkerEnvironment progress = WorkerEnvironment
     {   workerInitialPath :: Path {-^ the initial path of the worker's workload -}
     ,   workerThreadId :: ThreadId {-^ the thread id of the worker thread -}
     ,   workerPendingRequests :: WorkerRequestQueue progress {-^ the request queue for the worker -}
-    ,   workerTerminationFlag :: IVar () {-^ an IVar that is filled when the worker terminates -}
+    ,   workerTerminationFlag :: MVar () {-^ an MVar that is filled when the worker terminates -}
     }
 
 {-| A convenient type alias for the type of 'WorkerEnvironment' associated with
@@ -163,7 +161,7 @@ data WorkerTerminationReason worker_final_progress =
   | WorkerFailed String
     {-| worker was aborted by either an external request or the 'ThreadKilled' or 'UserInterrupt' exceptions -}
   | WorkerAborted
-  deriving (Eq,Show)
+  deriving (Eq,Generic,Show)
 
 {-| The 'Functor' instance lets you manipulate the final progress value when
     the termination reason is 'WorkerFinished'.
@@ -172,6 +170,8 @@ instance Functor WorkerTerminationReason where
     fmap f (WorkerFinished x) = WorkerFinished (f x)
     fmap _ (WorkerFailed x) = WorkerFailed x
     fmap _ WorkerAborted = WorkerAborted
+
+instance NFData progress ⇒ NFData (WorkerTerminationReason progress) where
 
 {-| A convenient type alias for the type of 'WorkerTerminationReason' associated
     with the given exploration mode.
@@ -275,19 +275,18 @@ forkWorkerThread
     --                to phase 2;  otherwise (the most common case), skip to
     --                phase 3.
         loop1 (!result) cursor exploration_state =
-            liftIO (readIORef pending_requests_ref) >>= \pending_requests →
-            case pending_requests of
+            liftIO (readIORef pending_requests_ref) >>= \case
                 [] → loop3 result cursor exploration_state
-                _ → debugM "Worker thread's request queue is non-empty."
-                    >> (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
-                    >>= loop2 result cursor exploration_state
+                _ → do debugM "Worker thread's request queue is non-empty."
+                       (liftM reverse . liftIO $ atomicModifyIORef pending_requests_ref (const [] &&& id))
+                           >>= loop2 result cursor exploration_state
 
     -- LOOP PHASE 2:  Process all pending requests.
         loop2 result cursor exploration_state@(ExplorationTState context checkpoint tree) requests =
             case requests of
                 [] → liftIO yield >> loop3 result cursor exploration_state
                 AbortRequested:_ → do
-                    debugM "Worker theread received abort request."
+                    debugM "Worker thread received abort request."
                     return WorkerAborted
                 ProgressUpdateRequested submitProgress:rest_requests → do
                     debugM "Worker thread received progress update request."
@@ -297,9 +296,11 @@ forkWorkerThread
                     debugM "Worker thread received workload steal."
                     case tryStealWorkload initial_path cursor context of
                         Nothing → do
+                            debugM "No workload is available to steal."
                             liftIO $ submitMaybeWorkload Nothing
                             loop2 result cursor exploration_state rest_requests
                         Just (new_cursor,new_context,workload) → do
+                            debugM "Returning workload to supervisor."
                             liftIO . submitMaybeWorkload . Just $
                                 StolenWorkload
                                     (computeProgressUpdate exploration_mode result initial_path new_cursor new_context checkpoint)
@@ -360,7 +361,7 @@ forkWorkerThread
                                     loop1 () cursor new_exploration_state
 
     ----------------------------- LAUNCH THE WORKER ----------------------------
-    finished_flag ← IVar.new
+    finished_flag ← newEmptyMVar
     thread_id ← forkIO $ do
         termination_reason ←
             debugM "Worker thread has been forked." >>
@@ -372,17 +373,18 @@ forkWorkerThread
                 initialExplorationState initial_checkpoint
             )
             `catch`
-            (\e → case fromException e of
-                Just ThreadKilled → return WorkerAborted
-                Just UserInterrupt → return WorkerAborted
-                _ → return $ WorkerFailed (show e)
+            (fromException >>> \case
+                Just ThreadKilled → WorkerAborted
+                Just UserInterrupt → WorkerAborted
+                e → WorkerFailed (show e)
+             >>> pure
             )
         debugM $ "Worker thread has terminated with reason " ++
             case termination_reason of
                 WorkerFinished _ → "finished."
                 WorkerFailed message → "failed: " ++ show message
                 WorkerAborted → "aborted."
-        IVar.write finished_flag ()
+        putMVar finished_flag ()
         finishedCallback termination_reason
     return $
         WorkerEnvironment
@@ -459,7 +461,6 @@ exploreTreeGeneric exploration_mode purity tree = do
                 if f (progressResult progress)
                     then Right progress
                     else Left (progressResult progress)
-            _ → error "should never reach here due to incompatible types"
 {-# INLINE exploreTreeGeneric #-}
 
 --------------------------------------------------------------------------------
@@ -503,7 +504,7 @@ computeProgressUpdate exploration_mode result initial_path cursor context checkp
 getTreeFunctionsForPurity :: Purity m n → TreeFunctionsForPurity m n α
 getTreeFunctionsForPurity Pure = TreeFunctionsForPurity{..}
   where
-    walk = return .* sendTreeDownPath
+    walk path tree = pure $ sendTreeDownPath path tree
     step = return . stepThroughTreeStartingFromCheckpoint
     run = id
 getTreeFunctionsForPurity (ImpureAtopIO run) = TreeFunctionsForPurity{..}

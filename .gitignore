@@ -1,10 +1,4 @@
-*#
-dist/*
-*.hi
-*.o
-*.swp
-*~
+.stack-work/
+.#*
 checkpoint
-log
-.DS_Store
-dist_old
+*.swp

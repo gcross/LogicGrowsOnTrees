@@ -1,13 +1,14 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -35,7 +36,6 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , RunStatistics(..)
     -- ** Constraints
     , SupervisorFullConstraint
-    , SupervisorMonadConstraint
     , SupervisorWorkerIdConstraint
     -- ** Supervisor types
     , SupervisorCallbacks(..)
@@ -75,21 +75,27 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor
     , runSupervisor
     , runSupervisorStartingFrom
     -- ** Testing the supervisor
-    , runUnrestrictedSupervisor
-    , runUnrestrictedSupervisorStartingFrom
+    , runTestSupervisor
+    , runTestSupervisorStartingFrom
     ) where
 
+import Prelude hiding (fail)
 
 import Control.Applicative (Applicative)
+import Control.Exception (AsyncException)
 import Control.Lens.Setter ((.~),(+=))
 import Control.Monad (forever)
+import Control.Monad.Catch (MonadCatch(catch),MonadMask,MonadThrow)
+import Control.Monad.Fail (MonadFail(fail))
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Reader (mapReaderT)
+import Control.Monad.Trans.State.Strict (mapStateT)
+import Control.Monad.Trans.Except (mapExceptT)
 
 import Data.Time.Clock (diffUTCTime,getCurrentTime)
-import Data.Composition ((.*),(.**))
 
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
@@ -102,21 +108,17 @@ import LogicGrowsOnTrees.Path (WalkError(..))
 import qualified LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation as Implementation
 import LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
     ( AbortMonad()
-    , ContextMonad()
     , FunctionOfTimeStatistics(..)
     , IndependentMeasurementsStatistics(..)
     , RunStatistics(..)
     , SupervisorCallbacks(..)
     , SupervisorFullConstraint
-    , SupervisorMonadConstraint
     , SupervisorOutcome(..)
     , SupervisorOutcomeFor
     , SupervisorTerminationReason(..)
     , SupervisorTerminationReasonFor
     , SupervisorWorkerIdConstraint
     , current_time
-    , liftContextToAbort
-    , liftUserToAbort
     , number_of_calls
     , time_spent_in_supervisor_monad
     )
@@ -141,18 +143,31 @@ deriveLoggers "Logger" [DEBUG]
 newtype SupervisorMonad exploration_mode worker_id m α =
     SupervisorMonad {
         unwrapSupervisorMonad :: AbortMonad exploration_mode worker_id m α
-    } deriving (Applicative,Functor,Monad,MonadIO)
+    } deriving (Applicative,Functor,Monad,MonadCatch,MonadIO,MonadMask,MonadThrow)
+
+instance MonadFail m ⇒ MonadFail (SupervisorMonad exploration_mode worker_id m) where
+    fail = lift . fail
 
 instance MonadTrans (SupervisorMonad exploration_mode worker_id) where
-    lift = SupervisorMonad . liftUserToAbort
+    lift = SupervisorMonad . lift . lift . lift
 
 instance MonadReader e m ⇒ MonadReader e (SupervisorMonad exploration_mode worker_id m) where
     ask = lift ask
-    local f = SupervisorMonad . Implementation.localWithinAbort f . unwrapSupervisorMonad
+    local f =
+        SupervisorMonad
+        .
+        mapExceptT (
+            mapStateT (
+                mapReaderT (local f)
+            )
+        )
+        .
+        unwrapSupervisorMonad
 
 instance MonadState s m ⇒ MonadState s (SupervisorMonad exploration_mode worker_id m) where
     get = lift get
     put = lift . put
+
 
 {-| A 'SupervisorProgram' is a specification of an event loop to be run inside
     the 'SupervisorMonad';  it exists in order to help the supervisor get an
@@ -160,7 +175,7 @@ instance MonadState s m ⇒ MonadState s (SupervisorMonad exploration_mode worke
     for a message from a worker so that it can generate accurate statistics
     about how much of the time it was occupied at the end of the run.
  -}
-data SupervisorProgram exploration_mode worker_id m =
+data SupervisorProgram exploration_mode worker_id m where
     {-| A 'BlockingProgram' has an event loop that executes an action that
         pauses the thread until an event occurs and then reacts to that event.
         The first argument is the supervisor action that initializes the system,
@@ -168,7 +183,11 @@ data SupervisorProgram exploration_mode worker_id m =
         occurred, and the third argument is the supervisor action to run in
         response to the event.
      -}
-    ∀ α. BlockingProgram (SupervisorMonad exploration_mode worker_id m ()) (m α) (α → SupervisorMonad exploration_mode worker_id m ())
+    BlockingProgram :: ∀ exploration_mode worker_id m α.
+        SupervisorMonad exploration_mode worker_id m () →
+        m α →
+        (α → SupervisorMonad exploration_mode worker_id m ()) →
+        SupervisorProgram exploration_mode worker_id m
     {-| A 'PollingProgram' has an event loop that executes an action that
         checks whether an event has occurred and if so then reacts to that
         event. The first argument is the supervisor action that initializes the
@@ -176,38 +195,39 @@ data SupervisorProgram exploration_mode worker_id m =
         has occurred, and the third argument is the supervisor action to run in
         response to an event.
      -}
-  | ∀ α. PollingProgram (SupervisorMonad exploration_mode worker_id m ()) (m (Maybe α)) (α → SupervisorMonad exploration_mode worker_id m ())
-    {-| An 'UnrestrictedProgram' is an event loop that you implement manually;
+    PollingProgram :: ∀ exploration_mode worker_id m α.
+        SupervisorMonad exploration_mode worker_id m () →
+        m (Maybe α) →
+        (α → SupervisorMonad exploration_mode worker_id m ()) →
+        SupervisorProgram exploration_mode worker_id m
+    {-| An 'TestProgram' is an event loop that you implement manually;
         note that it must run forever until the logic in the 'SupervisorMonad'
-        decides to exit --- although you can always force it to abort by calling
-        'abortSupervisor'.  This mode exists for testing rather than to be used
-        by an adapter, but if you do use it then you take on responsibility for
-        calling 'beginSupervisorOccupied' and 'endSupervisorOccupied' when
-        respectively the supervisor has begun and ended processing events so
-        that the supervisor occupation statistics are correct.
+        This mode exists for testing rather than to be used by an adapter, but
+        if you do use it then you take on responsibility for calling
+        'beginSupervisorOccupied' and 'endSupervisorOccupied' when respectively
+        the supervisor has begun and ended processing events so that the
+        supervisor occupation statistics are correct.
      -}
-  | UnrestrictedProgram (∀ α. SupervisorMonad exploration_mode worker_id m α)
+    TestProgram :: ∀ exploration_mode worker_id m α.
+        SupervisorMonad exploration_mode worker_id m α →
+        SupervisorProgram exploration_mode worker_id m
 
 ------------------------ Wrapper convenience type-class ------------------------
 
-class WrappableIntoSupervisorMonad w where
-    wrapIntoSupervisorMonad :: MonadIO m ⇒ w exploration_mode worker_id m α → SupervisorMonad exploration_mode worker_id m α
-
-instance WrappableIntoSupervisorMonad AbortMonad where
-    wrapIntoSupervisorMonad action = do
-        time_at_entrance ← liftIO getCurrentTime
-        result ← SupervisorMonad . local (current_time .~ time_at_entrance) $ do
-            number_of_calls += 1
-            debugM "Entering SupervisorMonad"
-            result ← action
-            debugM "Exiting SupervisorMonad"
-            liftIO getCurrentTime >>= (time_spent_in_supervisor_monad +=) . (flip diffUTCTime time_at_entrance)
-            return result
+wrapAbortIntoSupervisorMonad ∷
+  MonadIO m ⇒
+  AbortMonad exploration_mode worker_id m α →
+  SupervisorMonad exploration_mode worker_id m α
+wrapAbortIntoSupervisorMonad action = do
+    time_at_entrance ← liftIO getCurrentTime
+    result ← SupervisorMonad . local (current_time .~ time_at_entrance) $ do
+        number_of_calls += 1
+        debugM "Entering SupervisorMonad"
+        result ← action
+        debugM "Exiting SupervisorMonad"
+        liftIO getCurrentTime >>= (time_spent_in_supervisor_monad +=) . (flip diffUTCTime time_at_entrance)
         return result
-
-instance WrappableIntoSupervisorMonad ContextMonad where
-    wrapIntoSupervisorMonad = wrapIntoSupervisorMonad . liftContextToAbort
-
+    return result
 --------------------------------------------------------------------------------
 ---------------------------------- Functions -----------------------------------
 --------------------------------------------------------------------------------
@@ -219,12 +239,12 @@ instance WrappableIntoSupervisorMonad ContextMonad where
     necessary.
  -}
 addWorker ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     SupervisorMonad exploration_mode worker_id m ()
-addWorker = wrapIntoSupervisorMonad . Implementation.addWorker
+addWorker = wrapAbortIntoSupervisorMonad . Implementation.addWorker
 
 {-| Request that a global progress update be performed;  the supervisor will
     send progress update requests to all workers, and when it has received a
@@ -232,21 +252,22 @@ addWorker = wrapIntoSupervisorMonad . Implementation.addWorker
     the 'SupervisorCallbacks'.
  -}
 performGlobalProgressUpdate ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     SupervisorMonad exploration_mode worker_id m ()
-performGlobalProgressUpdate = wrapIntoSupervisorMonad Implementation.performGlobalProgressUpdate
+performGlobalProgressUpdate = wrapAbortIntoSupervisorMonad Implementation.performGlobalProgressUpdate
 
 {-| Informs the supervisor that a progress update has been received by a worker. -}
 receiveProgressUpdate ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     ProgressUpdateFor exploration_mode →
     SupervisorMonad exploration_mode worker_id m ()
-receiveProgressUpdate = wrapIntoSupervisorMonad .* Implementation.receiveProgressUpdate
+receiveProgressUpdate worker_id update =
+    wrapAbortIntoSupervisorMonad $ Implementation.receiveProgressUpdate worker_id update
 
 {-| Informs the supervisor that a worker has responded to a workload steal
     request;  a 'Nothing' indicates that the worker did not have a workload that
@@ -254,13 +275,14 @@ receiveProgressUpdate = wrapIntoSupervisorMonad .* Implementation.receiveProgres
     the request was received).
  -}
 receiveStolenWorkload ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     Maybe (StolenWorkloadFor exploration_mode) →
     SupervisorMonad exploration_mode worker_id m ()
-receiveStolenWorkload = wrapIntoSupervisorMonad .* Implementation.receiveStolenWorkload
+receiveStolenWorkload worker_id maybe_workload =
+    wrapAbortIntoSupervisorMonad $ Implementation.receiveStolenWorkload worker_id maybe_workload
 
 {-| Informs the supervisor that a worker has failed;  the system will be
     terminated and the given message returned as the failure message.
@@ -268,7 +290,7 @@ receiveStolenWorkload = wrapIntoSupervisorMonad .* Implementation.receiveStolenW
 receiveWorkerFailure :: SupervisorFullConstraint worker_id m ⇒ worker_id → String → SupervisorMonad exploration_mode worker_id m α
 receiveWorkerFailure worker_id message = do
     current_progress ← getCurrentProgress
-    wrapIntoSupervisorMonad
+    wrapAbortIntoSupervisorMonad
         .
         Implementation.abortSupervisorWithReason
         .
@@ -283,7 +305,7 @@ receiveWorkerFailure worker_id message = do
     returned the given final progress.
  -}
 receiveWorkerFinished ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
@@ -296,7 +318,7 @@ receiveWorkerFinished = receiveWorkerFinishedWithRemovalFlag False
     final progress has been processed.
  -}
 receiveWorkerFinishedAndRemoved ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
@@ -309,14 +331,16 @@ receiveWorkerFinishedAndRemoved = receiveWorkerFinishedWithRemovalFlag True
     worker will be removed.
  -}
 receiveWorkerFinishedWithRemovalFlag ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     Bool →
     worker_id →
     WorkerFinishedProgressFor exploration_mode →
     SupervisorMonad exploration_mode worker_id m ()
-receiveWorkerFinishedWithRemovalFlag = wrapIntoSupervisorMonad .** Implementation.receiveWorkerFinishedWithRemovalFlag
+receiveWorkerFinishedWithRemovalFlag remove_worker worker_id progress =
+    wrapAbortIntoSupervisorMonad $
+        Implementation.receiveWorkerFinishedWithRemovalFlag remove_worker worker_id progress
 
 {-| Informs the supervisor that a worker (which might have been active and
     possibly even waited on for a progress update and/or stolen workload) has
@@ -325,45 +349,45 @@ receiveWorkerFinishedWithRemovalFlag = wrapIntoSupervisorMonad .** Implementatio
     workloads.
  -}
 removeWorker ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     SupervisorMonad exploration_mode worker_id m ()
-removeWorker = wrapIntoSupervisorMonad . Implementation.removeWorker
+removeWorker = wrapAbortIntoSupervisorMonad . Implementation.removeWorker
 
 {-| Like 'removeWorker', but only acts if the worker is present. -}
 removeWorkerIfPresent ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     worker_id →
     SupervisorMonad exploration_mode worker_id m ()
-removeWorkerIfPresent = wrapIntoSupervisorMonad . Implementation.removeWorkerIfPresent
+removeWorkerIfPresent = wrapAbortIntoSupervisorMonad . Implementation.removeWorkerIfPresent
 
 ---------------------------- Supervisor interaction ----------------------------
 
 {-| Aborts the supervisor. -}
 abortSupervisor :: SupervisorFullConstraint worker_id m ⇒ SupervisorMonad exploration_mode worker_id m α
-abortSupervisor = wrapIntoSupervisorMonad Implementation.abortSupervisor
+abortSupervisor = wrapAbortIntoSupervisorMonad Implementation.abortSupervisor
 
 {-| Submits a function to be called whenever the number of workers changes; the
     given function will be also called immediately with the current number of
     workers.
  -}
-addWorkerCountListener :: SupervisorMonadConstraint m ⇒ (Int → IO ()) → SupervisorMonad exploration_mode worker_id m ()
-addWorkerCountListener = wrapIntoSupervisorMonad . Implementation.addWorkerCountListener
+addWorkerCountListener :: MonadIO m ⇒ (Int → IO ()) → SupervisorMonad exploration_mode worker_id m ()
+addWorkerCountListener = wrapAbortIntoSupervisorMonad . Implementation.addWorkerCountListener
 
 {-| Signals that the supervisor has begun processing an event. -}
-beginSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
+beginSupervisorOccupied :: MonadIO m ⇒ SupervisorMonad exploration_mode worker_id m ()
 beginSupervisorOccupied = changeSupervisorOccupiedStatus True
 
 {-| Changes the occupied status of the supervisor. -}
-changeSupervisorOccupiedStatus :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad exploration_mode worker_id m ()
-changeSupervisorOccupiedStatus = wrapIntoSupervisorMonad . Implementation.changeSupervisorOccupiedStatus
+changeSupervisorOccupiedStatus :: MonadIO m ⇒ Bool → SupervisorMonad exploration_mode worker_id m ()
+changeSupervisorOccupiedStatus = wrapAbortIntoSupervisorMonad . Implementation.changeSupervisorOccupiedStatus
 
 {-| Signals that the supervisor has finished processing an event. -}
-endSupervisorOccupied :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
+endSupervisorOccupied :: MonadIO m ⇒ SupervisorMonad exploration_mode worker_id m ()
 endSupervisorOccupied = changeSupervisorOccupiedStatus False
 
 {-| Sets the workload buffer size, which is the minimum number of workloads that
@@ -376,16 +400,16 @@ endSupervisorOccupied = changeSupervisorOccupiedStatus False
     proportional to the time needed to steal a workload divided by the time
     between workload requests may help.
  -}
-setWorkloadBufferSize :: SupervisorMonadConstraint m ⇒ Int → SupervisorMonad exploration_mode worker_id m ()
-setWorkloadBufferSize = wrapIntoSupervisorMonad . Implementation.setWorkloadBufferSize
+setWorkloadBufferSize :: MonadIO m ⇒ Int → SupervisorMonad exploration_mode worker_id m ()
+setWorkloadBufferSize = wrapAbortIntoSupervisorMonad . Implementation.setWorkloadBufferSize
 
 ---------------------------------- Inquiries -----------------------------------
 
 {-| Gets the current progress of the system. -}
 getCurrentProgress ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     ) ⇒ SupervisorMonad exploration_mode worker_id m (ProgressFor exploration_mode)
-getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
+getCurrentProgress = wrapAbortIntoSupervisorMonad Implementation.getCurrentProgress
 
 {-| Gets the current statistics of the system. (Unlike the other \"get\"
     operations, there is a small but non-zero cost to do this as the statistics
@@ -394,11 +418,11 @@ getCurrentProgress = wrapIntoSupervisorMonad Implementation.getCurrentProgress
 getCurrentStatistics ::
     SupervisorFullConstraint worker_id m ⇒
     SupervisorMonad exploration_mode worker_id m RunStatistics
-getCurrentStatistics = wrapIntoSupervisorMonad Implementation.getCurrentStatistics
+getCurrentStatistics = wrapAbortIntoSupervisorMonad Implementation.getCurrentStatistics
 
 {-| Gets the number of workers that are currently present in the system. -}
-getNumberOfWorkers :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m Int
-getNumberOfWorkers = wrapIntoSupervisorMonad Implementation.getNumberOfWorkers
+getNumberOfWorkers :: MonadIO m ⇒ SupervisorMonad exploration_mode worker_id m Int
+getNumberOfWorkers = wrapAbortIntoSupervisorMonad Implementation.getNumberOfWorkers
 
 {-| If there exists any workers waiting for a workload, it returns the id of one
     of them wrapped in 'Just'; it not, it returns 'Nothing'. (This is useful,
@@ -406,28 +430,28 @@ getNumberOfWorkers = wrapIntoSupervisorMonad Implementation.getNumberOfWorkers
     start by removing ones that are currently idle.)
  -}
 tryGetWaitingWorker ::
-    ( SupervisorMonadConstraint m
+    ( MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     SupervisorMonad exploration_mode worker_id m (Maybe worker_id)
-tryGetWaitingWorker = wrapIntoSupervisorMonad Implementation.tryGetWaitingWorker
+tryGetWaitingWorker = wrapAbortIntoSupervisorMonad Implementation.tryGetWaitingWorker
 
 ---------------------------------- Debugging -----------------------------------
 
 {-| Turns off debug mode;  for more details see 'setSupervisorDebugMode'. -}
-disableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
+disableSupervisorDebugMode :: MonadIO m ⇒ SupervisorMonad exploration_mode worker_id m ()
 disableSupervisorDebugMode = setSupervisorDebugMode False
 
 {-| Turns on debug mode;  for more details see 'setSupervisorDebugMode'. -}
-enableSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ SupervisorMonad exploration_mode worker_id m ()
+enableSupervisorDebugMode :: MonadIO m ⇒ SupervisorMonad exploration_mode worker_id m ()
 enableSupervisorDebugMode = setSupervisorDebugMode True
 
 {-| Sets whether the supervisor is in debug mode;  when it is in this mode it
     performs continuous self-consistency checks.  This mode is intended for
     assisting in debugging new adapters.
  -}
-setSupervisorDebugMode :: SupervisorMonadConstraint m ⇒ Bool → SupervisorMonad exploration_mode worker_id m ()
-setSupervisorDebugMode = wrapIntoSupervisorMonad . Implementation.setSupervisorDebugMode
+setSupervisorDebugMode :: MonadIO m ⇒ Bool → SupervisorMonad exploration_mode worker_id m ()
+setSupervisorDebugMode = wrapAbortIntoSupervisorMonad . Implementation.setSupervisorDebugMode
 
 --------------------------- Launching the supervisor ---------------------------
 
@@ -435,7 +459,8 @@ setSupervisorDebugMode = wrapIntoSupervisorMonad . Implementation.setSupervisorD
     and program.
  -}
 runSupervisor ::
-    ( SupervisorMonadConstraint m
+    ( MonadCatch m
+    , MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
@@ -446,7 +471,8 @@ runSupervisor exploration_mode = runSupervisorStartingFrom exploration_mode (ini
 
 {-| Like 'runSupervisor' but starting from the given progress. -}
 runSupervisorStartingFrom ::
-    ( SupervisorMonadConstraint m
+    ( MonadCatch m
+    , MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
@@ -463,7 +489,10 @@ runSupervisorStartingFrom exploration_mode starting_progress callbacks program =
 
 {-| Converts a supervisor program into an infinite loop in the 'SupervisorMonad'. -}
 runSupervisorProgram ::
-    SupervisorMonadConstraint m ⇒
+    ( MonadCatch m
+    , MonadIO m
+    , SupervisorWorkerIdConstraint worker_id
+    ) ⇒
     SupervisorProgram exploration_mode worker_id m →
     SupervisorMonad exploration_mode worker_id m α
 runSupervisorProgram program =
@@ -485,7 +514,9 @@ runSupervisorProgram program =
                     beginSupervisorOccupied
                     processRequest request
          )
-        UnrestrictedProgram run → run
+        TestProgram run → run >> abortSupervisor
+    `catch`
+    (\(_ :: AsyncException) → abortSupervisor)
 
 ---------------------------- Testing the supervisor ----------------------------
 
@@ -499,30 +530,34 @@ should not be used
     NOTE:  You should not normally use this function, as it exists primarily for
            testing purposes;  see 'SupervisorProgram' for details.
  -}
-runUnrestrictedSupervisor ::
-    ( SupervisorMonadConstraint m
+runTestSupervisor ::
+    ( MonadCatch m
+    , MonadFail m
+    , MonadIO m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
     SupervisorCallbacks exploration_mode worker_id m →
-    (∀ α. SupervisorMonad exploration_mode worker_id m α) →
+    SupervisorMonad exploration_mode worker_id m α →
     m (SupervisorOutcomeFor exploration_mode worker_id)
-runUnrestrictedSupervisor exploration_mode callbacks =
+runTestSupervisor exploration_mode callbacks =
     runSupervisorStartingFrom exploration_mode (initialProgress exploration_mode) callbacks
     .
-    UnrestrictedProgram
+    TestProgram
 
-{-| Like 'runUnrestrictedSupervisor' but starting from the given progress. -}
-runUnrestrictedSupervisorStartingFrom ::
-    ( SupervisorMonadConstraint m
+{-| Like 'runTestSupervisor' but starting from the given progress. -}
+runTestSupervisorStartingFrom ::
+    ( MonadCatch m
+    , MonadIO m
+    , MonadFail m
     , SupervisorWorkerIdConstraint worker_id
     ) ⇒
     ExplorationMode exploration_mode →
     ProgressFor exploration_mode →
     SupervisorCallbacks exploration_mode worker_id m →
-    (∀ α. SupervisorMonad exploration_mode worker_id m α) →
+    SupervisorMonad exploration_mode worker_id m α →
     m (SupervisorOutcomeFor exploration_mode worker_id)
-runUnrestrictedSupervisorStartingFrom exploration_mode starting_progress callbacks =
+runTestSupervisorStartingFrom exploration_mode starting_progress callbacks =
     runSupervisorStartingFrom exploration_mode starting_progress callbacks
     .
-    UnrestrictedProgram
+    TestProgram

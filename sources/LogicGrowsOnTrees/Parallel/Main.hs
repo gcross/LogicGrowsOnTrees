@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -6,6 +7,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -93,29 +95,24 @@ module LogicGrowsOnTrees.Parallel.Main
     , simpleMainForExploreTreeImpureUntilFoundUsingPush
     -- * Utility functions
     , extractRunOutcomeFromSupervisorOutcome
-    , mainMan
-    , mainParser
     ) where
 
-import Prelude hiding (catch,readFile,writeFile)
+import Prelude hiding (readFile,writeFile)
 
-import Control.Applicative ((<$>),(<*>),pure)
+import Control.Applicative ((<$>),(<*>),(<|>),many,pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (threadDelay)
-import Control.Exception (AsyncException,SomeException,finally,fromException,handleJust,onException)
-import Control.Monad (forM_,forever,join,liftM2,mplus,when,unless,void)
-import Control.Monad.CatchIO (catch)
+import Control.DeepSeq (NFData)
+import Control.Exception (AsyncException,SomeException,finally,fromException,handleJust,onException,try)
+import Control.Monad (forM_,forever,when,unless,void)
 import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.Tools (ifM)
-import qualified Control.Monad.Trans.State.Strict as State
+import Control.Monad.State (get,put)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State.Strict (evalStateT)
 
+import Data.Bool (bool)
 import Data.ByteString.Lazy (readFile,writeFile)
-import Data.Char (toLower)
-import Data.Composition ((.*),(.**))
-import Data.Derive.Serialize
-import Data.DeriveTH
+import Data.Char (toUpper)
 import Data.Function (on)
 import Data.Functor.Identity (Identity)
 import Data.IORef (IORef,newIORef,readIORef,writeIORef)
@@ -125,12 +122,29 @@ import Data.Maybe (isJust)
 import Data.Monoid (Monoid(..))
 import Data.Ord (comparing)
 import Data.Prefix.Units (FormatMode(FormatSiAll),formatValue,unitName)
-import Data.Serialize
+import Data.Serialize (Serialize,decodeLazy,encodeLazy)
 import Data.Time.Clock (NominalDiffTime)
 
-import System.Console.CmdTheLine
+import GHC.Generics (Generic)
+
+import Options.Applicative
+    ( InfoMod
+    , Parser
+    , ReadM
+    , auto
+    , eitherReader
+    , help
+    , long
+    , metavar
+    , option
+    , short
+    , showDefault
+    , strOption
+    , switch
+    , value
+    )
+
 import System.Directory (doesFileExist,removeFile,renameFile)
-import System.Environment (getProgName)
 import System.IO (hFlush,hPutStrLn,stderr,stdout)
 import System.IO.Error (isDoesNotExistError)
 import qualified System.Log.Logger as Logger
@@ -140,7 +154,6 @@ import System.Log.Handler.Simple (streamHandler)
 import System.Log.Logger (Priority(..),logM,rootLoggerName,setHandlers,setLevel,updateGlobalLogger)
 import System.Log.Logger.TH
 
-import Text.PrettyPrint (text)
 import Text.Printf (printf)
 
 import LogicGrowsOnTrees (Tree,TreeIO,TreeT)
@@ -191,35 +204,29 @@ data CheckpointConfiguration = CheckpointConfiguration
 data LoggingConfiguration = LoggingConfiguration
     {   log_level :: Priority
     ,   maybe_log_format :: Maybe String
-    } deriving (Eq,Show)
-instance Serialize Priority where
-    put = put . show
-    get = read <$> get
-$( derive makeSerialize ''LoggingConfiguration )
+    } deriving (Eq,Generic,Show)
+deriving instance Generic Priority
+instance Serialize Priority
+instance Serialize LoggingConfiguration where
 
 data StatisticsConfiguration = StatisticsConfiguration
-    {   end_stats_configuration :: [[Statistic]]
+    {   end_stats_configuration :: [Statistic]
     ,   log_end_stats_configuration :: Bool
-    ,   log_stats_configuration :: [[Statistic]]
+    ,   log_stats_configuration :: [Statistic]
     ,   log_stats_level_configuration :: Priority
     ,   log_stats_interval_configuration :: Float
     }
 
 data SupervisorConfiguration = SupervisorConfiguration
     {   checkpoint_configuration :: CheckpointConfiguration
-    ,   maybe_workload_buffer_size_configuration :: Maybe Int
+    ,   workload_buffer_size_configuration :: Int
     ,   statistics_configuration :: StatisticsConfiguration
     ,   show_cpu_time :: Bool
+    ,   logging_configuration :: LoggingConfiguration
     }
 
-data SharedConfiguration tree_configuration = SharedConfiguration
-    {   logging_configuration :: LoggingConfiguration
-    ,   tree_configuration :: tree_configuration
-    } deriving (Eq,Show)
-$( derive makeSerialize ''SharedConfiguration )
-
-data ProgressAndCPUTime progress = ProgressAndCPUTime progress Rational
-$( derive makeSerialize ''ProgressAndCPUTime )
+data ProgressAndCPUTime progress = ProgressAndCPUTime progress Rational deriving (Generic)
+instance Serialize progress ⇒ Serialize (ProgressAndCPUTime progress) where
 
 --------------------------------- Driver types ---------------------------------
 
@@ -240,7 +247,7 @@ $( derive makeSerialize ''ProgressAndCPUTime )
  -}
 data Driver
     result_monad
-    shared_configuration
+    tree_configuration
     supervisor_configuration
     m n
     exploration_mode
@@ -253,7 +260,7 @@ data Driver
         , MonadIO result_monad
         ) ⇒
         DriverParameters
-            shared_configuration
+            tree_configuration
             supervisor_configuration
             m n
             exploration_mode
@@ -265,35 +272,35 @@ data Driver
     driver in the main functions.
  -}
 data DriverParameters
-    shared_configuration
+    tree_configuration
     supervisor_configuration
     m n
     exploration_mode
     controller_monad =
     DriverParameters
     {   {-| configuration information shared between the supervisor and the worker -}
-        shared_configuration_term :: Term shared_configuration
+        tree_configuration_parser :: Parser tree_configuration
         {-| configuration information specific to the supervisor -}
-    ,   supervisor_configuration_term :: Term supervisor_configuration
+    ,   supervisor_configuration_parser :: Parser supervisor_configuration
         {-| program information;  should at a minimum put a brief description of the program in the 'termDoc' field -}
-    ,   program_info :: TermInfo
+    ,   program_info :: ∀ α. InfoMod α
         {-| action that initializes the global state of each process --- that
             is, once for each running instance of the executable, which
             depending on the adapter might be a supervisor, a worker, or both
          -}
-    ,   initializeGlobalState :: shared_configuration → IO ()
+    ,   initializeGlobalState :: supervisor_configuration → IO ()
         {-| in the supervisor, gets the starting progress for the exploration;  this is where a checkpoint is loaded, if one exists -}
-    ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
+    ,   getStartingProgress :: tree_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
         {-| in the supervisor, responds to the termination of the run -}
-    ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
+    ,   notifyTerminated :: tree_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
         {-| constructs the exploration mode given the shared configuration -}
-    ,   constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
+    ,   constructExplorationMode :: tree_configuration → ExplorationMode exploration_mode
         {-| constructs the tree given the shared configuration -}
-    ,   constructTree :: shared_configuration → TreeT m (ResultFor exploration_mode)
+    ,   constructTree :: tree_configuration → TreeT m (ResultFor exploration_mode)
         {-| the purity of the constructed tree -}
     ,   purity :: Purity m n
         {-| construct the controller, which runs in the supervisor and handles things like periodic checkpointing -}
-    ,   constructController :: shared_configuration → supervisor_configuration → controller_monad exploration_mode ()
+    ,   constructController :: supervisor_configuration → controller_monad exploration_mode ()
     }
 
 -------------------------------- Outcome types ---------------------------------
@@ -304,7 +311,8 @@ data RunOutcome progress final_result = RunOutcome
         runStatistics :: RunStatistics
         {-| the reason why the run terminated -}
     ,   runTerminationReason :: TerminationReason progress final_result
-    } deriving (Eq,Show)
+    } deriving (Eq,Generic,Show)
+instance (NFData progress, NFData final_result) ⇒ NFData (RunOutcome progress final_result) where
 
 {-| A convenient type alias for the type of 'RunOutcome' associated with the given exploration mode. -}
 type RunOutcomeFor exploration_mode = RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
@@ -317,36 +325,38 @@ data TerminationReason progress final_result =
   | Completed final_result
     {-| the run failed with the given progress for the given reason -}
   | Failure progress String
-  deriving (Eq,Show)
+  deriving (Eq,Generic,Show)
+instance (NFData progress, NFData final_result) ⇒ NFData (TerminationReason progress final_result) where
 
 {-| A convenient type alias for the type of 'TerminationReason' associated with the given exploration mode. -}
 type TerminationReasonFor exploration_mode = TerminationReason (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
 
 --------------------------------------------------------------------------------
----------------------------------- Instances -----------------------------------
+------------------------------------ Readers -----------------------------------
 --------------------------------------------------------------------------------
 
-instance ArgVal Priority where
-    converter = enum $
-        [DEBUG,INFO,NOTICE,WARNING,ERROR,CRITICAL,ALERT,EMERGENCY]
-        >>=
-        \level → let name = show level
-                 in return (name,level) `mplus` return (map toLower name,level)
+priority_reader :: ReadM Priority
+priority_reader = eitherReader $ \priority →
+    maybe
+        (Left $ "No priority named: " ++ priority)
+        Right
+        (find ((== map toUpper priority) . show) [minBound..maxBound])
 
-instance ArgVal [Statistic] where
-    converter = (parse,pretty)
-      where
-        parse = go [] . splitOn ","
-          where
-            go stats [] = Right . reverse . nub $ stats
-            go _ ("all":_) = Right statistics
-            go stats (name:rest) =
-                case find (\Statistic{..} → statisticLongName == name || statisticShortName == name) statistics of
-                    Just stat → go (stat:stats) rest
-                    Nothing → Left . text $ "unrecognized statistic '" ++ show name ++ "'"
+statistics_reader :: ReadM [Statistic]
+statistics_reader = eitherReader $ go [] . splitOn ","
+  where
+    go stats [] = Right . reverse . nub $ stats
+    go _ ("all":_) = Right statistics
+    go stats (name:rest) =
+        case find (\Statistic{..} → statisticLongName == name || statisticShortName == name) statistics of
+            Just stat → go (stat:stats) rest
+            Nothing → Left $ "unrecognized statistic '" ++ show name ++ "'"
+
+{-
         pretty stats
           | length stats == length statistics = text "all"
           | otherwise = text . intercalate "," . map statisticLongName $ stats
+-}
 
 --------------------------------------------------------------------------------
 -------------------------------- Main functions --------------------------------
@@ -380,7 +390,7 @@ care about what the name of the program is on the help screen then you might be
 interested in the simpler version of these functions in the following section
 (follow "LogicGrowsOnTrees.Parallel.Main#main-simple").
  -}
- 
+
 ---------------------------- Sum over all results ------------------------------
 
 {- $all #all#
@@ -393,13 +403,9 @@ in (the leaves of) the tree.
  -}
 mainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -416,9 +422,9 @@ mainForExploreTree = genericMain (const AllMode) Pure
  -}
 mainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
+    Driver result_monad tree_configuration SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -440,9 +446,9 @@ mainForExploreTreeIO = genericMain (const AllMode) io_purity
 mainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
+    Driver result_monad tree_configuration SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -455,7 +461,7 @@ mainForExploreTreeImpure ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeImpure = genericMain (const AllMode) . ImpureAtopIO
+mainForExploreTreeImpure run = genericMain (const AllMode) (ImpureAtopIO run)
 {-# INLINE mainForExploreTreeImpure #-}
 
 ---------------------------- Stop at first result ------------------------------
@@ -477,13 +483,9 @@ There are two ways in which a system running in this mode can terminate normally
 {-| Explore the given pure tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -498,13 +500,9 @@ mainForExploreTreeUntilFirst = genericMain (const FirstMode) Pure
 {-| Explore the given IO tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -520,13 +518,9 @@ mainForExploreTreeIOUntilFirst = genericMain (const FirstMode) io_purity
 mainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -535,7 +529,7 @@ mainForExploreTreeImpureUntilFirst ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeImpureUntilFirst = genericMain (const FirstMode) . ImpureAtopIO
+mainForExploreTreeImpureUntilFirst run = genericMain (const FirstMode) (ImpureAtopIO run)
 {-# INLINE mainForExploreTreeImpureUntilFirst #-}
 
 ------------------- Stop when sum of results meets condition -------------------
@@ -590,13 +584,9 @@ WARNING:  If you use this mode then you need to enable checkpointing when the
 mainForExploreTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -605,7 +595,8 @@ mainForExploreTreeUntilFoundUsingPull ::
          -} →
     (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) Pure
+mainForExploreTreeUntilFoundUsingPull constructCondition =
+    genericMain (FoundModeUsingPull . constructCondition) Pure
 {-# INLINE mainForExploreTreeUntilFoundUsingPull #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
@@ -614,13 +605,9 @@ mainForExploreTreeUntilFoundUsingPull constructCondition = genericMain (FoundMod
 mainForExploreTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -629,7 +616,8 @@ mainForExploreTreeIOUntilFoundUsingPull ::
          -} →
     (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeIOUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) io_purity
+mainForExploreTreeIOUntilFoundUsingPull constructCondition =
+    genericMain (FoundModeUsingPull . constructCondition) io_purity
 {-# INLINE mainForExploreTreeIOUntilFoundUsingPull #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
@@ -639,13 +627,9 @@ mainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -654,7 +638,8 @@ mainForExploreTreeImpureUntilFoundUsingPull ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeImpureUntilFoundUsingPull constructCondition = genericMain (FoundModeUsingPull . constructCondition) . ImpureAtopIO
+mainForExploreTreeImpureUntilFoundUsingPull constructCondition run =
+    genericMain (FoundModeUsingPull . constructCondition) (ImpureAtopIO run)
 {-# INLINE mainForExploreTreeImpureUntilFoundUsingPull #-}
 
 {- $push #push#
@@ -689,13 +674,9 @@ the position of only having a partial result upon success.)
 mainForExploreTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -704,7 +685,8 @@ mainForExploreTreeUntilFoundUsingPush ::
          -} →
     (tree_configuration → Tree result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) Pure
+mainForExploreTreeUntilFoundUsingPush constructCondition =
+    genericMain (FoundModeUsingPush . constructCondition) Pure
 {-# INLINE mainForExploreTreeUntilFoundUsingPush #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
@@ -713,13 +695,9 @@ mainForExploreTreeUntilFoundUsingPush constructCondition = genericMain (FoundMod
 mainForExploreTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -728,7 +706,8 @@ mainForExploreTreeIOUntilFoundUsingPush ::
          -} →
     (tree_configuration → TreeIO result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeIOUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) io_purity
+mainForExploreTreeIOUntilFoundUsingPush constructCondition =
+    genericMain (FoundModeUsingPush . constructCondition) io_purity
 {-# INLINE mainForExploreTreeIOUntilFoundUsingPush #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
@@ -738,13 +717,9 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
-        {-^ information about the program; should look something like the following:
-
-                > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
-         -} →
+    Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run and the
             tree configuration information; note that if the run was 'Completed'
@@ -753,7 +728,8 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-mainForExploreTreeImpureUntilFoundUsingPush constructCondition = genericMain (FoundModeUsingPush . constructCondition) . ImpureAtopIO
+mainForExploreTreeImpureUntilFoundUsingPush constructCondition run =
+    genericMain (FoundModeUsingPush . constructCondition) (ImpureAtopIO run)
 {-# INLINE mainForExploreTreeImpureUntilFoundUsingPush #-}
 
 --------------------------------------------------------------------------------
@@ -780,7 +756,8 @@ in (the leaves of) the tree.
  -}
 simpleMainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -788,7 +765,7 @@ simpleMainForExploreTree ::
          -} →
     Tree result {-^ the tree to explore -} →
     result_monad ()
-simpleMainForExploreTree = dispatchToMainFunction mainForExploreTree
+simpleMainForExploreTree = forwardSimpleToMainFunction mainForExploreTree
 {-# INLINE simpleMainForExploreTree #-}
 
 {-| Explore the given IO tree in parallel;
@@ -796,7 +773,8 @@ simpleMainForExploreTree = dispatchToMainFunction mainForExploreTree
  -}
 simpleMainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -804,7 +782,7 @@ simpleMainForExploreTreeIO ::
          -} →
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
-simpleMainForExploreTreeIO = dispatchToMainFunction mainForExploreTreeIO
+simpleMainForExploreTreeIO = forwardSimpleToMainFunction mainForExploreTreeIO
 {-# INLINE simpleMainForExploreTreeIO #-}
 
 {-| Explore the given impure tree in parallel; the
@@ -813,7 +791,8 @@ simpleMainForExploreTreeIO = dispatchToMainFunction mainForExploreTreeIO
 simpleMainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -821,7 +800,7 @@ simpleMainForExploreTreeImpure ::
          -} →
     TreeT m result {-^ the (impure) tree to explore -} →
     result_monad ()
-simpleMainForExploreTreeImpure = dispatchToMainFunction . mainForExploreTreeImpure
+simpleMainForExploreTreeImpure run = forwardSimpleToMainFunction $ mainForExploreTreeImpure run
 {-# INLINE simpleMainForExploreTreeImpure #-}
 
 ---------------------------- Stop at first result ------------------------------
@@ -833,7 +812,8 @@ For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#first"
 {-| Explore the given pure tree in parallel, stopping if a solution is found. -}
 simpleMainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -841,13 +821,14 @@ simpleMainForExploreTreeUntilFirst ::
          -} →
     Tree result {-^ the tree to explore -} →
     result_monad ()
-simpleMainForExploreTreeUntilFirst = dispatchToMainFunction mainForExploreTreeUntilFirst
+simpleMainForExploreTreeUntilFirst = forwardSimpleToMainFunction mainForExploreTreeUntilFirst
 {-# INLINE simpleMainForExploreTreeUntilFirst #-}
 
 {-| Explore the given tree in parallel in IO, stopping if a solution is found. -}
 simpleMainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -855,14 +836,15 @@ simpleMainForExploreTreeIOUntilFirst ::
          -} →
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
-simpleMainForExploreTreeIOUntilFirst = dispatchToMainFunction mainForExploreTreeIOUntilFirst
+simpleMainForExploreTreeIOUntilFirst = forwardSimpleToMainFunction mainForExploreTreeIOUntilFirst
 {-# INLINE simpleMainForExploreTreeIOUntilFirst #-}
 
 {-| Explore the given impure tree in parallel, stopping if a solution is found. -}
 simpleMainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -870,7 +852,8 @@ simpleMainForExploreTreeImpureUntilFirst ::
          -} →
     TreeT m result {-^ the impure tree to explore -} →
     result_monad ()
-simpleMainForExploreTreeImpureUntilFirst = dispatchToMainFunction . mainForExploreTreeImpureUntilFirst
+simpleMainForExploreTreeImpureUntilFirst run =
+  forwardSimpleToMainFunction $ mainForExploreTreeImpureUntilFirst run
 {-# INLINE simpleMainForExploreTreeImpureUntilFirst #-}
 
 ------------------- Stop when sum of results meets condition -------------------
@@ -889,7 +872,8 @@ For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#pull"
 simpleMainForExploreTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -897,7 +881,8 @@ simpleMainForExploreTreeUntilFoundUsingPull ::
          -} →
     Tree result {-^ the tree to explore -} →
     result_monad ()
-simpleMainForExploreTreeUntilFoundUsingPull = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPull . const
+
+simpleMainForExploreTreeUntilFoundUsingPull = forwardSimpleToMainFunction . mainForExploreTreeUntilFoundUsingPull . const
 {-# INLINE simpleMainForExploreTreeUntilFoundUsingPull #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
@@ -906,7 +891,8 @@ simpleMainForExploreTreeUntilFoundUsingPull = dispatchToMainFunction . mainForEx
 simpleMainForExploreTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -914,7 +900,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPull ::
          -} →
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
-simpleMainForExploreTreeIOUntilFoundUsingPull = dispatchToMainFunction . mainForExploreTreeIOUntilFoundUsingPull . const
+simpleMainForExploreTreeIOUntilFoundUsingPull = forwardSimpleToMainFunction . mainForExploreTreeIOUntilFoundUsingPull . const
 {-# INLINE simpleMainForExploreTreeIOUntilFoundUsingPull #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
@@ -924,7 +910,8 @@ simpleMainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (not that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -932,7 +919,12 @@ simpleMainForExploreTreeImpureUntilFoundUsingPull ::
          -} →
     TreeT m result {-^ the impure tree to explore -} →
     result_monad ()
-simpleMainForExploreTreeImpureUntilFoundUsingPull = (dispatchToMainFunction .* mainForExploreTreeImpureUntilFoundUsingPull) . const
+simpleMainForExploreTreeImpureUntilFoundUsingPull condition run driver notifyTerminated tree =
+    forwardSimpleToMainFunction
+        (mainForExploreTreeImpureUntilFoundUsingPull (const condition) run)
+        driver
+        notifyTerminated
+        tree
 {-# INLINE simpleMainForExploreTreeImpureUntilFoundUsingPull #-}
 
 {- $push-simple
@@ -945,16 +937,18 @@ For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#push"
 simpleMainForExploreTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
             deleted if this function finishes successfully
          -} →
-
     Tree result {-^ the tree to explore -} →
     result_monad ()
-simpleMainForExploreTreeUntilFoundUsingPush = dispatchToMainFunction . mainForExploreTreeUntilFoundUsingPush . const
+simpleMainForExploreTreeUntilFoundUsingPush condition =
+    forwardSimpleToMainFunction $ mainForExploreTreeUntilFoundUsingPush (const condition)
+
 {-# INLINE simpleMainForExploreTreeUntilFoundUsingPush #-}
 
 {-| Explore the given IO tree in parallel until the sum of results meets the
@@ -963,7 +957,8 @@ simpleMainForExploreTreeUntilFoundUsingPush = dispatchToMainFunction . mainForEx
 simpleMainForExploreTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -971,7 +966,7 @@ simpleMainForExploreTreeIOUntilFoundUsingPush ::
          -} →
     TreeIO result {-^ the tree to explore in IO -} →
     result_monad ()
-simpleMainForExploreTreeIOUntilFoundUsingPush = dispatchToMainFunction . mainForExploreTreeIOUntilFoundUsingPush . const
+simpleMainForExploreTreeIOUntilFoundUsingPush = forwardSimpleToMainFunction . mainForExploreTreeIOUntilFoundUsingPush . const
 {-# INLINE simpleMainForExploreTreeIOUntilFoundUsingPush #-}
 
 {-| Explore the given impure tree in parallel until the sum of results meets the
@@ -981,7 +976,8 @@ simpleMainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad () SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
             that if the run was 'Completed' then the checkpoint file will be
@@ -989,7 +985,9 @@ simpleMainForExploreTreeImpureUntilFoundUsingPush ::
          -} →
     TreeT m result {-^ the impure tree to explore -} →
     result_monad ()
-simpleMainForExploreTreeImpureUntilFoundUsingPush = (dispatchToMainFunction .* mainForExploreTreeImpureUntilFoundUsingPush) . const
+simpleMainForExploreTreeImpureUntilFoundUsingPush condition run =
+  forwardSimpleToMainFunction $
+      mainForExploreTreeImpureUntilFoundUsingPush (const condition) run
 {-# INLINE simpleMainForExploreTreeImpureUntilFoundUsingPush #-}
 
 --------------------------------------------------------------------------------
@@ -1013,13 +1011,13 @@ genericMain ::
     Purity m n {-^ the purity of the tree -} →
     Driver
         result_monad
-        (SharedConfiguration tree_configuration)
+        tree_configuration
         SupervisorConfiguration
         m n
         exploration_mode
         {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
-    Term tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
-    TermInfo
+    Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
+    (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
 
                 > defTI { termDoc = "count the number of n-queens solutions for a given board size" }
@@ -1032,93 +1030,91 @@ genericMain ::
          -} →
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
-genericMain constructExplorationMode_ purity (Driver run) tree_configuration_term program_info_ notifyTerminated_user constructTree_ = do
-    tracker_ref ← liftIO . newIORef $ error "tracker was not set"
-    let constructController = constructController_ tracker_ref
-        notifyTerminated = notifyTerminated_main tracker_ref
-        getStartingProgress = getStartingProgress_ tracker_ref
-    run DriverParameters{..}
-  where
-    constructExplorationMode = constructExplorationMode_ . tree_configuration
-    shared_configuration_term = makeSharedConfigurationTerm tree_configuration_term
-    supervisor_configuration_term =
-        SupervisorConfiguration
-            <$> checkpoint_configuration_term
-            <*> maybe_workload_buffer_size_configuration_term
-            <*> statistics_configuration_term
-            <*> show_cpu_time_term
-    program_info = program_info_ { man = mainMan }
-    initializeGlobalState SharedConfiguration{logging_configuration=LoggingConfiguration{..}} = do
-        case maybe_log_format of
-            Nothing → return ()
-            Just log_format → do
-                handler ← flip setFormatter (simpleLogFormatter log_format) <$> streamHandler stdout log_level
-                updateGlobalLogger rootLoggerName $ setHandlers [handler]
-        updateGlobalLogger rootLoggerName (setLevel log_level)
-    constructTree = constructTree_ . tree_configuration
-    getStartingProgress_
-        tracker_ref
-        shared_configuration
-        SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
-     = do
-        case maybe_checkpoint_path of
-            Nothing → do
-                infoM "Checkpointing is NOT enabled"
-                newCPUTimeTracker 0 >>= writeIORef tracker_ref
-                return initial_progress
-            Just checkpoint_path → do
-                infoM $ "Checkpointing enabled"
-                infoM $ "Checkpoint file is " ++ checkpoint_path
-                infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
-                ifM (doesFileExist checkpoint_path)
-                    (do infoM "Loading existing checkpoint file"
-                        ProgressAndCPUTime progress initial_cpu_time ← either error id . decodeLazy <$> readFile checkpoint_path
-                        newCPUTimeTracker (realToFrac initial_cpu_time) >>= writeIORef tracker_ref
-                        return progress
-                    )
-                    (newCPUTimeTracker 0 >>= writeIORef tracker_ref >> return initial_progress)
-      where
-        initial_progress = initialProgress . constructExplorationMode $ shared_configuration
-    notifyTerminated_main
-        tracker_ref
-        SharedConfiguration{..}
-        SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
-        run_outcome@RunOutcome{..}
-     = do
-        cpu_time ← readIORef tracker_ref >>= getCurrentCPUTime
-        case maybe_checkpoint_path of
-            Nothing → doEndOfRun cpu_time
-            Just checkpoint_path →
-                do doEndOfRun cpu_time
-                   infoM "Deleting any remaining checkpoint file"
-                   removeFileIfExists checkpoint_path
-                `finally`
-                do 
-                   case runTerminationReason of
-                    Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint cpu_time
-                    Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint cpu_time
-                    _ → return ()
-      where
-        StatisticsConfiguration{..} = statistics_configuration
-        doEndOfRun cpu_time = do
-            if log_end_stats_configuration
-                then writeStatisticsToLog
-                        log_stats_level_configuration
-                        pastTense
-                        runStatistics
-                        end_stats_configuration
-                else mapM_ (hPutStrLn stderr)
-                        .
-                        map snd
-                        .
-                        generateStatistics pastTense runStatistics
-                        $
-                        end_stats_configuration
-            when show_cpu_time . hPutStrLn stderr $
-                "Total CPU time used was " ++ showWithUnitPrefix cpu_time ++ "seconds."
-            hFlush stderr
-            notifyTerminated_user tree_configuration run_outcome
-    constructController_ = const . controllerLoop
+genericMain
+    constructExplorationMode
+    purity
+    (Driver run)
+    tree_configuration_parser
+    program_info
+    notifyTerminated_user
+    constructTree
+ =  (liftIO . newIORef $ error "tracker was not set") >>= \tracker_ref → run DriverParameters
+    { tree_configuration_parser =  tree_configuration_parser
+    , supervisor_configuration_parser =
+          SupervisorConfiguration
+              <$> checkpoint_configuration_parser
+              <*> workload_buffer_size_configuration_parser
+              <*> statistics_configuration_parser
+              <*> show_cpu_time_parser
+              <*> logging_configuration_parser
+    , program_info = program_info
+    , initializeGlobalState = \SupervisorConfiguration{logging_configuration=LoggingConfiguration{..}} → do
+          case maybe_log_format of
+              Nothing → return ()
+              Just log_format → do
+                  handler ← flip setFormatter (simpleLogFormatter log_format) <$> streamHandler stdout log_level
+                  updateGlobalLogger rootLoggerName $ setHandlers [handler]
+          updateGlobalLogger rootLoggerName (setLevel log_level)
+    , getStartingProgress = \
+          tree_configuration
+          SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
+        → let initial_progress = initialProgress . constructExplorationMode $ tree_configuration
+          in case maybe_checkpoint_path of
+              Nothing → do
+                  infoM "Checkpointing is NOT enabled"
+                  newCPUTimeTracker 0 >>= writeIORef tracker_ref
+                  return initial_progress
+              Just checkpoint_path → do
+                  infoM $ "Checkpointing enabled"
+                  infoM $ "Checkpoint file is " ++ checkpoint_path
+                  infoM $ "Checkpoint interval is " ++ show checkpoint_interval ++ " seconds"
+                  doesFileExist checkpoint_path >>= bool
+                      (newCPUTimeTracker 0 >>= writeIORef tracker_ref >> return initial_progress)
+                      (do infoM "Loading existing checkpoint file"
+                          ProgressAndCPUTime progress initial_cpu_time ← either error id . decodeLazy <$> readFile checkpoint_path
+                          newCPUTimeTracker (realToFrac initial_cpu_time) >>= writeIORef tracker_ref
+                          return progress
+                      )
+    , notifyTerminated = \
+          tree_configuration
+          SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
+          run_outcome@RunOutcome{..}
+        → let StatisticsConfiguration{..} = statistics_configuration
+              doEndOfRun cpu_time = do
+                  if log_end_stats_configuration
+                      then writeStatisticsToLog
+                              log_stats_level_configuration
+                              pastTense
+                              runStatistics
+                              end_stats_configuration
+                      else mapM_ (hPutStrLn stderr)
+                              .
+                              map snd
+                              .
+                              generateStatistics pastTense runStatistics
+                              $
+                              end_stats_configuration
+                  when show_cpu_time . hPutStrLn stderr $
+                      "Total CPU time used was " ++ showWithUnitPrefix cpu_time ++ "seconds."
+                  hFlush stderr
+                  notifyTerminated_user tree_configuration run_outcome
+          in do cpu_time ← readIORef tracker_ref >>= getCurrentCPUTime
+                case maybe_checkpoint_path of
+                    Nothing → doEndOfRun cpu_time
+                    Just checkpoint_path →
+                        do doEndOfRun cpu_time
+                           infoM "Deleting any remaining checkpoint file"
+                           removeFileIfExists checkpoint_path
+                        `finally`
+                        do case runTerminationReason of
+                            Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint cpu_time
+                            Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint cpu_time
+                            _ → return ()
+    , constructExplorationMode = constructExplorationMode
+    , constructTree = constructTree
+    , purity = purity
+    , constructController = controllerLoop tracker_ref
+    }
 {-# INLINE genericMain #-}
 
 --------------------------------------------------------------------------------
@@ -1146,7 +1142,9 @@ extractRunOutcomeFromSupervisorOutcome SupervisorOutcome{..} = RunOutcome{..}
     incomplete; in particular when using 'execChoice' you will want to use this
     for each of the modes that corresponds to the supervisor (as logging and
     statistics are only on the supervisor).
- -}
+
+    CURRENTLY UNUSED AS NOT SUPPORTED BY OPTPARSE-APPLICATIVE.
+
 mainMan :: [ManBlock]
 mainMan =
     [S "Log Formatting"
@@ -1163,17 +1161,7 @@ mainMan =
     [S "Statistics",P "Each statistic has a long-form name and an abbreviated name (in parentheses) shown below; you may use either when specifying it"]
     ++
     map (I <$> (printf "%s (%s)" <$> statisticLongName <*> statisticShortName) <*> statisticDescription) statistics
-
-{-| Parse the command line options using the given term and term info (the
-    latter of which has the program name added to it);  if successful return the
-    result, otherwise throw an exception.
  -}
-mainParser :: Term α → TermInfo → IO α
-mainParser term term_info =
-    (if null (termName term_info)
-        then getProgName >>= \progname → return $ term_info {termName = progname}
-        else return term_info
-    ) >>= exec . (term,)
 
 --------------------------------------------------------------------------------
 ----------------------------------- Internal -----------------------------------
@@ -1394,116 +1382,126 @@ statistics =
 
 ----------------------------- Configuration terms ------------------------------
 
-checkpoint_configuration_term :: Term CheckpointConfiguration
-checkpoint_configuration_term =
+checkpoint_configuration_parser :: Parser CheckpointConfiguration
+checkpoint_configuration_parser =
     CheckpointConfiguration
-        <$> value (flip opt (
-            (optInfo ["c","checkpoint-file"])
-            {   optName = "FILEPATH"
-            ,   optDoc = unwords
-                ["This enables periodic checkpointing with the given path"
-                ,"specifying the location of the checkpoint file; if the file"
-                ,"already exists then it will be loaded as the initial starting"
-                ,"point for the search."
+        <$> (
+                (Just <$> (strOption $ mconcat
+                    [ short 'c'
+                    , long "checkpoint-file"
+                    , metavar "FILEPATH"
+                    , help $ unwords $
+                          ["This enables periodic checkpointing with the given path"
+                          ,"specifying the location of the checkpoint file; if the file"
+                          ,"already exists then it will be loaded as the initial starting"
+                          ,"point for the search."
+                          ]
+                    ]
+                ))
+                <|>
+                pure Nothing
+            )
+        <*> (option auto $ mconcat
+                [ short 'i'
+                , long "interval"
+                , metavar "SECONDS"
+                , help $ unwords
+                        ["If checkpointing is enabled, this specifies how often a"
+                        ,"checkpoint will be written; if checkpointing is not enabled,"
+                        ,"then it sets how often a global progress update is performed"
+                        ,"(which matters when workers will join and leave during the"
+                        ,"run so that their partial progress is not lost).  This"
+                        ,"quantity is given in seconds, and not only may it be"
+                        ,"fractional but in fact a decimal point is required as"
+                        ,"otherwise the argument parser gets confused."
+                        ]
+                , value 60
+                , showDefault
                 ]
-            }
-            ) Nothing)
-        <*> value (flip opt (
-            (optInfo ["i","interval"])
-            {   optName = "SECONDS"
-            ,   optDoc = unwords
-                ["If checkpointing is enabled, this specifies how often a"
-                ,"checkpoint will be written; if checkpointing is not enabled,"
-                ,"then it sets how often a global progress update is performed"
-                ,"(which matters when workers will join and leave during the"
-                ,"run so that their partial progress is not lost).  This"
-                ,"quantity is given in seconds, and not only may it be"
-                ,"fractional but in fact a decimal point is required as"
-                ,"otherwise the argument parser gets confused."
-                ]
-            }
-            ) 60)
-logging_configuration_term :: Term LoggingConfiguration
-logging_configuration_term =
+            )
+
+logging_configuration_parser :: Parser LoggingConfiguration
+logging_configuration_parser =
     LoggingConfiguration
-    <$> (value . opt WARNING $
-         (optInfo ["l","log-level"])
-         {   optName = "LEVEL"
-         ,   optDoc = "This specifies the upper bound (inclusive) on the importance of the messages that will be logged; it must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, or EMERGENCY."
-         }
-        )
-    <*> (value . opt Nothing $
-         (optInfo ["log-format"])
-         {   optName = "FORMAT"
-         ,   optDoc = "This specifies the format of logged messages; see the Log Formatting section for more details."
-         }
-        )
-
-show_cpu_time_term :: Term Bool
-show_cpu_time_term =
-    value . flag $
-        (optInfo ["show-cpu-time"])
-        {   optDoc = "Print the total CPU time when the run finishes."
-        }
-
-statistics_configuration_term :: Term StatisticsConfiguration
-statistics_configuration_term =
-    StatisticsConfiguration
-    <$> (value . optAll [] $
-         (optInfo ["s","end-stats"])
-         {   optName = "STATS"
-         ,   optDoc = "A comma-separated list of statistics to be printed to stderr at the end of the run; you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
-         }
-        )
-    <*> (value . flag $
-         (optInfo ["log-end-stats"])
-         {   optDoc = "If present, then the end-of-run stats are sent to the log instead of stderr."
-         }
-        )
-    <*> (value . optAll [] $
-         (optInfo ["log-stats"])
-         {   optName = "STATS"
-         ,   optDoc = "A comma-separated list of statistics to be regularly logged during the run level; you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
-         }
-        )
-    <*> (value . opt NOTICE $
-         (optInfo ["log-stats-level"])
-         {   optName = "STATS"
-         ,   optDoc = "The level at which to log the stats."
-         }
-        )
-    <*> (value . opt 60 $
-         (optInfo ["log-stats-interval"])
-         {   optName = "SECONDS"
-         ,   optDoc = "The time between logging statistics (in seconds, decimals allowed); it is ignored if no statistics have been enabled for logging."
-         }
-        )
-
-maybe_workload_buffer_size_configuration_term :: Term (Maybe Int)
-maybe_workload_buffer_size_configuration_term =
-    value (opt Nothing ((optInfo ["buffer-size"])
-        { optName = "SIZE"
-        , optDoc = unwords
-            ["This option sets the size of the workload buffer which contains"
-            ,"stolen workloads that are held at the supervisor so that if a"
-            ,"worker needs a new workload it can be given one immediately rather"
-            ,"than having to wait for a new workload to be stolen. This setting"
-            ,"should be large enough that a request for a new workload can"
-            ,"always be answered immediately using a workload from the buffer,"
-            ,"which is roughly a function of the product of the number of"
-            ,"workloads requested per second and the time needed to steal a new"
-            ,"workload (both of which are server statistics than you can request"
-            ,"to see upon completions). If you are not having problems with"
-            ,"scaling, then you can ignore this option (it defaults to 4)."
+    <$> (option priority_reader $ mconcat
+            [ short 'l'
+            , long "log-level"
+            , metavar "LEVEL"
+            , help "This specifies the upper bound (inclusive) on the importance of the messages that will be logged; it must be one of (in increasing order of importance): DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, or EMERGENCY."
+            , value WARNING
+            , showDefault
             ]
-        }
-    ))
+        )
+    <*> (option (Just <$> auto) $ mconcat
+            [ long "log-format"
+            , metavar "FORMAT"
+            , help "This specifies the format of logged messages; see the Log Formatting section for more details."
+            , value Nothing
+            ]
+        )
 
-makeSharedConfigurationTerm :: Term tree_configuration → Term (SharedConfiguration tree_configuration)
-makeSharedConfigurationTerm tree_configuration_term =
-    SharedConfiguration
-        <$> logging_configuration_term
-        <*> tree_configuration_term
+show_cpu_time_parser :: Parser Bool
+show_cpu_time_parser = switch $ mconcat
+    [ long "show-cpu-time"
+    , help "Print the total CPU time when the run finishes."
+    ]
+
+statistics_configuration_parser :: Parser StatisticsConfiguration
+statistics_configuration_parser =
+    StatisticsConfiguration
+    <$> (concat <$> (many $ option statistics_reader $ mconcat
+            [ short 's'
+            , long "end-stats"
+            , metavar "STATS"
+            , help "A comma-separated list of statistics to be printed to stderr at the end of the run; you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
+            ]
+        ))
+    <*> (switch $ mconcat
+            [ long "log-end-stats"
+            , help "If present, then the end-of-run stats are sent to the log instead of stderr."
+            ]
+        )
+    <*> (concat <$> (many $ option statistics_reader $ mconcat
+            [ long "log-stats"
+            , metavar "STATS"
+            , help "A comma-separated list of statistics to be regularly logged during the run level; you may alternatively specify multiple statistics by using this option multiple times. (See the Statistics section for more information.)"
+            ]
+        ))
+    <*> (option priority_reader $ mconcat
+            [ long "log-stats-level"
+            , metavar "STATS"
+            , value NOTICE
+            , showDefault
+            ]
+        )
+    <*> (option auto $ mconcat
+            [ long "log-stats-interval"
+            , metavar "SECONDS"
+            , value 60
+            , showDefault
+            ]
+        )
+
+workload_buffer_size_configuration_parser :: Parser Int
+workload_buffer_size_configuration_parser = option auto $ mconcat
+    [ long "buffer-size"
+    , metavar "SIZE"
+    , help $ unwords
+        ["This option sets the size of the workload buffer which contains"
+        ,"stolen workloads that are held at the supervisor so that if a"
+        ,"worker needs a new workload it can be given one immediately rather"
+        ,"than having to wait for a new workload to be stolen. This setting"
+        ,"should be large enough that a request for a new workload can"
+        ,"always be answered immediately using a workload from the buffer,"
+        ,"which is roughly a function of the product of the number of"
+        ,"workloads requested per second and the time needed to steal a new"
+        ,"workload (both of which are server statistics than you can request"
+        ,"to see upon completions). If you are not having problems with"
+        ,"scaling, then you can ignore this option."
+        ]
+    , value 4
+    , showDefault
+    ]
 
 ------------------------------------ Loops -------------------------------------
 
@@ -1514,28 +1512,29 @@ checkpointLoop ::
 checkpointLoop tracker CheckpointConfiguration{..} =
     case maybe_checkpoint_path of
         Nothing → forever $ requestProgressUpdate >> delay
-        Just checkpoint_path → flip evalStateT False . forever $
+        Just checkpoint_path → flip evalStateT False . forever $ do
             -- state carries around whether an alert has been issued since the
             -- last problem occurred
-            (do join $
-                    liftM2 (liftIO .* writeCheckpointFile checkpoint_path)
-                        (lift requestProgressUpdate)
-                        (liftIO (getCurrentCPUTime tracker))
-                infoM $ "Checkpoint written to " ++ show checkpoint_path
-                State.get >>= (flip when $ noticeM "The problem with the checkpoint has been resolved.")
-                State.put False
-            ) `catch` (\(e::SomeException) →
-                unless (isJust . (fromException :: SomeException → Maybe AsyncException) $ e) $ do
-                    let message = "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\"; will keep retrying in case the problem gets resolved."
-                    ifM State.get (infoM message) (errorM message)
-                    State.put True
-            )
+            progress_update ← lift requestProgressUpdate
+            liftIO (try $ getCurrentCPUTime tracker >>= writeCheckpointFile checkpoint_path progress_update)
+              >>= either
+                (\(e :: SomeException) → do
+                    unless (isJust . (fromException :: SomeException → Maybe AsyncException) $ e) $ do
+                        let message = "Failed writing checkpoint to \"" ++ checkpoint_path ++ "\" with error \"" ++ show e ++ "\"; will keep retrying in case the problem gets resolved."
+                        get >>= bool (errorM message) (infoM message)
+                        put True
+                )
+                (\() → do
+                    infoM $ "Checkpoint written to " ++ show checkpoint_path
+                    get >>= (flip when $ noticeM "The problem with the checkpoint has been resolved.")
+                    put False
+                )
   where
     delay = liftIO . threadDelay $ amount
       where
         amount = round $ checkpoint_interval * 1000000
 
-statisticsLoop :: RequestQueueMonad m ⇒ [[Statistic]] → Priority → Float → m α
+statisticsLoop :: RequestQueueMonad m ⇒ [Statistic] → Priority → Float → m α
 statisticsLoop stats level interval = forever $ do
     liftIO $ threadDelay delay
     run_statistics ← getCurrentStatistics
@@ -1555,25 +1554,38 @@ controllerLoop ::
 controllerLoop tracker_ref SupervisorConfiguration{statistics_configuration=StatisticsConfiguration{..},..} = do
     tracker ← liftIO . readIORef $ tracker_ref
     startCPUTimeTracker tracker
-    maybe (return ()) setWorkloadBufferSize maybe_workload_buffer_size_configuration
+    setWorkloadBufferSize workload_buffer_size_configuration
     void . fork $ checkpointLoop tracker checkpoint_configuration
     when (not . null $ log_stats_configuration) $
         void . fork $ statisticsLoop log_stats_configuration log_stats_level_configuration log_stats_interval_configuration
 
 -------------------------------- Miscellaneous ---------------------------------
 
-default_terminfo :: TermInfo
-default_terminfo = defTI { termDoc = "LogicGrowsOnTrees program" }
-
-dispatchToMainFunction f driver notifyTerminated tree =
-    f   driver
+forwardSimpleToMainFunction ::
+    ∀ result_monad m n exploration_mode.
+    (
+        Driver result_monad () SupervisorConfiguration m n exploration_mode →
+        Parser () →
+        (∀ α. InfoMod α) →
+        (() → RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode) → IO ()) →
+        (() → TreeT m (ResultFor exploration_mode)) →
+        result_monad ()
+    ) →
+    Driver result_monad () SupervisorConfiguration m n exploration_mode →
+    (∀ α. InfoMod α) →
+    (RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode) → IO ()) →
+    (TreeT m (ResultFor exploration_mode)) →
+    result_monad ()
+forwardSimpleToMainFunction mainFunction driver program_info notifyTerminated tree =
+    mainFunction
+        driver
         (pure ())
-        default_terminfo
+        program_info
         (const notifyTerminated)
         (const tree)
-{-# INLINE dispatchToMainFunction #-}
+{-# INLINE forwardSimpleToMainFunction #-}
 
-generateStatistics :: Tense → RunStatistics → [[Statistic]] → [(String,String)]
+generateStatistics :: Tense → RunStatistics → [Statistic] → [(String,String)]
 generateStatistics tense run_statistics =
     map (
         statisticLongName
@@ -1582,8 +1594,6 @@ generateStatistics tense run_statistics =
     )
     .
     nub
-    .
-    concat
 
 pastPerfectTense, pastTense :: Tense
 pastPerfectTense x _ = x
@@ -1602,16 +1612,16 @@ showWithUnitPrefix x = printf "%.1f %s" x_scaled (unitName unit)
   where
     (x_scaled :: Float,Just unit) = formatValue FormatSiAll . realToFrac $ x
 
-writeStatisticsToLog :: Priority → Tense → RunStatistics → [[Statistic]] → IO ()
-writeStatisticsToLog level =
+writeStatisticsToLog :: Priority → Tense → RunStatistics → [Statistic] → IO ()
+writeStatisticsToLog level tense run_statistics =
     (\outputs →
         unless (null outputs) $ do
             logIt "=== BEGIN STATISTICS ==="
             forM_ outputs $ \(name,output) → logIt (name ++ ": " ++ output)
             logIt "=== END STATISTICS ==="
     )
-    .**
-    generateStatistics
+    .
+    generateStatistics tense run_statistics
   where
     logIt = logM "LogicGrowsOnTrees.Parallel.Main" level
 

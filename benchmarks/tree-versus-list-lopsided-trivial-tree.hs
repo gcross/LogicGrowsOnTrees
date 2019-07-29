@@ -2,9 +2,6 @@
 
 import Control.Monad
 import Criterion.Main
-import Data.List (genericReplicate)
-import Data.Monoid
-import Data.Word
 import System.Environment
 
 import LogicGrowsOnTrees
@@ -29,6 +26,7 @@ rightLopsidedTree depth
   | otherwise  = return (WordSum 1) `mplus` rightLopsidedTree (depth-1)
 {-# NOINLINE rightLopsidedTree #-}
 
+main :: IO ()
 main = defaultMain
     [bgroup "list"
         [bench "left" $ nf (getWordSum . mconcat . leftLopsidedTree) depth
@@ -43,31 +41,34 @@ main = defaultMain
         ,bench "right" $ nf (getWordSum . exploreTreeStartingFromCheckpoint Unexplored . rightLopsidedTree) depth
         ]
     ,bgroup "tree using worker"
-        [bench "left" $ doWorker leftLopsidedTree depth
-        ,bench "right" $ doWorker rightLopsidedTree depth
+        [bench "left" $ nfIO (doWorker leftLopsidedTree depth)
+        ,bench "right" $ nfIO (doWorker rightLopsidedTree depth)
         ]
     ,bgroup "tree using single thread (direct)"
-        [bench "left" $ doThreadDirect leftLopsidedTree depth
-        ,bench "right" $ doThreadDirect rightLopsidedTree depth
+        [bench "left" $ nfIO (doThreadDirect leftLopsidedTree depth)
+        ,bench "right" $ nfIO (doThreadDirect rightLopsidedTree depth)
         ]
     ,bgroup "tree using single thread (main)"
-        [bench "left" $ doThreadMain leftLopsidedTree depth
-        ,bench "right" $ doThreadMain leftLopsidedTree depth
+        [bench "left" $ nfIO (doThreadMain leftLopsidedTree depth)
+        ,bench "right" $ nfIO (doThreadMain leftLopsidedTree depth)
         ]
     ]
   where
     depth = 4096
 
-    doWorker lopsidedTree depth = exploreTreeGeneric AllMode Pure (lopsidedTree depth :: Tree WordSum)
+    doWorker lopsidedTree tree_depth =
+        exploreTreeGeneric AllMode Pure (lopsidedTree tree_depth :: Tree WordSum)
     {-# NOINLINE doWorker #-}
 
-    doThreadDirect lopsidedTree depth = Threads.exploreTree (setNumberOfWorkers 1) (lopsidedTree depth :: Tree WordSum)
+    doThreadDirect lopsidedTree tree_depth =
+        Threads.exploreTree (setNumberOfWorkers 1) (lopsidedTree tree_depth :: Tree WordSum)
     {-# NOINLINE doThreadDirect #-}
 
-    doThreadMain lopsidedTree depth =
+    doThreadMain lopsidedTree tree_depth =
         withArgs ["-n1"] $
             simpleMainForExploreTree
                 Threads.driver
-                (const $ return ())
-                (lopsidedTree depth :: Tree WordSum)
+                mempty
+                (const $ pure ())
+                (lopsidedTree tree_depth :: Tree WordSum)
     {-# NOINLINE doThreadMain #-}

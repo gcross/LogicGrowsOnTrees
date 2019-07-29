@@ -61,16 +61,17 @@ import Control.Monad.Operational (ProgramViewT(..),viewT)
 import Control.Monad.Trans.Class (MonadTrans(..))
 import Control.Monad.Trans.Reader (ReaderT(..),ask)
 
-import Data.Composition
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (fromJust)
-import Data.Monoid
 import Data.Foldable as Fold
 import Data.Function (on)
 import Data.Functor.Identity (Identity,runIdentity)
+import Data.Semigroup (Semigroup)
 import Data.Sequence (viewl,ViewL(..))
 import Data.SequentialIndex (SequentialIndex,root,leftChild,rightChild)
+
+import Flow
 
 import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Checkpoint
@@ -102,12 +103,11 @@ data Solution α = Solution
     ,   solutionResult :: α
     } deriving (Eq,Ord,Show)
 
-{-| The 'Monoid' instance constructs a location that is the result of appending
+{-| The 'Semigroup' instance constructs a location that is the result of appending
     the path in the second argument to the path in the first argument.
  -}
-instance Monoid Location where
-    mempty = rootLocation
-    xl@(Location x) `mappend` yl@(Location y)
+instance Semigroup Location where
+    xl@(Location x) <> yl@(Location y)
       | x == root = yl
       | y == root = xl
       | otherwise = Location $ go y root x
@@ -120,6 +120,9 @@ instance Monoid Location where
             --        currently are with respect to the original label
                 GT → (go original_label `on` (fromJust . leftChild)) current_label product_label
                 LT → (go original_label `on` (fromJust . rightChild)) current_label product_label
+
+instance Monoid Location where
+    mempty = rootLocation
 
 {-| The 'Ord' instance performs the comparison using the list of branches in the
     path defined by the location, which is obtained using the function
@@ -157,9 +160,11 @@ instance MonadExplorableTrans m ⇒ MonadExplorableTrans (LocatableT m) where
     runAndCacheGuard = LocatableT . lift . runAndCacheGuard
     runAndCacheMaybe = LocatableT . lift . runAndCacheMaybe
 
+instance MonadPlus m ⇒ Semigroup (LocatableT m α) where
+    (<>) = mplus
+
 instance MonadPlus m ⇒ Monoid (LocatableT m α) where
     mempty = mzero
-    mappend = mplus
 
 {-| A 'Tree' augmented with the ability to get the current location -}
 type LocatableTree = LocatableTreeT Identity
@@ -169,7 +174,7 @@ type LocatableTreeIO = LocatableTreeT IO
 
 {-| Like 'LocatableTree', but running in an arbitrary monad. -}
 newtype LocatableTreeT m α = LocatableTreeT { unwrapLocatableTreeT :: LocatableT (TreeT m) α }
-    deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLocatable,MonadPlus,Monoid)
+    deriving (Alternative,Applicative,Functor,Monad,MonadIO,MonadLocatable,MonadPlus,Monoid,Semigroup)
 
 instance MonadTrans LocatableTreeT where
     lift = LocatableTreeT . lift . lift
@@ -360,7 +365,8 @@ exploreTreeTWithLocations = exploreTreeTWithLocationsStartingAt rootLocation
     subtree).
  -}
 exploreTreeWithLocationsStartingAt :: Location → Tree α → [Solution α]
-exploreTreeWithLocationsStartingAt = runIdentity .* exploreTreeTWithLocationsStartingAt
+exploreTreeWithLocationsStartingAt location tree =
+  exploreTreeTWithLocationsStartingAt location tree |> runIdentity 
 
 {-| Like 'exploreTreeWithLocationsStartingAt' but for an impure trees. -}
 exploreTreeTWithLocationsStartingAt :: Monad m ⇒ Location → TreeT m α → m [Solution α]
@@ -404,11 +410,13 @@ exploreTreeTUntilFirstWithLocation = exploreTreeTUntilFirstWithLocationStartingA
     location within the subtree).
  -}
 exploreTreeUntilFirstWithLocationStartingAt :: Location → Tree α → Maybe (Solution α)
-exploreTreeUntilFirstWithLocationStartingAt = runIdentity .* exploreTreeTUntilFirstWithLocationStartingAt
+exploreTreeUntilFirstWithLocationStartingAt location tree =
+    exploreTreeTUntilFirstWithLocationStartingAt location tree |> runIdentity
 
 {-| Like 'exploreTreeUntilFirstWithLocationStartingAt' but for an impure tree. -}
 exploreTreeTUntilFirstWithLocationStartingAt :: Monad m ⇒ Location → TreeT m α → m (Maybe (Solution α))
-exploreTreeTUntilFirstWithLocationStartingAt = go .* exploreTreeTWithLocationsStartingAt
+exploreTreeTUntilFirstWithLocationStartingAt location tree =
+    exploreTreeTWithLocationsStartingAt location tree |> go
   where
     go = liftM $ \solutions →
         case solutions of

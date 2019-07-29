@@ -1,3 +1,9 @@
+version 2.0.0
+===============
+
+* Made extensive changes to save the project from bit-rot by migrating it to use
+  only the dependencies available in an LTS snapshot from stackage.
+
 version 1.1.0.2
 ===============
 

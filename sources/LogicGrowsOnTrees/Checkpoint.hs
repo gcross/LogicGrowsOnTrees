@@ -1,6 +1,9 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -62,20 +65,22 @@ module LogicGrowsOnTrees.Checkpoint
     ) where
 
 import Control.Exception (Exception(),throw)
+import Control.DeepSeq (NFData)
 import Control.Monad ((>=>))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
-import Data.Composition
-import Data.Derive.Monoid
-import Data.Derive.Serialize
-import Data.DeriveTH
 import Data.Functor.Identity (Identity,runIdentity)
-import Data.Monoid ((<>),Monoid(..))
+import Data.Semigroup (Semigroup(..))
+import Data.Monoid (Monoid(..))
 import Data.Sequence (Seq,viewr,ViewR(..))
 import qualified Data.Sequence as Seq
 import Data.Serialize
 import Data.Typeable (Typeable)
+
+import Flow ((|>))
+
+import GHC.Generics (Generic)
 
 import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Path
@@ -103,16 +108,17 @@ data Checkpoint =
   | ChoicePoint Checkpoint Checkpoint
   | Explored
   | Unexplored
-  deriving (Eq,Ord,Read,Show)
-$( derive makeSerialize ''Checkpoint )
+  deriving (Eq,Generic,Ord,Read,Show)
+instance NFData Checkpoint
+instance Serialize Checkpoint
 
 -- Note:  This function is not in the same place where it appears in the documentation.
 {-| Simplifies the root of the checkpoint by replacing
 
     * @Choicepoint Unexplored Unexplored@ with @Unexplored@;
-    
+
     * @Choicepoint Explored Explored@ with @Explored@; and
-    
+
     * @CachePoint _ Explored@ with @Explored@.
  -}
 simplifyCheckpointRoot :: Checkpoint → Checkpoint
@@ -129,7 +135,7 @@ simplifyCheckpointRoot checkpoint = checkpoint
     then the result will be @ChoicePoint Explored (ChoicePoint Explored
     Unexplored)@.
 
-    WARNING: This 'Monoid' instance is a /partial/ function that expects
+    WARNING: This 'Semigroup' instance is a /partial/ function that expects
     checkpoints that have come from the /same/ tree; if this
     precondition is not met then if you are lucky it will notice the
     inconsistency and throw an exception to let you know that something is wrong
@@ -138,17 +144,19 @@ simplifyCheckpointRoot checkpoint = checkpoint
     juggling multiple trees and have mixed up which checkpoint goes with which,
     which is something that is neither done nor encouraged in this package.
  -}
+instance Semigroup Checkpoint where
+    Explored <> _ = Explored
+    _ <> Explored = Explored
+    Unexplored <> x = x
+    x <> Unexplored = x
+    ChoicePoint lx rx <> ChoicePoint ly ry =
+        simplifyCheckpointRoot $ ChoicePoint (lx <> ly) (rx <> ry)
+    CachePoint cx x <> CachePoint cy y
+      | cx == cy = simplifyCheckpointRoot $ CachePoint cx (x <> y)
+    x <> y = throw $ InconsistentCheckpoints x y
+
 instance Monoid Checkpoint where
     mempty = Unexplored
-    Explored `mappend` _ = Explored
-    _ `mappend` Explored = Explored
-    Unexplored `mappend` x = x
-    x `mappend` Unexplored = x
-    (ChoicePoint lx rx) `mappend` (ChoicePoint ly ry) =
-        simplifyCheckpointRoot (ChoicePoint (lx `mappend` ly) (rx `mappend` ry))
-    (CachePoint cx x) `mappend` (CachePoint cy y)
-      | cx == cy = simplifyCheckpointRoot (CachePoint cx (x `mappend` y))
-    mappend x y = throw (InconsistentCheckpoints x y)
 
 {-| Information about both the current checkpoint and the results we have
     gathered so far.
@@ -156,12 +164,15 @@ instance Monoid Checkpoint where
 data Progress α = Progress
     {   progressCheckpoint :: Checkpoint
     ,   progressResult :: α
-    } deriving (Eq,Show)
-$( derive makeMonoid ''Progress )
-$( derive makeSerialize ''Progress )
+    } deriving (Eq,Functor,Generic,Show)
+instance NFData α ⇒ NFData (Progress α)
+instance Serialize α ⇒ Serialize (Progress α)
 
-instance Functor Progress where
-    fmap f (Progress checkpoint result) = Progress checkpoint (f result)
+instance Semigroup α ⇒ Semigroup (Progress α) where
+  Progress c1 r1 <> Progress c2 r2 = Progress (c1 <> c2) (r1 <> r2)
+
+instance Monoid α ⇒ Monoid (Progress α) where
+  mempty = Progress mempty mempty
 
 ---------------------------- Cursors and contexts ------------------------------
 
@@ -242,7 +253,7 @@ initialExplorationState = ExplorationTState mempty
 checkpointFromContext :: Context m α → Checkpoint → Checkpoint
 checkpointFromContext = checkpointFromReversedList $
     \step → case step of
-        CacheContextStep cache → CachePoint cache
+        CacheContextStep value → CachePoint value
         LeftBranchContextStep right_checkpoint _ → flip ChoicePoint right_checkpoint
         RightBranchContextStep → ChoicePoint Explored
 
@@ -252,7 +263,7 @@ checkpointFromContext = checkpointFromReversedList $
 checkpointFromCursor :: CheckpointCursor → Checkpoint → Checkpoint
 checkpointFromCursor = checkpointFromSequence $
     \step → case step of
-        CachePointD cache → CachePoint cache
+        CachePointD value → CachePoint value
         ChoicePointD LeftBranch right_checkpoint → flip ChoicePoint right_checkpoint
         ChoicePointD RightBranch left_checkpoint → ChoicePoint left_checkpoint
 
@@ -276,13 +287,14 @@ checkpointFromReversedList ::
     [α] →
     Checkpoint →
     Checkpoint
-checkpointFromReversedList _ [] = id
-checkpointFromReversedList processStep (step:rest) =
-    checkpointFromReversedList processStep rest
-    .
-    simplifyCheckpointRoot
-    .
-    processStep step
+checkpointFromReversedList processStep = \case
+    [] → id
+    (step:rest) →
+      checkpointFromReversedList processStep rest
+      .
+      simplifyCheckpointRoot
+      .
+      processStep step
 
 {-| The same as 'checkpointFromReversedList', but where the cursor is specified
     as a (non-reversed) 'Seq' rather than a list.
@@ -292,13 +304,14 @@ checkpointFromSequence ::
     Seq α →
     Checkpoint →
     Checkpoint
-checkpointFromSequence _ (viewr → EmptyR) = id
-checkpointFromSequence processStep (viewr → rest :> step) =
-    checkpointFromSequence processStep rest
-    .
-    simplifyCheckpointRoot
-    .
-    processStep step
+checkpointFromSequence processStep checkpoint = case viewr checkpoint of
+    EmptyR → id
+    rest :> step →
+        checkpointFromSequence processStep rest
+        .
+        simplifyCheckpointRoot
+        .
+        processStep step
 
 {-| Constructs a full checkpoint given the path to where you are currently
     searching and the subcheckpoint at your location, assuming that we have no
@@ -331,7 +344,7 @@ checkpointFromUnexploredPath path = checkpointFromSequence
  -}
 simplifyCheckpoint :: Checkpoint → Checkpoint
 simplifyCheckpoint (ChoicePoint left right) = simplifyCheckpointRoot (ChoicePoint (simplifyCheckpoint left) (simplifyCheckpoint right))
-simplifyCheckpoint (CachePoint cache checkpoint) = simplifyCheckpointRoot (CachePoint cache (simplifyCheckpoint checkpoint))
+simplifyCheckpoint (CachePoint value checkpoint) = simplifyCheckpointRoot (CachePoint value (simplifyCheckpoint checkpoint))
 simplifyCheckpoint checkpoint = checkpoint
 
 ------------------------------- Path construction ------------------------------
@@ -354,7 +367,7 @@ pathFromCursor = fmap pathStepFromCursorDifferential
     the alternative branch (if present).
  -}
 pathStepFromContextStep :: ContextStep m α → Step
-pathStepFromContextStep (CacheContextStep cache) = CacheStep cache
+pathStepFromContextStep (CacheContextStep value) = CacheStep value
 pathStepFromContextStep (LeftBranchContextStep _ _) = ChoiceStep LeftBranch
 pathStepFromContextStep (RightBranchContextStep) = ChoiceStep RightBranch
 
@@ -362,7 +375,7 @@ pathStepFromContextStep (RightBranchContextStep) = ChoiceStep RightBranch
     about the alternative branch (if present).
  -}
 pathStepFromCursorDifferential :: CheckpointDifferential → Step
-pathStepFromCursorDifferential (CachePointD cache) = CacheStep cache
+pathStepFromCursorDifferential (CachePointD value) = CacheStep value
 pathStepFromCursorDifferential (ChoicePointD active_branch _) = ChoiceStep active_branch
 
 -------------------------------- Miscellaneous ---------------------------------
@@ -385,10 +398,10 @@ exploreTree tree
 invertCheckpoint :: Checkpoint → Checkpoint
 invertCheckpoint Explored = Unexplored
 invertCheckpoint Unexplored = Explored
-invertCheckpoint (CachePoint cache rest) =
-    simplifyCheckpointRoot (CachePoint cache (invertCheckpoint rest))
+invertCheckpoint (CachePoint value rest) =
+    simplifyCheckpointRoot $ CachePoint value (invertCheckpoint rest)
 invertCheckpoint (ChoicePoint left right) =
-    simplifyCheckpointRoot (ChoicePoint (invertCheckpoint left) (invertCheckpoint right))
+    simplifyCheckpointRoot $ ChoicePoint (invertCheckpoint left) (invertCheckpoint right)
 
 --------------------------------------------------------------------------------
 ----------------------------- Stepper functions --------------------------------
@@ -439,14 +452,14 @@ stepThroughTreeTStartingFromCheckpoint (ExplorationTState context checkpoint tre
                     Unexplored
                     (left >>= TreeT . k)
             )
-    CachePoint cache rest_checkpoint → getView >>= \view → case view of
+    CachePoint value rest_checkpoint → getView >>= \view → case view of
         ProcessPendingRequests :>>= k → return (Nothing, Just $ ExplorationTState context checkpoint (TreeT . k $ ()))
         Cache _ :>>= k → return
             (Nothing, Just $
                 ExplorationTState
-                    (CacheContextStep cache:context)
+                    (CacheContextStep value:context)
                     rest_checkpoint
-                    (either error (TreeT . k) . decode $ cache)
+                    (either error (TreeT . k) . decode $ value)
             )
         _ → throw PastTreeIsInconsistentWithPresentTree
     ChoicePoint left_checkpoint right_checkpoint →  getView >>= \view → case view of
@@ -490,7 +503,8 @@ exploreTreeStartingFromCheckpoint ::
     Checkpoint →
     Tree α →
     α
-exploreTreeStartingFromCheckpoint = runIdentity .* exploreTreeTStartingFromCheckpoint
+exploreTreeStartingFromCheckpoint checkpoint tree =
+  exploreTreeTStartingFromCheckpoint checkpoint tree |> runIdentity
 {-# INLINE exploreTreeStartingFromCheckpoint #-}
 
 {-| Explores the remaining nodes in an impure tree, starting from the
@@ -501,7 +515,8 @@ exploreTreeTStartingFromCheckpoint ::
     Checkpoint →
     TreeT m α →
     m α
-exploreTreeTStartingFromCheckpoint = go mempty .* initialExplorationState
+exploreTreeTStartingFromCheckpoint checkpoint tree =
+    initialExplorationState checkpoint tree |> go mempty
   where
     go !accum =
         stepThroughTreeTStartingFromCheckpoint
@@ -520,7 +535,8 @@ exploreTreeUntilFirstStartingFromCheckpoint ::
     Checkpoint →
     Tree α →
     Maybe α
-exploreTreeUntilFirstStartingFromCheckpoint = runIdentity .* exploreTreeTUntilFirstStartingFromCheckpoint
+exploreTreeUntilFirstStartingFromCheckpoint checkpoint tree =
+  exploreTreeTUntilFirstStartingFromCheckpoint checkpoint tree |> runIdentity
 
 {-| Same as 'exploreTreeUntilFirstStartingFromCheckpoint', but for an impure tree. -}
 exploreTreeTUntilFirstStartingFromCheckpoint ::
@@ -528,7 +544,8 @@ exploreTreeTUntilFirstStartingFromCheckpoint ::
     Checkpoint →
     TreeT m α →
     m (Maybe α)
-exploreTreeTUntilFirstStartingFromCheckpoint = go .* initialExplorationState
+exploreTreeTUntilFirstStartingFromCheckpoint checkpoint tree =
+    initialExplorationState checkpoint tree |> go
   where
     go = stepThroughTreeTStartingFromCheckpoint
          >=>
@@ -550,7 +567,8 @@ exploreTreeUntilFoundStartingFromCheckpoint ::
     Checkpoint →
     Tree α →
     (α,Bool)
-exploreTreeUntilFoundStartingFromCheckpoint = runIdentity .** exploreTreeTUntilFoundStartingFromCheckpoint
+exploreTreeUntilFoundStartingFromCheckpoint finished checkpoint tree =
+  exploreTreeTUntilFoundStartingFromCheckpoint finished checkpoint tree |> runIdentity
 
 {-| Same as 'exploreTreeUntilFoundStartingFromCheckpoint', but for an impure tree. -}
 exploreTreeTUntilFoundStartingFromCheckpoint ::
@@ -559,7 +577,8 @@ exploreTreeTUntilFoundStartingFromCheckpoint ::
     Checkpoint →
     TreeT m α →
     m (α,Bool)
-exploreTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialExplorationState
+exploreTreeTUntilFoundStartingFromCheckpoint finished checkpoint tree =
+    initialExplorationState checkpoint tree |> go mempty
   where
     go accum =
         stepThroughTreeTStartingFromCheckpoint
@@ -569,7 +588,7 @@ exploreTreeTUntilFoundStartingFromCheckpoint f = go mempty .* initialExploration
                 Nothing → maybe (return (accum,False)) (go accum) maybe_new_exploration_state
                 Just solution →
                     let new_accum = accum <> solution
-                    in if f new_accum
+                    in if finished new_accum
                         then return (new_accum,True)
                         else maybe (return (new_accum,False)) (go new_accum) maybe_new_exploration_state
 {-# INLINE exploreTreeTUntilFoundStartingFromCheckpoint #-}

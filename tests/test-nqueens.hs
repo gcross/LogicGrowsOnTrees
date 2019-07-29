@@ -245,7 +245,7 @@ tests = -- {{{
             let getAllSolutions :: MonadPlus m ⇒ Word → m [(Word,Word)] -- {{{
                 getAllSolutions =
                     nqueensStart
-                        (++)
+                        (StateUpdater (++))
                         (const . return)
                         (const . return)
                         (const . const . return)
@@ -254,7 +254,7 @@ tests = -- {{{
             [testGroup "correct blocks" -- {{{
                 [ testCase ("n = " ++ show n) . exploreTreeT $
                     nqueensStart
-                        (++)
+                        (StateUpdater (++))
                         (\solution NQueensBreak90State{..} → liftIO $
                             checkBlocks
                                 solution
@@ -297,7 +297,7 @@ tests = -- {{{
             ,testGroup "correct symmetries" -- {{{
                 [ testCase ("n = " ++ show n) . exploreTreeT $
                     nqueensStart
-                        (++)
+                        (StateUpdater (++))
                         (const . checkSymmetry n AllRotations)
                         (const . checkSymmetry n Rotate180Only)
                         (const . const . checkSymmetry n NoSymmetries)
@@ -342,10 +342,10 @@ tests = -- {{{
                      exploreTreeT
                      $
                      nqueensStart
-                        (++)
+                        (StateUpdater (++))
                         (\value NQueensBreak90State{..} →
                             nqueensSearch
-                                (++)
+                                (StateUpdater (++))
                                 (finalizeValueWithMultiplicity 1)
                                 value
                                 b90_window_size
@@ -360,7 +360,7 @@ tests = -- {{{
                         )
                         (\value NQueensBreak180State{..} → 
                             nqueensSearch
-                                (++)
+                                (StateUpdater (++))
                                 (finalizeValueWithMultiplicity 2)
                                 value
                                 b180_window_size
@@ -373,7 +373,7 @@ tests = -- {{{
                                     b180_occupied_negative_diagonals
                                     b180_occupied_positive_diagonals
                         )
-                        (nqueensSearch (++) (finalizeValueWithMultiplicity 4))
+                        (nqueensSearch (StateUpdater (++)) (finalizeValueWithMultiplicity 4))
                         []
                         n
                     )
@@ -412,7 +412,7 @@ tests = -- {{{
                   where
                     break90 =
                         nqueensBreak90
-                            (++)
+                            (StateUpdater (++))
                             return
                             (\value state → return value `mplus` break90 value state)
                             (const . return)
@@ -422,7 +422,7 @@ tests = -- {{{
                 [ testCase ("n = " ++ show n) . exploreTreeT $
                     let break90 =
                             nqueensBreak90
-                                (++)
+                                (StateUpdater (++))
                                 (const $ return ())
                                 (\solution state@NQueensBreak90State{..} → do
                                     liftIO $
@@ -468,7 +468,7 @@ tests = -- {{{
                 [ testCase ("n = " ++ show n) . exploreTreeT $
                     let break90 =
                             nqueensBreak90
-                                (++)
+                                (StateUpdater (++))
                                 (liftIO . assertEqual "solution has the wrong symmetry" AllRotations . symmetryOf n)
                                 (\solution next_state → do
                                     checkSymmetry n AllRotations solution
@@ -517,11 +517,11 @@ tests = -- {{{
                             lift $ modify (Set.insert solution)
                         break90 =
                             nqueensBreak90
-                                (++)
+                                (StateUpdater (++))
                                 (finalizeValueWithMultiplicity 4)
                                  break90
                                 (\value NQueensBreak180State{..} →
-                                    nqueensSearch (++) (finalizeValueWithMultiplicity 2) value b180_window_size $
+                                    nqueensSearch (StateUpdater (++)) (finalizeValueWithMultiplicity 2) value b180_window_size $
                                         NQueensSearchState
                                             b180_number_of_queens_remaining
                                             b180_window_start
@@ -530,7 +530,7 @@ tests = -- {{{
                                             b180_occupied_negative_diagonals
                                             b180_occupied_positive_diagonals
                                 )
-                                (nqueensSearch (++) (finalizeValueWithMultiplicity 4))
+                                (nqueensSearch (StateUpdater (++)) (finalizeValueWithMultiplicity 4))
                     in (flip execStateT Set.empty
                         .
                         exploreTreeT
@@ -570,7 +570,7 @@ tests = -- {{{
                   where
                     break180 =
                         nqueensBreak180
-                            (++)
+                            (StateUpdater (++))
                              return
                             (\value state → return value `mplus` break180 value state)
                             (const . const . return)
@@ -579,7 +579,7 @@ tests = -- {{{
                 [ testCase ("n = " ++ show n) . exploreTreeT $
                     let break180 =
                             nqueensBreak180
-                                (++)
+                                (StateUpdater (++))
                                 (const $ return ())
                                 (\solution state@NQueensBreak180State{..} → do
                                     liftIO $ do
@@ -615,7 +615,7 @@ tests = -- {{{
                 [ testCase ("n = " ++ show n) . exploreTreeT $
                     let break180 =
                             nqueensBreak180
-                                (++)
+                                (StateUpdater (++))
                                 (liftIO . assertBool "solution does not have 180 symmetry" . hasRotate180Symmetry n)
                                 (\solution next_state → do
                                     liftIO $
@@ -667,10 +667,10 @@ tests = -- {{{
                             lift $ modify (Set.insert solution)
                         break180 =
                             nqueensBreak180
-                                (++)
+                                (StateUpdater (++))
                                 (finalizeValueWithMultiplicity $ \x → [x])
                                  break180
-                                (nqueensSearch (++) (finalizeValueWithMultiplicity $ \x → [x,rotate180 n x]))
+                                (nqueensSearch (StateUpdater (++)) (finalizeValueWithMultiplicity $ \x → [x,rotate180 n x]))
                     in (flip execStateT Set.empty
                         .
                         exploreTreeT
@@ -706,12 +706,12 @@ tests = -- {{{
          -- }}}
         ,testGroup "start + break90 + break180" $ -- {{{
             let getAllSolutions :: MonadPlus m ⇒ Word → m [(Word,Word)] -- {{{
-                getAllSolutions = nqueensStart (++) callback90 callback180 search []
+                getAllSolutions = nqueensStart (StateUpdater (++)) callback90 callback180 search []
                   where
                     callback90 value state = return value `mplus` break90 value state
                     callback180 value state = return value `mplus` break180 value state
-                    break90 = nqueensBreak90 (++) return callback90 callback180 search
-                    break180 = nqueensBreak180 (++) return callback180 search
+                    break90 = nqueensBreak90 (StateUpdater (++)) return callback90 callback180 search
+                    break180 = nqueensBreak180 (StateUpdater (++)) return callback180 search
                     search = const . const . return
             in -- }}}
             [testGroup "correct blocks" -- {{{
@@ -753,19 +753,19 @@ tests = -- {{{
                                 s_occupied_positive_diagonals
                         break90 =
                             nqueensBreak90
-                                (++)
+                                (StateUpdater (++))
                                 (const $ return ())
                                 callback90
                                 callback180
                                 callbackSearch
                         break180 =
                             nqueensBreak180
-                                (++)
+                                (StateUpdater (++))
                                 (const $ return ())
                                 callback180
                                 callbackSearch
                     in nqueensStart
-                        (++)
+                        (StateUpdater (++))
                         callback90
                         callback180
                         callbackSearch
@@ -789,19 +789,19 @@ tests = -- {{{
                             const . const . checkSymmetry n NoSymmetries
                         break90 =
                             nqueensBreak90
-                                (++)
+                                (StateUpdater (++))
                                 (liftIO . assertEqual "solution has the correct symmetry" AllRotations . symmetryOf n)
                                 callback90
                                 callback180
                                 callbackSearch
                         break180 =
                             nqueensBreak180
-                                (++)
+                                (StateUpdater (++))
                                 (liftIO . assertEqual "solution has the correct symmetry" Rotate180Only . symmetryOf n)
                                 callback180
                                 callbackSearch
                     in nqueensStart
-                        (++)
+                        (StateUpdater (++))
                         callback90
                         callback180
                         callbackSearch
@@ -849,27 +849,27 @@ tests = -- {{{
                             lift $ modify (Set.insert solution)
                         break90 =
                             nqueensBreak90
-                                (++)
+                                (StateUpdater (++))
                                 (finalizeValueWithSymmetry AllRotations)
                                  break90
                                  break180
                                  search
                         break180 =
                             nqueensBreak180
-                                (++)
+                                (StateUpdater (++))
                                 (finalizeValueWithSymmetry Rotate180Only)
                                  break180
                                  search
                         search =
                             nqueensSearch
-                                (++)
+                                (StateUpdater (++))
                                 (finalizeValueWithSymmetry NoSymmetries)
                     in (flip execStateT Set.empty
                         .
                         exploreTreeT
                         $
                         nqueensStart
-                            (++)
+                            (StateUpdater (++))
                              break90
                              break180
                              search

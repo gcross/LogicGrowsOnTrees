@@ -1,20 +1,19 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-import Control.Applicative
-
-import System.Console.CmdTheLine
+import Options.Applicative (fullDesc, progDesc)
 
 import LogicGrowsOnTrees.Parallel.Main
 import LogicGrowsOnTrees.Parallel.Adapter.Threads
 import LogicGrowsOnTrees.Utils.PerfectTree
 import LogicGrowsOnTrees.Utils.WordSum
 
+main :: IO ()
 main =
     mainForExploreTree
         driver
-        (makeArityAndDepthTermAtPositions 0 1)
-        (defTI { termDoc = "count the leaves of a tree" })
+        arity_and_depth_parser
+        (fullDesc <> progDesc "count the leaves of a tree")
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of
                 Aborted _ → error "search aborted"

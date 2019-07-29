@@ -1,13 +1,13 @@
 Name:                LogicGrowsOnTrees
-Version:             1.1.0.2
+Version:             2.0
 License:             BSD3
 License-file:        LICENSE
 Author:              Gregory Crosswhite
 Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
 Synopsis:            a parallel implementation of logic programming using distributed tree exploration
-Cabal-version:       >=1.8
+Cabal-version:       >=1.10
 Build-type:          Simple
-Category:	         Control, Distributed Computing, Logic, Parallelism
+Category:            Control, Distributed Computing, Logic, Parallelism
 Description:
     NOTE:  In addition to the following package description, see
     .
@@ -208,615 +208,665 @@ Extra-source-files:
 
 Bug-reports: https://github.com/gcross/LogicGrowsOnTrees/issues
 
-Source-Repository head
-    Type:     git
-    Location: git://github.com/gcross/LogicGrowsOnTrees.git
-
-Source-Repository this
-    Type:     git
-    Location: git://github.com/gcross/LogicGrowsOnTrees.git
-    Tag:      1.1.0.2
-
 Library
-    Build-depends:
-        AbortT-transformers == 1.0.*,
-        AbortT-mtl == 1.0.*,
-        base > 4 && < 5,
-        bytestring >= 0.9 && < 0.11,
-        cereal >= 0.3 && < 0.6,
-        cmdtheline >= 0.2 && < 0.4,
-        composition >= 0.2 && < 1.1,
-        containers >= 0.4 && < 0.6,
-        data-ivar == 0.30.*,
-        derive >= 2.5.11 && < 2.6,
-        directory >= 1.1 && < 1.3,
-        hslogger == 1.2.*,
-        hslogger-template == 2.0.*,
-        lens >= 3.8 && < 4.14,
-        MonadCatchIO-transformers == 0.3.*,
-        monoid-statistics == 0.3.*,
-        mtl >= 2.1 && < 2.3,
-        multiset >= 0.2 && < 0.4,
-        old-locale == 1.0.*,
-        operational == 0.2.*,
-        prefix-units == 0.2.*,
-        pretty == 1.1.*,
-        PSQueue == 1.1.*,
-        sequential-index == 0.2.*,
-        split == 0.2.*,
-        stm >= 2.3 && < 2.5,
-        time >= 1.4 && < 1.6,
-        transformers >= 0.2 && < 0.5,
-        void >= 0.6 && < 0.8,
-        yjtools >= 0.9.7 && < 0.10
-    Exposed-modules:
-        LogicGrowsOnTrees
-        LogicGrowsOnTrees.Checkpoint
-        LogicGrowsOnTrees.Examples.MapColoring
-        LogicGrowsOnTrees.Examples.Queens
-        LogicGrowsOnTrees.Examples.Queens.Advanced
-        LogicGrowsOnTrees.Location
-        LogicGrowsOnTrees.Parallel.Adapter.Threads
-        LogicGrowsOnTrees.Parallel.Common.Message
-        LogicGrowsOnTrees.Parallel.Common.Process
-        LogicGrowsOnTrees.Parallel.Common.RequestQueue
-        LogicGrowsOnTrees.Parallel.Common.Supervisor
-        LogicGrowsOnTrees.Parallel.Common.Workgroup
-        LogicGrowsOnTrees.Parallel.Common.Worker
-        LogicGrowsOnTrees.Parallel.ExplorationMode
-        LogicGrowsOnTrees.Parallel.Main
-        LogicGrowsOnTrees.Parallel.Purity
-        LogicGrowsOnTrees.Path
-        LogicGrowsOnTrees.Utils.Handle
-        LogicGrowsOnTrees.Utils.IntSum
-        LogicGrowsOnTrees.Utils.PerfectTree
-        LogicGrowsOnTrees.Utils.Word_
-        LogicGrowsOnTrees.Utils.WordSum
-        LogicGrowsOnTrees.Workload
-    Other-modules:
-        LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
-    HS-source-dirs: sources
-    C-sources: c-sources/queens.c
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
-    if flag(pattern-warnings)
-        GHC-Options: -fwarn-incomplete-patterns
+  build-depends:       base >= 4.12
+                     , bytestring >= 0.10
+                     , cereal >= 0.5
+                     , containers >= 0.6
+                     , deepseq >= 1.4
+                     , directory >= 1.3
+                     , exceptions >= 0.10
+                     , flow >= 1.0
+                     , hslogger >= 1.2
+                     , hslogger-template >= 2.0
+                     , lens >= 4.17
+                     , multiset >= 0.3
+                     , mtl >= 2.2
+                     , operational >= 0.2
+                     , optparse-applicative >= 0.14
+                     , prefix-units >= 0.2
+                     , PSQueue >= 1.1
+                     , sequential-index >= 0.2
+                     , split >= 0.2
+                     , stm >= 2.5
+                     , time >= 1.8
+                     , transformers >= 0.5
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , random >= 1.1
+                     , smallcheck >= 1.1
+                     , test-framework >= 0.8
+                     , uuid >= 1.3
+  exposed-modules:     LogicGrowsOnTrees
+                     , LogicGrowsOnTrees.Checkpoint
+                     , LogicGrowsOnTrees.Examples.MapColoring
+                     , LogicGrowsOnTrees.Examples.Queens
+                     , LogicGrowsOnTrees.Examples.Queens.Advanced
+                     , LogicGrowsOnTrees.Location
+                     , LogicGrowsOnTrees.Parallel.Adapter.Threads
+                     , LogicGrowsOnTrees.Parallel.Common.Message
+                     , LogicGrowsOnTrees.Parallel.Common.Process
+                     , LogicGrowsOnTrees.Parallel.Common.RequestQueue
+                     , LogicGrowsOnTrees.Parallel.Common.Supervisor
+                     , LogicGrowsOnTrees.Parallel.Common.Worker
+                     , LogicGrowsOnTrees.Parallel.Common.Workgroup
+                     , LogicGrowsOnTrees.Parallel.ExplorationMode
+                     , LogicGrowsOnTrees.Parallel.Main
+                     , LogicGrowsOnTrees.Parallel.Purity
+                     , LogicGrowsOnTrees.Path
+                     , LogicGrowsOnTrees.Testing
+                     , LogicGrowsOnTrees.Utils.Handle
+                     , LogicGrowsOnTrees.Utils.PerfectTree
+                     , LogicGrowsOnTrees.Utils.WordSum
+                     , LogicGrowsOnTrees.Workload
+  Other-modules:       LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
+  HS-source-dirs:      sources
+  C-Sources:           c-sources/queens.c
+  GHC-Options:         -Werror=incomplete-patterns
+                       -Werror=missing-fields
+                       -Werror=missing-methods
+  Default-Language:    Haskell2010
 
-Flag warnings
-    Description: Enables most warnings.
-    Default:     False
-
-Flag pattern-warnings
-    Description: Enables only pattern match warnings.
-    Default:     False
+--------------------------------------------------------------------------------
+----------------------------------- Examples -----------------------------------
+--------------------------------------------------------------------------------
 
 Flag examples
-    Description: Enable building the examples.
-    Default:     False
-
-Flag tutorial
-    Description: Enable building the tutorial examples.
-    Default:     False
+    Description:       Enable building the examples.
+    Default:           False
 
 Executable readme-simple
     Main-is: readme-simple.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        containers >= 0.4 && < 0.6
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable readme-full
     Main-is: readme-full.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4,
-        containers >= 0.4 && < 0.6
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable count-all-nqueens-solutions
     Main-is: count-all-nqueens-solutions.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable print-all-nqueens-solutions
     Main-is: print-all-nqueens-solutions.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4,
-        containers >= 0.4 && < 0.6
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable print-an-nqueens-solution
     Main-is: print-an-nqueens-solution.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4,
-        containers >= 0.4 && < 0.6
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable print-some-nqueens-solutions-using-pull
     Main-is: print-some-nqueens-solutions-using-pull.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4,
-        containers >= 0.4 && < 0.6
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable print-some-nqueens-solutions-using-push
     Main-is: print-some-nqueens-solutions-using-push.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4,
-        containers >= 0.4 && < 0.6
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable count-all-trivial-tree-leaves
     Main-is: count-all-trivial-tree-leaves.hs
-    Hs-source-dirs: examples
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cereal >= 0.3 && < 0.6,
-        cmdtheline >= 0.2 && < 0.4
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , optparse-applicative >= 0.14
+    GHC-options:       -threaded
+    Default-Language:  Haskell2010
     if flag(examples)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
+
+--------------------------------------------------------------------------------
+----------------------------------- Tutorials ----------------------------------
+--------------------------------------------------------------------------------
+
+Flag tutorial
+    Description:       Enable building the tutorial examples.
+    Default:           False
 
 Executable tutorial-1
     Main-is: tutorial-1.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+        Buildable:     False
 
 Executable tutorial-2
     Main-is: tutorial-2.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        containers >= 0.4 && < 0.6
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+        Buildable:     False
 
 Executable tutorial-3
     Main-is: tutorial-3.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+        Buildable:     False
 
 Executable tutorial-4
     Main-is: tutorial-4.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+        Buildable:     False
 
 Executable tutorial-5
     Main-is: tutorial-5.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+        Buildable:     False
 
 Executable tutorial-6
     Main-is: tutorial-6.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Ghc-Options:       -threaded
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable tutorial-7
     Main-is: tutorial-7.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        transformers >= 0.2 && < 0.5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , transformers >= 0.5
+    Ghc-Options:       -threaded
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable tutorial-8
     Main-is: tutorial-8.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        transformers >= 0.2 && < 0.5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , transformers >= 0.5
+    Ghc-Options:       -threaded
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable tutorial-9
     Main-is: tutorial-9.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Ghc-Options:       -threaded
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable tutorial-10
     Main-is: tutorial-10.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Ghc-Options:       -threaded
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable tutorial-11
     Main-is: tutorial-11.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable tutorial-12
     Main-is: tutorial-12.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , optparse-applicative >= 0.14
+    Ghc-Options:       -threaded
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
 
 Executable tutorial-13
-    Main-is: tutorial-12.hs
-    Hs-source-dirs: tutorial
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cmdtheline >= 0.2 && < 0.4
+    Main-is: tutorial-13.hs
+    Hs-source-dirs:    tutorial
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , optparse-applicative >= 0.14
+    Ghc-Options:       -threaded
+    Default-Language:  Haskell2010
     if flag(tutorial)
-        Buildable: True
+        Buildable:     True
     else
-        Buildable: False
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -threaded
-    else
-        GHC-Options: -threaded
+        Buildable:     False
+
+--------------------------------------------------------------------------------
+---------------------------------- Benchmarks ----------------------------------
+--------------------------------------------------------------------------------
 
 Benchmark tree-versus-list-lopsided-trivial-tree
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-lopsided-trivial-tree.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-lopsided-null-tree
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-lopsided-null-tree.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-null-tree
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-null-tree.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-trivial-tree
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-trivial-tree.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-unit-tree
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-unit-tree.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        cereal == 0.4.*,
-        criterion >= 0.6 && < 0.9,
-        deepseq == 1.3.*
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , cereal >= 0.5
+                     , criterion >= 1.5
+                     , deepseq >= 1.4
 
 Benchmark tree-versus-list-nqueens
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-nqueens.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-nqueens-using-sets
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-nqueens-using-sets.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-nqueens-using-bits
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-nqueens-using-bits.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-nqueens-with-list-at-bottom
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-nqueens-with-list-at-bottom.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-nqueens-with-nothing-at-bottom
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-nqueens-with-nothing-at-bottom.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion
 
 Benchmark tree-versus-list-bind
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-bind.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
 Benchmark tree-versus-list-bind-and-mplus
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-bind-and-mplus.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion
 
 Benchmark tree-versus-list-fmap
     Type: exitcode-stdio-1.0
     Main-is: tree-versus-list-fmap.hs
     Hs-source-dirs: benchmarks
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        criterion >= 0.6 && < 0.9
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , criterion >= 1.5
 
-Test-Suite tests
+--------------------------------------------------------------------------------
+------------------------------------- Tests ------------------------------------
+--------------------------------------------------------------------------------
+
+Test-Suite test-helpers
     Type: exitcode-stdio-1.0
-    Main-is: tests.hs
+    Main-is: test-helpers.hs
     Hs-source-dirs: tests
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        bytestring >= 0.9 && < 0.11,
-        cereal >= 0.3 && < 0.6,
-        composition >= 0.2 && < 1.1,
-        containers >= 0.4 && < 0.6,
-        data-ivar == 0.30.*,
-        directory >= 1.1 && < 1.3,
-        hslogger == 1.2.*,
-        hslogger-template == 2.0.*,
-        HUnit >= 1.2 && < 1.4,
-        lens >= 3.8 && < 4.14,
-        MonadCatchIO-transformers == 0.3.*,
-        operational == 0.2.*,
-        random >= 1.0 && < 1.2,
-        QuickCheck >= 2.4 && < 2.9,
-        quickcheck-instances >= 0.3.1 && < 0.4,
-        smallcheck >= 1.0 && < 1.2,
-        stm >= 2.3 && < 2.5,
-        test-framework >= 0.6 && < 0.9,
-        test-framework-hunit >= 0.2 && < 0.4,
-        test-framework-quickcheck2 >= 0.2 && < 0.4,
-        test-framework-smallcheck == 0.2.*,
-        time >= 1.4 && < 1.6,
-        transformers >= 0.2 && < 0.5,
-        uuid >= 1.2 && < 1.4,
-        void >= 0.6 && < 0.8
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing -with-rtsopts=-M512M
-    else
-        GHC-Options: -with-rtsopts=-M512M
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , exceptions >= 0.10
+                     , hslogger >= 1.2
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , test-framework >= 0.8
+                     , test-framework-quickcheck2 >= 0.3
+    Default-Language:  Haskell2010
+
+Test-Suite test-LogicGrowsOnTrees
+    Type: exitcode-stdio-1.0
+    Main-is: test-LogicGrowsOnTrees.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , hslogger >= 1.2
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+                     , transformers >= 0.5
+    Default-Language:  Haskell2010
+
+Test-Suite test-Checkpoint
+    Type: exitcode-stdio-1.0
+    Main-is: test-Checkpoint.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , cereal >= 0.5
+                     , containers >= 0.6
+                     , exceptions >= 0.10
+                     , hslogger >= 1.2
+                     , HUnit >= 1.6
+                     , lens >= 4.17
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+                     , uuid >= 1.3
+    Default-Language:  Haskell2010
+
+Test-Suite test-Examples
+    Type: exitcode-stdio-1.0
+    Main-is: test-Examples.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , hslogger >= 1.2
+                     , HUnit >= 1.6
+                     , operational >= 0.2
+                     , random >= 1.1
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+    Default-Language:  Haskell2010
+
+Test-Suite test-Location
+    Type: exitcode-stdio-1.0
+    Main-is: test-Location.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , hslogger >= 1.2
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , stm >= 2.5
+                     , test-framework >= 0.8
+                     , test-framework-quickcheck2 >= 0.3
+    Default-Language:  Haskell2010
+
+Test-Suite test-Utils
+    Type: exitcode-stdio-1.0
+    Main-is: test-Utils.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , directory >= 1.3
+                     , hslogger >= 1.2
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , smallcheck >= 1.1
+                     , test-framework >= 0.8
+                     , test-framework-quickcheck2 >= 0.3
+                     , test-framework-smallcheck >= 0.2
+                     , uuid >= 1.3
+    Default-Language:  Haskell2010
+
+Test-Suite test-Path
+    Type: exitcode-stdio-1.0
+    Main-is: test-Path.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , cereal >= 0.5
+                     , containers >= 0.6
+                     , exceptions >= 0.10
+                     , hslogger >= 1.2
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+                     , transformers >= 0.5
+    Default-Language:  Haskell2010
+
+Test-Suite test-RequestQueue
+    Type: exitcode-stdio-1.0
+    Main-is: test-RequestQueue.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , exceptions >= 0.10
+                     , hslogger >= 1.2
+                     , hslogger-template >= 2.0
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+                     , time >= 1.8
+    Default-Language:  Haskell2010
+
+Test-Suite test-Supervisor
+    Type: exitcode-stdio-1.0
+    Main-is: test-Supervisor.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , hslogger >= 1.2
+                     , hslogger-template >= 2.0
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+                     , uuid >= 1.3
+    Default-Language:  Haskell2010
+
+Test-Suite test-Threads
+    Type: exitcode-stdio-1.0
+    Main-is: test-Threads.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , exceptions >= 0.10
+                     , hslogger >= 1.2
+                     , hslogger-template >= 2.0
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , random >= 1.1
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+    Default-Language:  Haskell2010
+
+Test-Suite test-Worker
+    Type: exitcode-stdio-1.0
+    Main-is: test-Worker.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , hslogger >= 1.2
+                     , hslogger-template >= 2.0
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , quickcheck-instances >= 0.3
+                     , random >= 1.1
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+                     , void >= 0.7
+    Default-Language:  Haskell2010
 
 Test-Suite test-nqueens
     Type: exitcode-stdio-1.0
     Main-is: test-nqueens.hs
     Hs-source-dirs: tests
-    Build-depends:
-        LogicGrowsOnTrees,
-        base > 4 && < 5,
-        containers >= 0.4 && < 0.6,
-        HUnit >= 1.2 && < 1.4,
-        QuickCheck >= 2.4 && < 2.9,
-        test-framework >= 0.6 && < 0.9,
-        test-framework-hunit >= 0.2 && < 0.4,
-        test-framework-quickcheck2 >= 0.2 && < 0.4,
-        transformers >= 0.2 && < 0.5
-    if flag(warnings)
-        GHC-Options: -Wall -fno-warn-name-shadowing
+    Build-depends:     LogicGrowsOnTrees
+                     , base >= 4.12
+                     , containers >= 0.6
+                     , HUnit >= 1.6
+                     , QuickCheck >= 2.12
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , test-framework-quickcheck2 >= 0.3
+                     , transformers >= 0.5
+    Default-Language:  Haskell2010
+

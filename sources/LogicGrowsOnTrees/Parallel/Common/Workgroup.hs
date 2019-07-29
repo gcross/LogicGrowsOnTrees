@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -35,7 +36,7 @@ import Control.Lens.Getter (use)
 import Control.Lens.Lens ((<<%=))
 import Control.Lens.Setter ((.=),(%=))
 import Control.Monad (forM_,replicateM_,void)
-import Control.Monad.CatchIO (MonadCatchIO)
+import Control.Monad.Catch (MonadCatch,MonadMask,MonadThrow)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Reader.Class (asks)
 import Control.Monad.State.Class (MonadState)
@@ -43,7 +44,6 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT,ask,runReaderT)
 import Control.Monad.Trans.State.Strict (StateT,evalStateT)
 
-import Data.Composition ((.*))
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Monoid (Monoid(mempty))
@@ -138,7 +138,18 @@ type WorkgroupStateMonad inner_state = StateT WorkgroupState (ReaderT (Workgroup
 type WorkgroupMonad inner_state exploration_mode = SupervisorMonad exploration_mode WorkerId (WorkgroupStateMonad inner_state)
 
 {-| This is the monad in which the workgroup controller will run. -}
-newtype WorkgroupControllerMonad inner_state exploration_mode α = C { unwrapC :: RequestQueueReader exploration_mode WorkerId (WorkgroupStateMonad inner_state) α} deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad)
+newtype WorkgroupControllerMonad inner_state exploration_mode α =
+    C { unwrapC :: RequestQueueReader exploration_mode WorkerId (WorkgroupStateMonad inner_state) α }
+  deriving
+    ( Applicative
+    , Functor
+    , Monad
+    , MonadCatch
+    , MonadIO
+    , MonadMask
+    , MonadThrow
+    , RequestQueueMonad
+    )
 
 instance HasExplorationMode (WorkgroupControllerMonad inner_state exploration_mode) where
     type ExplorationModeFor (WorkgroupControllerMonad inner_state exploration_mode) = exploration_mode
@@ -147,11 +158,16 @@ instance WorkgroupRequestQueueMonad (WorkgroupControllerMonad inner_state explor
     changeNumberOfWorkersAsync computeNewNumberOfWorkers receiveNewNumberOfWorkers = C $ ask >>= (enqueueRequest $ do
         old_number_of_workers ← numberOfWorkers
         let new_number_of_workers = computeNewNumberOfWorkers old_number_of_workers
+        infoM $ printf "Changing number of workers from %i to %i"
+                    old_number_of_workers
+                    new_number_of_workers
         case new_number_of_workers `compare` old_number_of_workers of
             GT → replicateM_ (fromIntegral $ new_number_of_workers - old_number_of_workers) hireAWorker
             LT → replicateM_ (fromIntegral $ old_number_of_workers - new_number_of_workers) fireAWorker
             EQ → return ()
-        infoM $ printf "Number of workers has been changed from %i to %i" old_number_of_workers new_number_of_workers
+        infoM $ printf "Number of workers has been successfully changed from %i to %i"
+                    old_number_of_workers
+                    new_number_of_workers
         liftIO . receiveNewNumberOfWorkers $ new_number_of_workers
      )
 
@@ -192,9 +208,12 @@ runWorkgroup ::
     IO (RunOutcomeFor exploration_mode)
 runWorkgroup exploration_mode initial_inner_state constructCallbacks starting_progress (C controller) = do
     request_queue ← newRequestQueue
-    let receiveStolenWorkloadFromWorker = flip enqueueRequest request_queue .* receiveStolenWorkload
-        receiveProgressUpdateFromWorker = flip enqueueRequest request_queue .* receiveProgressUpdate
-        receiveFailureFromWorker = flip enqueueRequest request_queue .* receiveWorkerFailure
+    let receiveStolenWorkloadFromWorker worker_id maybe_stolen_workload =
+            flip enqueueRequest request_queue $ receiveStolenWorkload worker_id maybe_stolen_workload
+        receiveProgressUpdateFromWorker worker_id progress_update =
+            flip enqueueRequest request_queue $ receiveProgressUpdate worker_id progress_update
+        receiveFailureFromWorker worker_id message =
+            flip enqueueRequest request_queue $ receiveWorkerFailure worker_id message
         receiveFinishedFromWorker worker_id final_progress = flip enqueueRequest request_queue $ do
             removal_flag ← IntSet.member worker_id <$> use pending_quit
             infoM $ if removal_flag
@@ -259,7 +278,7 @@ bumpWorkerRemovalPriority worker_id =
 fireAWorker :: WorkgroupMonad inner_state exploration_mode ()
 fireAWorker =
     tryGetWaitingWorker
-    >>= \x → case x of
+    >>= \case
         Just worker_id → do
             infoM $ "Removing waiting worker " ++ show worker_id ++ "."
             removeWorker worker_id
@@ -268,10 +287,9 @@ fireAWorker =
             asks destroyWorker >>= liftInnerToSupervisor . ($ False) . ($ worker_id)
         Nothing → do
             (worker_id,new_removal_queue) ← do
-               (PSQ.minView <$> use removal_queue) >>=
-                    \x → case x of
-                        Nothing → error "No workers found to be removed!"
-                        Just (worker_id :-> _,rest_queue) → return (worker_id,rest_queue)
+               (PSQ.minView <$> use removal_queue) >>= maybe
+                    (error "No workers found to be removed!")
+                    (\(worker_id :-> _,rest_queue) → return (worker_id,rest_queue))
             infoM $ "Removing active worker " ++ show worker_id ++ "."
             removal_queue .= new_removal_queue
             pending_quit %= IntSet.insert worker_id

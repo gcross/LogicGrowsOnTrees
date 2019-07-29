@@ -11,6 +11,7 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
 
+main :: IO ()
 main = do
     RunOutcome _ termination_reason <-
         exploreTree (forever $
@@ -29,6 +30,6 @@ main = do
         $
         14
     case termination_reason of
-        Aborted progress -> putStrLn "Count aborted."
+        Aborted _ -> putStrLn "Count aborted."
         Completed (WordSum count) -> putStrLn $ "Found " ++ show count ++ " solutions."
         Failure _ message -> putStrLn $ "Failed: " ++ message

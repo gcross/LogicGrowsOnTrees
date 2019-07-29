@@ -625,7 +625,7 @@ main = setNumCapabilities 2 >> go mempty
         Completed (WordSum count) -> do
             putStrLn $ "Found " ++ show count ++ " solutions."
             exitSuccess
-        Failure _ message -> do
+        Failure progress message -> do
             putStrLn $ "Failed: " ++ message
             exitFailure
 ```
@@ -714,7 +714,7 @@ main = do
         $
         14
     case termination_reason of
-        Aborted progress -> putStrLn "Count aborted."
+        Aborted _ -> putStrLn "Count aborted."
         Completed (WordSum count) -> putStrLn $ "Found " ++ show count ++ " solutions."
         Failure _ message -> putStrLn $ "Failed: " ++ message
 ```
@@ -936,30 +936,20 @@ in `Main` that lets one specify the board size using a command-line argument
 (also given in `tutorial/tutorial-12.hs`):
 
 ```haskell
-import System.Console.CmdTheLine (PosInfo(..),TermInfo(..),defTI,pos,posInfo,required)
+import Options.Applicative (fullDesc, progDesc)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
 import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..),mainForExploreTree)
 import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 
-import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
+import LogicGrowsOnTrees.Examples.Queens (board_size_parser, nqueensUsingBitsSolutions)
 
 main =
     mainForExploreTree
         driver
-        (required $
-            pos 0
-                (Nothing :: Maybe Int)
-                posInfo
-                  { posName = "BOARD_SIZE"
-                  , posDoc = "the size of the board"
-                  }
-        )
-        (defTI
-            { termName = "tutorial-11"
-            , termDoc = "count the number of n-queens solutions for a given board size"
-            }
-        )
+        board_size_parser
+        (fullDesc <> progDesc
+            "tutorial-12 - count the number of n-queens solutions for a given board size")
         (\board_size (RunOutcome _ termination_reason) -> do
             case termination_reason of
                 Aborted _ -> error "search aborted"
@@ -969,48 +959,19 @@ main =
         (fmap (const $ WordSum 1) . nqueensUsingBitsSolutions . fromIntegral)
 ```
 
+Note that LogicGrowsOnTrees uses the `optparse-applicative` package for handling
+command line arguments, which easily allows it to combine its own options, such
+as the path to the checkpoint file, with arguments and options provided by the
+user.
+
 This program calls `mainForExploreTree` with the following arguments:
 
 1. the `driver`, which in this case was imported from `Threads`
 
-2.  a `Term` which specifies that our program takes a single required positional
-    argument for the board size:
+2. a `Parser` which specifies that our program takes a single required positional
+   argument for the board size
 
-    ```haskell
-    (required $
-        pos 0
-            (Nothing :: Maybe Int)
-            posInfo
-              { posName = "BOARD_SIZE"
-              , posDoc = "the size of the board"
-              }
-    )
-    ```
-
-    Most of the functions above are part of
-    [`cmdtheline`](http://hackage.haskell.org/package/cmdtheline), an
-    applicative command-line parsing library. This library was used because it
-    makes it easy to compose options together; your argument value here will
-    essentially be merged in with the adapter options and some generic options
-    (such as the checkpointing options).
-
-    Specifically, `pos` here is a function that takes a position, a default
-    value, and a `PosInfo` data structure that contains information about the
-    name of the option and a brief description of it; the result is a value of
-    type `Arg (Maybe Int)`. `required` then takes this term and maps it to a
-    value of type `Term Int` with the property that an error is raised if this
-    positional argument is not present.
-
-3. a `TermInfo` which specifies the name and a short description of this
-   program:
-    
-    ```haskell
-            (defTI
-                { termName = "tutorial-11"
-                , termDoc = "count the number of n-queens solutions for a given board size"
-                }
-            )
-    ```
+3. an `InfoMod` which specifies what to print in the help screen
 
 4. an action to be executed with the final result:
 
@@ -1054,41 +1015,29 @@ For a slightly more sophisticated example, consider the following (also given in
 
 ```haskell
 import Control.Applicative (liftA2)
-import System.Console.CmdTheLine (PosInfo(..),TermInfo(..),defTI,pos,posInfo,required)
+import Options.Applicative (argument, auto, fullDesc, help, metavar, progDesc)
 
 import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Parallel.Adapter.Threads (driver)
 import LogicGrowsOnTrees.Parallel.Main (RunOutcome(..),TerminationReason(..),mainForExploreTreeUntilFoundUsingPush)
-import LogicGrowsOnTrees.Utils.WordSum (WordSum(..))
 
-import LogicGrowsOnTrees.Examples.Queens (nqueensUsingBitsSolutions)
+import LogicGrowsOnTrees.Examples.Queens (board_size_parser, nqueensUsingBitsSolutions)
 
+main :: IO ()
 main =
     mainForExploreTreeUntilFoundUsingPush
-        (\(board_size,number_to_find) -> (>= number_to_find) . length)
+        (\(_,number_to_find) -> (>= number_to_find) . length)
         driver
         (liftA2 (,)
-            (required $
-                pos 0
-                    (Nothing :: Maybe Int)
-                    posInfo
-                      { posName = "BOARD_SIZE"
-                      , posDoc = "the size of the board"
-                      }
-            )
-            (required $
-                pos 1
-                    (Nothing :: Maybe Int)
-                    posInfo
-                      { posName = "#"
-                      , posDoc = "the number of solutions to find"
-                      }
+            board_size_parser
+            (argument auto $ mconcat
+                [ metavar "#"
+                , help "the number of solutions to find"
+                ]
             )
         )
-        (defTI
-            { termName = "tutorial-12"
-            , termDoc = "find some of the solutions to the n-queens problem for a given board size"
-            }
+        (fullDesc <> progDesc
+            "tutorial-12 - find some of the solutions to the n-queens problem for a given board size"
         )
         (\(board_size,number_to_find) (RunOutcome _ termination_reason) -> do
             case termination_reason of
@@ -1096,7 +1045,7 @@ main =
                 Completed (Left found) -> do
                     putStrLn $ "For board size " ++ show board_size ++ ", only found " ++ show (length found) ++ "/" ++ show number_to_find ++ " solutions:"
                     mapM_ print found
-                Completed (Right (Progress checkpoint found)) -> do
+                Completed (Right (Progress _ found)) -> do
                     putStrLn $ "Found all " ++ show number_to_find ++ " requested solutions for board size " ++ show board_size ++ ":"
                     mapM_ print found
                 Failure _ message -> error $ "error: " ++ message
@@ -1113,30 +1062,19 @@ To understand what is going on, let us first look at the third argument to
 
 ```haskell
 (liftA2 (,)
-    (required $
-        pos 0
-            (Nothing :: Maybe Int)
-            posInfo
-              { posName = "BOARD_SIZE"
-              , posDoc = "the size of the board"
-              }
-    )
-    (required $
-        pos 1
-            (Nothing :: Maybe Int)
-            posInfo
-              { posName = "#"
-              , posDoc = "the number of solutions to find"
-              }
+    board_size_parser
+    (argument auto $ mconcat
+        [ metavar "#"
+        , help "the number of solutions to find"
+        ]
     )
 )
 ```
 
-This argument essentially takes the argument from the previous example,
-duplicates it to create a second argument (the number of solutions to find), and
-then merges the two terms together in `Applicative` style via a call to
-`liftA2`. After parsing is complete, the result will be a pair where the first
-value is the board size and the second value is the number of solutions to find.
+This argument merges the board size argument parser with a parser of the number
+of solutions that should be found in the `Applicative` style by using `liftA2`.
+After parsing is complete, the result will be a pair where the first value is
+the board size and the second value is the number of solutions to find.
 
 Now we look a the first argument to `mainForExploreTreeUntilFoundUsingPush`:
 

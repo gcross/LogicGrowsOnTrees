@@ -2,9 +2,6 @@
 
 import Control.Monad
 import Criterion.Main
-import Data.List (genericReplicate)
-import Data.Monoid
-import Data.Word
 import System.Environment
 
 import LogicGrowsOnTrees
@@ -23,13 +20,15 @@ nullPerfectTree depth
   | otherwise  = nullPerfectTree (depth-1) `mplus` nullPerfectTree (depth-1)
 {-# NOINLINE nullPerfectTree #-}
 
+main :: IO ()
 main = defaultMain
     [bench "list" $ nf (getWordSum . mconcat . nullPerfectTree) depth
     ,bench "tree" $ nf (getWordSum . exploreTree . nullPerfectTree) depth
-    ,bench "tree w/ checkpointing" $ nf (getWordSum . exploreTreeStartingFromCheckpoint Unexplored . nullPerfectTree) depth
-    ,bench "tree using worker" $ doWorker depth
-    ,bench "tree using single thread (direct)" $ doThreadDirect depth
-    ,bench "tree using single thread (main)" $ doThreadMain depth
+    ,bench "tree w/ checkpointing" $
+         nf (getWordSum . exploreTreeStartingFromCheckpoint Unexplored . nullPerfectTree) depth
+    ,bench "tree using worker" $ nfIO (doWorker depth)
+    ,bench "tree using single thread (direct)" $ nfIO (doThreadDirect depth)
+    ,bench "tree using single thread (main)" $ nfIO (doThreadMain depth)
     ]
   where
     depth = 15
@@ -37,17 +36,20 @@ main = defaultMain
     -- These need to be here because otherwise nullPerfectTree depth only gets
     -- evaluated once, which distorts the benchmark.
 
-    doWorker depth = exploreTreeGeneric AllMode Pure (nullPerfectTree depth :: Tree WordSum)
+    doWorker tree_depth =
+        exploreTreeGeneric AllMode Pure (nullPerfectTree tree_depth :: Tree WordSum)
     {-# NOINLINE doWorker #-}
 
-    doThreadDirect depth = Threads.exploreTree (setNumberOfWorkers 1) (nullPerfectTree depth :: Tree WordSum)
+    doThreadDirect tree_depth =
+        Threads.exploreTree (setNumberOfWorkers 1) (nullPerfectTree tree_depth :: Tree WordSum)
     {-# NOINLINE doThreadDirect #-}
 
-    doThreadMain depth =
+    doThreadMain tree_depth =
         withArgs ["-n1"] $
             simpleMainForExploreTree
                 Threads.driver
-                (const $ return ())
-                (nullPerfectTree depth :: Tree WordSum)
+                mempty
+                (const $ pure ())
+                (nullPerfectTree tree_depth :: Tree WordSum)
     {-# NOINLINE doThreadMain #-}
 

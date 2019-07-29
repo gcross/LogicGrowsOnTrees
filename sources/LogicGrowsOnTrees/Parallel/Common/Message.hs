@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -18,9 +19,9 @@ module LogicGrowsOnTrees.Parallel.Common.Message
     , receiveAndProcessMessagesFromWorkerUsingHandle
     ) where
 
-import Data.Derive.Serialize
-import Data.DeriveTH
 import Data.Serialize
+
+import GHC.Generics (Generic)
 
 import qualified LogicGrowsOnTrees.Parallel.Common.Worker as Worker
 import LogicGrowsOnTrees.Parallel.ExplorationMode
@@ -47,8 +48,8 @@ data MessageForSupervisor progress worker_final_progress =
   | StolenWorkload (Maybe (Worker.StolenWorkload progress))
     {-| The worker has quit the system and is no longer available -}
   | WorkerQuit
-  deriving (Eq,Show)
-$(derive makeSerialize ''MessageForSupervisor)
+  deriving (Eq,Generic,Show)
+instance (Serialize α, Serialize β) ⇒ Serialize (MessageForSupervisor α β) where
 
 {-| Convenient type alias for the 'MessageForSupervisor' type for the given exploration mode. -}
 type MessageForSupervisorFor exploration_mode = MessageForSupervisor (ProgressFor exploration_mode) (WorkerFinishedProgressFor exploration_mode)
@@ -83,8 +84,8 @@ data MessageForWorker =
   | RequestWorkloadSteal {-^ request a stolen workload -}
   | StartWorkload Workload {-^ start exploring the given workload -}
   | QuitWorker {-^ stop what you are doing and quit the system -}
-  deriving (Eq,Show)
-$(derive makeSerialize ''MessageForWorker)
+  deriving (Eq,Generic,Show)
+instance Serialize MessageForWorker where
 
 {-| Continually performs the given IO action to read a message from a worker
     with the given id and calls one of the given callbacks depending on the

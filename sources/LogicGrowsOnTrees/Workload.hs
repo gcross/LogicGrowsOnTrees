@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -22,12 +23,13 @@ module LogicGrowsOnTrees.Workload
     ) where
 
 import Control.Monad ((>=>))
-import Data.Derive.Serialize
-import Data.DeriveTH
+
 import Data.Function (on)
 import Data.Monoid (Monoid(..))
 import qualified Data.Sequence as Seq
-import Data.Serialize
+import Data.Serialize (Serialize)
+
+import GHC.Generics (Generic)
 
 import LogicGrowsOnTrees
 import LogicGrowsOnTrees.Checkpoint
@@ -45,8 +47,9 @@ import LogicGrowsOnTrees.Path
 data Workload = Workload
     {   workloadPath :: Path
     ,   workloadCheckpoint :: Checkpoint
-    } deriving (Eq,Show)
-$( derive makeSerialize ''Workload )
+    } deriving (Eq,Generic,Show)
+
+instance Serialize Workload where
 
 {-| Workloads are ordered first by their depth (the length of the 'Path'
     component), second by the value of the 'Path' component itself, and finally

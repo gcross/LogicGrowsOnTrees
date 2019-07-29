@@ -88,10 +88,10 @@ module LogicGrowsOnTrees.Parallel.Adapter.Threads
     , runExplorer
     ) where
 
-import Control.Applicative (Applicative,liftA3)
+import Control.Applicative (Applicative,(<$>),(<*>),(<**>))
 import Control.Concurrent (getNumCapabilities,killThread)
 import Control.Monad (when)
-import Control.Monad.CatchIO (MonadCatchIO)
+import Control.Monad.Catch (MonadCatch,MonadMask,MonadThrow)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict (get,modify)
 
@@ -103,7 +103,19 @@ import Data.Void (absurd)
 
 import GHC.Conc (setNumCapabilities)
 
-import System.Console.CmdTheLine (OptInfo(..),required,opt,optInfo)
+import Options.Applicative
+    ( auto
+    , execParser
+    , help
+    , helper
+    , info
+    , long
+    , option
+    , short
+    , showDefault
+    , value
+    )
+
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG))
 import System.Log.Logger.TH
@@ -117,7 +129,6 @@ import LogicGrowsOnTrees.Parallel.Main
     ,RunOutcomeFor
     ,RunStatistics(..)
     ,TerminationReason(..)
-    ,mainParser
     )
 import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Worker
@@ -136,18 +147,26 @@ deriveLoggers "Logger" [DEBUG]
 --------------------------------------------------------------------------------
 
 {-| This is the driver for the threads adapter.  The number of workers is
-    specified via. the (required) command-line option "-n"; 'setNumCapabilities'
-    is called exactly once to make sure that there is an equal number of
-    capabilities.
+    specified via. the command-line option "-n"; 'setNumCapabilities' is called
+    exactly once to make sure that there is an equal number of capabilities.
  -}
 driver :: Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
-    (shared_configuration,supervisor_configuration,number_of_threads) ←
-        mainParser (liftA3 (,,) shared_configuration_term supervisor_configuration_term number_of_threads_term) program_info
-    initializeGlobalState shared_configuration
-    starting_progress ← getStartingProgress shared_configuration supervisor_configuration
+    (tree_configuration,supervisor_configuration,number_of_threads) ← execParser $
+        info
+            (
+                ((,,) <$> tree_configuration_parser
+                      <*> supervisor_configuration_parser
+                      <*> number_of_threads_parser
+                )
+                <**>
+                helper
+            )
+            program_info
+    initializeGlobalState supervisor_configuration
+    starting_progress ← getStartingProgress tree_configuration supervisor_configuration
     runExplorer
-        (constructExplorationMode shared_configuration)
+        (constructExplorationMode tree_configuration)
          purity
          starting_progress
         (do liftIO $ do
@@ -157,17 +176,28 @@ driver = Driver $ \DriverParameters{..} → do
             setNumberOfWorkersAsync
                 (fromIntegral number_of_threads)
                 (return ())
-            constructController shared_configuration supervisor_configuration
+            constructController supervisor_configuration
         )
-        (constructTree shared_configuration)
-     >>= notifyTerminated shared_configuration supervisor_configuration
+        (constructTree tree_configuration)
+     >>= notifyTerminated tree_configuration supervisor_configuration
   where
-    number_of_threads_term = required (flip opt (
-        (optInfo ["n","number-of-threads"])
-        {   optName = "#"
-        ,   optDoc = "This *required* option specifies the number of worker threads to spawn."
-        }
-        ) Nothing )
+    number_of_threads_parser = option auto $ mconcat
+        [ short 'n'
+        , long "number-of-threads"
+        , help $ mconcat
+              ["The number of worker threads to spawn. Make sure that there are "
+              ,"enough capabilities available so that they can actually run in "
+              ,"parallel by either passing in +RTS -N{x} -RTS at run time or "
+              ,"passing in --with-rtsopts=-N{x} at compile time. If {x} is not "
+              ,"present, then it defaults to the number of processors. If there "
+              ,"are other things running on your computer then the number of "
+              ,"workers should be less than the number of processors or else "
+              ,"they will fight with the other processes and performance will "
+              ,"be lost."
+              ]
+        , value 1
+        , showDefault
+        ]
 {-# INLINE driver #-}
 
 --------------------------------------------------------------------------------
@@ -177,7 +207,17 @@ driver = Driver $ \DriverParameters{..} → do
 {-| This is the monad in which the thread controller will run. -}
 newtype ThreadsControllerMonad exploration_mode α =
     C (WorkgroupControllerMonad (IntMap (WorkerEnvironment (ProgressFor exploration_mode))) exploration_mode α)
-  deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
+  deriving
+    ( Applicative
+    , Functor
+    , Monad
+    , MonadCatch
+    , MonadIO
+    , MonadMask
+    , MonadThrow
+    , RequestQueueMonad
+    , WorkgroupRequestQueueMonad
+    )
 
 instance HasExplorationMode (ThreadsControllerMonad exploration_mode) where
     type ExplorationModeFor (ThreadsControllerMonad exploration_mode) = exploration_mode
@@ -274,7 +314,7 @@ exploreTreeTStartingFrom ::
     ThreadsControllerMonad (AllMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) result)
-exploreTreeTStartingFrom = runExplorer AllMode  . ImpureAtopIO
+exploreTreeTStartingFrom run = runExplorer AllMode (ImpureAtopIO run)
 
 ---------------------------- Stop at first result ------------------------------
 
@@ -329,7 +369,7 @@ exploreTreeTUntilFirstStartingFrom ::
     ThreadsControllerMonad (FirstMode result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome Checkpoint (Maybe (Progress result))) {-^ the outcome of the run -}
-exploreTreeTUntilFirstStartingFrom = runExplorer FirstMode . ImpureAtopIO
+exploreTreeTUntilFirstStartingFrom run = runExplorer FirstMode (ImpureAtopIO run)
 
 ------------------------ Stop when sum of results found ------------------------
 
@@ -399,7 +439,7 @@ exploreTreeTUntilFoundUsingPullStartingFrom ::
     ThreadsControllerMonad (FoundModeUsingPull result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
-exploreTreeTUntilFoundUsingPullStartingFrom f = runExplorer (FoundModeUsingPull f) . ImpureAtopIO
+exploreTreeTUntilFoundUsingPullStartingFrom f run = runExplorer (FoundModeUsingPull f) (ImpureAtopIO run)
 
 {- $push
 For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#push"
@@ -463,7 +503,7 @@ exploreTreeTUntilFoundUsingPushStartingFrom ::
     ThreadsControllerMonad (FoundModeUsingPush result) () {-^ the controller loop, which at the very least must start by increasing the number of workers from 0 to the desired number -} →
     TreeT m result {-^ the (impure) tree -} →
     IO (RunOutcome (Progress result) (Either result (Progress result))) {-^ the outcome of the run -}
-exploreTreeTUntilFoundUsingPushStartingFrom f = runExplorer (FoundModeUsingPush f) . ImpureAtopIO
+exploreTreeTUntilFoundUsingPushStartingFrom f run = runExplorer (FoundModeUsingPush f) (ImpureAtopIO run)
 
 --------------------------------------------------------------------------------
 -------------------------------- Generic runner --------------------------------

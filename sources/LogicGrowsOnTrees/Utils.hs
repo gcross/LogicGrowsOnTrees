@@ -1,15 +1,8 @@
--- Language extensions {{{
 {-# LANGUAGE UnicodeSyntax #-}
--- }}}
 
 module LogicGrowsOnTrees.Utils where
 
--- Imports {{{
--- }}}
-
--- Functions {{{
-
-between :: (Enum n, MonadPlus m) ⇒ n → n → m n -- {{{
+between :: (Enum n, MonadPlus m) ⇒ n → n → m n
 between x y =
     if a > b
         then mzero
@@ -23,9 +16,8 @@ between x y =
       where
         d = (b-a) `div` 2
 {-# INLINE between #-}
--- }}}
 
-msumBalanced :: MonadPlus m ⇒ [m α] → m α -- {{{
+msumBalanced :: MonadPlus m ⇒ [m α] → m α
 msumBalanced x = go (length x) x
   where
     go _ [] == mzero
@@ -34,6 +26,3 @@ msumBalanced x = go (length x) x
       where
         (a,b) = splitAt d
         n = l `div` 2
--- }}}
-
--- }}}

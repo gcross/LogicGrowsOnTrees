@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -22,12 +23,12 @@ import Control.Exception (Exception(),throw)
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
 import Data.ByteString (ByteString)
-import Data.Derive.Serialize
-import Data.DeriveTH
 import Data.Functor.Identity (runIdentity)
 import Data.Sequence (Seq,viewl,ViewL(..))
 import Data.Serialize
 import Data.Typeable (Typeable)
+
+import GHC.Generics (Generic)
 
 import LogicGrowsOnTrees
 
@@ -59,8 +60,8 @@ instance Exception WalkError
 data BranchChoice =
     LeftBranch
   | RightBranch
-  deriving (Eq,Ord,Read,Show)
-$( derive makeSerialize ''BranchChoice )
+  deriving (Eq,Generic,Ord,Read,Show)
+instance Serialize BranchChoice where
 
 {-| A step in a path through a tree, which can either pass through a point with
     a cached result or take a choice to go left or right at a branch point.
@@ -68,8 +69,8 @@ $( derive makeSerialize ''BranchChoice )
 data Step =
     CacheStep ByteString {-^ Step through a cache point -}
  |  ChoiceStep BranchChoice {-^ Step through a choice point -}
- deriving (Eq,Ord,Show)
-$( derive makeSerialize ''Step )
+ deriving (Eq,Generic,Ord,Show)
+instance Serialize Step where
 
 {-| A sequence of 'Step's. -}
 type Path = Seq Step

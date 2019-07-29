@@ -6,7 +6,7 @@ import qualified Data.Foldable as Fold
 import Data.List (sort)
 import qualified Data.Sequence as Seq
 
-import System.Console.CmdTheLine
+import Options.Applicative (argument,auto,fullDesc,help,metavar,progDesc)
 
 import LogicGrowsOnTrees.Checkpoint (Progress(..))
 import LogicGrowsOnTrees.Parallel.Main
@@ -14,14 +14,19 @@ import LogicGrowsOnTrees.Parallel.Adapter.Threads
 
 import LogicGrowsOnTrees.Examples.Queens
 
+main :: IO ()
 main =
     mainForExploreTreeUntilFoundUsingPull
         (\(_,number_of_solutions) → (>= number_of_solutions) . Seq.length)
         driver
-        ((,) <$> makeBoardSizeTermAtPosition 0
-             <*> required (pos 1 Nothing (posInfo { posName = "SOLUTIONS", posDoc = "number of solutions" }))
+        ((,) <$> board_size_parser
+             <*> (argument auto $ mconcat
+                     [ metavar "SOLUTIONS"
+                     , help "number of solutions"
+                     ]
+                 )
         )
-        (defTI { termDoc = "print the requested number of n-queens solutions (or at least as many as found) for a given board size" })
+        (fullDesc <> progDesc "print the requested number of n-queens solutions (or at least as many as found) for a given board size")
         (\_ (RunOutcome _ termination_reason) → do
             case termination_reason of
                 Aborted _ → error "search aborted"

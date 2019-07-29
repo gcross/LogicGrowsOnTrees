@@ -39,83 +39,60 @@ module LogicGrowsOnTrees.Examples.Queens
     ,nqueensWithNothingAtBottomSolutions
     ,nqueensWithNothingAtBottomCount
     -- * Board size command argument
-    , BoardSize(..)
-    , makeBoardSizeTermAtPosition
+    , board_size_parser
     ) where
 
-import Control.Monad (MonadPlus,guard,liftM)
+import Control.Monad (MonadPlus,(>=>),guard,liftM)
 
 import Data.Bits ((.|.),(.&.),bit,finiteBitSize,shiftL,shiftR)
-import Data.Functor ((<$>))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Data.IntSet (IntSet) -- imported so that haddock will link to it
 import qualified Data.IntSet as IntSet
 import Data.Maybe (fromJust)
 import Data.Word (Word,Word64)
 
-import System.Console.CmdTheLine
+import Options.Applicative (Parser,ReadM,argument,eitherReader,help,metavar)
 
-import Text.PrettyPrint (text)
+import Text.Read (readMaybe)
+import Text.Printf (printf)
 
-import LogicGrowsOnTrees (Tree,allFrom,exploreTree) -- exploreTree added so that haddock will link to it
+import LogicGrowsOnTrees (Tree,allFrom) -- exploreTree added so that haddock will link to it
 import qualified LogicGrowsOnTrees.Examples.Queens.Advanced as Advanced
 import LogicGrowsOnTrees.Examples.Queens.Advanced
     (NQueensSolution
     ,NQueensSolutions
+    ,Updater(..)
     ,multiplySolution
     ,nqueensGeneric
     ,nqueensWithListAtBottomGeneric
     ,nqueensWithNothingAtBottomGeneric
     )
-import LogicGrowsOnTrees.Utils.Word_
 import LogicGrowsOnTrees.Utils.WordSum
 
 --------------------------------------------------------------------------------
 ---------------------------------- Board size ----------------------------------
 --------------------------------------------------------------------------------
 
-{-| This newtype wrapper is used to provide an ArgVal instance that ensure that
-    an input board size is between 1 and 'nqueens_maximum_size'.  In general you
-    do not need to use this type directly but instead can use the function
-    'makeBoardSizeTermAtPosition'.
- -}
-newtype BoardSize = BoardSize { getBoardSize :: Word }
-instance ArgVal BoardSize where
-    converter = (parseBoardSize,prettyBoardSize)
-      where
-        (parseWord,prettyWord) = converter
-        parseBoardSize =
-            either Left (\(Word_ n) →
-                if n >= 1 && n <= fromIntegral nqueens_maximum_size
-                    then Right . BoardSize $ n
-                    else Left . text $ "bad board size (must be between 1 and " ++ show nqueens_maximum_size ++ " inclusive)"
-            )
-            .
-            parseWord
-        prettyBoardSize = prettyWord . Word_ . getBoardSize
-instance ArgVal (Maybe BoardSize) where
-    converter = just
-
-{-| This constructs a term for the `cmdtheline` command line parser that expects
-    a valid board size (i.e., a number between 1 and 'nqueens_maximum_size') at
-    the given positional argument.
- -}
-makeBoardSizeTermAtPosition ::
-    Int {-^ the position in the commonand line arguments where this argument is expected -} →
-    Term Word
-makeBoardSizeTermAtPosition position =
-    getBoardSize
-    <$>
-    (required
-     $
-     pos position
-        Nothing
-        posInfo
-          { posName = "BOARD_SIZE"
-          , posDoc = "board size"
-          }
-    )
+{-| The argument for specifying the board size. -}
+board_size_parser ∷ Parser Word
+board_size_parser =
+   argument argumentReader $ metavar "BOARD_SIZE" <> help "board size"
+  where
+      argumentReader ∷ ReadM Word
+      argumentReader = eitherReader $
+        maybe
+            (fail "board size was not a valid number")
+            pure
+        .
+        readMaybe
+        >=>
+        (\n → if n >= 1 && n <= fromIntegral nqueens_maximum_size
+            then pure n
+            else fail $ printf
+                "bad board size %i %i (must be between 1 and %i inclusive)"
+                (show n) (show n)
+                (show nqueens_maximum_size)
+        )
 
 --------------------------------------------------------------------------------
 -------------------------------- Correct counts --------------------------------
@@ -314,7 +291,7 @@ functions, see the "LogicGrowsOnTrees.Examples.Queens.Advanced" module.
 
 {-| Generates the solutions to the n-queens problem with the given board size. -}
 nqueensSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
+nqueensSolutions n = nqueensGeneric (StateUpdater (++)) multiplySolution [] n
 {-# SPECIALIZE nqueensSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensSolutions :: Word → Tree NQueensSolution #-}
 
@@ -323,31 +300,31 @@ nqueensSolutions n = nqueensGeneric (++) multiplySolution [] n
     done by the 'exploreTree' (and related) functions.
  -}
 nqueensCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensCount = nqueensGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+nqueensCount = nqueensGeneric CountUpdater (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensCount :: Word → Tree WordSum #-}
 
 {-| Like 'nqueensSolutions', but uses List at the bottom instead of C. -}
 nqueensWithListAtBottomSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensWithListAtBottomSolutions n = nqueensWithListAtBottomGeneric (++) multiplySolution [] n
+nqueensWithListAtBottomSolutions n = nqueensWithListAtBottomGeneric (StateUpdater (++)) multiplySolution [] n
 {-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensWithListAtBottomSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Like 'nqueensCount', but uses List at the bottom instead of C. -}
 nqueensWithListAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensWithListAtBottomCount = nqueensWithListAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+nqueensWithListAtBottomCount = nqueensWithListAtBottomGeneric CountUpdater (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensWithListAtBottomCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensWithListAtBottomCount :: Word → Tree WordSum #-}
 
 {-| Like 'nqueensSolutions', but uses List at the bottom instead of C. -}
 nqueensWithNothingAtBottomSolutions :: MonadPlus m ⇒ Word → m NQueensSolution
-nqueensWithNothingAtBottomSolutions n = nqueensWithNothingAtBottomGeneric (++) multiplySolution [] n
+nqueensWithNothingAtBottomSolutions n = nqueensWithNothingAtBottomGeneric (StateUpdater (++)) multiplySolution [] n
 {-# SPECIALIZE nqueensWithNothingAtBottomSolutions :: Word → NQueensSolutions #-}
 {-# SPECIALIZE nqueensWithNothingAtBottomSolutions :: Word → Tree NQueensSolution #-}
 
 {-| Like 'nqueensCount', but uses List at the bottom instead of C. -}
 nqueensWithNothingAtBottomCount :: MonadPlus m ⇒ Word → m WordSum
-nqueensWithNothingAtBottomCount = nqueensWithNothingAtBottomGeneric (const id) (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
+nqueensWithNothingAtBottomCount = nqueensWithNothingAtBottomGeneric CountUpdater (\_ symmetry _ → return . WordSum . Advanced.multiplicityForSymmetry $ symmetry) ()
 {-# SPECIALIZE nqueensWithNothingAtBottomCount :: Word → [WordSum] #-}
 {-# SPECIALIZE nqueensWithNothingAtBottomCount :: Word → Tree WordSum #-}
 
