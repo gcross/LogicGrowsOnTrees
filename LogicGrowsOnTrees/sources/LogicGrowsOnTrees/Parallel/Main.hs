@@ -222,8 +222,13 @@ data SupervisorConfiguration = SupervisorConfiguration
     ,   workload_buffer_size_configuration :: Int
     ,   statistics_configuration :: StatisticsConfiguration
     ,   show_cpu_time :: Bool
-    ,   logging_configuration :: LoggingConfiguration
     }
+
+data SharedConfiguration tree_configuration = SharedConfiguration
+    {   logging_configuration :: LoggingConfiguration
+    ,   tree_configuration :: tree_configuration
+    } deriving (Eq,Generic,Show)
+instance Serialize tree_configuration ⇒ Serialize (SharedConfiguration tree_configuration)
 
 data ProgressAndCPUTime progress = ProgressAndCPUTime progress Rational deriving (Generic)
 instance Serialize progress ⇒ Serialize (ProgressAndCPUTime progress) where
@@ -247,7 +252,7 @@ instance Serialize progress ⇒ Serialize (ProgressAndCPUTime progress) where
  -}
 data Driver
     result_monad
-    tree_configuration
+    shared_configuration
     supervisor_configuration
     m n
     exploration_mode
@@ -260,7 +265,7 @@ data Driver
         , MonadIO result_monad
         ) ⇒
         DriverParameters
-            tree_configuration
+            shared_configuration
             supervisor_configuration
             m n
             exploration_mode
@@ -272,14 +277,14 @@ data Driver
     driver in the main functions.
  -}
 data DriverParameters
-    tree_configuration
+    shared_configuration
     supervisor_configuration
     m n
     exploration_mode
     controller_monad =
     DriverParameters
     {   {-| configuration information shared between the supervisor and the worker -}
-        tree_configuration_parser :: Parser tree_configuration
+        shared_configuration_parser :: Parser shared_configuration
         {-| configuration information specific to the supervisor -}
     ,   supervisor_configuration_parser :: Parser supervisor_configuration
         {-| program information;  should at a minimum put a brief description of the program in the 'termDoc' field -}
@@ -288,15 +293,15 @@ data DriverParameters
             is, once for each running instance of the executable, which
             depending on the adapter might be a supervisor, a worker, or both
          -}
-    ,   initializeGlobalState :: supervisor_configuration → IO ()
+    ,   initializeGlobalState :: shared_configuration → IO ()
         {-| in the supervisor, gets the starting progress for the exploration;  this is where a checkpoint is loaded, if one exists -}
-    ,   getStartingProgress :: tree_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
+    ,   getStartingProgress :: shared_configuration → supervisor_configuration → IO (ProgressFor exploration_mode)
         {-| in the supervisor, responds to the termination of the run -}
-    ,   notifyTerminated :: tree_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
+    ,   notifyTerminated :: shared_configuration → supervisor_configuration → RunOutcomeFor exploration_mode → IO ()
         {-| constructs the exploration mode given the shared configuration -}
-    ,   constructExplorationMode :: tree_configuration → ExplorationMode exploration_mode
+    ,   constructExplorationMode :: shared_configuration → ExplorationMode exploration_mode
         {-| constructs the tree given the shared configuration -}
-    ,   constructTree :: tree_configuration → TreeT m (ResultFor exploration_mode)
+    ,   constructTree :: shared_configuration → TreeT m (ResultFor exploration_mode)
         {-| the purity of the constructed tree -}
     ,   purity :: Purity m n
         {-| construct the controller, which runs in the supervisor and handles things like periodic checkpointing -}
@@ -403,7 +408,7 @@ in (the leaves of) the tree.
  -}
 mainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) result → IO ())
@@ -422,7 +427,7 @@ mainForExploreTree = genericMain (const AllMode) Pure
  -}
 mainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad tree_configuration SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
@@ -446,7 +451,7 @@ mainForExploreTreeIO = genericMain (const AllMode) io_purity
 mainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad tree_configuration SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α)
         {-^ information about the program; should look something like the following:
@@ -483,7 +488,7 @@ There are two ways in which a system running in this mode can terminate normally
 {-| Explore the given pure tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
@@ -500,7 +505,7 @@ mainForExploreTreeUntilFirst = genericMain (const FirstMode) Pure
 {-| Explore the given IO tree in parallel, stopping if a solution is found. -}
 mainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad tree_configuration SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
@@ -518,7 +523,7 @@ mainForExploreTreeIOUntilFirst = genericMain (const FirstMode) io_purity
 mainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad tree_configuration SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
@@ -584,7 +589,7 @@ WARNING:  If you use this mode then you need to enable checkpointing when the
 mainForExploreTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
@@ -605,7 +610,7 @@ mainForExploreTreeUntilFoundUsingPull constructCondition =
 mainForExploreTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
@@ -627,7 +632,7 @@ mainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
@@ -674,7 +679,7 @@ the position of only having a partial result upon success.)
 mainForExploreTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad tree_configuration SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
@@ -695,7 +700,7 @@ mainForExploreTreeUntilFoundUsingPush constructCondition =
 mainForExploreTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad tree_configuration SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
@@ -717,7 +722,7 @@ mainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (tree_configuration → result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad tree_configuration SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration tree_configuration) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     Parser tree_configuration {-^ a term with any configuration information needed to construct the tree -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (tree_configuration → RunOutcome (Progress result) (Either result (Progress result)) → IO ())
@@ -756,7 +761,7 @@ in (the leaves of) the tree.
  -}
 simpleMainForExploreTree ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad () SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -773,7 +778,7 @@ simpleMainForExploreTree = forwardSimpleToMainFunction mainForExploreTree
  -}
 simpleMainForExploreTreeIO ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad () SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -791,7 +796,7 @@ simpleMainForExploreTreeIO = forwardSimpleToMainFunction mainForExploreTreeIO
 simpleMainForExploreTreeImpure ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad () SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (AllMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) result → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -812,7 +817,7 @@ For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#first"
 {-| Explore the given pure tree in parallel, stopping if a solution is found. -}
 simpleMainForExploreTreeUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad () SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -827,7 +832,7 @@ simpleMainForExploreTreeUntilFirst = forwardSimpleToMainFunction mainForExploreT
 {-| Explore the given tree in parallel in IO, stopping if a solution is found. -}
 simpleMainForExploreTreeIOUntilFirst ::
     (Serialize result, MonadIO result_monad) ⇒
-    Driver result_monad () SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -843,7 +848,7 @@ simpleMainForExploreTreeIOUntilFirst = forwardSimpleToMainFunction mainForExplor
 simpleMainForExploreTreeImpureUntilFirst ::
     (Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad () SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FirstMode result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome Checkpoint (Maybe (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -872,7 +877,7 @@ For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#pull"
 simpleMainForExploreTreeUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad () SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -891,7 +896,7 @@ simpleMainForExploreTreeUntilFoundUsingPull = forwardSimpleToMainFunction . main
 simpleMainForExploreTreeIOUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad () SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FoundModeUsingPull result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -910,7 +915,7 @@ simpleMainForExploreTreeImpureUntilFoundUsingPull ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad () SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (not that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPull result) {-^ the driver for the desired adapter (not that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -937,7 +942,7 @@ For more details, follow this link: "LogicGrowsOnTrees.Parallel.Main#push"
 simpleMainForExploreTreeUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad () SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration Identity IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -957,7 +962,7 @@ simpleMainForExploreTreeUntilFoundUsingPush condition =
 simpleMainForExploreTreeIOUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
-    Driver result_monad () SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration IO IO (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -976,7 +981,7 @@ simpleMainForExploreTreeImpureUntilFoundUsingPush ::
     (Monoid result, Serialize result, MonadIO result_monad, Functor m, MonadIO m) ⇒
     (result → Bool) {-^ a condition function that signals when we have found all of the result that we wanted -} →
     (∀ β. m β → IO β) {-^ a function that runs an @m@ action in the 'IO' monad -} →
-    Driver result_monad () SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m m (FoundModeUsingPush result) {-^ the driver for the desired adapter (note that all drivers can be specialized to this type) -} →
     (∀ α. InfoMod α) {-^ information about the program -} →
     (RunOutcome (Progress result) (Either result (Progress result)) → IO ())
         {-^ a callback that will be invoked with the outcome of the run; note
@@ -1011,7 +1016,7 @@ genericMain ::
     Purity m n {-^ the purity of the tree -} →
     Driver
         result_monad
-        tree_configuration
+        (SharedConfiguration tree_configuration)
         SupervisorConfiguration
         m n
         exploration_mode
@@ -1031,7 +1036,7 @@ genericMain ::
     (tree_configuration → TreeT m result) {-^ the function that constructs the tree given the tree configuration information -} →
     result_monad ()
 genericMain
-    constructExplorationMode
+    constructExplorationMode_
     purity
     (Driver run)
     tree_configuration_parser
@@ -1039,16 +1044,18 @@ genericMain
     notifyTerminated_user
     constructTree
  =  (liftIO . newIORef $ error "tracker was not set") >>= \tracker_ref → run DriverParameters
-    { tree_configuration_parser =  tree_configuration_parser
+    { shared_configuration_parser =
+          SharedConfiguration
+              <$> logging_configuration_parser
+              <*> tree_configuration_parser
     , supervisor_configuration_parser =
           SupervisorConfiguration
               <$> checkpoint_configuration_parser
               <*> workload_buffer_size_configuration_parser
               <*> statistics_configuration_parser
               <*> show_cpu_time_parser
-              <*> logging_configuration_parser
     , program_info = program_info
-    , initializeGlobalState = \SupervisorConfiguration{logging_configuration=LoggingConfiguration{..}} → do
+    , initializeGlobalState = \SharedConfiguration{logging_configuration=LoggingConfiguration{..}} → do
           case maybe_log_format of
               Nothing → return ()
               Just log_format → do
@@ -1056,9 +1063,9 @@ genericMain
                   updateGlobalLogger rootLoggerName $ setHandlers [handler]
           updateGlobalLogger rootLoggerName (setLevel log_level)
     , getStartingProgress = \
-          tree_configuration
+          SharedConfiguration{..}
           SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
-        → let initial_progress = initialProgress . constructExplorationMode $ tree_configuration
+        → let initial_progress = initialProgress . constructExplorationMode_ $ tree_configuration
           in case maybe_checkpoint_path of
               Nothing → do
                   infoM "Checkpointing is NOT enabled"
@@ -1076,7 +1083,7 @@ genericMain
                           return progress
                       )
     , notifyTerminated = \
-          tree_configuration
+          SharedConfiguration{..}
           SupervisorConfiguration{checkpoint_configuration=CheckpointConfiguration{..},..}
           run_outcome@RunOutcome{..}
         → let StatisticsConfiguration{..} = statistics_configuration
@@ -1110,8 +1117,8 @@ genericMain
                             Aborted checkpoint → writeCheckpointFile checkpoint_path checkpoint cpu_time
                             Failure checkpoint _ → writeCheckpointFile checkpoint_path checkpoint cpu_time
                             _ → return ()
-    , constructExplorationMode = constructExplorationMode
-    , constructTree = constructTree
+    , constructExplorationMode = constructExplorationMode_ . tree_configuration
+    , constructTree = constructTree . tree_configuration
     , purity = purity
     , constructController = controllerLoop tracker_ref
     }
@@ -1564,14 +1571,14 @@ controllerLoop tracker_ref SupervisorConfiguration{statistics_configuration=Stat
 forwardSimpleToMainFunction ::
     ∀ result_monad m n exploration_mode.
     (
-        Driver result_monad () SupervisorConfiguration m n exploration_mode →
+        Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m n exploration_mode →
         Parser () →
         (∀ α. InfoMod α) →
         (() → RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode) → IO ()) →
         (() → TreeT m (ResultFor exploration_mode)) →
         result_monad ()
     ) →
-    Driver result_monad () SupervisorConfiguration m n exploration_mode →
+    Driver result_monad (SharedConfiguration ()) SupervisorConfiguration m n exploration_mode →
     (∀ α. InfoMod α) →
     (RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode) → IO ()) →
     (TreeT m (ResultFor exploration_mode)) →

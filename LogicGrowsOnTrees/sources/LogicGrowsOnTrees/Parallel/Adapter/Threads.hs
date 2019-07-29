@@ -143,6 +143,16 @@ import LogicGrowsOnTrees.Parallel.Purity
 deriveLoggers "Logger" [DEBUG]
 
 --------------------------------------------------------------------------------
+------------------------------------- Types ------------------------------------
+--------------------------------------------------------------------------------
+
+data Configuration shared_configuration supervisor_configuration = Configuration
+    { shared_configuration :: shared_configuration
+    , supervisor_configuration :: supervisor_configuration
+    , number_of_threads :: Int
+    }
+
+--------------------------------------------------------------------------------
 ------------------------------------ Driver ------------------------------------
 --------------------------------------------------------------------------------
 
@@ -152,21 +162,19 @@ deriveLoggers "Logger" [DEBUG]
  -}
 driver :: Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
-    (tree_configuration,supervisor_configuration,number_of_threads) ← execParser $
-        info
-            (
-                ((,,) <$> tree_configuration_parser
-                      <*> supervisor_configuration_parser
-                      <*> number_of_threads_parser
-                )
-                <**>
-                helper
+    Configuration{..} ←
+        execParser $ flip info program_info $
+            (Configuration
+                <$> shared_configuration_parser
+                <*> supervisor_configuration_parser
+                <*> number_of_threads_parser
             )
-            program_info
-    initializeGlobalState supervisor_configuration
-    starting_progress ← getStartingProgress tree_configuration supervisor_configuration
+            <**>
+            helper
+    initializeGlobalState shared_configuration
+    starting_progress ← getStartingProgress shared_configuration supervisor_configuration
     runExplorer
-        (constructExplorationMode tree_configuration)
+        (constructExplorationMode shared_configuration)
          purity
          starting_progress
         (do liftIO $ do
@@ -178,8 +186,8 @@ driver = Driver $ \DriverParameters{..} → do
                 (return ())
             constructController supervisor_configuration
         )
-        (constructTree tree_configuration)
-     >>= notifyTerminated tree_configuration supervisor_configuration
+        (constructTree shared_configuration)
+     >>= notifyTerminated shared_configuration supervisor_configuration
   where
     number_of_threads_parser = option auto $ mconcat
         [ short 'n'
