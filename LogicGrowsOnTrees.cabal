@@ -272,6 +272,10 @@ Library
 ----------------------------------- Examples -----------------------------------
 --------------------------------------------------------------------------------
 
+Flag examples
+    Description:       Enable building the examples.
+    Default:           False
+
 Executable readme-simple
     Main-is: readme-simple.hs
     Hs-source-dirs:    examples
@@ -281,6 +285,10 @@ Executable readme-simple
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable readme-full
     Main-is: readme-full.hs
@@ -291,6 +299,10 @@ Executable readme-full
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable count-all-nqueens-solutions
     Main-is: count-all-nqueens-solutions.hs
@@ -300,6 +312,10 @@ Executable count-all-nqueens-solutions
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable print-all-nqueens-solutions
     Main-is: print-all-nqueens-solutions.hs
@@ -310,6 +326,10 @@ Executable print-all-nqueens-solutions
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable print-an-nqueens-solution
     Main-is: print-an-nqueens-solution.hs
@@ -319,6 +339,10 @@ Executable print-an-nqueens-solution
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable print-some-nqueens-solutions-using-pull
     Main-is: print-some-nqueens-solutions-using-pull.hs
@@ -329,6 +353,10 @@ Executable print-some-nqueens-solutions-using-pull
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable print-some-nqueens-solutions-using-push
     Main-is: print-some-nqueens-solutions-using-push.hs
@@ -339,6 +367,10 @@ Executable print-some-nqueens-solutions-using-push
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable count-all-trivial-tree-leaves
     Main-is: count-all-trivial-tree-leaves.hs
@@ -348,10 +380,18 @@ Executable count-all-trivial-tree-leaves
                      , optparse-applicative >= 0.14
     GHC-options:       -threaded
     Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable:     True
+    else
+        Buildable:     False
 
 --------------------------------------------------------------------------------
 ----------------------------------- Tutorials ----------------------------------
 --------------------------------------------------------------------------------
+
+Flag tutorial
+    Description:       Enable building the tutorial examples.
+    Default:           False
 
 Executable tutorial-1
     Main-is: tutorial-1.hs
@@ -359,6 +399,10 @@ Executable tutorial-1
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-2
     Main-is: tutorial-2.hs
@@ -367,6 +411,10 @@ Executable tutorial-2
                      , base >= 4.12
                      , containers >= 0.6
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-3
     Main-is: tutorial-3.hs
@@ -374,6 +422,10 @@ Executable tutorial-3
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-4
     Main-is: tutorial-4.hs
@@ -381,6 +433,10 @@ Executable tutorial-4
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-5
     Main-is: tutorial-5.hs
@@ -388,6 +444,10 @@ Executable tutorial-5
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-6
     Main-is: tutorial-6.hs
@@ -396,6 +456,10 @@ Executable tutorial-6
                      , base >= 4.12
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-7
     Main-is: tutorial-7.hs
@@ -405,6 +469,10 @@ Executable tutorial-7
                      , transformers >= 0.5
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-8
     Main-is: tutorial-8.hs
@@ -414,6 +482,10 @@ Executable tutorial-8
                      , transformers >= 0.5
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-9
     Main-is: tutorial-9.hs
@@ -422,6 +494,10 @@ Executable tutorial-9
                      , base >= 4.12
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-10
     Main-is: tutorial-10.hs
@@ -430,6 +506,10 @@ Executable tutorial-10
                      , base >= 4.12
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-11
     Main-is: tutorial-11.hs
@@ -437,6 +517,10 @@ Executable tutorial-11
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-12
     Main-is: tutorial-12.hs
@@ -446,6 +530,10 @@ Executable tutorial-12
                      , optparse-applicative >= 0.14
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 Executable tutorial-13
     Main-is: tutorial-13.hs
@@ -455,6 +543,10 @@ Executable tutorial-13
                      , optparse-applicative >= 0.14
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
+    if flag(tutorial)
+        Buildable:     True
+    else
+        Buildable:     False
 
 --------------------------------------------------------------------------------
 ---------------------------------- Benchmarks ----------------------------------

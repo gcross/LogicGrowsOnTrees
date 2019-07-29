@@ -1,4 +1,7 @@
-flags: {}
+flags:
+    LogicGrowsOnTrees:
+        examples: true
+        tutorial: true
 packages:
 - .
 extra-deps:
