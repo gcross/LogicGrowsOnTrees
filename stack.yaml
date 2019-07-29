@@ -1,7 +1,7 @@
 flags:
     LogicGrowsOnTrees:
-        examples: true
-        tutorial: true
+        examples: false
+        tutorials: false
 packages:
 - LogicGrowsOnTrees/
 extra-deps:

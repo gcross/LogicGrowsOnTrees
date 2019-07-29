@@ -1,8 +1,8 @@
-:readme-simple
-:readme-full
-:count-all-trivial-tree-leaves
-:count-all-nqueens-solutions
-:print-all-nqueens-solutions
-:print-an-nqueens-solution
-:print-some-nqueens-solutions-using-pull
-:print-some-nqueens-solutions-using-push
+LogicGrowsOnTrees:readme-simple
+LogicGrowsOnTrees:readme-full
+LogicGrowsOnTrees:count-all-trivial-tree-leaves
+LogicGrowsOnTrees:count-all-nqueens-solutions
+LogicGrowsOnTrees:print-all-nqueens-solutions
+LogicGrowsOnTrees:print-an-nqueens-solution
+LogicGrowsOnTrees:print-some-nqueens-solutions-using-pull
+LogicGrowsOnTrees:print-some-nqueens-solutions-using-push

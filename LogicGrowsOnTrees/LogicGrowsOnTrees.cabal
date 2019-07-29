@@ -389,7 +389,7 @@ Executable count-all-trivial-tree-leaves
 ----------------------------------- Tutorials ----------------------------------
 --------------------------------------------------------------------------------
 
-Flag tutorial
+Flag tutorials
     Description:       Enable building the tutorial examples.
     Default:           False
 
@@ -399,7 +399,7 @@ Executable tutorial-1
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -411,7 +411,7 @@ Executable tutorial-2
                      , base >= 4.12
                      , containers >= 0.6
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -422,7 +422,7 @@ Executable tutorial-3
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -433,7 +433,7 @@ Executable tutorial-4
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -444,7 +444,7 @@ Executable tutorial-5
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -456,7 +456,7 @@ Executable tutorial-6
                      , base >= 4.12
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -469,7 +469,7 @@ Executable tutorial-7
                      , transformers >= 0.5
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -482,7 +482,7 @@ Executable tutorial-8
                      , transformers >= 0.5
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -494,7 +494,7 @@ Executable tutorial-9
                      , base >= 4.12
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -506,7 +506,7 @@ Executable tutorial-10
                      , base >= 4.12
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -517,7 +517,7 @@ Executable tutorial-11
     Build-depends:     LogicGrowsOnTrees
                      , base >= 4.12
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -530,7 +530,7 @@ Executable tutorial-12
                      , optparse-applicative >= 0.14
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
@@ -543,7 +543,7 @@ Executable tutorial-13
                      , optparse-applicative >= 0.14
     Ghc-Options:       -threaded
     Default-Language:  Haskell2010
-    if flag(tutorial)
+    if flag(tutorials)
         Buildable:     True
     else
         Buildable:     False
