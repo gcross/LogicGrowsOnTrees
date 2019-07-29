@@ -99,7 +99,7 @@ module LogicGrowsOnTrees.Parallel.Main
 
 import Prelude hiding (readFile,writeFile)
 
-import Control.Applicative ((<$>),(<*>),many,pure)
+import Control.Applicative ((<$>),(<*>),(<|>),many,pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (threadDelay)
 import Control.DeepSeq (NFData)
@@ -139,7 +139,7 @@ import Options.Applicative
     , option
     , short
     , showDefault
-    , str
+    , strOption
     , switch
     , value
     )
@@ -1385,17 +1385,21 @@ statistics =
 checkpoint_configuration_parser :: Parser CheckpointConfiguration
 checkpoint_configuration_parser =
     CheckpointConfiguration
-        <$> (option (Just <$> str) $ mconcat
-                [ short 'c'
-                , long "checkpoint-file"
-                , metavar "FILEPATH"
-                , help $ unwords $
-                      ["This enables periodic checkpointing with the given path"
-                      ,"specifying the location of the checkpoint file; if the file"
-                      ,"already exists then it will be loaded as the initial starting"
-                      ,"point for the search."
-                      ]
-                ]
+        <$> (
+                (Just <$> (strOption $ mconcat
+                    [ short 'c'
+                    , long "checkpoint-file"
+                    , metavar "FILEPATH"
+                    , help $ unwords $
+                          ["This enables periodic checkpointing with the given path"
+                          ,"specifying the location of the checkpoint file; if the file"
+                          ,"already exists then it will be loaded as the initial starting"
+                          ,"point for the search."
+                          ]
+                    ]
+                ))
+                <|>
+                pure Nothing
             )
         <*> (option auto $ mconcat
                 [ short 'i'
