@@ -102,6 +102,7 @@ import Prelude hiding (readFile,writeFile)
 import Control.Applicative ((<$>),(<*>),many,pure)
 import Control.Arrow ((&&&))
 import Control.Concurrent (threadDelay)
+import Control.DeepSeq (NFData)
 import Control.Exception (AsyncException,SomeException,finally,fromException,handleJust,onException,try)
 import Control.Monad (forM_,forever,when,unless,void)
 import Control.Monad.IO.Class (MonadIO(..))
@@ -310,7 +311,8 @@ data RunOutcome progress final_result = RunOutcome
         runStatistics :: RunStatistics
         {-| the reason why the run terminated -}
     ,   runTerminationReason :: TerminationReason progress final_result
-    } deriving (Eq,Show)
+    } deriving (Eq,Generic,Show)
+instance (NFData progress, NFData final_result) ⇒ NFData (RunOutcome progress final_result) where
 
 {-| A convenient type alias for the type of 'RunOutcome' associated with the given exploration mode. -}
 type RunOutcomeFor exploration_mode = RunOutcome (ProgressFor exploration_mode) (FinalResultFor exploration_mode)
@@ -323,7 +325,8 @@ data TerminationReason progress final_result =
   | Completed final_result
     {-| the run failed with the given progress for the given reason -}
   | Failure progress String
-  deriving (Eq,Show)
+  deriving (Eq,Generic,Show)
+instance (NFData progress, NFData final_result) ⇒ NFData (TerminationReason progress final_result) where
 
 {-| A convenient type alias for the type of 'TerminationReason' associated with the given exploration mode. -}
 type TerminationReasonFor exploration_mode = TerminationReason (ProgressFor exploration_mode) (FinalResultFor exploration_mode)

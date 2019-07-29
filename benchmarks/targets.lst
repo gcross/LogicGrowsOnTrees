@@ -1,0 +1,13 @@
+:tree-versus-list-bind
+:tree-versus-list-bind-and-mplus
+:tree-versus-list-fmap
+:tree-versus-list-lopsided-null-tree
+:tree-versus-list-lopsided-trivial-tree
+:tree-versus-list-nqueens
+:tree-versus-list-nqueens-using-bits
+:tree-versus-list-nqueens-using-sets
+:tree-versus-list-nqueens-with-list-at-bottom
+:tree-versus-list-nqueens-with-nothing-at-bottom
+:tree-versus-list-null-tree
+:tree-versus-list-trivial-tree
+:tree-versus-list-unit-tree

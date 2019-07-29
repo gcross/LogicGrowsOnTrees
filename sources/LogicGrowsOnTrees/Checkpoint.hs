@@ -65,6 +65,7 @@ module LogicGrowsOnTrees.Checkpoint
     ) where
 
 import Control.Exception (Exception(),throw)
+import Control.DeepSeq (NFData)
 import Control.Monad ((>=>))
 import Control.Monad.Operational (ProgramViewT(..),viewT)
 
@@ -108,8 +109,8 @@ data Checkpoint =
   | Explored
   | Unexplored
   deriving (Eq,Generic,Ord,Read,Show)
-
-instance Serialize Checkpoint where
+instance NFData Checkpoint
+instance Serialize Checkpoint
 
 -- Note:  This function is not in the same place where it appears in the documentation.
 {-| Simplifies the root of the checkpoint by replacing
@@ -164,6 +165,7 @@ data Progress α = Progress
     {   progressCheckpoint :: Checkpoint
     ,   progressResult :: α
     } deriving (Eq,Functor,Generic,Show)
+instance NFData α ⇒ NFData (Progress α)
 instance Serialize α ⇒ Serialize (Progress α)
 
 instance Semigroup α ⇒ Semigroup (Progress α) where

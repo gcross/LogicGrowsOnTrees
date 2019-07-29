@@ -54,6 +54,7 @@ module LogicGrowsOnTrees.Parallel.Common.Supervisor.Implementation
 
 import Control.Arrow ((&&&),first)
 import Control.Category ((>>>))
+import Control.DeepSeq (NFData)
 import Control.Exception (Exception(..),throw)
 import Control.Lens ((&))
 import Control.Lens.Getter ((^.),use,view)
@@ -179,7 +180,8 @@ data FunctionOfTimeStatistics α = FunctionOfTimeStatistics
     ,   timeStdDev :: !Double {-^ the standard deviation of the function over the time period -}
     ,   timeMin :: !α {-^ the minimum value of the function over the time period -}
     ,   timeMax :: !α {-^ the maximum value of the function over the time period -}
-    } deriving (Eq,Show)
+    } deriving (Eq,Generic,Show)
+instance NFData α ⇒ NFData (FunctionOfTimeStatistics α) where
 
 data RetiredOccupationStatistics = RetiredOccupationStatistics
     {   _occupied_time :: !NominalDiffTime
@@ -213,7 +215,8 @@ data RunStatistics =
     ,   runAvailableWorkloadStatistics :: !(FunctionOfTimeStatistics Int) {-^ statistics for the number of available workloads waiting for a worker -}
     ,   runInstantaneousWorkloadRequestRateStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous rate at which workloads were requested (using an exponentially decaying sum) -}
     ,   runInstantaneousWorkloadStealTimeStatistics :: !(FunctionOfTimeStatistics Float) {-^ statistics for the instantaneous time needed for workloads to be stolen (using an exponentially decaying weighted average) -}
-    } deriving (Eq,Show)
+    } deriving (Eq,Generic,Show)
+instance NFData RunStatistics where
 
 {-| Statistics for a value obtained by collecting a number of independent measurements. -}
 data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics --
@@ -222,7 +225,8 @@ data IndependentMeasurementsStatistics = IndependentMeasurementsStatistics --
     ,   statStdDev ::  {-# UNPACK #-} !Double {-^ the standard deviation -}
     ,   statMin :: {-# UNPACK #-} !Double {-^ the minimum measurement value -}
     ,   statMax :: {-# UNPACK #-} !Double {-^ the maximum measurement value -}
-    } deriving (Eq,Show)
+    } deriving (Eq,Generic,Show)
+instance NFData IndependentMeasurementsStatistics where
 
 data IndependentMeasurements = IndependentMeasurements
     {   timeDataCount :: {-# UNPACK #-} !Int
@@ -231,6 +235,7 @@ data IndependentMeasurements = IndependentMeasurements
     ,   timeDataSum ::  {-# UNPACK #-} !Double
     ,   timeDataSumSq ::  {-# UNPACK #-} !Double
     } deriving (Eq,Generic,Show)
+instance NFData IndependentMeasurements where
 
 zeroedMeasurements ∷ IndependentMeasurements
 zeroedMeasurements = IndependentMeasurements 0 0 0 0 0
@@ -255,7 +260,8 @@ data FunctionOfTime α = FunctionOfTime
     ,   _second_moment :: !Double
     ,   _minimum_value :: !α
     ,   _maximum_value :: !α
-    } deriving (Eq,Show)
+    } deriving (Eq,Generic,Show)
+instance NFData α ⇒ NFData (FunctionOfTime α) where
 $( makeLenses ''FunctionOfTime )
 
 newtype InterpolatedFunctionOfTime α = InterpolatedFunctionOfTime { _interpolated_function_of_time :: FunctionOfTime α }

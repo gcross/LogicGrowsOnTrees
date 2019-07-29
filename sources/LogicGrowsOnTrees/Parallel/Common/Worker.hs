@@ -45,6 +45,7 @@ module LogicGrowsOnTrees.Parallel.Common.Worker
 import Control.Arrow ((&&&),(>>>))
 import Control.Concurrent (forkIO,ThreadId,yield)
 import Control.Concurrent.MVar (MVar,newEmptyMVar,putMVar,takeMVar)
+import Control.DeepSeq (NFData)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),catch,fromException)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class
@@ -160,7 +161,7 @@ data WorkerTerminationReason worker_final_progress =
   | WorkerFailed String
     {-| worker was aborted by either an external request or the 'ThreadKilled' or 'UserInterrupt' exceptions -}
   | WorkerAborted
-  deriving (Eq,Show)
+  deriving (Eq,Generic,Show)
 
 {-| The 'Functor' instance lets you manipulate the final progress value when
     the termination reason is 'WorkerFinished'.
@@ -169,6 +170,8 @@ instance Functor WorkerTerminationReason where
     fmap f (WorkerFinished x) = WorkerFinished (f x)
     fmap _ (WorkerFailed x) = WorkerFailed x
     fmap _ WorkerAborted = WorkerAborted
+
+instance NFData progress ⇒ NFData (WorkerTerminationReason progress) where
 
 {-| A convenient type alias for the type of 'WorkerTerminationReason' associated
     with the given exploration mode.
