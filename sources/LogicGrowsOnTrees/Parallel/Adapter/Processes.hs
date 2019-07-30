@@ -46,14 +46,11 @@ module LogicGrowsOnTrees.Parallel.Adapter.Processes
     , getProgFilepath
     ) where
 
-import Prelude hiding (catch)
-
-import Control.Applicative ((<$>),(<*>),Applicative,liftA2)
-import Control.Arrow (second)
+import Control.Applicative ((<$>),(<*>),(<**>),Applicative)
 import Control.Concurrent (forkIO)
 import Control.Exception (AsyncException(ThreadKilled,UserInterrupt),SomeException,catch,catchJust,fromException)
 import Control.Monad (forever,liftM2)
-import Control.Monad.CatchIO (MonadCatchIO)
+import Control.Monad.Catch (MonadCatch,MonadMask,MonadThrow)
 import Control.Monad.IO.Class (MonadIO,liftIO)
 import Control.Monad.Trans.State.Strict (get,modify)
 
@@ -64,7 +61,21 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(mempty))
 import Data.Serialize (Serialize)
 
-import System.Console.CmdTheLine
+import Options.Applicative
+    ( ParserInfo
+    , auto
+    , execParser
+    , help
+    , helper
+    , info
+    , long
+    , metavar
+    , option
+    , short
+    , showDefault
+    , value
+    )
+
 import System.Environment (getArgs,getProgName)
 import System.Environment.FindBin (getProgPath)
 import System.FilePath ((</>))
@@ -73,7 +84,14 @@ import System.IO.Error (isEOFError)
 import qualified System.Log.Logger as Logger
 import System.Log.Logger (Priority(DEBUG,ERROR))
 import System.Log.Logger.TH
-import System.Process (CreateProcess(..),CmdSpec(RawCommand),StdStream(..),ProcessHandle,createProcess,interruptProcessGroupOf)
+import System.Process
+    ( CreateProcess(..)
+    , CmdSpec(RawCommand)
+    , StdStream(..)
+    , ProcessHandle
+    , createProcess
+    , interruptProcessGroupOf
+    )
 
 import LogicGrowsOnTrees (TreeT)
 import LogicGrowsOnTrees.Parallel.Common.Message
@@ -82,23 +100,31 @@ import LogicGrowsOnTrees.Parallel.Common.RequestQueue
 import LogicGrowsOnTrees.Parallel.Common.Workgroup hiding (C,unwrapC)
 import LogicGrowsOnTrees.Parallel.ExplorationMode
 import LogicGrowsOnTrees.Parallel.Main
-    (Driver(..)
-    ,DriverParameters(..)
-    ,RunOutcome
-    ,RunOutcomeFor
-    ,RunStatistics(..)
-    ,TerminationReason(..)
-    ,mainParser
+    ( Driver(..)
+    , DriverParameters(..)
+    , RunOutcome
+    , RunOutcomeFor
+    , RunStatistics(..)
+    , TerminationReason(..)
     )
 import LogicGrowsOnTrees.Parallel.Purity
 import LogicGrowsOnTrees.Utils.Handle
-import LogicGrowsOnTrees.Utils.Word_
 
 --------------------------------------------------------------------------------
 ----------------------------------- Loggers ------------------------------------
 --------------------------------------------------------------------------------
 
 deriveLoggers "Logger" [DEBUG,ERROR]
+
+--------------------------------------------------------------------------------
+------------------------------------- Types ------------------------------------
+--------------------------------------------------------------------------------
+
+data Configuration shared_configuration supervisor_configuration = Configuration
+    { shared_configuration :: shared_configuration
+    , supervisor_configuration :: supervisor_configuration
+    , number_of_processes :: Word
+    }
 
 --------------------------------------------------------------------------------
 ------------------------------------ Driver ------------------------------------
@@ -119,26 +145,40 @@ driver ::
     ) ⇒
     Driver IO shared_configuration supervisor_configuration m n exploration_mode
 driver = Driver $ \DriverParameters{..} → do
+    let configuration_parser_info = flip info program_info $
+            (Configuration
+                 <$> shared_configuration_parser
+                 <*> supervisor_configuration_parser
+                 <*> number_of_processes_parser
+            )
+            <**>
+            helper
     runExplorer
         constructExplorationMode
         purity
-        (mainParser (liftA2 (,) shared_configuration_term (liftA2 (,) number_of_processes_term supervisor_configuration_term)) program_info)
+        configuration_parser_info
         initializeGlobalState
         constructTree
-        (curry $ uncurry getStartingProgress . second snd)
-        (\shared_configuration (Word_ number_of_processes,supervisor_configuration) → do
+        getStartingProgress
+        (\supervisor_configuration number_of_processes → do
             setNumberOfWorkers number_of_processes
-            constructController shared_configuration supervisor_configuration
+            constructController supervisor_configuration
         )
     >>=
-    maybe (return ()) (notifyTerminated <$> fst . fst <*> snd . snd . fst <*> snd)
+    maybe
+        (pure ())
+        (\(Configuration{..}, run_outcome) →
+            notifyTerminated shared_configuration supervisor_configuration run_outcome
+        )
   where
-    number_of_processes_term = required (flip opt (
-        (optInfo ["n","number-of-processes"])
-        {   optName = "#"
-        ,   optDoc = "This *required* option specifies the number of worker processes to spawn."
-        }
-        ) Nothing )
+    number_of_processes_parser = option auto $ mconcat
+        [ short 'n'
+        , long "number-of-processes"
+        , help "This option specifies the number of worker processes to spawn."
+        , metavar "#"
+        , value 1
+        , showDefault
+        ]
 {-# INLINE driver #-}
 
 --------------------------------------------------------------------------------
@@ -147,8 +187,18 @@ driver = Driver $ \DriverParameters{..} → do
 
 {-| The monad in which the processes controller will run. -}
 newtype ProcessesControllerMonad exploration_mode α =
-    C { unwrapC :: WorkgroupControllerMonad (IntMap Worker) exploration_mode α
-    } deriving (Applicative,Functor,Monad,MonadCatchIO,MonadIO,RequestQueueMonad,WorkgroupRequestQueueMonad)
+    C (WorkgroupControllerMonad (IntMap Worker) exploration_mode α)
+      deriving
+        ( Applicative
+        , Functor
+        , Monad
+        , MonadCatch
+        , MonadIO
+        , MonadMask
+        , MonadThrow
+        , RequestQueueMonad
+        , WorkgroupRequestQueueMonad
+        )
 
 instance HasExplorationMode (ProcessesControllerMonad exploration_mode) where
     type ExplorationModeFor (ProcessesControllerMonad exploration_mode) = exploration_mode
@@ -211,6 +261,13 @@ runSupervisor
                         ,   std_err = CreatePipe
                         ,   close_fds = True
                         ,   create_group = True
+                        ,   delegate_ctlc = False
+                        ,   detach_console = True
+                        ,   create_new_console = False
+                        ,   new_session = False
+                        ,   child_group = Nothing
+                        ,   child_user = Nothing
+                        ,   use_process_jobs = False
                         }
                     liftIO $ do
                         _ ← forkIO $
@@ -302,7 +359,7 @@ runExplorer ::
             configuration
          -} →
     Purity m n {-^ the purity of the tree -} →
-    IO (shared_configuration,supervisor_configuration)
+    ParserInfo (Configuration shared_configuration supervisor_configuration)
         {-^ an action that gets the shared and supervisor-specific configuration
             information (run only on the supervisor)
          -} →
@@ -318,12 +375,12 @@ runExplorer ::
         {-^ an action that gets the starting progress given the full
             configuration information (run only on the supervisor)
          -} →
-    (shared_configuration → supervisor_configuration → ProcessesControllerMonad exploration_mode ())
+    (supervisor_configuration → Word → ProcessesControllerMonad exploration_mode ())
         {-^ a function that constructs the controller for the supervisor, which
             must at least set the number of workers to be non-zero (called only
             on the supervisor)
          -} →
-    IO (Maybe ((shared_configuration,supervisor_configuration),RunOutcomeFor exploration_mode))
+    IO (Maybe (Configuration shared_configuration supervisor_configuration,RunOutcomeFor exploration_mode))
         {-^ if this process is the supervisor, then the outcome of the run as
             well as the configuration information wrapped in 'Just'; otherwise
             'Nothing'
@@ -331,7 +388,7 @@ runExplorer ::
 runExplorer
     constructExplorationMode
     purity
-    getConfiguration
+    configuration_parser_info
     initializeGlobalState
     constructTree
     getStartingProgress
@@ -349,7 +406,7 @@ runExplorer
                 stdout
             return Nothing
         else do
-            configuration@(shared_configuration,supervisor_configuration) ← getConfiguration
+            configuration@Configuration{..} ← execParser configuration_parser_info
             initializeGlobalState shared_configuration
             program_filepath ← getProgFilepath
             starting_progress ← getStartingProgress shared_configuration supervisor_configuration
@@ -360,7 +417,7 @@ runExplorer
                     sentinel
                     (flip send shared_configuration)
                     starting_progress
-                    (constructController shared_configuration supervisor_configuration)
+                    (constructController supervisor_configuration number_of_processes)
             return $ Just (configuration,termination_result)
   where
     sentinel = ["explorer","worker","bee"]
@@ -384,4 +441,5 @@ data Worker = Worker
     ,   process_handle :: ProcessHandle
     }
 
+fromJustOrBust :: String → Maybe α → α
 fromJustOrBust message = fromMaybe (error message)
