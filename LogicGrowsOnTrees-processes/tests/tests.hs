@@ -1,12 +1,9 @@
--- Language extensions {{{
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
--- }}}
 
--- Imports {{{
 import Prelude hiding (catch)
 
 import Control.Concurrent (threadDelay)
@@ -37,28 +34,20 @@ import LogicGrowsOnTrees.Parallel.Adapter.Processes
 import LogicGrowsOnTrees.Parallel.ExplorationMode (ExplorationMode(AllMode))
 import LogicGrowsOnTrees.Parallel.Main
 import LogicGrowsOnTrees.Parallel.Purity (Purity(Pure))
--- }}}
 
--- Logging Functions {{{
 deriveLoggers "Logger" [ERROR]
--- }}}
 
--- Helper functions {{{
-remdups :: (Eq a) => [a] -> [a] -- {{{
+remdups :: (Eq a) => [a] -> [a]
 remdups []  =  []
 remdups (x : []) =  [x]
 remdups (x : xx : xs)
  | x == xx   = remdups (x : xs)
  | otherwise = x : remdups (xx : xs)
--- }}}
--- }}}
 
 -- Instances {{{
-instance Serialize (Sum Int) where -- {{{
+instance Serialize (Sum Int) where
     put = put . getSum
     get = fmap Sum get
--- }}}
--- }}}
 
 main = do
     -- updateGlobalLogger rootLoggerName (setLevel DEBUG)
@@ -75,7 +64,7 @@ main = do
              (\(e::SomeException) → errorM $ "Worker process failed: " ++ show e)
         _ → defaultMain tests
 
-tests = -- {{{
+tests =
     [testCase "one process" . runTest $ do
         setNumberOfWorkers 0
         setNumberOfWorkers 1
@@ -115,4 +104,3 @@ tests = -- {{{
             let Progress checkpoint result = progresses !! i
             result @=? exploreTreeStartingFromCheckpoint (invertCheckpoint checkpoint) tree
             correct_result @=? result <> (exploreTreeStartingFromCheckpoint checkpoint tree)
--- }}}
