@@ -1,0 +1,118 @@
+Name:                LogicGrowsOnTrees-processes
+Version:             2.0.0
+License:             BSD3
+License-file:        LICENSE
+Author:              Gregory Crosswhite
+Maintainer:          Gregory Crosswhite <gcrosswhite@gmail.com>
+Synopsis:            an adapter for LogicGrowsOnTrees that uses multiple processes for parallelism
+Cabal-version:       >=1.10
+Build-type:          Simple
+Category:            Control, Distributed Computing, Logic, Parallelism
+Description:
+    This package provides a adapter for the LogicGrowsOnTrees package that uses
+    multiple processes for parallelism; see the module documentation for more
+    details.
+
+Extra-source-files: CHANGELOG.md
+
+Bug-reports: https://github.com/gcross/LogicGrowsOnTrees-processes/issues
+
+Source-Repository head
+    Type:     git
+    Location: git://github.com/gcross/LogicGrowsOnTrees-processes.git
+
+Source-Repository this
+    Type:     git
+    Location: git://github.com/gcross/LogicGrowsOnTrees-processes.git
+    Tag:      1.0.0.2
+
+Library
+    Build-depends:     LogicGrowsOnTrees >= 2.0.0
+                     , base >= 4.12
+                     , bytestring >= 0.10
+                     , cereal >= 0.5
+                     , containers >= 0.6
+                     , exceptions >= 0.10
+                     , filepath >= 1.4
+                     , hslogger >= 1.2
+                     , hslogger-template >= 2.0
+                     , optparse-applicative >= 0.14
+                     , transformers >= 0.5
+                     , FindBin  >= 0.0.5
+                     , process >= 1.6.5
+    Exposed-modules:   LogicGrowsOnTrees.Parallel.Adapter.Processes
+    Hs-source-dirs:    sources
+    Default-Language:  Haskell2010
+
+--------------------------------------------------------------------------------
+----------------------------------- Examples -----------------------------------
+--------------------------------------------------------------------------------
+
+Flag examples
+    Description:       Enable building the examples.
+    Default:           False
+
+Executable count-all-nqueens-solutions
+    Main-is: count-all-nqueens-solutions.hs
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees-processes
+                     , LogicGrowsOnTrees >= 2.0.0
+                     , base >= 4.12
+                     , cereal >= 0.5
+                     , optparse-applicative >= 0.14
+    Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+
+Executable count-all-trivial-tree-leaves
+    Main-is: count-all-trivial-tree-leaves.hs
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees-processes
+                     , LogicGrowsOnTrees >= 2.0.0
+                     , base >= 4.12
+                     , cereal >= 0.5
+                     , optparse-applicative >= 0.14
+    Default-Language:  Haskell2010
+    if flag(examples)
+        Buildable: True
+    else
+        Buildable: False
+
+--------------------------------------------------------------------------------
+---------------------------------- Benchmarks ----------------------------------
+--------------------------------------------------------------------------------
+
+Benchmark benchmark
+    Type: exitcode-stdio-1.0
+    Main-is: benchmark.hs
+    Hs-source-dirs: benchmarks
+    Hs-source-dirs:    examples
+    Build-depends:     LogicGrowsOnTrees-processes
+                     , LogicGrowsOnTrees >= 2.0.0
+                     , base >= 4.12
+                     , criterion >= 1.5
+                     , optparse-applicative >= 0.14
+    Default-Language:  Haskell2010
+
+--------------------------------------------------------------------------------
+------------------------------------- Tests ------------------------------------
+--------------------------------------------------------------------------------
+
+Test-Suite tests
+    Type: exitcode-stdio-1.0
+    Main-is: tests.hs
+    Hs-source-dirs: tests
+    Build-depends:     LogicGrowsOnTrees-processes
+                     , LogicGrowsOnTrees >= 2.0.0
+                     , base >= 4.12
+                     , cereal >= 0.5
+                     , hslogger >= 1.2
+                     , hslogger-template >= 2.0
+                     , HUnit >= 1.6
+                     , random >= 1.1
+                     , test-framework >= 0.8
+                     , test-framework-hunit >= 0.3
+                     , transformers >= 0.5
+    Default-Language:  Haskell2010

@@ -4,6 +4,7 @@ flags:
         tutorials: false
 packages:
 - LogicGrowsOnTrees/
+- LogicGrowsOnTrees-processes/
 extra-deps:
 - PSQueue-1.1.0.1
 - hslogger-template-2.0.4
