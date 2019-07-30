@@ -5,8 +5,6 @@
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE ViewPatterns #-}
 
-import Prelude hiding (catch)
-
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException,catch)
 import Control.Monad (forever,replicateM_,void)
@@ -26,7 +24,7 @@ import System.Random (randomRIO)
 
 import Test.Framework
 import Test.Framework.Providers.HUnit
-import Test.HUnit
+import Test.HUnit ((@?=),(@=?))
 
 import qualified LogicGrowsOnTrees as V
 import LogicGrowsOnTrees.Checkpoint
@@ -50,6 +48,7 @@ instance Serialize (Sum Int) where
     put = put . getSum
     get = fmap Sum get
 
+main :: IO ()
 main = do
     -- updateGlobalLogger rootLoggerName (setLevel DEBUG)
     args ← getArgs
@@ -65,6 +64,7 @@ main = do
              (\(e::SomeException) → errorM $ "Worker process failed: " ++ show e)
         _ → defaultMain tests
 
+tests :: [Test]
 tests =
     [testCase "one process" . runTest $ do
         setNumberOfWorkers 0
@@ -74,6 +74,7 @@ tests =
     ,testCase "many processes" . runTest . void $ liftIO (randomRIO (0,1::Int)) >>= \case
         0 → changeNumberOfWorkers (\i → if i > 1 then i-1 else i)
         1 → changeNumberOfWorkers (+1)
+        n → error $ "invalid number of workers: " ++ show n
     ]
   where
     runTest generateNoise = do
