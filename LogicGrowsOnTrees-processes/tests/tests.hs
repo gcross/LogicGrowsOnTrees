@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UnicodeSyntax #-}
@@ -70,7 +71,7 @@ tests =
         setNumberOfWorkers 1
     ,testCase "two processes" . runTest . void $
         changeNumberOfWorkers (3-)
-    ,testCase "many processes" . runTest . void $ liftIO (randomRIO (0,1::Int)) >>= \i → case i of
+    ,testCase "many processes" . runTest . void $ liftIO (randomRIO (0,1::Int)) >>= \case
         0 → changeNumberOfWorkers (\i → if i > 1 then i-1 else i)
         1 → changeNumberOfWorkers (+1)
     ]
