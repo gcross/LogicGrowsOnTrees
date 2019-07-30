@@ -1,9 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UnicodeSyntax #-}
 
-import Data.Functor
-
-import System.Console.CmdTheLine
+import Options.Applicative (fullDesc,progDesc)
 
 import LogicGrowsOnTrees.Parallel.Adapter.Processes
 import LogicGrowsOnTrees.Parallel.Main
@@ -11,16 +9,13 @@ import LogicGrowsOnTrees.Utils.WordSum
 
 import LogicGrowsOnTrees.Examples.Queens
 
+main :: IO ()
 main =
     mainForExploreTree
         driver
-        (getBoardSize <$> required (flip (pos 0) (posInfo
-            {   posName = "BOARD_SIZE"
-            ,   posDoc = "board size"
-            }
-        ) Nothing))
-        (defTI { termDoc = "count the number of n-queens solutions for a given board size" })
-        (\_ (RunOutcome _ termination_reason) → do
+        board_size_parser
+        (fullDesc <> progDesc "count the number of n-queens solutions for a given board size")
+        (\_ (RunOutcome _ termination_reason) →
             case termination_reason of
                 Aborted _ → error "search aborted"
                 Completed (WordSum count) → print count
