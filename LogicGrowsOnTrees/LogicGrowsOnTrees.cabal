@@ -268,6 +268,15 @@ Library
                        -Werror=missing-methods
   Default-Language:    Haskell2010
 
+Source-Repository head
+    Type:     git
+    Location: git://github.com/gcross/LogicGrowsOnTrees.git
+
+Source-Repository this
+    Type:     git
+    Location: git://github.com/gcross/LogicGrowsOnTrees.git
+    Tag:      2.0.0
+
 --------------------------------------------------------------------------------
 ----------------------------------- Examples -----------------------------------
 --------------------------------------------------------------------------------

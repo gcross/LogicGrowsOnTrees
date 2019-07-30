@@ -24,7 +24,7 @@ Source-Repository head
 Source-Repository this
     Type:     git
     Location: git://github.com/gcross/LogicGrowsOnTrees-processes.git
-    Tag:      1.0.0.2
+    Tag:      2.0.0
 
 Library
     Build-depends:     LogicGrowsOnTrees >= 2.0.0
