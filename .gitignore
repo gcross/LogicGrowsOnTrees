@@ -1,7 +1,0 @@
-dist/*
-*.hi
-*.o
-*.swp
-*~
-checkpoint
-log
